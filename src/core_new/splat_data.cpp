@@ -677,7 +677,7 @@ namespace lfs::core {
                 auto sh0_transposed = sh0_cpu.transpose(1, 2);  // [N, B, 3] -> [N, 3, B]
                 size_t N = sh0_transposed.shape()[0];
                 size_t flat_dim = sh0_transposed.shape()[1] * sh0_transposed.shape()[2];
-                pc.sh0 = sh0_transposed.reshape({N, flat_dim});
+                pc.sh0 = sh0_transposed.reshape({static_cast<int>(N), static_cast<int>(flat_dim)});
                 LOG_INFO("to_point_cloud: sh0 after processing: shape=[{}, {}]", N, flat_dim);
             } else if (sh0_cpu.ndim() == 2) {
                 LOG_INFO("to_point_cloud: sh0 is 2D, using as-is with shape=[{}, {}]",
@@ -712,7 +712,7 @@ namespace lfs::core {
                 auto shN_transposed = shN_cpu.transpose(1, 2);  // [N, B, 3] -> [N, 3, B]
                 size_t N = shN_transposed.shape()[0];
                 size_t flat_dim = shN_transposed.shape()[1] * shN_transposed.shape()[2];
-                pc.shN = shN_transposed.reshape({N, flat_dim});
+                pc.shN = shN_transposed.reshape({static_cast<int>(N), static_cast<int>(flat_dim)});
                 LOG_INFO("to_point_cloud: shN after processing: shape=[{}, {}]", N, flat_dim);
             } else if (shN_cpu.ndim() == 2) {
                 LOG_INFO("to_point_cloud: shN is 2D, using as-is with shape=[{}, {}]",
