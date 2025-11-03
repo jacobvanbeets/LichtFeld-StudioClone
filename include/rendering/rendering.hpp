@@ -49,7 +49,7 @@ namespace gs::rendering {
         float voxel_size = 0.01f;
         bool gut = false;
         bool equirectangular = false;
-        int sh_degree = 0;
+        int sh_degree = 3;
     };
 
     struct RenderResult {
@@ -96,7 +96,7 @@ namespace gs::rendering {
         bool show_dividers = true;
         glm::vec4 divider_color{1.0f, 0.85f, 0.0f, 1.0f};
         bool show_labels = true;
-        int sh_degree = 0;
+        int sh_degree = 3;
     };
 
     enum class GridPlane {
