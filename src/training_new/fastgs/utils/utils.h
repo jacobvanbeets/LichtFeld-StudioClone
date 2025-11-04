@@ -10,7 +10,7 @@
 #include <stdexcept>
 
 #define CHECK_CUDA(debug, name)                                                                                                       \
-    if (debug) {                                                                                                                      \
+    if constexpr (debug) {                                                                                                            \
         auto ret = cudaDeviceSynchronize();                                                                                           \
         if (ret != cudaSuccess) {                                                                                                     \
             std::cerr << "\n[CUDA ERROR] in " << name << " " << __FILE__ << "\nLine " << __LINE__ << ": " << cudaGetErrorString(ret); \
