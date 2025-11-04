@@ -72,6 +72,8 @@ set(OPTIONAL_TEST_FILES
     test_transform_iterator_benchmark.cpp
     test_cub_reduction_benchmark.cpp
     benchmark_strided_tensors.cpp
+    benchmark_grad_alpha_layout.cpp
+    benchmark_background_blend.cpp
     test_scalar_reduction_benchmark.cpp
     test_permute_upload_benchmark.cpp
     test_lfs_adam_optimizer.cpp

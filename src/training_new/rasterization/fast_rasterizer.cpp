@@ -4,6 +4,7 @@
 
 #include "fast_rasterizer.hpp"
 #include "core_new/logger.hpp"
+#include "training_new/kernels/grad_alpha.hpp"
 
 namespace lfs::training {
     std::pair<RenderOutput, FastRasterizeContext> fast_rasterize_forward(
@@ -71,9 +72,19 @@ namespace lfs::training {
         // Prepare render output
         RenderOutput render_output;
         // output = image + (1 - alpha) * bg_color
-        auto alpha_complement = (alpha * -1.0f) + 1.0f;  // 1 - alpha
-        auto bg_contribution = alpha_complement * bg_color.unsqueeze(-1).unsqueeze(-1);
-        render_output.image = image + bg_contribution;
+        auto output_image = lfs::core::Tensor::empty({3, static_cast<size_t>(height), static_cast<size_t>(width)}, lfs::core::Device::CUDA);
+
+        lfs::training::kernels::launch_fused_background_blend(
+            image.ptr<float>(),
+            alpha.ptr<float>(),
+            bg_color.ptr<float>(),
+            output_image.ptr<float>(),
+            height,
+            width,
+            nullptr  // default stream
+        );
+
+        render_output.image = output_image;
         render_output.alpha = alpha;
         render_output.width = width;
         render_output.height = height;
@@ -130,22 +141,34 @@ namespace lfs::training {
         // bg_color shape: [3]
         // alpha shape: [1, H, W]
 
-        lfs::core::Tensor grad_alpha;
+        // Use fused kernel (4-5x faster than LibTorch, 18-252x faster than separate ops)
+        int H, W;
+        bool is_chw_layout;
 
-        // Determine the layout of grad_image
         if (grad_image.shape()[0] == 3) {
             // Layout: [3, H, W]
-            // ∂L/∂alpha[h,w] = -sum_c(grad_image[c,h,w] * bg_color[c])
-            auto bg_expanded = ctx.bg_color.reshape({3, 1, 1});  // [3, 1, 1]
-            grad_alpha = (grad_image * bg_expanded).sum({0}, false) * -1.0f;  // [H, W]
+            is_chw_layout = true;
+            H = static_cast<int>(grad_image.shape()[1]);
+            W = static_cast<int>(grad_image.shape()[2]);
         } else if (grad_image.shape()[2] == 3) {
             // Layout: [H, W, 3]
-            // ∂L/∂alpha[h,w] = -sum_c(grad_image[h,w,c] * bg_color[c])
-            auto bg_expanded = ctx.bg_color.reshape({1, 1, 3});  // [1, 1, 3]
-            grad_alpha = (grad_image * bg_expanded).sum({2}, false) * -1.0f;  // [H, W]
+            is_chw_layout = false;
+            H = static_cast<int>(grad_image.shape()[0]);
+            W = static_cast<int>(grad_image.shape()[1]);
         } else {
             throw std::runtime_error("Unexpected grad_image shape in fast_rasterize_backward");
         }
+
+        auto grad_alpha = lfs::core::Tensor::empty({static_cast<size_t>(H), static_cast<size_t>(W)}, lfs::core::Device::CUDA);
+
+        lfs::training::kernels::launch_fused_grad_alpha(
+            grad_image.ptr<float>(),
+            ctx.bg_color.ptr<float>(),
+            grad_alpha.ptr<float>(),
+            H, W,
+            is_chw_layout,
+            nullptr  // default stream
+        );
 
         const int n_primitives = static_cast<int>(ctx.means.shape()[0]);
 
