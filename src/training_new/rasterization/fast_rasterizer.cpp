@@ -8,21 +8,21 @@
 
 namespace lfs::training {
     std::pair<RenderOutput, FastRasterizeContext> fast_rasterize_forward(
-        lfs::core::Camera& viewpoint_camera,
-        lfs::core::SplatData& gaussian_model,
-        lfs::core::Tensor& bg_color) {
+        core::Camera& viewpoint_camera,
+        core::SplatData& gaussian_model,
+        core::Tensor& bg_color) {
         // Get camera parameters
-        const int width = static_cast<int>(viewpoint_camera.image_width());
-        const int height = static_cast<int>(viewpoint_camera.image_height());
+        const int width = viewpoint_camera.image_width();
+        const int height =viewpoint_camera.image_height();
         auto [fx, fy, cx, cy] = viewpoint_camera.get_intrinsics();
 
         // Get Gaussian parameters
-        auto means = gaussian_model.means();
-        auto raw_opacities = gaussian_model.opacity_raw();
-        auto raw_scales = gaussian_model.scaling_raw();
-        auto raw_rotations = gaussian_model.rotation_raw();
-        auto sh0 = gaussian_model.sh0();
-        auto shN = gaussian_model.shN();
+        auto &means = gaussian_model.means();
+        auto &raw_opacities = gaussian_model.opacity_raw();
+        auto &raw_scales = gaussian_model.scaling_raw();
+        auto &raw_rotations = gaussian_model.rotation_raw();
+        auto &sh0 = gaussian_model.sh0();
+        auto &shN = gaussian_model.shN();
 
         const int sh_degree = gaussian_model.get_active_sh_degree();
         const int active_sh_bases = (sh_degree + 1) * (sh_degree + 1);
@@ -30,20 +30,16 @@ namespace lfs::training {
         constexpr float near_plane = 0.01f;
         constexpr float far_plane = 1e10f;
 
-        auto w2c = viewpoint_camera.world_view_transform();
-        auto cam_position = viewpoint_camera.cam_position();
-
-        // Cache contiguous pointers to avoid repeated .contiguous() calls
-        // Camera data is tiny (12-64 bytes) and already on GPU - cache the pointer!
-        const float* w2c_ptr = w2c.contiguous().ptr<float>();
-        const float* cam_position_ptr = cam_position.contiguous().ptr<float>();
+        // Get direct GPU pointers (tensors are already contiguous on CUDA)
+        const float* w2c_ptr = viewpoint_camera.world_view_transform_ptr();
+        const float* cam_position_ptr = viewpoint_camera.cam_position_ptr();
 
         const int n_primitives = static_cast<int>(means.shape()[0]);
         const int total_bases_sh_rest = static_cast<int>(shN.shape()[1]);
 
         // Allocate output tensors
-        lfs::core::Tensor image = lfs::core::Tensor::empty({3, static_cast<size_t>(height), static_cast<size_t>(width)});
-        lfs::core::Tensor alpha = lfs::core::Tensor::empty({1, static_cast<size_t>(height), static_cast<size_t>(width)});
+        core::Tensor image = core::Tensor::empty({3, static_cast<size_t>(height), static_cast<size_t>(width)});
+        core::Tensor alpha = core::Tensor::empty({1, static_cast<size_t>(height), static_cast<size_t>(width)});
 
         // Call forward_raw with raw pointers (no PyTorch wrappers)
         auto forward_ctx = fast_lfs::rasterization::forward_raw(
@@ -72,9 +68,9 @@ namespace lfs::training {
         // Prepare render output
         RenderOutput render_output;
         // output = image + (1 - alpha) * bg_color
-        auto output_image = lfs::core::Tensor::empty({3, static_cast<size_t>(height), static_cast<size_t>(width)}, lfs::core::Device::CUDA);
+        auto output_image = core::Tensor::empty({3, static_cast<size_t>(height), static_cast<size_t>(width)}, core::Device::CUDA);
 
-        lfs::training::kernels::launch_fused_background_blend(
+        kernels::launch_fused_background_blend(
             image.ptr<float>(),
             alpha.ptr<float>(),
             bg_color.ptr<float>(),
@@ -100,10 +96,8 @@ namespace lfs::training {
         ctx.raw_scales = raw_scales;
         ctx.raw_rotations = raw_rotations;
         ctx.shN = shN;
-        ctx.w2c = w2c;
-        ctx.cam_position = cam_position;
 
-        // Cache GPU pointers to avoid repeated contiguous() calls in backward
+        // Store camera pointers directly (tensors are managed by camera, already contiguous)
         ctx.w2c_ptr = w2c_ptr;
         ctx.cam_position_ptr = cam_position_ptr;
 
@@ -126,8 +120,8 @@ namespace lfs::training {
 
     void fast_rasterize_backward(
         const FastRasterizeContext& ctx,
-        const lfs::core::Tensor& grad_image,
-        lfs::core::SplatData& gaussian_model) {
+        const core::Tensor& grad_image,
+        core::SplatData& gaussian_model) {
 
         // Compute gradient w.r.t. alpha from background blending
         // Forward: output_image = image + (1 - alpha) * bg_color
@@ -159,9 +153,9 @@ namespace lfs::training {
             throw std::runtime_error("Unexpected grad_image shape in fast_rasterize_backward");
         }
 
-        auto grad_alpha = lfs::core::Tensor::empty({static_cast<size_t>(H), static_cast<size_t>(W)}, lfs::core::Device::CUDA);
+        auto grad_alpha = core::Tensor::empty({static_cast<size_t>(H), static_cast<size_t>(W)}, core::Device::CUDA);
 
-        lfs::training::kernels::launch_fused_grad_alpha(
+        kernels::launch_fused_grad_alpha(
             grad_image.ptr<float>(),
             ctx.bg_color.ptr<float>(),
             grad_alpha.ptr<float>(),

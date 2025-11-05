@@ -60,6 +60,14 @@ namespace lfs::core {
             return _cam_position;
         }
 
+        // Direct GPU pointer access (tensors are already contiguous on CUDA)
+        const float* world_view_transform_ptr() const {
+            return _world_view_transform.ptr<float>();
+        }
+        const float* cam_position_ptr() const {
+            return _cam_position.ptr<float>();
+        }
+
         const Tensor& R() const { return _R; }
         const Tensor& T() const { return _T; }
 
