@@ -100,14 +100,11 @@ std::tuple<int, int, int, int, int> fast_lfs::rasterization::forward(
         far_);
     CHECK_CUDA(config::debug, "preprocess")
 
-    // Use async memcpy to overlap transfer with GPU work
-    int n_visible_primitives = 0;
-    int n_instances = 0;
-    cudaMemcpyAsync(&n_visible_primitives, per_primitive_buffers.n_visible_primitives, sizeof(uint), cudaMemcpyDeviceToHost, 0);
-    cudaMemcpyAsync(&n_instances, per_primitive_buffers.n_instances, sizeof(uint), cudaMemcpyDeviceToHost, 0);
+    int n_visible_primitives;
+    cudaMemcpy(&n_visible_primitives, per_primitive_buffers.n_visible_primitives, sizeof(uint), cudaMemcpyDeviceToHost);
+    int n_instances;
+    cudaMemcpy(&n_instances, per_primitive_buffers.n_instances, sizeof(uint), cudaMemcpyDeviceToHost);
 
-    // GPU kernels can overlap with the async transfer
-    // Sort by depth
     cub::DeviceRadixSort::SortPairs(
         per_primitive_buffers.cub_workspace,
         per_primitive_buffers.cub_workspace_size,
@@ -216,7 +213,5 @@ std::tuple<int, int, int, int, int> fast_lfs::rasterization::forward(
         grid.x);
     CHECK_CUDA(config::debug, "blend")
 
-    return {n_visible_primitives, n_instances, n_buckets,
-            per_primitive_buffers.primitive_indices.selector,
-            per_instance_buffers.primitive_indices.selector};
+    return {n_visible_primitives, n_instances, n_buckets, per_primitive_buffers.primitive_indices.selector, per_instance_buffers.primitive_indices.selector};
 }
