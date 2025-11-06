@@ -40,6 +40,7 @@ namespace lfs::training {
 
         // Exposed for testing (compare with legacy implementation)
         int add_new_gs_test() { return add_new_gs(); }
+        int add_new_gs_with_indices_test(const lfs::core::Tensor& sampled_idxs);
         int relocate_gs_test() { return relocate_gs(); }
 
     private:

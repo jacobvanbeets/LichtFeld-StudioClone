@@ -111,9 +111,9 @@ TEST_F(MCMCAddNewGsTest, CompareAddNewGsAfterTraining) {
         << "Initial Gaussian count mismatch";
 
     // Run training iterations to create realistic opacity variations
-    spdlog::info("=== Running Training Iterations (50 steps) ===");
+    spdlog::info("=== Running Training Iterations (500 steps) ===");
     auto train_result = gs::training_debug::run_training_loop_comparison(
-        legacy_init, new_init, 0, 50);  // Camera 0, 50 iterations
+        legacy_init, new_init, 0, 500);  // Camera 0, 500 iterations
 
     ASSERT_TRUE(train_result.has_value())
         << "Training loop failed: " << train_result.error();

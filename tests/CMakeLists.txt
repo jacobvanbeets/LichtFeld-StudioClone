@@ -18,6 +18,8 @@ set(TEST_SOURCES
 # Check if new test files exist and add them
 set(OPTIONAL_TEST_FILES
     test_loss_gradients.cpp
+    test_regularization_comparison.cpp
+    test_add_new_gs_deterministic.cpp
     test_render_modes.cpp
     test_gut_rasterizer_gradients.cpp
     test_gut_manual_vs_autograd.cpp

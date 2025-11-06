@@ -284,16 +284,26 @@ namespace lfs::training {
             }
         }
 
-        // Prepare new Gaussians to concatenate
-        Tensor new_means, new_sh0, new_shN, new_rotation;
+        // CRITICAL: Update existing Gaussians FIRST (before concatenation)
+        // This matches the legacy implementation and ensures the correct values are copied
+        {
+            LOG_TIMER("add_new_update_original");
+            _splat_data.opacity_raw().index_put_(sampled_idxs, new_opacity_raw);
+            _splat_data.scaling_raw().index_put_(sampled_idxs, new_scaling_raw);
+        }
+
+        // Prepare new Gaussians to concatenate (gather updated values)
+        Tensor new_means, new_sh0, new_shN, new_rotation, new_opacity_to_add, new_scaling_to_add;
         {
             LOG_TIMER("add_new_gather_params");
-            // Use index_select to gather only the parameters we need
-            // (scales and opacities are computed via relocation kernel, not gathered)
+            // Gather parameters for new Gaussians
+            // NOTE: We must gather opacity/scaling AFTER updating them above!
             new_means = _splat_data.means().index_select(0, sampled_idxs);
             new_sh0 = _splat_data.sh0().index_select(0, sampled_idxs);
             new_shN = _splat_data.shN().index_select(0, sampled_idxs);
             new_rotation = _splat_data.rotation_raw().index_select(0, sampled_idxs);
+            new_opacity_to_add = _splat_data.opacity_raw().index_select(0, sampled_idxs);
+            new_scaling_to_add = _splat_data.scaling_raw().index_select(0, sampled_idxs);
         }
 
         // Concatenate all parameters using optimizer's add_new_params
@@ -303,18 +313,108 @@ namespace lfs::training {
             _optimizer->add_new_params(ParamType::Means, new_means);
             _optimizer->add_new_params(ParamType::Sh0, new_sh0);
             _optimizer->add_new_params(ParamType::ShN, new_shN);
-            _optimizer->add_new_params(ParamType::Scaling, new_scaling_raw);
+            _optimizer->add_new_params(ParamType::Scaling, new_scaling_to_add);
             _optimizer->add_new_params(ParamType::Rotation, new_rotation);
-            _optimizer->add_new_params(ParamType::Opacity, new_opacity_raw);
+            _optimizer->add_new_params(ParamType::Opacity, new_opacity_to_add);
         }
 
-        // CRITICAL: Now update the original sampled Gaussians with relocated opacity/scaling
+        return n_new;
+    }
+
+    // Test helper: add_new_gs with explicitly specified indices (no multinomial sampling)
+    int MCMC::add_new_gs_with_indices_test(const lfs::core::Tensor& sampled_idxs) {
+        LOG_TIMER("MCMC::add_new_gs_with_indices_test");
+        using namespace lfs::core;
+
+        if (!_optimizer) {
+            LOG_ERROR("add_new_gs_with_indices_test called but optimizer not initialized");
+            return 0;
+        }
+
+        const int n_new = sampled_idxs.numel();
+        if (n_new == 0)
+            return 0;
+
+        // Get opacities
+        auto opacities = _splat_data.get_opacity();
+
+        // Get parameters for sampled Gaussians
+        auto sampled_opacities = opacities.index_select(0, sampled_idxs);
+        auto sampled_scales = _splat_data.get_scaling().index_select(0, sampled_idxs);
+
+        // Count occurrences
+        auto ratios = Tensor::zeros({_splat_data.size()}, Device::CUDA, DataType::Float32);
+        ratios.index_add_(0, sampled_idxs, Tensor::ones_like(sampled_idxs).to(DataType::Float32));
+        ratios = ratios.index_select(0, sampled_idxs) + 1.0f;
+
+        // Clamp and convert to int
+        const int n_max = static_cast<int>(_binoms.shape()[0]);
+        ratios = ratios.clamp(1.0f, static_cast<float>(n_max));
+        ratios = ratios.to(DataType::Int32).contiguous();
+
+        // Call the CUDA relocation function
+        Tensor new_opacities, new_scales;
+        {
+            LOG_TIMER("add_new_relocation");
+            new_opacities = Tensor::empty(sampled_opacities.shape(), Device::CUDA);
+            new_scales = Tensor::empty(sampled_scales.shape(), Device::CUDA);
+
+            mcmc::launch_relocation_kernel(
+                sampled_opacities.ptr<float>(),
+                sampled_scales.ptr<float>(),
+                ratios.ptr<int32_t>(),
+                _binoms.ptr<float>(),
+                n_max,
+                new_opacities.ptr<float>(),
+                new_scales.ptr<float>(),
+                sampled_opacities.numel()
+            );
+        }
+
+        // Clamp new opacities and prepare raw values
+        Tensor new_opacity_raw, new_scaling_raw;
+        {
+            LOG_TIMER("add_new_compute_raw_values");
+            new_opacities = new_opacities.clamp(_params->min_opacity, 1.0f - 1e-7f);
+            new_opacity_raw = (new_opacities / (Tensor::ones_like(new_opacities) - new_opacities)).log();
+            new_scaling_raw = new_scales.log();
+
+            if (_splat_data.opacity_raw().ndim() == 2) {
+                new_opacity_raw = new_opacity_raw.unsqueeze(-1);
+            }
+        }
+
+        // CRITICAL: Update existing Gaussians FIRST (before concatenation)
+        // This matches the legacy implementation and ensures the correct values are copied
         {
             LOG_TIMER("add_new_update_original");
-            // This must be done AFTER add_new_params because add_new_params replaces the tensors
-            // Update at the original indices (0 to current_n-1), not the concatenated indices
             _splat_data.opacity_raw().index_put_(sampled_idxs, new_opacity_raw);
             _splat_data.scaling_raw().index_put_(sampled_idxs, new_scaling_raw);
+        }
+
+        // Prepare new Gaussians to concatenate (gather updated values)
+        Tensor new_means, new_sh0, new_shN, new_rotation, new_opacity_to_add, new_scaling_to_add;
+        {
+            LOG_TIMER("add_new_gather_params");
+            // Gather parameters for new Gaussians
+            // NOTE: We must gather opacity/scaling AFTER updating them above!
+            new_means = _splat_data.means().index_select(0, sampled_idxs);
+            new_sh0 = _splat_data.sh0().index_select(0, sampled_idxs);
+            new_shN = _splat_data.shN().index_select(0, sampled_idxs);
+            new_rotation = _splat_data.rotation_raw().index_select(0, sampled_idxs);
+            new_opacity_to_add = _splat_data.opacity_raw().index_select(0, sampled_idxs);
+            new_scaling_to_add = _splat_data.scaling_raw().index_select(0, sampled_idxs);
+        }
+
+        // Concatenate all parameters using optimizer's add_new_params
+        {
+            LOG_TIMER("add_new_concatenate_params");
+            _optimizer->add_new_params(ParamType::Means, new_means);
+            _optimizer->add_new_params(ParamType::Sh0, new_sh0);
+            _optimizer->add_new_params(ParamType::ShN, new_shN);
+            _optimizer->add_new_params(ParamType::Scaling, new_scaling_to_add);
+            _optimizer->add_new_params(ParamType::Rotation, new_rotation);
+            _optimizer->add_new_params(ParamType::Opacity, new_opacity_to_add);
         }
 
         return n_new;

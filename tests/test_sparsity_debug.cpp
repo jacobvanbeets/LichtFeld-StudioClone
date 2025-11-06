@@ -104,7 +104,7 @@ TEST(SparsityDebug, DetailedComparison) {
     std::cout << "First 5 opacities (raw):" << std::endl;
     for (int i = 0; i < 5; i++) {
         std::cout << "  [" << i << "] new=" << opacities_lfs_cpu[i]
-                  << ", ref=" << opacities_torch_cpu[i].item<float>() << std::endl;
+                  << ", ref=" << opacities_torch_cpu[i].template item<float>() << std::endl;
     }
 
     // Copy GPU data to CPU for inspection
@@ -124,21 +124,21 @@ TEST(SparsityDebug, DetailedComparison) {
     std::cout << "\nFirst 5 sigmoid(opacities):" << std::endl;
     for (int i = 0; i < 5; i++) {
         std::cout << "  [" << i << "] new=" << new_opa_sigmoid_cpu[i]
-                  << ", ref=" << ref_opa_sigmoid_cpu[i].item<float>() << std::endl;
+                  << ", ref=" << ref_opa_sigmoid_cpu.index({i}).item<float>() << std::endl;
     }
 
     // Check z values
     std::cout << "\nFirst 5 z values:" << std::endl;
     for (int i = 0; i < 5; i++) {
         std::cout << "  [" << i << "] new=" << new_z_cpu[i]
-                  << ", ref=" << ref_z_cpu[i].item<float>() << std::endl;
+                  << ", ref=" << ref_z_cpu.index({i}).item<float>() << std::endl;
     }
 
     // Check u values
     std::cout << "\nFirst 5 u values:" << std::endl;
     for (int i = 0; i < 5; i++) {
         std::cout << "  [" << i << "] new=" << new_u_cpu[i]
-                  << ", ref=" << ref_u_cpu[i].item<float>() << std::endl;
+                  << ", ref=" << ref_u_cpu.index({i}).item<float>() << std::endl;
     }
 
     // Compute diff = opa - z + u manually
@@ -149,9 +149,9 @@ TEST(SparsityDebug, DetailedComparison) {
 
     for (int i = 0; i < std::min(5, n); i++) {
         float new_diff = new_opa_sigmoid_cpu[i] - new_z_cpu[i] + new_u_cpu[i];
-        float ref_diff = ref_opa_sigmoid_cpu[i].item<float>()
-                       - ref_z_cpu[i].item<float>()
-                       + ref_u_cpu[i].item<float>();
+        float ref_diff = ref_opa_sigmoid_cpu.index({i}).item<float>()
+                       - ref_z_cpu.index({i}).item<float>()
+                       + ref_u_cpu.index({i}).item<float>();
 
         std::cout << "  [" << i << "] new_diff=" << new_diff << ", ref_diff=" << ref_diff << std::endl;
     }
@@ -159,9 +159,9 @@ TEST(SparsityDebug, DetailedComparison) {
     // Compute full diff norm manually
     for (int i = 0; i < n; i++) {
         float new_diff = new_opa_sigmoid_cpu[i] - new_z_cpu[i] + new_u_cpu[i];
-        float ref_diff = ref_opa_sigmoid_cpu[i].item<float>()
-                       - ref_z_cpu[i].item<float>()
-                       + ref_u_cpu[i].item<float>();
+        float ref_diff = ref_opa_sigmoid_cpu.index({i}).item<float>()
+                       - ref_z_cpu.index({i}).item<float>()
+                       + ref_u_cpu.index({i}).item<float>();
 
         new_diff_sum += new_diff * new_diff;
         ref_diff_sum += ref_diff * ref_diff;

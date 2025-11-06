@@ -222,7 +222,7 @@ TEST_F(SparsityOptimizerTest, ForwardPass_SmallTensor) {
     auto [ref_loss, ref_ctx] = *ref_result;
 
     // Compare loss values
-    EXPECT_TRUE(float_close(new_loss, ref_loss, 1e-4f, 1e-5f))
+    EXPECT_TRUE(float_close(new_loss, ref_loss.template item<float>(), 1e-4f, 1e-5f))
         << "Loss mismatch: new=" << new_loss << " vs ref=" << ref_loss;
 }
 
@@ -252,7 +252,7 @@ TEST_F(SparsityOptimizerTest, ForwardPass_MediumTensor) {
     auto [new_loss, new_ctx] = *new_result;
     auto [ref_loss, ref_ctx] = *ref_result;
 
-    EXPECT_TRUE(float_close(new_loss, ref_loss, 1e-4f, 1e-5f))
+    EXPECT_TRUE(float_close(new_loss, ref_loss.template item<float>(), 1e-4f, 1e-5f))
         << "Loss mismatch: new=" << new_loss << " vs ref=" << ref_loss;
 }
 
@@ -276,7 +276,7 @@ TEST_F(SparsityOptimizerTest, ForwardPass_LargeTensor) {
     auto [new_loss, new_ctx] = *new_result;
     auto [ref_loss, ref_ctx] = *ref_result;
 
-    EXPECT_TRUE(float_close(new_loss, ref_loss, 1e-4f, 1e-5f))
+    EXPECT_TRUE(float_close(new_loss, ref_loss.template item<float>(), 1e-4f, 1e-5f))
         << "Loss mismatch for " << n << " Gaussians: new=" << new_loss << " vs ref=" << ref_loss;
 }
 
@@ -415,7 +415,7 @@ TEST_F(SparsityOptimizerTest, StateUpdate) {
     auto [new_loss, _1] = *new_loss_result;
     auto [ref_loss, _2] = *ref_loss_result;
 
-    EXPECT_TRUE(float_close(new_loss, ref_loss, 1e-4f, 1e-5f))
+    EXPECT_TRUE(float_close(new_loss, ref_loss.template item<float>(), 1e-4f, 1e-5f))
         << "Loss after state update: new=" << new_loss << " vs ref=" << ref_loss;
 }
 
@@ -952,7 +952,7 @@ TEST_F(SparsityOptimizerTest, MultipleForwardBackwardCycles) {
         auto [new_loss, new_ctx] = *new_opt.compute_loss_forward(opacities);
         auto [ref_loss, ref_ctx] = *ref_opt.compute_loss_forward(ref_opacities);
 
-        EXPECT_TRUE(float_close(new_loss, ref_loss, 1e-4f, 1e-5f))
+        EXPECT_TRUE(float_close(new_loss, ref_loss.template item<float>(), 1e-4f, 1e-5f))
             << "Cycle " << cycle << ": loss mismatch - new=" << new_loss << ", ref=" << ref_loss;
 
         // Backward pass
@@ -997,7 +997,7 @@ TEST_F(SparsityOptimizerTest, ADMMVariableConsistency) {
     auto [new_loss, _] = *new_opt.compute_loss_forward(opacities);
     auto [ref_loss, __] = *ref_opt.compute_loss_forward(to_torch(opacities));
 
-    EXPECT_TRUE(float_close(new_loss, ref_loss, 1e-4f, 1e-5f))
+    EXPECT_TRUE(float_close(new_loss, ref_loss.template item<float>(), 1e-4f, 1e-5f))
         << "Loss mismatch after state update: new=" << new_loss << ", ref=" << ref_loss;
 }
 
@@ -1134,7 +1134,7 @@ TEST_F(SparsityOptimizerTest, StatePersistenceAcrossUpdates) {
         auto [new_loss, _] = *new_opt.compute_loss_forward(opacities);
         auto [ref_loss, __] = *ref_opt.compute_loss_forward(ref_opacities);
 
-        EXPECT_TRUE(float_close(new_loss, ref_loss, 1e-4f, 1e-5f))
+        EXPECT_TRUE(float_close(new_loss, ref_loss.template item<float>(), 1e-4f, 1e-5f))
             << "Update " << i << ": loss mismatch - new=" << new_loss << ", ref=" << ref_loss;
 
         // Small modification to opacities for next iteration (use same noise for both!)
@@ -1174,7 +1174,7 @@ TEST_F(SparsityOptimizerTest, FullTrainingSimulation) {
         auto [new_loss, new_ctx] = *new_opt.compute_loss_forward(opacities);
         auto [ref_loss, ref_ctx] = *ref_opt.compute_loss_forward(ref_opacities);
 
-        EXPECT_TRUE(float_close(new_loss, ref_loss, 1e-4f, 1e-5f))
+        EXPECT_TRUE(float_close(new_loss, ref_loss.template item<float>(), 1e-4f, 1e-5f))
             << "Iter " << iter << ": forward loss mismatch";
 
         // Backward

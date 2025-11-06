@@ -273,7 +273,7 @@ TEST_F(BilateralGridTest, TVLoss_Forward) {
     auto [new_tv_loss, new_tv_ctx] = new_grid.tv_loss_forward();
     auto [ref_tv_loss, ref_tv_ctx] = ref_grid.tv_loss_forward();
 
-    EXPECT_TRUE(float_close(new_tv_loss, ref_tv_loss, 1e-4f, 1e-5f))
+    EXPECT_TRUE(float_close(new_tv_loss, ref_tv_loss.item<float>(), 1e-4f, 1e-5f))
         << "TV loss mismatch: new=" << new_tv_loss << " vs ref=" << ref_tv_loss;
 }
 
