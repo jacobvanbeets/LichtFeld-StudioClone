@@ -596,9 +596,11 @@ namespace lfs::core {
                     );
 
                     // NO SYNC: Let CUDA runtime handle synchronization when data is accessed
-                    // The pinned memory (src) is safe because:
+                    // The pinned memory (src) is hopefully safe because:
                     // 1. It's managed by shared_ptr in data_owner_
-                    // 2. cudaFreeHost() blocks until kernel completes
+                    // 2. Stream-aware allocator tracks the stream and won't reuse until complete
+                    // Update source tensor's stream for deallocator
+                    const_cast<Tensor*>(this)->stream_ = nullptr; // Used default stream
                     LOG_DEBUG("Optimized rank-{} strided upload launched (async): {} elements", shape_.rank(), numel());
                     return t;
                 }
@@ -634,6 +636,9 @@ namespace lfs::core {
                 // NO SYNC: Kernel launches asynchronously for better PCIe overlap
                 CHECK_CUDA(cudaFree(d_shape));
                 CHECK_CUDA(cudaFree(d_strides));
+
+                // CRITICAL: Update source tensor's stream for deallocator
+                const_cast<Tensor*>(this)->stream_ = nullptr; // Used default stream
 
                 LOG_DEBUG("Generic strided upload launched (async): {} elements", numel());
                 return t;
@@ -726,6 +731,12 @@ namespace lfs::core {
 
             cudaStream_t transfer_stream = stream ? stream : 0;
             CHECK_CUDA(cudaMemcpyAsync(t.data_, src, bytes(), cudaMemcpyHostToDevice, transfer_stream));
+
+            // CRITICAL: Update source tensor's stream so deallocator knows which stream used this memory
+            // This is needed for the stream-aware pinned memory allocator
+            if (stream) {
+                const_cast<Tensor*>(this)->stream_ = stream;
+            }
 
             // If stream is provided, caller is responsible for sync
             if (!stream) {

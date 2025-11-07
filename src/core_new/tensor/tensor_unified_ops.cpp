@@ -85,9 +85,10 @@ namespace lfs::core {
                 } else {
                     // Even dummy allocations use pinned memory
                     void* dummy = PinnedMemoryAllocator::instance().allocate(1);
-                    result.data_owner_ = std::shared_ptr<void>(dummy, [](void* p) {
+                    cudaStream_t stream = result.stream_;
+                    result.data_owner_ = std::shared_ptr<void>(dummy, [stream](void* p) {
                         if (p)
-                            PinnedMemoryAllocator::instance().deallocate(p);
+                            PinnedMemoryAllocator::instance().deallocate(p, stream);
                     });
                 }
                 result.data_ = nullptr; // Empty tensor has no usable data
@@ -112,9 +113,10 @@ namespace lfs::core {
                     LOG_ERROR("Failed to allocate {} bytes on CPU (pinned memory)", bytes);
                     return Tensor();
                 }
-                result.data_owner_ = std::shared_ptr<void>(ptr, [](void* p) {
+                cudaStream_t stream = result.stream_;
+                result.data_owner_ = std::shared_ptr<void>(ptr, [stream](void* p) {
                     if (p)
-                        PinnedMemoryAllocator::instance().deallocate(p);
+                        PinnedMemoryAllocator::instance().deallocate(p, stream);
                 });
                 result.data_ = result.data_owner_.get();
                 result.compute_alignment(); // Compute alignment flags once
@@ -246,9 +248,10 @@ namespace lfs::core {
                     LOG_ERROR("Failed to allocate {} bytes on CPU (pinned memory)", bytes);
                     return Tensor();
                 }
-                result.data_owner_ = std::shared_ptr<void>(ptr, [](void* p) {
+                cudaStream_t stream = result.stream_;
+                result.data_owner_ = std::shared_ptr<void>(ptr, [stream](void* p) {
                     if (p)
-                        PinnedMemoryAllocator::instance().deallocate(p);
+                        PinnedMemoryAllocator::instance().deallocate(p, stream);
                 });
                 result.data_ = result.data_owner_.get();
 
