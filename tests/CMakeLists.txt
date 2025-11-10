@@ -13,6 +13,7 @@ find_package(GTest CONFIG REQUIRED)
 set(TEST_SOURCES
     test_main.cpp       # Custom main with pinned memory pre-warming
     test_geometry.cpp
+    test_ssim_kernel_wrapper.cu  # CUDA wrapper for SSIM kernel comparison tests
 )
 
 # Check if new test files exist and add them
@@ -62,6 +63,7 @@ set(OPTIONAL_TEST_FILES
     test_ply_loading_comparison.cpp  # PLY loading comparison between legacy and new
     test_ply_save_comparison.cpp  # PLY saving comparison between legacy and new
     test_mcmc_add_new_gs_comparison.cpp  # Compare MCMC add_new_gs between legacy and new
+    test_mcmc_relocate_optimizer_state_bug.cpp  # Test optimizer state bug in relocate_gs
     test_training_debug.cpp     # Training debug module - compare legacy vs new training
     test_tensor_benchmark.cpp
     test_memory_pool_benchmark.cpp  # benchmarks CudaMemoryPool (now internal)
@@ -94,6 +96,7 @@ set(OPTIONAL_TEST_FILES
     test_default_strategy_comparison.cpp
     benchmark_default_strategy.cpp
     test_default_strategy_operations_comparison.cpp
+    test_default_strategy_real_conditions.cpp
     test_dtype_operations_comprehensive.cpp
     test_tensor_bugs.cpp
     test_densification_performance.cpp
@@ -103,6 +106,8 @@ set(OPTIONAL_TEST_FILES
     test_bug_regressions.cpp        # Bug regressions (binary_search, index_select, minimal_tensor)
     test_torch_comparisons.cpp      # LibTorch comparisons (naive_split, split_kernel, fill)
     test_densification.cpp          # Densification tests (exact_pattern, lfs_only, benchmarks, 10M tests)
+    test_mcmc_logit_verification.cpp  # Verify log/logit operations match between legacy and new
+    test_metrics_comparison.cpp  # Compare old and new metrics implementations (PSNR, SSIM, no LPIPS in new)
 )
 
 foreach(TEST_FILE ${OPTIONAL_TEST_FILES})
