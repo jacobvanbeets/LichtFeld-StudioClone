@@ -102,12 +102,12 @@ set(OPTIONAL_TEST_FILES
     test_densification_performance.cpp
     test_densification_old_vs_new.cpp
     test_densification_profile.cpp
-    # Merged test files for better organization
     test_bug_regressions.cpp        # Bug regressions (binary_search, index_select, minimal_tensor)
     test_torch_comparisons.cpp      # LibTorch comparisons (naive_split, split_kernel, fill)
     test_densification.cpp          # Densification tests (exact_pattern, lfs_only, benchmarks, 10M tests)
     test_mcmc_logit_verification.cpp  # Verify log/logit operations match between legacy and new
     test_metrics_comparison.cpp  # Compare old and new metrics implementations (PSNR, SSIM, no LPIPS in new)
+    test_mcmc_tensor_ops.cpp        # Comprehensive MCMC tensor operation tests (nonzero, multinomial, index_select)
 )
 
 foreach(TEST_FILE ${OPTIONAL_TEST_FILES})

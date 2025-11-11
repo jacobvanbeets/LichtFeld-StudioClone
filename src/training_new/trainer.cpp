@@ -639,37 +639,6 @@ namespace lfs::training {
                 return StepResult::Stop;
             }
 
-            // Add phase transition logging for sparsity
-            if (params_.optimization.enable_sparsity) {
-                // Calculate base iterations (original iterations before extension)
-                int base_iterations = params_.optimization.iterations - params_.optimization.sparsify_steps;
-
-                // Log phase transition
-                if (iter == base_iterations + 1) {
-                    LOG_INFO("=== Entering Sparsification Phase ===");
-                    LOG_INFO("Base training complete at iteration {}", base_iterations);
-                    LOG_INFO("Starting ADMM sparsification for {} iterations",
-                             params_.optimization.sparsify_steps);
-                    LOG_INFO("Current model size: {} Gaussians", strategy_->get_model().size());
-                    LOG_INFO("Target pruning: {}% of Gaussians", params_.optimization.prune_ratio * 100);
-                }
-
-                // Log when approaching pruning
-                if (iter == params_.optimization.iterations - 100) {
-                    LOG_INFO("Approaching final pruning in 100 iterations (at iteration {})",
-                             params_.optimization.iterations);
-                }
-
-                // Log when pruning will occur
-                if (iter == params_.optimization.iterations - 1) {
-                    LOG_INFO("Final pruning will occur next iteration");
-                }
-            }
-
-            // TODO: Port pose optimization to LibTorch-free implementation
-            // auto adjusted_cam_pos = poseopt_module_->forward(cam->world_view_transform(), torch::tensor({cam->uid()}));
-            // auto adjusted_cam = Camera(*cam, adjusted_cam_pos);
-
             nvtxRangePush("background_for_step");
             lfs::core::Tensor& bg = background_for_step(iter);
             nvtxRangePop();
@@ -688,22 +657,8 @@ namespace lfs::training {
                 r_output = output;
                 fast_raster_ctx = std::move(ctx);
                 nvtxRangePop();
-            // } else:
-            //     // GUT backend: Use manual rasterizer (no autograd)
-            //     auto [output, ctx] = rasterize_forward(*cam, strategy_->get_model(), bg,
-            //                                            1.0f, false, false, render_mode, nullptr);
-            //     r_output = output;
-            //     gut_raster_ctx = std::move(ctx);
-            // }
 
             // Apply bilateral grid if enabled (manual forward - no autograd)
-            std::optional<BilateralGridSliceContext> bilateral_ctx;
-            if (bilateral_grid_ && params_.optimization.use_bilateral_grid) {
-                auto [output_image, ctx] = bilateral_grid_->apply_forward(r_output.image, cam->uid());
-                r_output.image = output_image;
-                bilateral_ctx = ctx;
-            }
-
             // Compute photometric loss and gradients manually (no autograd)
             // Keep loss on GPU to avoid sync!
             lfs::core::Tensor loss_tensor_gpu;
@@ -722,14 +677,18 @@ namespace lfs::training {
             grad_image = grad;
             nvtxRangePop();
 
-            // Bilateral grid backward if enabled
-            if (params_.optimization.use_bilateral_grid && bilateral_grid_ && bilateral_ctx.has_value()) {
-                nvtxRangePush("bilateral_grid_backward");
-                grad_image = bilateral_grid_->apply_backward(*bilateral_ctx, grad_image);
-                nvtxRangePop();
-            }
+            // IMPORTANT: Call rasterizer backward FIRST to accumulate main gradients
+            // Then regularization losses will accumulate additional gradients on top
+            nvtxRangePush("rasterize_backward");
+            fast_rasterize_backward(*fast_raster_ctx, grad_image, strategy_->get_model());
+            // TODO: Port 3DGUT rasterizer to LibTorch-free implementation
+            // else if (gut_raster_ctx.has_value()) {
+            //     // GUT path: Use manual rasterizer backward (no autograd)
+            //     rasterize_backward(*gut_raster_ctx, grad_image, strategy_->get_model());
+            // }
+            nvtxRangePop();
 
-            // Scale regularization loss - accumulate on GPU
+            // Scale regularization loss - accumulate on GPU (AFTER rasterizer backward)
             if (params_.optimization.scale_reg > 0.0f) {
                 nvtxRangePush("compute_scale_reg_loss");
                 auto scale_loss_result = compute_scale_reg_loss(strategy_->get_model(), params_.optimization);
@@ -740,7 +699,7 @@ namespace lfs::training {
                 nvtxRangePop();
             }
 
-            // Opacity regularization loss - accumulate on GPU
+            // Opacity regularization loss - accumulate on GPU (AFTER rasterizer backward)
             if (params_.optimization.opacity_reg > 0.0f) {
                 nvtxRangePush("compute_opacity_reg_loss");
                 auto opacity_loss_result = compute_opacity_reg_loss(strategy_->get_model(), params_.optimization);
@@ -750,64 +709,6 @@ namespace lfs::training {
                 loss_tensor_gpu = loss_tensor_gpu + *opacity_loss_result;
                 nvtxRangePop();
             }
-
-            // Bilateral grid TV loss (manual forward/backward - no autograd)
-            // NOTE: This still returns float - would need to be converted to Tensor for full GPU accumulation
-            nvtxRangePush("compute_bilateral_grid_tv_loss");
-            auto tv_loss_result = compute_bilateral_grid_tv_loss(bilateral_grid_, params_.optimization);
-            if (!tv_loss_result) {
-                return std::unexpected(tv_loss_result.error());
-            }
-            auto [tv_loss_value, tv_ctx] = *tv_loss_result;
-
-            // Accumulate TV loss on GPU
-            if (tv_loss_value > 0.0f) {
-                auto tv_loss_tensor = lfs::core::Tensor::full({1}, tv_loss_value, lfs::core::Device::CUDA);
-                loss_tensor_gpu = loss_tensor_gpu + tv_loss_tensor;
-            }
-
-            // Backward for TV loss (gradient w.r.t. TV loss is 1.0 since we're just adding it)
-            if (bilateral_grid_ && params_.optimization.use_bilateral_grid && tv_loss_value > 0.0f) {
-                bilateral_grid_->tv_loss_backward(tv_ctx, params_.optimization.tv_loss_weight);
-            }
-            nvtxRangePop();
-
-            // Add sparsity loss (manual forward/backward - no autograd)
-            // NOTE: This still returns float - would need to be converted to Tensor for full GPU accumulation
-            nvtxRangePush("compute_sparsity_loss");
-            auto sparsity_loss_result = compute_sparsity_loss_forward(iter, strategy_->get_model());
-            if (!sparsity_loss_result) {
-                return std::unexpected(sparsity_loss_result.error());
-            }
-            auto [sparsity_loss_value, sparsity_ctx] = *sparsity_loss_result;
-
-            // Accumulate sparsity loss on GPU
-            if (sparsity_loss_value > 0.0f) {
-                auto sparsity_loss_tensor = lfs::core::Tensor::full({1}, sparsity_loss_value, lfs::core::Device::CUDA);
-                loss_tensor_gpu = loss_tensor_gpu + sparsity_loss_tensor;
-            }
-
-            // Backward for sparsity loss (gradient w.r.t. sparsity loss is 1.0)
-            if (sparsity_optimizer_ && sparsity_optimizer_->should_apply_loss(iter) && sparsity_loss_value > 0.0f) {
-                auto backward_result = sparsity_optimizer_->compute_loss_backward(
-                    sparsity_ctx, 1.0f, strategy_->get_model().opacity_grad());
-                if (!backward_result) {
-                    return std::unexpected(backward_result.error());
-                }
-            }
-            nvtxRangePop();
-
-            // Call explicit backward for rasterizers
-            nvtxRangePush("rasterize_backward");
-            if (fast_raster_ctx.has_value()) {
-                fast_rasterize_backward(*fast_raster_ctx, grad_image, strategy_->get_model());
-            }
-            // TODO: Port 3DGUT rasterizer to LibTorch-free implementation
-            // else if (gut_raster_ctx.has_value()) {
-            //     // GUT path: Use manual rasterizer backward (no autograd)
-            //     rasterize_backward(*gut_raster_ctx, grad_image, strategy_->get_model());
-            // }
-            nvtxRangePop();
 
             // Only sync loss to CPU when needed for display (every 10 iterations)
             // This is the KEY optimization - we avoid 9000+ GPU syncs!
@@ -839,55 +740,8 @@ namespace lfs::training {
                 {
                     std::unique_lock<std::shared_mutex> lock(render_mutex_);
 
-                    // Execute strategy post-backward and step
-                    // Only call post_backward during base training (not during sparsification)
-                    nvtxRangePush("strategy_post_backward");
-                    if (params_.optimization.enable_sparsity) {
-                        int base_iterations = params_.optimization.iterations - params_.optimization.sparsify_steps;
-                        if (iter <= base_iterations) {
-                            strategy_->post_backward(iter, r_output);
-                        }
-                        // During sparsification phase, skip post_backward entirely
-                    } else {
-                        // No sparsity, always call post_backward
-                        strategy_->post_backward(iter, r_output);
-                    }
-                    nvtxRangePop();
-
-                    nvtxRangePush("strategy_step");
+                    strategy_->post_backward(iter, r_output);
                     strategy_->step(iter);
-                    nvtxRangePop();
-
-                    // TODO: Implement AdamOptimizer for bilateral grid
-                    // if (params_.optimization.use_bilateral_grid) {
-                    //     bilateral_grid_optimizer_->step(iter);
-                    //     bilateral_grid_optimizer_->zero_grad(iter);
-                    //     bilateral_grid_scheduler_->step();
-                    // }
-                    // TODO: Port pose optimization to LibTorch-free implementation
-                    // if (params_.optimization.pose_optimization != "none") {
-                    //     poseopt_optimizer_->step();
-                    //     poseopt_optimizer_->zero_grad(true);
-                    // }
-
-                    // TODO: Port events system to use lfs::core events
-                    // Queue event for emission after lock release
-                    // deferred.add(events::state::ModelUpdated{
-                    //     .iteration = iter,
-                    //     .num_gaussians = static_cast<size_t>(strategy_->get_model().size())});
-                } // Lock released here
-
-                // TODO: Port events system to use lfs::core events
-                // Events automatically emitted here when deferred destructs
-
-                // Handle sparsity updates
-                if (auto result = handle_sparsity_update(iter, strategy_->get_model()); !result) {
-                    LOG_ERROR("Sparsity update failed: {}", result.error());
-                }
-
-                // Apply sparsity pruning if needed
-                if (auto result = apply_sparsity_pruning(iter, strategy_->get_model()); !result) {
-                    LOG_ERROR("Sparsity pruning failed: {}", result.error());
                 }
 
                 // Clean evaluation - let the evaluator handle everything

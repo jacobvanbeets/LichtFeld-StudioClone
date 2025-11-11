@@ -447,7 +447,7 @@ namespace lfs::core {
                 return result;
 
             if (weights->device() == Device::CUDA) {
-                tensor_ops::launch_multinomial(weights->ptr<float>(), result.ptr<int>(),
+                tensor_ops::launch_multinomial(weights->ptr<float>(), result.ptr<int64_t>(),
                                                n, num_samples, replacement,
                                                RandomGenerator::instance().get_next_cuda_seed(), 0);
                 // No sync - tensor operation
@@ -470,23 +470,23 @@ namespace lfs::core {
                     RandomGenerator::instance().get_generator(Device::CPU));
                 std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 
-                int* samples = result.ptr<int>();
+                int64_t* samples = result.ptr<int64_t>();
 
                 if (replacement) {
                     for (size_t i = 0; i < num_samples; ++i) {
                         float u = dis(gen);
                         auto it = std::lower_bound(cdf.begin(), cdf.end(), u);
-                        samples[i] = static_cast<int>(std::distance(cdf.begin(), it));
+                        samples[i] = static_cast<int64_t>(std::distance(cdf.begin(), it));
                     }
                 } else {
-                    std::vector<std::pair<float, int>> keys(n);
+                    std::vector<std::pair<float, int64_t>> keys(n);
 
                     for (size_t i = 0; i < n; ++i) {
                         float u = dis(gen);
                         u = std::clamp(u, 1e-10f, 1.0f - 1e-10f);
                         float gumbel = -std::log(-std::log(u));
                         float log_weight = std::log(std::max(weights_data[i], 1e-10f));
-                        keys[i] = {log_weight + gumbel, static_cast<int>(i)};
+                        keys[i] = {log_weight + gumbel, static_cast<int64_t>(i)};
                     }
 
                     std::sort(keys.begin(), keys.end(),
@@ -567,7 +567,7 @@ namespace lfs::core {
         LoadArgs args;
         args.shape = TensorShape({static_cast<size_t>(num_samples)});
         args.device = weights.device();
-        args.dtype = DataType::Int32;
+        args.dtype = DataType::Int64;  // FIX: Must be Int64, not Int32!
         args.args = std::pair<void*, bool>{const_cast<void*>(static_cast<const void*>(&weights)), replacement};
         return load(LoadOp::Multinomial, args);
     }

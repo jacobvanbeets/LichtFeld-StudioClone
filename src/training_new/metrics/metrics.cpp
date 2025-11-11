@@ -25,14 +25,16 @@ namespace lfs::training {
         auto diff = pred - target;
         auto squared_diff = diff * diff;
 
-        // Mean over all dimensions except batch
+        // Compute mean over all dimensions
         float mse = squared_diff.mean().item<float>();
 
-        // Avoid log(0)
-        mse = std::max(mse, 1e-10f);
+        // Clamp to avoid log(0)
+        if (mse < 1e-10f) {
+            mse = 1e-10f;
+        }
 
         // PSNR = 20 * log10(data_range / sqrt(MSE))
-        float psnr = 20.0f * std::log10(data_range_ / std::sqrt(mse));
+        const float psnr = 20.0f * std::log10(data_range_ / std::sqrt(mse));
 
         return psnr;
     }

@@ -215,7 +215,7 @@ namespace lfs::core::tensor_ops {
     void launch_randint(int* data, size_t n, int low, int high,
                         unsigned long long seed, cudaStream_t stream);
 
-    void launch_multinomial(const float* weights, int* samples,
+    void launch_multinomial(const float* weights, int64_t* samples,
                             unsigned long n, unsigned long num_samples, bool replacement,
                             unsigned long long seed, cudaStream_t stream);
 
@@ -252,7 +252,20 @@ namespace lfs::core::tensor_ops {
                              const size_t* shape, size_t rank, int dim,
                              size_t index_size, int boundary_mode, cudaStream_t stream);
 
+    void launch_index_select(const int64_t* input, const int* indices, int64_t* output,
+                             const size_t* shape, size_t rank, int dim,
+                             size_t index_size, int boundary_mode, cudaStream_t stream);
+
+    void launch_index_select(const int32_t* input, const int* indices, int32_t* output,
+                             const size_t* shape, size_t rank, int dim,
+                             size_t index_size, int boundary_mode, cudaStream_t stream);
+
     void launch_gather(const float* input, const int* indices, float* output,
+                       const size_t* input_shape, const size_t* index_shape,
+                       size_t rank, int dim, size_t total_elements,
+                       int boundary_mode, cudaStream_t stream);
+
+    void launch_gather(const int64_t* input, const int* indices, int64_t* output,
                        const size_t* input_shape, const size_t* index_shape,
                        size_t rank, int dim, size_t total_elements,
                        int boundary_mode, cudaStream_t stream);

@@ -639,50 +639,11 @@ namespace gs::training {
             }
 
             // Add phase transition logging for sparsity
-            if (params_.optimization.enable_sparsity) {
-                // Calculate base iterations (original iterations before extension)
-                int base_iterations = params_.optimization.iterations - params_.optimization.sparsify_steps;
-
-                // Log phase transition
-                if (iter == base_iterations + 1) {
-                    LOG_INFO("=== Entering Sparsification Phase ===");
-                    LOG_INFO("Base training complete at iteration {}", base_iterations);
-                    LOG_INFO("Starting ADMM sparsification for {} iterations",
-                             params_.optimization.sparsify_steps);
-                    LOG_INFO("Current model size: {} Gaussians", strategy_->get_model().size());
-                    LOG_INFO("Target pruning: {}% of Gaussians", params_.optimization.prune_ratio * 100);
-                }
-
-                // Log when approaching pruning
-                if (iter == params_.optimization.iterations - 100) {
-                    LOG_INFO("Approaching final pruning in 100 iterations (at iteration {})",
-                             params_.optimization.iterations);
-                }
-
-                // Log when pruning will occur
-                if (iter == params_.optimization.iterations - 1) {
-                    LOG_INFO("Final pruning will occur next iteration");
-                }
-            }
-
-            auto adjusted_cam_pos = poseopt_module_->forward(cam->world_view_transform(), torch::tensor({cam->uid()}));
-            auto adjusted_cam = Camera(*cam, adjusted_cam_pos);
-
             torch::Tensor& bg = background_for_step(iter);
 
             RenderOutput r_output;
             // Use the render mode from parameters
-            if (!params_.optimization.gut) {
-                r_output = fast_rasterize(adjusted_cam, strategy_->get_model(), bg);
-            } else {
-                r_output = rasterize(adjusted_cam, strategy_->get_model(), bg, 1.0f, false, false, render_mode,
-                                     nullptr);
-            }
-
-            // Apply bilateral grid if enabled
-            if (bilateral_grid_ && params_.optimization.use_bilateral_grid) {
-                r_output.image = bilateral_grid_->apply(r_output.image, cam->uid());
-            }
+            r_output = fast_rasterize(*cam, strategy_->get_model(), bg);
 
             // Compute losses
             auto loss_result = compute_photometric_loss(r_output,
@@ -711,22 +672,6 @@ namespace gs::training {
             }
             loss_value += *opacity_loss_result;
 
-            // Bilateral grid TV loss
-            auto tv_loss_result = compute_bilateral_grid_tv_loss(bilateral_grid_, params_.optimization);
-            if (!tv_loss_result) {
-                return std::unexpected(tv_loss_result.error());
-            }
-            loss = *tv_loss_result;
-            loss.backward();
-            loss_value += loss.item<float>();
-
-            // Add sparsity loss
-            auto sparsity_loss_result = compute_sparsity_loss(iter, strategy_->get_model());
-            if (!sparsity_loss_result) {
-                return std::unexpected(sparsity_loss_result.error());
-            }
-            loss = *sparsity_loss_result;
-            loss.backward();
             loss_value += loss.item<float>();
 
             // Store the loss value immediately
@@ -756,48 +701,14 @@ namespace gs::training {
                 {
                     std::unique_lock<std::shared_mutex> lock(render_mutex_);
 
-                    // Execute strategy post-backward and step
-                    // Only call post_backward during base training (not during sparsification)
-                    if (params_.optimization.enable_sparsity) {
-                        int base_iterations = params_.optimization.iterations - params_.optimization.sparsify_steps;
-                        if (iter <= base_iterations) {
-                            strategy_->post_backward(iter, r_output);
-                        }
-                        // During sparsification phase, skip post_backward entirely
-                    } else {
-                        // No sparsity, always call post_backward
-                        strategy_->post_backward(iter, r_output);
-                    }
-
+                    strategy_->post_backward(iter, r_output);
                     strategy_->step(iter);
-
-                    if (params_.optimization.use_bilateral_grid) {
-                        bilateral_grid_optimizer_->step();
-                        bilateral_grid_optimizer_->zero_grad(true);
-                        bilateral_grid_scheduler_->step();
-                    }
-                    if (params_.optimization.pose_optimization != "none") {
-                        poseopt_optimizer_->step();
-                        poseopt_optimizer_->zero_grad(true);
-                    }
 
                     // Queue event for emission after lock release
                     deferred.add(events::state::ModelUpdated{
                         .iteration = iter,
                         .num_gaussians = static_cast<size_t>(strategy_->get_model().size())});
                 } // Lock released here
-
-                // Events automatically emitted here when deferred destructs
-
-                // Handle sparsity updates
-                if (auto result = handle_sparsity_update(iter, strategy_->get_model()); !result) {
-                    LOG_ERROR("Sparsity update failed: {}", result.error());
-                }
-
-                // Apply sparsity pruning if needed
-                if (auto result = apply_sparsity_pruning(iter, strategy_->get_model()); !result) {
-                    LOG_ERROR("Sparsity pruning failed: {}", result.error());
-                }
 
                 // Clean evaluation - let the evaluator handle everything
                 if (evaluator_->is_enabled() && evaluator_->should_evaluate(iter)) {
@@ -825,42 +736,7 @@ namespace gs::training {
                     }
                 }
 
-                if (!params_.dataset.timelapse_images.empty() && iter % params_.dataset.timelapse_every == 0) {
-                    for (const auto& img_name : params_.dataset.timelapse_images) {
-                        auto train_cam = train_dataset_->get_camera_by_filename(img_name);
-                        auto val_cam = val_dataset_ ? val_dataset_->get_camera_by_filename(img_name) : std::nullopt;
-                        if (train_cam.has_value() || val_cam.has_value()) {
-                            Camera* cam_to_use = train_cam.has_value() ? train_cam.value() : val_cam.value();
 
-                            // Image size isn't correct until the image has been loaded once
-                            // If we use the camera before it's loaded, it will render images at the non-scaled size
-                            if ((cam_to_use->camera_height() == cam_to_use->image_height() && params_.dataset.resize_factor != 1) ||
-                                cam_to_use->image_height() > params_.dataset.max_width ||
-                                cam_to_use->image_width() > params_.dataset.max_width) {
-                                cam_to_use->load_image_size(params_.dataset.resize_factor, params_.dataset.max_width);
-                            }
-
-                            RenderOutput rendered_timelapse_output;
-                            if (params_.optimization.gut) {
-                                rendered_timelapse_output = rasterize(*cam_to_use, strategy_->get_model(), bg, 1.0f, false,
-                                                                     false, RenderMode::RGB, nullptr);
-                            } else {
-                                rendered_timelapse_output = fast_rasterize(*cam_to_use, strategy_->get_model(), background_);
-                            }
-
-                            // Get folder name to save in by stripping file extension
-                            std::string folder_name = loader::strip_extension(img_name);
-
-                            auto output_path = params_.dataset.output_path / "timelapse" / folder_name;
-                            std::filesystem::create_directories(output_path);
-
-                            image_io::save_image_async(output_path / std::format("{:06d}.jpg", iter),
-                                                       rendered_timelapse_output.image);
-                        } else {
-                            LOG_WARN("Timelapse image '{}' not found in dataset.", img_name);
-                        }
-                    }
-                }
             }
 
             // Return Continue if we should continue training

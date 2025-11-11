@@ -1063,25 +1063,11 @@ namespace lfs::core {
             if (numel() == 0)
                 return result;
 
-            // Read source value before conversion (for debugging)
-            if (numel() == 1 && device_ == Device::CUDA) {
-                int64_t src_val;
-                cudaMemcpy(&src_val, ptr<int64_t>(), sizeof(int64_t), cudaMemcpyDeviceToHost);
-                printf("[to Int64->Int32] Source value: %lld\n", static_cast<long long>(src_val));
-            }
-
             if (device_ == Device::CUDA) {
                 tensor_ops::launch_convert_type<int64_t, int>(
                     ptr<int64_t>(), result.ptr<int>(), numel(), 0);
                 // CRITICAL: Sync to ensure conversion completes before item() reads
                 cudaDeviceSynchronize();
-
-                // Read result value after conversion (for debugging)
-                if (numel() == 1) {
-                    int dst_val;
-                    cudaMemcpy(&dst_val, result.ptr<int>(), sizeof(int), cudaMemcpyDeviceToHost);
-                    printf("[to Int64->Int32] Result value: %d\n", dst_val);
-                }
             } else {
                 const int64_t* src = ptr<int64_t>();
                 int* dst = result.ptr<int>();

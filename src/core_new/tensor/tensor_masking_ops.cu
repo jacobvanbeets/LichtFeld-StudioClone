@@ -464,7 +464,9 @@ namespace lfs::core::tensor_ops {
     }
 
     // ============= Index Operations =============
-    __global__ void index_select_kernel(const float* in, const int* idx, float* out,
+    // Templated kernel to support multiple data types (float, int64_t, etc.)
+    template<typename T>
+    __global__ void index_select_kernel(const T* in, const int* idx, T* out,
                                         size_t outer, size_t dim_size, size_t inner,
                                         size_t idx_size, int boundary) {
         size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -489,6 +491,7 @@ namespace lfs::core::tensor_ops {
         out[tid] = in[o * dim_size * inner + sel * inner + j];
     }
 
+    // Float32 overload
     void launch_index_select(const float* in, const int* idx, float* out,
                              const size_t* shape, size_t rank, int dim,
                              size_t idx_size, int boundary, cudaStream_t stream) {
@@ -503,11 +506,49 @@ namespace lfs::core::tensor_ops {
         for (size_t i = dim + 1; i < rank; ++i)
             inner *= shape[i];
         size_t total = outer * idx_size * inner;
-        index_select_kernel<<<(total + 255) / 256, 256, 0, stream>>>(
+        index_select_kernel<float><<<(total + 255) / 256, 256, 0, stream>>>(
             in, idx, out, outer, shape[dim], inner, idx_size, boundary);
     }
 
-    __global__ void gather_kernel(const float* in, const int* idx, float* out,
+    // Int64 overload
+    void launch_index_select(const int64_t* in, const int* idx, int64_t* out,
+                             const size_t* shape, size_t rank, int dim,
+                             size_t idx_size, int boundary, cudaStream_t stream) {
+        // Handle empty indices case - no kernel launch needed
+        if (idx_size == 0) {
+            return;
+        }
+
+        size_t outer = 1, inner = 1;
+        for (int i = 0; i < dim; ++i)
+            outer *= shape[i];
+        for (size_t i = dim + 1; i < rank; ++i)
+            inner *= shape[i];
+        size_t total = outer * idx_size * inner;
+        index_select_kernel<int64_t><<<(total + 255) / 256, 256, 0, stream>>>(
+            in, idx, out, outer, shape[dim], inner, idx_size, boundary);
+    }
+
+    // Int32 overload
+    void launch_index_select(const int32_t* in, const int* idx, int32_t* out,
+                             const size_t* shape, size_t rank, int dim,
+                             size_t idx_size, int boundary, cudaStream_t stream) {
+        if (idx_size == 0) {
+            return;
+        }
+
+        size_t outer = 1, inner = 1;
+        for (int i = 0; i < dim; ++i)
+            outer *= shape[i];
+        for (size_t i = dim + 1; i < rank; ++i)
+            inner *= shape[i];
+        size_t total = outer * idx_size * inner;
+        index_select_kernel<int32_t><<<(total + 255) / 256, 256, 0, stream>>>(
+            in, idx, out, outer, shape[dim], inner, idx_size, boundary);
+    }
+
+    template<typename T>
+    __global__ void gather_kernel(const T* in, const int* idx, T* out,
                                   const size_t* in_shape, const size_t* idx_shape,
                                   size_t in_rank, size_t idx_rank, int dim, size_t total, int boundary) {
         size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -610,7 +651,56 @@ namespace lfs::core::tensor_ops {
         d_idx_shape.copy_from_host(h_idx_shape, 10);
 
         int blocks = (total + 255) / 256;
-        gather_kernel<<<blocks, 256, 0, stream>>>(
+        gather_kernel<float><<<blocks, 256, 0, stream>>>(
+            in, idx, out, d_in_shape.get(), d_idx_shape.get(),
+            rank, idx_rank, dim, total, boundary);
+    }
+
+    void launch_gather(const int64_t* in, const int* idx, int64_t* out,
+                       const size_t* in_shape, const size_t* idx_shape,
+                       size_t rank, int dim, size_t total, int boundary, cudaStream_t stream) {
+        CudaDeviceMemory<size_t> d_in_shape(10);
+        CudaDeviceMemory<size_t> d_idx_shape(10);
+
+        size_t h_in_shape[10] = {0};
+        size_t h_idx_shape[10] = {0};
+
+        size_t idx_rank = rank;
+        size_t idx_elements = 1;
+        for (size_t i = 0; i < rank; ++i) {
+            if (idx_shape[i] > 0) {
+                h_idx_shape[i] = idx_shape[i];
+                idx_elements *= idx_shape[i];
+            } else {
+                break;
+            }
+        }
+
+        idx_rank = 0;
+        size_t check_elements = 1;
+        for (size_t i = 0; i < 10; ++i) {
+            if (idx_shape[i] > 0) {
+                check_elements *= idx_shape[i];
+                idx_rank++;
+                if (check_elements == total)
+                    break;
+            } else {
+                break;
+            }
+        }
+
+        if (idx_rank == 0)
+            idx_rank = 1;
+
+        for (size_t i = 0; i < rank; ++i) {
+            h_in_shape[i] = in_shape[i];
+        }
+
+        d_in_shape.copy_from_host(h_in_shape, 10);
+        d_idx_shape.copy_from_host(h_idx_shape, 10);
+
+        int blocks = (total + 255) / 256;
+        gather_kernel<int64_t><<<blocks, 256, 0, stream>>>(
             in, idx, out, d_in_shape.get(), d_idx_shape.get(),
             rank, idx_rank, dim, total, boundary);
     }
