@@ -197,7 +197,7 @@ namespace lfs::training {
         const int W = depth_normalized.shape()[1];
 
         // Create output tensor [3, H, W] for RGB
-        auto colormap = lfs::core::Tensor::zeros({3, H, W}, depth_normalized.device());
+        auto colormap = lfs::core::Tensor::zeros({static_cast<size_t>(3), static_cast<size_t>(H), static_cast<size_t>(W)}, depth_normalized.device());
 
         // Get data pointers
         const float* depth_data = depth_normalized.ptr<float>();
