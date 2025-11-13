@@ -301,7 +301,7 @@ namespace gs::loader {
                 unsigned char* img_data = static_cast<unsigned char*>(std::malloc(cached.data.size()));
                 std::memcpy(img_data, cached.data.data(), cached.data.size());
 
-                LOG_DEBUG("Loaded image {} from CPU cache", cache_key);
+                //LOG_DEBUG("Loaded image {} from CPU cache", cache_key);
                 return {img_data, cached.width, cached.height, cached.channels};
             }
         }

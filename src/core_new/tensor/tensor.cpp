@@ -667,8 +667,8 @@ namespace lfs::core {
         // Account for storage offset
         const char* src = static_cast<const char*>(data_) + storage_offset_ * dtype_size(dtype_);
 
-        LOG_DEBUG("to(Device): storage_offset_={}, dtype_size={}, src_offset_bytes={}, bytes_to_copy={}",
-                  storage_offset_, dtype_size(dtype_), storage_offset_ * dtype_size(dtype_), bytes());
+        //LOG_DEBUG("to(Device): storage_offset_={}, dtype_size={}, src_offset_bytes={}, bytes_to_copy={}",
+        //          storage_offset_, dtype_size(dtype_), storage_offset_ * dtype_size(dtype_), bytes());
 
         if (device_ == Device::CPU && device == Device::CUDA) {
             // Use cudaMemcpyAsync with pinned memory for maximum PCIe bandwidth (~7-11 GB/s)

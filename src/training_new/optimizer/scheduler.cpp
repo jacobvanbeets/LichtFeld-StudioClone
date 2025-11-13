@@ -58,19 +58,12 @@ namespace lfs::training {
                 }
             }
         } else {
-            // Update specified per-parameter LRs
-            LOG_DEBUG("ExponentialLR::step() - Updating specified params (gamma={:.6f})", decay_factor);
-
             for (auto param_type : params_to_update_) {
                 if (optimizer_.has_param_lr(param_type)) {
                     float current_param_lr = optimizer_.get_param_lr(param_type);
                     float new_param_lr = current_param_lr * static_cast<float>(decay_factor);
-                    LOG_DEBUG("  {} LR: {:.6e} → {:.6e} (ratio: {:.6f})",
-                              param_names.at(param_type), current_param_lr, new_param_lr,
-                              new_param_lr / current_param_lr);
                     optimizer_.set_param_lr(param_type, new_param_lr);
                 } else {
-                    LOG_WARN("  {} LR: not explicitly set, cannot update", param_names.at(param_type));
                 }
             }
 
@@ -78,7 +71,6 @@ namespace lfs::training {
             double current_lr = optimizer_.get_lr();
             double new_lr = current_lr * decay_factor;
             optimizer_.set_lr(static_cast<float>(new_lr));
-            LOG_DEBUG("  Global LR: {:.6e} → {:.6e}", current_lr, new_lr);
         }
     }
 
