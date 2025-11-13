@@ -211,4 +211,31 @@ namespace lfs::training::mcmc {
         size_t N,
         void* stream = nullptr);
 
+    /**
+     * Update scaling and opacity at specific indices (preserves tensor capacity)
+     *
+     * Updates scaling and opacity values at specified indices without reallocating tensors.
+     * Replaces index_put_() which creates new tensors and loses pre-allocated capacity.
+     *
+     * @param indices [n_indices] - Indices to update (int64)
+     * @param new_scaling [n_indices, 3] - New scaling values
+     * @param new_opacity_raw [n_indices] or [n_indices, 1] - New opacity values
+     * @param scaling_raw [N, 3] - Scaling tensor (modified in-place)
+     * @param opacity_raw [N] or [N, 1] - Opacity tensor (modified in-place)
+     * @param n_indices - Number of indices to update
+     * @param opacity_dim - Opacity dimension (1 for [N,1], 0 for [N])
+     * @param N - Total number of Gaussians (for bounds checking)
+     * @param stream - CUDA stream
+     */
+    void launch_update_scaling_opacity(
+        const int64_t* indices,
+        const float* new_scaling,
+        const float* new_opacity_raw,
+        float* scaling_raw,
+        float* opacity_raw,
+        size_t n_indices,
+        int opacity_dim,
+        size_t N,
+        void* stream = nullptr);
+
 } // namespace lfs::training::mcmc

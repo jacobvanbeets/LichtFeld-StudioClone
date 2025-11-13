@@ -160,13 +160,26 @@ namespace lfs::training {
         // Update parameters
         {
             LOG_TIMER("relocate_update_params");
-            // First update sampled indices with new opacity/scaling
-            _splat_data.opacity_raw().index_put_(sampled_idxs, new_opacity_raw);
-            _splat_data.scaling_raw().index_put_(sampled_idxs, new_scales.log());
-
-            // Use fused copy kernel with bounds checking
             const int opacity_dim = (_splat_data.opacity_raw().ndim() == 2) ? 1 : 0;
             const size_t N = _splat_data.means().shape()[0];  // Total number of Gaussians
+
+            // Compute log(scales) for the new scales
+            Tensor new_scales_log = new_scales.log();
+
+            // Update sampled indices with new opacity/scaling using direct CUDA kernel
+            // This preserves tensor capacity (unlike index_put_ which creates new tensors)
+            mcmc::launch_update_scaling_opacity(
+                sampled_idxs.ptr<int64_t>(),
+                new_scales_log.ptr<float>(),
+                new_opacity_raw.ptr<float>(),
+                _splat_data.scaling_raw().ptr<float>(),
+                _splat_data.opacity_raw().ptr<float>(),
+                sampled_idxs.numel(),
+                opacity_dim,
+                N
+            );
+
+            // Then copy from sampled indices to dead indices using fused copy kernel
             mcmc::launch_copy_gaussian_params(
                 sampled_idxs.ptr<int64_t>(),
                 dead_indices.ptr<int64_t>(),
@@ -289,8 +302,20 @@ namespace lfs::training {
         // This matches the legacy implementation and ensures the correct values are copied
         {
             LOG_TIMER("add_new_update_original");
-            _splat_data.opacity_raw().index_put_(sampled_idxs, new_opacity_raw);
-            _splat_data.scaling_raw().index_put_(sampled_idxs, new_scaling_raw);
+            const int opacity_dim = (_splat_data.opacity_raw().ndim() == 2) ? 1 : 0;
+            const size_t N = _splat_data.means().shape()[0];
+
+            // Use direct CUDA kernel to preserve tensor capacity (unlike index_put_ which creates new tensors)
+            mcmc::launch_update_scaling_opacity(
+                sampled_idxs.ptr<int64_t>(),
+                new_scaling_raw.ptr<float>(),
+                new_opacity_raw.ptr<float>(),
+                _splat_data.scaling_raw().ptr<float>(),
+                _splat_data.opacity_raw().ptr<float>(),
+                sampled_idxs.numel(),
+                opacity_dim,
+                N
+            );
         }
 
         // Prepare new Gaussians to concatenate (gather updated values)
@@ -389,8 +414,20 @@ namespace lfs::training {
         // This matches the legacy implementation and ensures the correct values are copied
         {
             LOG_TIMER("add_new_update_original");
-            _splat_data.opacity_raw().index_put_(sampled_idxs, new_opacity_raw);
-            _splat_data.scaling_raw().index_put_(sampled_idxs, new_scaling_raw);
+            const int opacity_dim = (_splat_data.opacity_raw().ndim() == 2) ? 1 : 0;
+            const size_t N = _splat_data.means().shape()[0];
+
+            // Use direct CUDA kernel to preserve tensor capacity (unlike index_put_ which creates new tensors)
+            mcmc::launch_update_scaling_opacity(
+                sampled_idxs.ptr<int64_t>(),
+                new_scaling_raw.ptr<float>(),
+                new_opacity_raw.ptr<float>(),
+                _splat_data.scaling_raw().ptr<float>(),
+                _splat_data.opacity_raw().ptr<float>(),
+                sampled_idxs.numel(),
+                opacity_dim,
+                N
+            );
         }
 
         // Use fused append_gather() operation - NO intermediate allocations!

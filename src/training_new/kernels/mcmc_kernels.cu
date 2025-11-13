@@ -336,6 +336,72 @@ namespace lfs::training::mcmc {
             N);
     }
 
+    // Kernel to update scaling and opacity at specific indices (avoids index_put_ which loses capacity)
+    __global__ void update_scaling_opacity_kernel(
+        const int64_t* __restrict__ indices,
+        const float* __restrict__ new_scaling,      // [n_indices, 3]
+        const float* __restrict__ new_opacity_raw,  // [n_indices] or [n_indices, 1]
+        float* __restrict__ scaling_raw,
+        float* __restrict__ opacity_raw,
+        size_t n_indices,
+        int opacity_dim,
+        size_t N) {
+
+        size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
+        if (idx >= n_indices)
+            return;
+
+        int64_t target_idx = indices[idx];
+
+        // Bounds check
+        if (target_idx < 0 || target_idx >= static_cast<int64_t>(N)) {
+            return;
+        }
+
+        // Update scaling [3]
+        for (int i = 0; i < 3; ++i) {
+            scaling_raw[target_idx * 3 + i] = new_scaling[idx * 3 + i];
+        }
+
+        // Update opacity [1] or []
+        if (opacity_dim == 1) {
+            opacity_raw[target_idx] = new_opacity_raw[idx];
+        } else {
+            opacity_raw[target_idx] = new_opacity_raw[idx];
+        }
+    }
+
+    void launch_update_scaling_opacity(
+        const int64_t* indices,
+        const float* new_scaling,
+        const float* new_opacity_raw,
+        float* scaling_raw,
+        float* opacity_raw,
+        size_t n_indices,
+        int opacity_dim,
+        size_t N,
+        void* stream) {
+
+        if (n_indices == 0) {
+            return;
+        }
+
+        dim3 threads(256);
+        dim3 grid((n_indices + threads.x - 1) / threads.x);
+
+        cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream) : nullptr;
+
+        update_scaling_opacity_kernel<<<grid, threads, 0, cuda_stream>>>(
+            indices,
+            new_scaling,
+            new_opacity_raw,
+            scaling_raw,
+            opacity_raw,
+            n_indices,
+            opacity_dim,
+            N);
+    }
+
     // Fused copy kernel - copies all parameters from src_indices to dst_indices
     __global__ void copy_gaussian_params_kernel(
         const int64_t* __restrict__ src_indices,
