@@ -879,7 +879,7 @@ namespace lfs::core {
 
     // RANDOM CROP
 
-    void SplatData::random_choose(int num_splat, int seed) {
+    void SplatData::random_choose(int num_required_splat, int seed) {
         LOG_TIMER("SplatData::random_choose");
 
         if (!_means.is_valid() || _means.size(0) == 0) {
@@ -890,19 +890,19 @@ namespace lfs::core {
         const int num_points = _means.size(0);
 
         // Clamp num_splat to valid range
-        if (num_splat <= 0) {
-            LOG_WARN("num_splat must be positive, got {}", num_splat);
+        if (num_required_splat <= 0) {
+            LOG_WARN("num_splat must be positive, got {}", num_required_splat);
             return;
         }
 
-        if (num_splat >= num_points) {
+        if (num_required_splat >= num_points) {
             LOG_DEBUG("num_splat ({}) >= total points ({}), keeping all data",
-                      num_splat, num_points);
+                      num_required_splat, num_points);
             return;
         }
 
         LOG_DEBUG("Randomly selecting {} points from {} total points (seed: {})",
-                  num_splat, num_points, seed);
+                  num_required_splat, num_points, seed);
 
         // Generate random indices
         // Create a vector of all indices [0, 1, 2, ..., num_points-1]
@@ -915,12 +915,12 @@ namespace lfs::core {
 
         // Take the first num_splat indices
         std::vector<int> selected_indices(all_indices.begin(),
-                                          all_indices.begin() + num_splat);
+                                          all_indices.begin() + num_required_splat);
 
         // Convert to tensor for indexing
         auto indices_tensor = Tensor::from_vector(
             selected_indices,
-            TensorShape({static_cast<size_t>(num_splat)}),
+            TensorShape({static_cast<size_t>(num_required_splat)}),
             _means.device());
 
         // Index all tensors in-place using the selected indices
@@ -961,13 +961,13 @@ namespace lfs::core {
         Tensor dists = _means.sub(scene_center).norm(2.0f, {1}, false);
 
         float old_scene_scale = _scene_scale;
-        if (num_splat > 1) {
+        if (num_required_splat > 1) {
             auto sorted_dists = dists.sort(0, false);
-            _scene_scale = sorted_dists.first[num_splat / 2].item();
+            _scene_scale = sorted_dists.first[num_required_splat / 2].item();
         }
 
         LOG_DEBUG("Successfully selected {} random splats in-place (scale: {:.4f} -> {:.4f})",
-                  num_splat, old_scene_scale, _scene_scale);
+                  num_required_splat, old_scene_scale, _scene_scale);
     }
 
     // ========== FACTORY METHOD ==========
