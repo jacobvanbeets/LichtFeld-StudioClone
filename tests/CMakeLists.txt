@@ -163,7 +163,6 @@ target_link_libraries(lichtfeld_tests PRIVATE
     gs_rendering
     gs_training
     gs_training_kernels
-    gs_training_debug  # Training debug module for comparison
     gs_project
     gs_geometry
     gs_core
@@ -171,10 +170,15 @@ target_link_libraries(lichtfeld_tests PRIVATE
     gs_kernels
 
     # New torch-free modules (for comparison tests)
+    lfs_visualizer
+    lfs_rendering
     lfs_training
-    lfs_core
-    lfs_loader  # After lfs_core since lfs_core depends on lfs_loader
+    lfs_project   # Before lfs_loader (lfs_loader uses lfs_project functions)
+    lfs_core      # Before lfs_geometry (lfs_core depends on lfs_geometry)
+    lfs_geometry  # After lfs_core - provides EuclideanTransform
+    lfs_loader  # After lfs_project and lfs_core
     lfs_tensor
+    lfs_project   # Second pass - lfs_loader depends on lfs_project
 
     # Backend libraries
     gsplat_backend

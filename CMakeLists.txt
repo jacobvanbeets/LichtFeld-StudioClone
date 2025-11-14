@@ -470,7 +470,11 @@ endif()
 # -----------------------------------------------------------------------------
 # LichtFeld-Studio (NEW, LibTorch-free)
 # -----------------------------------------------------------------------------
-add_executable(${PROJECT_NAME} src/main.cpp resources/lichtfeld-studio.rc)
+add_executable(${PROJECT_NAME}
+    src/main.cpp
+    src/application.cpp
+    resources/lichtfeld-studio.rc
+)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
         CUDA_ARCHITECTURES "${LichtFeld-Studio_CUDA_ARCH}"
@@ -482,6 +486,8 @@ target_include_directories(${PROJECT_NAME}
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_BINARY_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src       # For application.cpp to find training_new/, visualizer/, etc.
+        ${CMAKE_CURRENT_SOURCE_DIR}/external  # For external headers
 
         ${CUDAToolkit_INCLUDE_DIRS}
         ${OPENGL_INCLUDE_DIRS}
@@ -489,7 +495,13 @@ target_include_directories(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
         PRIVATE
+        # Application layer dependencies (needed by application.cpp)
+        lfs_visualizer     # For Visualizer class
+        lfs_training       # For training setup
+        lfs_project        # For Project management
+        lfs_geometry       # For EuclideanTransform
         lfs_core           # LibTorch-free core library (new implementation)
+        lfs_loader         # For CacheLoader
         fastlfs_backend    # LibTorch-free rasterizer and optimizer
 
         ${OPENGL_LIBRARIES}

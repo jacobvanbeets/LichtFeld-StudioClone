@@ -131,7 +131,7 @@ TEST(LfsLossesTest, ScaleRegularization_LargeScale) {
 
     // Verify gradient is non-zero
     auto grad_sum = scaling_raw_grad.abs().sum();
-    EXPECT_GT(grad_sum.item<float>(), 0.0f);
+    EXPECT_GT(grad_sum.item(), 0.0f);
 }
 
 // ===================================================================================
@@ -189,7 +189,7 @@ TEST(LfsLossesTest, OpacityRegularization_GradientAccumulation) {
 
     // Gradient should have been accumulated (not replaced)
     auto diff = (opacity_raw_grad - grad_before).abs().sum();
-    EXPECT_GT(diff.item<float>(), 0.0f) << "Gradient should have changed";
+    EXPECT_GT(diff.item(), 0.0f) << "Gradient should have changed";
 }
 
 // ===================================================================================
@@ -199,22 +199,23 @@ TEST(LfsLossesTest, OpacityRegularization_GradientAccumulation) {
 TEST(LfsLossesTest, PhotometricLoss_PureL1) {
     const int H = 64, W = 64, C = 3;
 
-    auto rendered = Tensor::rand({H, W, C}, Device::CUDA);
-    auto gt_image = Tensor::rand({H, W, C}, Device::CUDA);
+    auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
+    auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
 
     // Pure L1 (lambda_dssim = 0.0)
     PhotometricLoss::Params params{.lambda_dssim = 0.0f};
-    auto result = PhotometricLoss::forward(rendered, gt_image, params);
+    PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(rendered, gt_image, params);
 
     ASSERT_TRUE(result.has_value()) << result.error();
     auto [loss_tensor, ctx] = *result;
 
     // Manually compute L1 loss
     auto diff = (rendered - gt_image).abs();
-    float expected_loss = diff.mean().item<float>();
+    float expected_loss = diff.mean().item();
 
     // Sync loss to CPU for comparison
-    float loss = loss_tensor.item<float>();
+    float loss = loss_tensor.item();
 
     EXPECT_TRUE(float_close(loss, expected_loss, 1e-5f, 1e-6f))
         << "L1 loss: " << loss << " vs expected: " << expected_loss;
@@ -227,18 +228,19 @@ TEST(LfsLossesTest, PhotometricLoss_PureL1) {
 TEST(LfsLossesTest, PhotometricLoss_PureSSIM) {
     const int H = 128, W = 128, C = 3;
 
-    auto rendered = Tensor::rand({H, W, C}, Device::CUDA);
-    auto gt_image = Tensor::rand({H, W, C}, Device::CUDA);
+    auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
+    auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
 
     // Pure SSIM (lambda_dssim = 1.0)
     PhotometricLoss::Params params{.lambda_dssim = 1.0f};
-    auto result = PhotometricLoss::forward(rendered, gt_image, params);
+    PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(rendered, gt_image, params);
 
     ASSERT_TRUE(result.has_value()) << result.error();
     auto [loss_tensor, ctx] = *result;
 
     // Sync to CPU for comparison
-    float loss = loss_tensor.item<float>();
+    float loss = loss_tensor.item();
 
     // Loss should be in range [0, 2] (1 - SSIM, where SSIM is in [-1, 1])
     EXPECT_GE(loss, 0.0f);
@@ -254,30 +256,31 @@ TEST(LfsLossesTest, PhotometricLoss_PureSSIM) {
 TEST(LfsLossesTest, PhotometricLoss_Combined) {
     const int H = 64, W = 64, C = 3;
 
-    auto rendered = Tensor::rand({H, W, C}, Device::CUDA);
-    auto gt_image = Tensor::rand({H, W, C}, Device::CUDA);
+    auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
+    auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
 
     // Combined loss (lambda_dssim = 0.2, typical value)
     PhotometricLoss::Params params{.lambda_dssim = 0.2f};
-    auto result = PhotometricLoss::forward(rendered, gt_image, params);
+    PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(rendered, gt_image, params);
 
     ASSERT_TRUE(result.has_value()) << result.error();
     auto [combined_loss_tensor, combined_ctx] = *result;
 
     // Compute pure L1
     params.lambda_dssim = 0.0f;
-    auto l1_result = PhotometricLoss::forward(rendered, gt_image, params);
+    auto l1_result = loss_fn.forward(rendered, gt_image, params);
     ASSERT_TRUE(l1_result.has_value());
-    float l1_loss = l1_result->first.item<float>();
+    float l1_loss = l1_result->first.item();
 
     // Compute pure SSIM
     params.lambda_dssim = 1.0f;
-    auto ssim_result = PhotometricLoss::forward(rendered, gt_image, params);
+    auto ssim_result = loss_fn.forward(rendered, gt_image, params);
     ASSERT_TRUE(ssim_result.has_value());
-    float ssim_loss = ssim_result->first.item<float>();
+    float ssim_loss = ssim_result->first.item();
 
     // Combined should be weighted average
-    float combined_loss = combined_loss_tensor.item<float>();
+    float combined_loss = combined_loss_tensor.item();
     float expected_combined = 0.8f * l1_loss + 0.2f * ssim_loss;
     EXPECT_TRUE(float_close(combined_loss, expected_combined, 1e-4f, 1e-5f))
         << "Combined: " << combined_loss << " vs expected: " << expected_combined;
@@ -286,16 +289,17 @@ TEST(LfsLossesTest, PhotometricLoss_Combined) {
 TEST(LfsLossesTest, PhotometricLoss_IdenticalImages) {
     const int H = 32, W = 32, C = 3;
 
-    auto image = Tensor::rand({H, W, C}, Device::CUDA);
+    auto image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
 
     PhotometricLoss::Params params{.lambda_dssim = 0.2f};
-    auto result = PhotometricLoss::forward(image, image, params);
+    PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(image, image, params);
 
     ASSERT_TRUE(result.has_value());
     auto [loss_tensor, ctx] = *result;
 
     // Sync to CPU for comparison
-    float loss = loss_tensor.item<float>();
+    float loss = loss_tensor.item();
 
     // Loss should be very close to zero for identical images
     EXPECT_LT(loss, 1e-4f) << "Loss for identical images should be near zero";
@@ -306,7 +310,8 @@ TEST(LfsLossesTest, PhotometricLoss_ShapeMismatch) {
     auto gt_image = Tensor::rand({32, 32, 3}, Device::CUDA);
 
     PhotometricLoss::Params params{.lambda_dssim = 0.2f};
-    auto result = PhotometricLoss::forward(rendered, gt_image, params);
+    PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(rendered, gt_image, params);
 
     ASSERT_FALSE(result.has_value());
     EXPECT_TRUE(result.error().find("Shape mismatch") != std::string::npos);
@@ -396,11 +401,12 @@ TEST(LfsLossesTest, EdgeCase_SmallImage) {
     // Minimum size image for SSIM (needs some padding)
     const int H = 16, W = 16, C = 3;
 
-    auto rendered = Tensor::rand({H, W, C}, Device::CUDA);
-    auto gt_image = Tensor::rand({H, W, C}, Device::CUDA);
+    auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
+    auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
 
     PhotometricLoss::Params params{.lambda_dssim = 0.2f};
-    auto result = PhotometricLoss::forward(rendered, gt_image, params);
+    PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(rendered, gt_image, params);
 
     ASSERT_TRUE(result.has_value());
 }

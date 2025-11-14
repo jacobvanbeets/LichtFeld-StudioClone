@@ -258,15 +258,16 @@ TEST(LossesBenchmark, PhotometricLoss_L1Only) {
     std::vector<std::pair<int, int>> sizes = {{256, 256}, {512, 512}, {800, 800}, {1024, 1024}};
 
     for (auto [H, W] : sizes) {
-        auto rendered = Tensor::rand({H, W, 3}, Device::CUDA);
-        auto gt_image = Tensor::rand({H, W, 3}, Device::CUDA);
+        auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+        auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
         PhotometricLoss::Params params{.lambda_dssim = lambda_dssim};
 
         Timer timer;
         timer.start();
         for (int i = 0; i < n_trials; i++) {
-            auto result = PhotometricLoss::forward(rendered, gt_image, params);
+            PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(rendered, gt_image, params);
         }
         cudaDeviceSynchronize();
         double elapsed_ms = timer.stop_ms();
@@ -292,15 +293,16 @@ TEST(LossesBenchmark, PhotometricLoss_SSIMOnly) {
     std::vector<std::pair<int, int>> sizes = {{256, 256}, {512, 512}, {800, 800}};
 
     for (auto [H, W] : sizes) {
-        auto rendered = Tensor::rand({H, W, 3}, Device::CUDA);
-        auto gt_image = Tensor::rand({H, W, 3}, Device::CUDA);
+        auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+        auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
         PhotometricLoss::Params params{.lambda_dssim = lambda_dssim};
 
         Timer timer;
         timer.start();
         for (int i = 0; i < n_trials; i++) {
-            auto result = PhotometricLoss::forward(rendered, gt_image, params);
+            PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(rendered, gt_image, params);
         }
         cudaDeviceSynchronize();
         double elapsed_ms = timer.stop_ms();
@@ -326,15 +328,16 @@ TEST(LossesBenchmark, PhotometricLoss_Combined) {
     std::vector<std::pair<int, int>> sizes = {{256, 256}, {512, 512}, {800, 800}};
 
     for (auto [H, W] : sizes) {
-        auto rendered = Tensor::rand({H, W, 3}, Device::CUDA);
-        auto gt_image = Tensor::rand({H, W, 3}, Device::CUDA);
+        auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+        auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
         PhotometricLoss::Params params{.lambda_dssim = lambda_dssim};
 
         Timer timer;
         timer.start();
         for (int i = 0; i < n_trials; i++) {
-            auto result = PhotometricLoss::forward(rendered, gt_image, params);
+            PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(rendered, gt_image, params);
         }
         cudaDeviceSynchronize();
         double elapsed_ms = timer.stop_ms();
@@ -363,8 +366,8 @@ TEST(LossesBenchmark, RealisticTraining_FullLossPipeline) {
     // Setup
     auto scaling_raw = Tensor::randn({n_gaussians, 3}, Device::CUDA);
     auto opacity_raw = Tensor::randn({n_gaussians, 1}, Device::CUDA);
-    auto rendered = Tensor::rand({H, W, C}, Device::CUDA);
-    auto gt_image = Tensor::rand({H, W, C}, Device::CUDA);
+    auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
+    auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
 
     auto scaling_grad = Tensor::zeros({n_gaussians, 3}, Device::CUDA);
     auto opacity_grad = Tensor::zeros({n_gaussians, 1}, Device::CUDA);
@@ -378,7 +381,8 @@ TEST(LossesBenchmark, RealisticTraining_FullLossPipeline) {
 
     for (int i = 0; i < n_iterations; i++) {
         // Photometric loss (main loss)
-        auto photo_result = PhotometricLoss::forward(rendered, gt_image, photo_params);
+        PhotometricLoss loss_fn;
+        auto photo_result = loss_fn.forward(rendered, gt_image, photo_params);
 
         // Regularization losses
         auto scale_result = ScaleRegularization::forward(scaling_raw, scaling_grad, scale_params);
@@ -411,8 +415,8 @@ TEST(LossesBenchmark, MemoryOverhead) {
     // Setup tensors
     auto scaling_raw = Tensor::randn({n_gaussians, 3}, Device::CUDA);
     auto opacity_raw = Tensor::randn({n_gaussians, 1}, Device::CUDA);
-    auto rendered = Tensor::rand({H, W, C}, Device::CUDA);
-    auto gt_image = Tensor::rand({H, W, C}, Device::CUDA);
+    auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
+    auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(C)}, Device::CUDA);
 
     auto scaling_grad = Tensor::zeros({n_gaussians, 3}, Device::CUDA);
     auto opacity_grad = Tensor::zeros({n_gaussians, 1}, Device::CUDA);
@@ -421,6 +425,9 @@ TEST(LossesBenchmark, MemoryOverhead) {
     cudaDeviceSynchronize();
     size_t free_before, total;
     cudaMemGetInfo(&free_before, &total);
+
+    // Create loss function instance
+    PhotometricLoss loss_fn;
 
     // Run losses multiple times
     for (int i = 0; i < 10; i++) {
@@ -431,7 +438,7 @@ TEST(LossesBenchmark, MemoryOverhead) {
         OpacityRegularization::forward(opacity_raw, opacity_grad, opacity_params);
 
         PhotometricLoss::Params photo_params{.lambda_dssim = 0.2f};
-        PhotometricLoss::forward(rendered, gt_image, photo_params);
+        loss_fn.forward(rendered, gt_image, photo_params);
     }
 
     cudaDeviceSynchronize();
@@ -468,7 +475,7 @@ float reference_ssim_old_kernels(const lfs::core::Tensor& img1, const lfs::core:
     // Compute backward to match what PhotometricLoss does
     auto grad = lfs::training::kernels::ssim_backward(ctx, -1.0f);
     // Sync to CPU for testing (acceptable in tests)
-    float ssim_value = ssim_value_tensor.item<float>();
+    float ssim_value = ssim_value_tensor.item();
     return 1.0f - ssim_value;  // Convert to D-SSIM loss (1 - SSIM)
 }
 
@@ -497,15 +504,17 @@ TEST(LossesBenchmark, L1_vs_Reference) {
     const int n_trials = 1000;
     std::vector<std::pair<int, int>> sizes = {{256, 256}, {512, 512}, {800, 800}};
 
+    PhotometricLoss loss_fn;
+
     for (auto [H, W] : sizes) {
-        auto img1_lfs = Tensor::rand({H, W, 3}, Device::CUDA);
-        auto img2_lfs = Tensor::rand({H, W, 3}, Device::CUDA);
+        auto img1_lfs = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+        auto img2_lfs = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
         auto img1_torch = to_torch(img1_lfs);
         auto img2_torch = to_torch(img2_lfs);
 
         // Warmup
         reference_l1_loss_torch_fwd_bwd(img1_torch, img2_torch);
-        auto l1_result = PhotometricLoss::forward(img1_lfs, img2_lfs, PhotometricLoss::Params{.lambda_dssim = 0.0f});
+        auto l1_result = loss_fn.forward(img1_lfs, img2_lfs, PhotometricLoss::Params{.lambda_dssim = 0.0f});
 
         // Benchmark PyTorch reference (forward + backward)
         Timer timer;
@@ -519,7 +528,8 @@ TEST(LossesBenchmark, L1_vs_Reference) {
         // Benchmark LFS implementation (pure L1, lambda=0)
         timer.start();
         for (int i = 0; i < n_trials; i++) {
-            auto result = PhotometricLoss::forward(img1_lfs, img2_lfs, PhotometricLoss::Params{.lambda_dssim = 0.0f});
+            PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(img1_lfs, img2_lfs, PhotometricLoss::Params{.lambda_dssim = 0.0f});
         }
         cudaDeviceSynchronize();
         double lfs_time = timer.stop_us() / n_trials;
@@ -539,13 +549,14 @@ TEST(LossesBenchmark, SSIM_vs_Reference) {
     const int n_trials = 1000;
     std::vector<std::pair<int, int>> sizes = {{256, 256}, {512, 512}, {800, 800}};
 
+    PhotometricLoss loss_fn;
     for (auto [H, W] : sizes) {
-        auto img1 = Tensor::rand({H, W, 3}, Device::CUDA);
-        auto img2 = Tensor::rand({H, W, 3}, Device::CUDA);
+        auto img1 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+        auto img2 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
         // Warmup
         reference_ssim_old_kernels(img1, img2);
-        auto ssim_result = PhotometricLoss::forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f});
+        auto ssim_result = loss_fn.forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f});
 
         // Benchmark old kernels
         Timer timer;
@@ -559,7 +570,8 @@ TEST(LossesBenchmark, SSIM_vs_Reference) {
         // Benchmark new implementation (pure SSIM, lambda=1)
         timer.start();
         for (int i = 0; i < n_trials; i++) {
-            auto result = PhotometricLoss::forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f});
+            PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f});
         }
         cudaDeviceSynchronize();
         double new_time = timer.stop_us() / n_trials;
@@ -581,12 +593,13 @@ TEST(LossesBenchmark, PhotometricCombined_vs_Reference) {
     std::vector<std::pair<int, int>> sizes = {{256, 256}, {512, 512}, {800, 800}};
 
     for (auto [H, W] : sizes) {
-        auto rendered = Tensor::rand({H, W, 3}, Device::CUDA);
-        auto gt_image = Tensor::rand({H, W, 3}, Device::CUDA);
+        auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+        auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
         // Warmup
         reference_photometric_combined(rendered, gt_image, lambda_dssim);
-        auto lfs_result = PhotometricLoss::forward(rendered, gt_image, PhotometricLoss::Params{.lambda_dssim = lambda_dssim});
+        PhotometricLoss loss_fn;
+        auto lfs_result = loss_fn.forward(rendered, gt_image, PhotometricLoss::Params{.lambda_dssim = lambda_dssim});
 
         // Benchmark reference (torch L1 + old SSIM)
         Timer timer;
@@ -600,7 +613,8 @@ TEST(LossesBenchmark, PhotometricCombined_vs_Reference) {
         // Benchmark LFS implementation
         timer.start();
         for (int i = 0; i < n_trials; i++) {
-            auto result = PhotometricLoss::forward(rendered, gt_image, PhotometricLoss::Params{.lambda_dssim = lambda_dssim});
+            PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(rendered, gt_image, PhotometricLoss::Params{.lambda_dssim = lambda_dssim});
         }
         cudaDeviceSynchronize();
         double lfs_time = timer.stop_us() / n_trials;
@@ -614,15 +628,16 @@ TEST(LossesBenchmark, NumericalAccuracy_L1) {
     std::cout << "Comparing LFS L1 implementation vs PyTorch reference\n\n";
 
     const int H = 512, W = 512;
-    auto img1_lfs = Tensor::rand({H, W, 3}, Device::CUDA);
-    auto img2_lfs = Tensor::rand({H, W, 3}, Device::CUDA);
+    auto img1_lfs = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+    auto img2_lfs = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
     auto img1_torch = to_torch(img1_lfs);
     auto img2_torch = to_torch(img2_lfs);
 
     // Compute losses
     float torch_loss = reference_l1_loss_torch_fwd(img1_torch, img2_torch);
-    auto lfs_result = PhotometricLoss::forward(img1_lfs, img2_lfs, PhotometricLoss::Params{.lambda_dssim = 0.0f});
-    float lfs_loss = lfs_result.value().first.item<float>();  // Sync tensor to CPU
+    PhotometricLoss loss_fn;
+        auto lfs_result = loss_fn.forward(img1_lfs, img2_lfs, PhotometricLoss::Params{.lambda_dssim = 0.0f});
+    float lfs_loss = lfs_result.value().first.item();  // Sync tensor to CPU
 
     float abs_error = std::abs(torch_loss - lfs_loss);
     float rel_error = abs_error / std::max(torch_loss, 1e-8f);
@@ -640,13 +655,14 @@ TEST(LossesBenchmark, NumericalAccuracy_SSIM) {
     std::cout << "Comparing LFS SSIM implementation vs old kernels\n\n";
 
     const int H = 512, W = 512;
-    auto img1 = Tensor::rand({H, W, 3}, Device::CUDA);
-    auto img2 = Tensor::rand({H, W, 3}, Device::CUDA);
+    auto img1 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+    auto img2 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
     // Compute losses
     float old_loss = reference_ssim_old_kernels(img1, img2);
-    auto lfs_result = PhotometricLoss::forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f});
-    float lfs_loss = lfs_result.value().first.item<float>();  // Sync tensor to CPU
+    PhotometricLoss loss_fn;
+        auto lfs_result = loss_fn.forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f});
+    float lfs_loss = lfs_result.value().first.item();  // Sync tensor to CPU
 
     float abs_error = std::abs(old_loss - lfs_loss);
     float rel_error = abs_error / std::max(old_loss, 1e-8f);
@@ -665,13 +681,14 @@ TEST(LossesBenchmark, NumericalAccuracy_PhotometricCombined) {
 
     const int H = 512, W = 512;
     const float lambda_dssim = 0.2f;
-    auto rendered = Tensor::rand({H, W, 3}, Device::CUDA);
-    auto gt_image = Tensor::rand({H, W, 3}, Device::CUDA);
+    auto rendered = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+    auto gt_image = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
     // Compute losses
     float ref_loss = reference_photometric_combined(rendered, gt_image, lambda_dssim);
-    auto lfs_result = PhotometricLoss::forward(rendered, gt_image, PhotometricLoss::Params{.lambda_dssim = lambda_dssim});
-    float lfs_loss = lfs_result.value().first.item<float>();  // Sync tensor to CPU
+    PhotometricLoss loss_fn;
+        auto lfs_result = loss_fn.forward(rendered, gt_image, PhotometricLoss::Params{.lambda_dssim = lambda_dssim});
+    float lfs_loss = lfs_result.value().first.item();  // Sync tensor to CPU
 
     float abs_error = std::abs(ref_loss - lfs_loss);
     float rel_error = abs_error / std::max(ref_loss, 1e-8f);
@@ -689,11 +706,12 @@ TEST(LossesBenchmark, GradientCorrectness_L1) {
     std::cout << "Comparing analytical gradients vs numerical gradients (finite differences)\n\n";
 
     const int H = 64, W = 64;  // Smaller for faster gradient checking
-    auto img1 = Tensor::rand({H, W, 3}, Device::CUDA);
-    auto img2 = Tensor::rand({H, W, 3}, Device::CUDA);
+    auto img1 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+    auto img2 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
     // Compute analytical gradients (forward already computes them)
-    auto result = PhotometricLoss::forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 0.0f});
+    PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 0.0f});
     auto [loss_tensor, ctx] = result.value();
     auto grad_analytical = ctx.grad_image;
 
@@ -721,11 +739,12 @@ TEST(LossesBenchmark, GradientCorrectness_SSIM) {
     std::cout << "Comparing analytical gradients vs numerical gradients (finite differences)\n\n";
 
     const int H = 64, W = 64;  // Smaller for faster gradient checking
-    auto img1 = Tensor::rand({H, W, 3}, Device::CUDA);
-    auto img2 = Tensor::rand({H, W, 3}, Device::CUDA);
+    auto img1 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+    auto img2 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
     // Compute analytical gradients (LFS - forward already computes them)
-    auto result = PhotometricLoss::forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f});
+    PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f});
     auto [loss_tensor, ctx] = result.value();
     auto grad_analytical = ctx.grad_image;
 
@@ -749,13 +768,13 @@ TEST(LossesBenchmark, GradientCorrectness_SSIM) {
                 auto img1_plus_cpu = img1_cpu.clone();
                 img1_plus_cpu.template ptr<float>()[idx] += epsilon;
                 auto img1_plus = img1_plus_cpu.to(Device::CUDA);
-                float loss_plus = PhotometricLoss::forward(img1_plus, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f}).value().first.item<float>();
+                float loss_plus = loss_fn.forward(img1_plus, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f}).value().first.item();
 
                 // Perturb -epsilon
                 auto img1_minus_cpu = img1_cpu.clone();
                 img1_minus_cpu.template ptr<float>()[idx] -= epsilon;
                 auto img1_minus = img1_minus_cpu.to(Device::CUDA);
-                float loss_minus = PhotometricLoss::forward(img1_minus, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f}).value().first.item<float>();
+                float loss_minus = loss_fn.forward(img1_minus, img2, PhotometricLoss::Params{.lambda_dssim = 1.0f}).value().first.item();
 
                 // Numerical gradient
                 float grad_num = (loss_plus - loss_minus) / (2.0f * epsilon);
@@ -784,11 +803,12 @@ TEST(LossesBenchmark, GradientCorrectness_Combined) {
 
     const int H = 64, W = 64;
     const float lambda_dssim = 0.2f;
-    auto img1 = Tensor::rand({H, W, 3}, Device::CUDA);
-    auto img2 = Tensor::rand({H, W, 3}, Device::CUDA);
+    auto img1 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
+    auto img2 = Tensor::rand({static_cast<size_t>(H), static_cast<size_t>(W), static_cast<size_t>(3)}, Device::CUDA);
 
     // Compute analytical gradients (forward already computes them)
-    auto result = PhotometricLoss::forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = lambda_dssim});
+    PhotometricLoss loss_fn;
+    auto result = loss_fn.forward(img1, img2, PhotometricLoss::Params{.lambda_dssim = lambda_dssim});
     auto [loss_tensor, ctx] = result.value();
     auto grad_analytical = ctx.grad_image;
 
@@ -810,12 +830,12 @@ TEST(LossesBenchmark, GradientCorrectness_Combined) {
                 auto img1_plus_cpu = img1_cpu.clone();
                 img1_plus_cpu.template ptr<float>()[idx] += epsilon;
                 auto img1_plus = img1_plus_cpu.to(Device::CUDA);
-                float loss_plus = PhotometricLoss::forward(img1_plus, img2, PhotometricLoss::Params{.lambda_dssim = lambda_dssim}).value().first.item<float>();
+                float loss_plus = loss_fn.forward(img1_plus, img2, PhotometricLoss::Params{.lambda_dssim = lambda_dssim}).value().first.item();
 
                 auto img1_minus_cpu = img1_cpu.clone();
                 img1_minus_cpu.template ptr<float>()[idx] -= epsilon;
                 auto img1_minus = img1_minus_cpu.to(Device::CUDA);
-                float loss_minus = PhotometricLoss::forward(img1_minus, img2, PhotometricLoss::Params{.lambda_dssim = lambda_dssim}).value().first.item<float>();
+                float loss_minus = loss_fn.forward(img1_minus, img2, PhotometricLoss::Params{.lambda_dssim = lambda_dssim}).value().first.item();
 
                 float grad_num = (loss_plus - loss_minus) / (2.0f * epsilon);
                 float grad_ana = grad_analytical_cpu.template ptr<float>()[idx];
@@ -847,7 +867,7 @@ TEST(LossesBenchmark, GradientCorrectness_ScaleRegularization) {
 
     // Compute analytical gradients (new implementation)
     auto scaling_raw_grad = Tensor::zeros({N, 3}, Device::CUDA);
-    float loss = ScaleRegularization::forward(scaling_raw, scaling_raw_grad, ScaleRegularization::Params{.weight = weight}).value().item<float>();
+    float loss = ScaleRegularization::forward(scaling_raw, scaling_raw_grad, ScaleRegularization::Params{.weight = weight}).value().item();
 
     // Compute numerical gradients using finite differences (subset)
     const float epsilon = 1e-4f;
@@ -865,14 +885,14 @@ TEST(LossesBenchmark, GradientCorrectness_ScaleRegularization) {
         scaling_plus_cpu.template ptr<float>()[i] += epsilon;
         auto scaling_plus = scaling_plus_cpu.to(Device::CUDA);
         auto grad_plus = Tensor::zeros({N, 3}, Device::CUDA);
-        float loss_plus = ScaleRegularization::forward(scaling_plus, grad_plus, ScaleRegularization::Params{.weight = weight}).value().item<float>();
+        float loss_plus = ScaleRegularization::forward(scaling_plus, grad_plus, ScaleRegularization::Params{.weight = weight}).value().item();
 
         // Perturb -epsilon
         auto scaling_minus_cpu = scaling_raw_cpu.clone();
         scaling_minus_cpu.template ptr<float>()[i] -= epsilon;
         auto scaling_minus = scaling_minus_cpu.to(Device::CUDA);
         auto grad_minus = Tensor::zeros({N, 3}, Device::CUDA);
-        float loss_minus = ScaleRegularization::forward(scaling_minus, grad_minus, ScaleRegularization::Params{.weight = weight}).value().item<float>();
+        float loss_minus = ScaleRegularization::forward(scaling_minus, grad_minus, ScaleRegularization::Params{.weight = weight}).value().item();
 
         // Numerical gradient
         float grad_num = (loss_plus - loss_minus) / (2.0f * epsilon);
@@ -903,7 +923,7 @@ TEST(LossesBenchmark, GradientCorrectness_OpacityRegularization) {
 
     // Compute analytical gradients (new implementation)
     auto opacity_raw_grad = Tensor::zeros({N, 1}, Device::CUDA);
-    float loss = OpacityRegularization::forward(opacity_raw, opacity_raw_grad, OpacityRegularization::Params{.weight = weight}).value().item<float>();
+    float loss = OpacityRegularization::forward(opacity_raw, opacity_raw_grad, OpacityRegularization::Params{.weight = weight}).value().item();
 
     // Compute numerical gradients using finite differences (subset)
     const float epsilon = 1e-4f;
@@ -921,14 +941,14 @@ TEST(LossesBenchmark, GradientCorrectness_OpacityRegularization) {
         opacity_plus_cpu.template ptr<float>()[i] += epsilon;
         auto opacity_plus = opacity_plus_cpu.to(Device::CUDA);
         auto grad_plus = Tensor::zeros({N, 1}, Device::CUDA);
-        float loss_plus = OpacityRegularization::forward(opacity_plus, grad_plus, OpacityRegularization::Params{.weight = weight}).value().item<float>();
+        float loss_plus = OpacityRegularization::forward(opacity_plus, grad_plus, OpacityRegularization::Params{.weight = weight}).value().item();
 
         // Perturb -epsilon
         auto opacity_minus_cpu = opacity_raw_cpu.clone();
         opacity_minus_cpu.template ptr<float>()[i] -= epsilon;
         auto opacity_minus = opacity_minus_cpu.to(Device::CUDA);
         auto grad_minus = Tensor::zeros({N, 1}, Device::CUDA);
-        float loss_minus = OpacityRegularization::forward(opacity_minus, grad_minus, OpacityRegularization::Params{.weight = weight}).value().item<float>();
+        float loss_minus = OpacityRegularization::forward(opacity_minus, grad_minus, OpacityRegularization::Params{.weight = weight}).value().item();
 
         // Numerical gradient
         float grad_num = (loss_plus - loss_minus) / (2.0f * epsilon);
@@ -972,8 +992,8 @@ TEST(LossesBenchmark, BilateralGridSlice_vs_Reference) {
     for (const auto& [h, w] : sizes) {
         // Create test data
         auto grid_torch = torch::randn({12, L, H, W}, torch::kCUDA).contiguous();
-        auto rgb_torch = torch::rand({h, w, 3}, torch::kCUDA).contiguous();
-        auto grad_output_torch = torch::randn({h, w, 3}, torch::kCUDA).contiguous();
+        auto rgb_torch = torch::rand({static_cast<size_t>(h), static_cast<size_t>(w), static_cast<size_t>(3)}, torch::kCUDA).contiguous();
+        auto grad_output_torch = torch::randn({static_cast<size_t>(h), static_cast<size_t>(w), static_cast<size_t>(3)}, torch::kCUDA).contiguous();
 
         // Convert to LFS tensors
         auto grid_lfs = from_torch(grid_torch);
@@ -1124,13 +1144,13 @@ TEST(LossesBenchmark, GradientCorrectness_BilateralGridSlice) {
 
     // Create test data
     auto grid = Tensor::randn({12, L, H, W}, Device::CUDA);
-    auto rgb = Tensor::rand({h, w, 3}, Device::CUDA);
-    auto grad_output = Tensor::ones({h, w, 3}, Device::CUDA);  // Upstream gradient = 1
+    auto rgb = Tensor::rand({static_cast<size_t>(h), static_cast<size_t>(w), static_cast<size_t>(3)}, Device::CUDA);
+    auto grad_output = Tensor::ones({static_cast<size_t>(h), static_cast<size_t>(w), static_cast<size_t>(3)}, Device::CUDA);  // Upstream gradient = 1
 
     // Compute analytical gradients
-    auto output = Tensor::zeros({h, w, 3}, Device::CUDA);
+    auto output = Tensor::zeros({static_cast<size_t>(h), static_cast<size_t>(w), static_cast<size_t>(3)}, Device::CUDA);
     auto grad_grid = Tensor::zeros({12, L, H, W}, Device::CUDA);
-    auto grad_rgb = Tensor::zeros({h, w, 3}, Device::CUDA);
+    auto grad_rgb = Tensor::zeros({static_cast<size_t>(h), static_cast<size_t>(w), static_cast<size_t>(3)}, Device::CUDA);
 
     float* grid_ptr = grid.template ptr<float>();
     float* rgb_ptr = rgb.template ptr<float>();
@@ -1163,7 +1183,7 @@ TEST(LossesBenchmark, GradientCorrectness_BilateralGridSlice) {
         auto grid_plus_cpu = grid_cpu.clone();
         grid_plus_cpu.template ptr<float>()[i] += epsilon;
         auto grid_plus = grid_plus_cpu.to(Device::CUDA);
-        auto output_plus = Tensor::zeros({h, w, 3}, Device::CUDA);
+        auto output_plus = Tensor::zeros({static_cast<size_t>(h), static_cast<size_t>(w), static_cast<size_t>(3)}, Device::CUDA);
         float* grid_plus_ptr = grid_plus.template ptr<float>();
         float* output_plus_ptr = output_plus.template ptr<float>();
         lfs::training::kernels::launch_bilateral_grid_slice_forward(
@@ -1176,7 +1196,7 @@ TEST(LossesBenchmark, GradientCorrectness_BilateralGridSlice) {
         auto grid_minus_cpu = grid_cpu.clone();
         grid_minus_cpu.template ptr<float>()[i] -= epsilon;
         auto grid_minus = grid_minus_cpu.to(Device::CUDA);
-        auto output_minus = Tensor::zeros({h, w, 3}, Device::CUDA);
+        auto output_minus = Tensor::zeros({static_cast<size_t>(h), static_cast<size_t>(w), static_cast<size_t>(3)}, Device::CUDA);
         float* grid_minus_ptr = grid_minus.template ptr<float>();
         float* output_minus_ptr = output_minus.template ptr<float>();
         lfs::training::kernels::launch_bilateral_grid_slice_forward(
@@ -1261,7 +1281,7 @@ TEST(LossesBenchmark, GradientCorrectness_BilateralGridTV) {
             grids_plus_ptr, loss_plus_ptr, temp_ptr,
             N, L, H, W, nullptr);
         cudaDeviceSynchronize();
-        float loss_plus_val = loss_plus.item<float>();
+        float loss_plus_val = loss_plus.item();
 
         // Perturb -epsilon
         auto grids_minus_cpu = grids_cpu.clone();
@@ -1274,7 +1294,7 @@ TEST(LossesBenchmark, GradientCorrectness_BilateralGridTV) {
             grids_minus_ptr, loss_minus_ptr, temp_ptr,
             N, L, H, W, nullptr);
         cudaDeviceSynchronize();
-        float loss_minus_val = loss_minus.item<float>();
+        float loss_minus_val = loss_minus.item();
 
         // Numerical gradient
         float grad_num = (loss_plus_val - loss_minus_val) / (2.0f * epsilon);

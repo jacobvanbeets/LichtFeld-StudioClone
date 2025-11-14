@@ -376,7 +376,7 @@ TEST(TensorIndexSelectBug, FindBreakingPoint) {
     for (int size : sizes) {
         std::cout << "  Testing size " << size << "..." << std::endl;
 
-        auto data = Tensor::randn({size, 4}, Device::CUDA);
+        auto data = Tensor::randn({static_cast<size_t>(size), 4}, Device::CUDA);
 
         // Select ~99.88% of elements (same ratio as the bug)
         int num_select = static_cast<int>(size * 0.9988);
