@@ -528,23 +528,7 @@ namespace lfs::training {
         if (n_indices == 0) return;
 
         auto& param = get_param(type);
-        auto& grad = get_grad(type);
         auto name = param_name(type);
-
-        // Calculate row size for gradients
-        auto grad_shape = grad.shape();
-        int grad_row_size = 1;
-        for (size_t i = 1; i < grad_shape.rank(); i++) {
-            grad_row_size *= grad_shape[i];
-        }
-
-        // Zero out gradients using batched GPU kernel (FAST!)
-        fast_lfs::optimizer::zero_rows_at_indices(
-            grad.template ptr<float>(),
-            indices_device,
-            n_indices,
-            grad_row_size
-        );
 
         // Ensure optimizer state exists
         if (states_.find(name) == states_.end()) {
@@ -562,6 +546,9 @@ namespace lfs::training {
         }
 
         // Zero out optimizer state using batched GPU kernel (FAST!)
+        // NOTE: We do NOT zero gradients here! Relocate is called in post_backward(),
+        // BEFORE the optimizer step. The optimizer needs the current gradients to update
+        // parameters. Gradients will be zeroed by zero_grad() after the optimizer step.
         fast_lfs::optimizer::zero_rows_at_indices(
             state.exp_avg.template ptr<float>(),
             indices_device,
@@ -576,7 +563,7 @@ namespace lfs::training {
             state_row_size
         );
 
-        LOG_DEBUG("relocate_params_at_indices_gpu: Reset state and gradients for {} at {} indices (batched GPU kernel)",
+        LOG_DEBUG("relocate_params_at_indices_gpu: Reset optimizer state for {} at {} indices (batched GPU kernel)",
                   name, n_indices);
     }
 

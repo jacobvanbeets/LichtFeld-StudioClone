@@ -295,22 +295,40 @@ namespace lfs::core::tensor_ops {
                              size_t stride1, size_t stride2, size_t stride3,
                              cudaStream_t stream = nullptr);
 
-    void launch_scatter(float* output, const int* indices, const float* src,
+    // Template declarations for scatter operations
+    template <typename T>
+    void launch_scatter(T* output, const int* indices, const T* src,
                         const size_t* output_shape, const size_t* index_shape,
                         size_t rank, int dim, size_t total_elements,
                         int scatter_mode, cudaStream_t stream);
 
-    void launch_index_fill(float* data, const int* indices, float value,
+    template <typename T>
+    void launch_index_fill(T* data, const int* indices, T value,
                            const size_t* shape, size_t rank, int dim,
                            size_t index_size, cudaStream_t stream);
 
-    void launch_index_copy(float* data, const int* indices, const float* src,
+    template <typename T>
+    void launch_index_copy(T* data, const int* indices, const T* src,
                            const size_t* shape, size_t rank, int dim,
                            size_t index_size, cudaStream_t stream);
 
-    void launch_index_add(float* data, const int* indices, const float* src,
+    template <typename T>
+    void launch_index_add(T* data, const int* indices, const T* src,
                           const size_t* shape, size_t rank, int dim,
                           size_t index_size, cudaStream_t stream);
+
+    // Explicit instantiation declarations
+    extern template void launch_scatter<float>(float*, const int*, const float*, const size_t*, const size_t*, size_t, int, size_t, int, cudaStream_t);
+    extern template void launch_scatter<int>(int*, const int*, const int*, const size_t*, const size_t*, size_t, int, size_t, int, cudaStream_t);
+
+    extern template void launch_index_add<float>(float*, const int*, const float*, const size_t*, size_t, int, size_t, cudaStream_t);
+    extern template void launch_index_add<int>(int*, const int*, const int*, const size_t*, size_t, int, size_t, cudaStream_t);
+
+    extern template void launch_index_copy<float>(float*, const int*, const float*, const size_t*, size_t, int, size_t, cudaStream_t);
+    extern template void launch_index_copy<int>(int*, const int*, const int*, const size_t*, size_t, int, size_t, cudaStream_t);
+
+    extern template void launch_index_fill<float>(float*, const int*, float, const size_t*, size_t, int, size_t, cudaStream_t);
+    extern template void launch_index_fill<int>(int*, const int*, int, const size_t*, size_t, int, size_t, cudaStream_t);
 
     void launch_index_put(float* data, const int* indices, const float* values,
                           size_t data_size, size_t index_size, cudaStream_t stream);

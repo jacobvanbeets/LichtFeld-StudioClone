@@ -810,7 +810,8 @@ namespace lfs::core::tensor_ops {
                           op);
     }
 
-    __global__ void scatter_kernel(float* out, const int* idx, const float* in,
+    template <typename T>
+    __global__ void scatter_kernel(T* out, const int* idx, const T* in,
                                    size_t outer, size_t dim_sz, size_t inner,
                                    size_t idx_sz, int mode) {
         // Support both 1D and 2D grids for large arrays
@@ -837,7 +838,8 @@ namespace lfs::core::tensor_ops {
         }
     }
 
-    void launch_scatter(float* out, const int* idx, const float* in,
+    template <typename T>
+    void launch_scatter(T* out, const int* idx, const T* in,
                         const size_t* out_shape, const size_t* in_shape,
                         size_t rank, int dim, size_t total, int mode, cudaStream_t stream) {
         size_t outer = 1, inner = 1;
@@ -851,45 +853,48 @@ namespace lfs::core::tensor_ops {
         const size_t max_blocks_x = 65535;
 
         if (num_blocks <= max_blocks_x) {
-            scatter_kernel<<<num_blocks, 256, 0, stream>>>(
+            scatter_kernel<T><<<num_blocks, 256, 0, stream>>>(
                 out, idx, in, outer, out_shape[dim], inner, in_shape[dim], mode);
         } else {
             dim3 grid(std::min(num_blocks, max_blocks_x),
                       (num_blocks + max_blocks_x - 1) / max_blocks_x);
-            scatter_kernel<<<grid, 256, 0, stream>>>(
+            scatter_kernel<T><<<grid, 256, 0, stream>>>(
                 out, idx, in, outer, out_shape[dim], inner, in_shape[dim], mode);
         }
     }
 
-    void launch_index_fill(float* data, const int* idx, float val,
+    template <typename T>
+    void launch_index_fill(T* data, const int* idx, T val,
                            const size_t* shape, size_t rank, int dim,
                            size_t n_idx, cudaStream_t stream) {
-        CudaDeviceMemory<float> val_buffer(n_idx);
+        CudaDeviceMemory<T> val_buffer(n_idx);
         auto val_ptr = thrust::device_pointer_cast(val_buffer.get());
         thrust::fill(thrust::cuda::par.on(stream), val_ptr, val_ptr + n_idx, val);
 
         size_t in_shape[10] = {0};
         std::copy(shape, shape + rank, in_shape);
         in_shape[dim] = n_idx;
-        launch_scatter(data, idx, val_buffer.get(), shape, in_shape, rank, dim, n_idx, 0, stream);
+        launch_scatter<T>(data, idx, val_buffer.get(), shape, in_shape, rank, dim, n_idx, 0, stream);
     }
 
-    void launch_index_copy(float* dst, const int* idx, const float* src,
+    template <typename T>
+    void launch_index_copy(T* dst, const int* idx, const T* src,
                            const size_t* shape, size_t rank, int dim,
                            size_t n_idx, cudaStream_t stream) {
         size_t in_shape[10] = {0};
         std::copy(shape, shape + rank, in_shape);
         in_shape[dim] = n_idx;
-        launch_scatter(dst, idx, src, shape, in_shape, rank, dim, n_idx, 0, stream);
+        launch_scatter<T>(dst, idx, src, shape, in_shape, rank, dim, n_idx, 0, stream);
     }
 
-    void launch_index_add(float* dst, const int* idx, const float* src,
+    template <typename T>
+    void launch_index_add(T* dst, const int* idx, const T* src,
                           const size_t* shape, size_t rank, int dim,
                           size_t n_idx, cudaStream_t stream) {
         size_t in_shape[10] = {0};
         std::copy(shape, shape + rank, in_shape);
         in_shape[dim] = n_idx;
-        launch_scatter(dst, idx, src, shape, in_shape, rank, dim, n_idx, 1, stream);
+        launch_scatter<T>(dst, idx, src, shape, in_shape, rank, dim, n_idx, 1, stream);
     }
 
     void launch_index_put(float* data, const int* idx, const float* vals,
@@ -1006,5 +1011,19 @@ namespace lfs::core::tensor_ops {
     template void launch_gather_fused_unary<ops::abs_op>(const float*, const int*, float*, size_t, size_t, ops::abs_op, cudaStream_t);
     template void launch_gather_fused_unary<ops::sqrt_op>(const float*, const int*, float*, size_t, size_t, ops::sqrt_op, cudaStream_t);
     template void launch_gather_fused_unary<ops::neg_op>(const float*, const int*, float*, size_t, size_t, ops::neg_op, cudaStream_t);
+
+    // ============= Explicit Instantiations for Scatter Operations =============
+    // Instantiate for float and int types
+    template void launch_scatter<float>(float*, const int*, const float*, const size_t*, const size_t*, size_t, int, size_t, int, cudaStream_t);
+    template void launch_scatter<int>(int*, const int*, const int*, const size_t*, const size_t*, size_t, int, size_t, int, cudaStream_t);
+
+    template void launch_index_add<float>(float*, const int*, const float*, const size_t*, size_t, int, size_t, cudaStream_t);
+    template void launch_index_add<int>(int*, const int*, const int*, const size_t*, size_t, int, size_t, cudaStream_t);
+
+    template void launch_index_copy<float>(float*, const int*, const float*, const size_t*, size_t, int, size_t, cudaStream_t);
+    template void launch_index_copy<int>(int*, const int*, const int*, const size_t*, size_t, int, size_t, cudaStream_t);
+
+    template void launch_index_fill<float>(float*, const int*, float, const size_t*, size_t, int, size_t, cudaStream_t);
+    template void launch_index_fill<int>(int*, const int*, int, const size_t*, size_t, int, size_t, cudaStream_t);
 
 } // namespace lfs::core::tensor_ops

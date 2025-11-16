@@ -1620,21 +1620,71 @@ namespace lfs::core {
             return 0.0f;
         }
 
-        if (dtype_ != DataType::Float32) {
-            LOG_ERROR("item() only supports float32 tensors");
-            return 0.0f;
-        }
-
-        float value = 0.0f;
         // Account for storage offset (important for sliced tensors)
         const char* data_ptr = static_cast<const char*>(data_) + storage_offset_ * dtype_size(dtype_);
+        float value = 0.0f;
 
+        // Sync before reading from GPU
         if (device_ == Device::CUDA) {
             // API BOUNDARY: Sync before reading value from GPU
             cudaDeviceSynchronize();
-            CHECK_CUDA(cudaMemcpy(&value, data_ptr, sizeof(float), cudaMemcpyDeviceToHost));
-        } else {
-            value = *static_cast<const float*>(static_cast<const void*>(data_ptr));
+        }
+
+        // Handle different dtypes
+        switch (dtype_) {
+        case DataType::Float32: {
+            float temp;
+            if (device_ == Device::CUDA) {
+                CHECK_CUDA(cudaMemcpy(&temp, data_ptr, sizeof(float), cudaMemcpyDeviceToHost));
+            } else {
+                temp = *static_cast<const float*>(static_cast<const void*>(data_ptr));
+            }
+            value = temp;
+            break;
+        }
+        case DataType::Int64: {
+            int64_t temp;
+            if (device_ == Device::CUDA) {
+                CHECK_CUDA(cudaMemcpy(&temp, data_ptr, sizeof(int64_t), cudaMemcpyDeviceToHost));
+            } else {
+                temp = *static_cast<const int64_t*>(static_cast<const void*>(data_ptr));
+            }
+            value = static_cast<float>(temp);
+            break;
+        }
+        case DataType::Int32: {
+            int32_t temp;
+            if (device_ == Device::CUDA) {
+                CHECK_CUDA(cudaMemcpy(&temp, data_ptr, sizeof(int32_t), cudaMemcpyDeviceToHost));
+            } else {
+                temp = *static_cast<const int32_t*>(static_cast<const void*>(data_ptr));
+            }
+            value = static_cast<float>(temp);
+            break;
+        }
+        case DataType::Bool: {
+            unsigned char temp;
+            if (device_ == Device::CUDA) {
+                CHECK_CUDA(cudaMemcpy(&temp, data_ptr, sizeof(unsigned char), cudaMemcpyDeviceToHost));
+            } else {
+                temp = *static_cast<const unsigned char*>(static_cast<const void*>(data_ptr));
+            }
+            value = static_cast<float>(temp);
+            break;
+        }
+        case DataType::UInt8: {
+            uint8_t temp;
+            if (device_ == Device::CUDA) {
+                CHECK_CUDA(cudaMemcpy(&temp, data_ptr, sizeof(uint8_t), cudaMemcpyDeviceToHost));
+            } else {
+                temp = *static_cast<const uint8_t*>(static_cast<const void*>(data_ptr));
+            }
+            value = static_cast<float>(temp);
+            break;
+        }
+        default:
+            LOG_ERROR("item() does not support dtype {}", static_cast<int>(dtype_));
+            return 0.0f;
         }
 
         return value;

@@ -190,7 +190,7 @@ namespace fast_lfs::rasterization::kernels::backward {
 
         // write total 3d mean gradient
         const float3 dL_dmean3d = dL_dmean3d_from_splatting + dL_dmean3d_from_color;
-        grad_means[primitive_idx] += dL_dmean3d;
+        grad_means[primitive_idx] = dL_dmean3d;
 
         // raw scale gradient
         const float dL_dvariance_x = rotation.m11 * rotation.m11 * dL_dcov3d.m11 + rotation.m21 * rotation.m21 * dL_dcov3d.m22 + rotation.m31 * rotation.m31 * dL_dcov3d.m33 +
@@ -203,7 +203,7 @@ namespace fast_lfs::rasterization::kernels::backward {
             2.0f * variance.x * dL_dvariance_x,
             2.0f * variance.y * dL_dvariance_y,
             2.0f * variance.z * dL_dvariance_z);
-        grad_raw_scales[primitive_idx] += dL_draw_scale;
+        grad_raw_scales[primitive_idx] = dL_draw_scale;
 
         // raw rotation gradient
         const mat3x3 dL_drotation = {
@@ -227,7 +227,7 @@ namespace fast_lfs::rasterization::kernels::backward {
         const float dL_dqrz = dL_drotation.m21 - dL_drotation.m12;
         const float dL_dq_norm_helper = qxx * dL_dqxx + qyy * dL_dqyy + qzz * dL_dqzz + qxy * dL_dqxy + qxz * dL_dqxz + qyz * dL_dqyz + qrx * dL_dqrx + qry * dL_dqry + qrz * dL_dqrz;
         const float4 dL_draw_rotation = 2.0f * make_float4(qx * dL_dqrx + qy * dL_dqry + qz * dL_dqrz - qr * dL_dq_norm_helper, 2.0f * qx * dL_dqxx + qy * dL_dqxy + qz * dL_dqxz + qr * dL_dqrx - qx * dL_dq_norm_helper, 2.0f * qy * dL_dqyy + qx * dL_dqxy + qz * dL_dqyz + qr * dL_dqry - qy * dL_dq_norm_helper, 2.0f * qz * dL_dqzz + qx * dL_dqxz + qy * dL_dqyz + qr * dL_dqrz - qz * dL_dq_norm_helper) / q_norm_sq;
-        grad_raw_rotations[primitive_idx] += dL_draw_rotation;
+        grad_raw_rotations[primitive_idx] = dL_draw_rotation;
 
         // TODO: only needed for adaptive density control from the original 3dgs
         if (densification_info != nullptr) {
