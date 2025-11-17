@@ -11,8 +11,16 @@
 #include <thrust/scatter.h>
 #include <thrust/sequence.h>
 #include <thrust/execution_policy.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 namespace lfs::training::mcmc {
+
+    // GLM type aliases for CUDA (matching gsplat)
+    using vec2 = glm::vec<2, float>;
+    using vec3 = glm::vec<3, float>;
+    using vec4 = glm::vec<4, float>;
+    using mat3 = glm::mat<3, 3, float>;
 
     // Equation (9) in "3D Gaussian Splatting as Markov Chain Monte Carlo"
     __global__ void relocation_kernel(
@@ -85,40 +93,29 @@ namespace lfs::training::mcmc {
             N);
     }
 
-    // Helper: Convert raw quaternion to rotation matrix
-    __device__ inline void raw_quat_to_rotmat(const float* raw_quat, float* R) {
+    // Helper: Quaternion to rotation matrix
+    __device__ inline mat3 raw_quat_to_rotmat(const vec4 raw_quat) {
         float w = raw_quat[0], x = raw_quat[1], y = raw_quat[2], z = raw_quat[3];
-
-        // Normalize
-        float inv_norm = fminf(rsqrtf(x * x + y * y + z * z + w * w), 1e+12f);
+        // normalize
+        float inv_norm = fminf(rsqrt(x * x + y * y + z * z + w * w), 1e+12f); // match torch normalize
         x *= inv_norm;
         y *= inv_norm;
         z *= inv_norm;
         w *= inv_norm;
-
         float x2 = x * x, y2 = y * y, z2 = z * z;
         float xy = x * y, xz = x * z, yz = y * z;
         float wx = w * x, wy = w * y, wz = w * z;
-
-        // Column-major order (matching glm)
-        R[0] = 1.f - 2.f * (y2 + z2);
-        R[1] = 2.f * (xy + wz);
-        R[2] = 2.f * (xz - wy);
-
-        R[3] = 2.f * (xy - wz);
-        R[4] = 1.f - 2.f * (x2 + z2);
-        R[5] = 2.f * (yz + wx);
-
-        R[6] = 2.f * (xz + wy);
-        R[7] = 2.f * (yz - wx);
-        R[8] = 1.f - 2.f * (x2 + y2);
-    }
-
-    // Helper: Matrix-vector multiplication (3x3 * 3x1)
-    __device__ inline void matvec3(const float* M, const float* v, float* result) {
-        result[0] = M[0] * v[0] + M[3] * v[1] + M[6] * v[2];
-        result[1] = M[1] * v[0] + M[4] * v[1] + M[7] * v[2];
-        result[2] = M[2] * v[0] + M[5] * v[1] + M[8] * v[2];
+        return mat3(
+            (1.f - 2.f * (y2 + z2)),
+            (2.f * (xy + wz)),
+            (2.f * (xz - wy)), // 1st col
+            (2.f * (xy - wz)),
+            (1.f - 2.f * (x2 + z2)),
+            (2.f * (yz + wx)), // 2nd col
+            (2.f * (xz + wy)),
+            (2.f * (yz - wx)),
+            (1.f - 2.f * (x2 + y2)) // 3rd col
+        );
     }
 
     __global__ void add_noise_kernel(
@@ -135,52 +132,32 @@ namespace lfs::training::mcmc {
             return;
 
         size_t idx_3d = 3 * idx;
-        size_t idx_4d = 4 * idx;
 
         // Compute S^2 (diagonal matrix from exp(2 * raw_scale))
-        float S2[9] = {0};
-        S2[0] = __expf(2.f * raw_scales[idx_3d + 0]);
-        S2[4] = __expf(2.f * raw_scales[idx_3d + 1]);
-        S2[8] = __expf(2.f * raw_scales[idx_3d + 2]);
+        const vec3 raw_scale = glm::make_vec3(raw_scales + idx_3d);
+        mat3 S2 = mat3(__expf(2.f * raw_scale[0]), 0.f, 0.f,
+                       0.f, __expf(2.f * raw_scale[1]), 0.f,
+                       0.f, 0.f, __expf(2.f * raw_scale[2]));
 
         // Get rotation matrix R from quaternion
-        float R[9];
-        raw_quat_to_rotmat(raw_quats + idx_4d, R);
-
-        // Compute R * S^2 (temp storage)
-        float RS2[9];
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                RS2[i * 3 + j] = R[i * 3 + 0] * S2[0 * 3 + j] +
-                                 R[i * 3 + 1] * S2[1 * 3 + j] +
-                                 R[i * 3 + 2] * S2[2 * 3 + j];
-            }
-        }
+        vec4 raw_quat = glm::make_vec4(raw_quats + 4 * idx);
+        mat3 R = raw_quat_to_rotmat(raw_quat);
 
         // Compute covariance = R * S^2 * R^T
-        float covariance[9];
-        for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-                covariance[i * 3 + j] = RS2[i * 3 + 0] * R[j * 3 + 0] +
-                                        RS2[i * 3 + 1] * R[j * 3 + 1] +
-                                        RS2[i * 3 + 2] * R[j * 3 + 2];
-            }
-        }
+        mat3 covariance = R * S2 * glm::transpose(R);
 
         // Transform noise: transformed_noise = covariance * noise
-        float transformed_noise[3];
-        float noise_vec[3] = {noise[idx_3d], noise[idx_3d + 1], noise[idx_3d + 2]};
-        matvec3(covariance, noise_vec, transformed_noise);
+        vec3 transformed_noise = covariance * glm::make_vec3(noise + idx_3d);
 
         // Compute opacity-based scaling factor
-        float opacity = __frcp_rn(1.f + __expf(-raw_opacities[idx]));  // sigmoid
+        float opacity = __frcp_rn(1.f + __expf(-raw_opacities[idx]));
         float op_sigmoid = __frcp_rn(1.f + __expf(100.f * opacity - 0.5f));
         float noise_factor = current_lr * op_sigmoid;
 
         // Add scaled noise to means
-        means[idx_3d + 0] += noise_factor * transformed_noise[0];
-        means[idx_3d + 1] += noise_factor * transformed_noise[1];
-        means[idx_3d + 2] += noise_factor * transformed_noise[2];
+        means[idx_3d] += noise_factor * transformed_noise.x;
+        means[idx_3d + 1] += noise_factor * transformed_noise.y;
+        means[idx_3d + 2] += noise_factor * transformed_noise.z;
     }
 
     void launch_add_noise_kernel(
@@ -561,7 +538,6 @@ namespace lfs::training::mcmc {
         // BUT: We can optimize using warp primitives
 
         const int WARP_SIZE = 32;
-        int warp_id = threadIdx.x / WARP_SIZE;
         int lane_id = threadIdx.x % WARP_SIZE;
 
         // Each warp cooperatively counts for one index

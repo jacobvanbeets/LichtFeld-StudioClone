@@ -99,12 +99,6 @@ target_link_libraries(lfs_training
         lfs_core                # Depends on new core module (SplatData, Tensor)
         lfs_training_kernels    # LibTorch-free SSIM kernels
         fastlfs_backend         # For adam_step_raw CUDA kernel (LibTorch-free)
-        # gs_training_kernels     # Temporarily disabled - requires LibTorch
-        # gs_training             # Temporarily disabled - requires LibTorch
-        # gs_core                 # Temporarily disabled - requires LibTorch
-        # gs_loader               # Temporarily disabled - requires LibTorch
-        # gs_project              # Replaced by lfs_project (LibTorch-free)
-        # ${TORCH_LIBRARIES}      # Temporarily disabled to achieve torch-free build
 )
 
 # Set C++ standard

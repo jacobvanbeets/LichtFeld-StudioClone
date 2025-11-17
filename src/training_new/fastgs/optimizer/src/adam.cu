@@ -8,7 +8,7 @@
 
 // Forward declare the kernels (defined in adam_api.cu)
 namespace fast_lfs::optimizer::kernels::adam {
-    __global__ void adam_step_vectorized_cu(
+    __global__ void adam_step_cu(
         float* param,
         float* exp_avg,
         float* exp_avg_sq,
@@ -35,10 +35,10 @@ void fast_lfs::optimizer::adam_step(
     const float bias_correction1_rcp,
     const float bias_correction2_sqrt_rcp) {
 
-    // Each thread processes 4 elements, so divide by 4
-    const int n_threads = div_round_up(n_elements, 4);
-
-    kernels::adam::adam_step_vectorized_cu<<<div_round_up(n_threads, config::block_size_adam_step), config::block_size_adam_step>>>(
+    // IMPORTANT: Use the SAME kernel as legacy (adam_step_cu), NOT the vectorized version!
+    // The vectorized kernel (adam_step_vectorized_cu) has different floating-point rounding
+    // behavior which causes divergence from legacy implementation.
+    kernels::adam::adam_step_cu<<<div_round_up(n_elements, config::block_size_adam_step), config::block_size_adam_step>>>(
         param,
         exp_avg,
         exp_avg_sq,
@@ -50,5 +50,12 @@ void fast_lfs::optimizer::adam_step(
         eps,
         bias_correction1_rcp,
         bias_correction2_sqrt_rcp);
-    CHECK_CUDA(config::debug, "adam step vectorized")
+
+    // Always check for errors to ensure kernel launched successfully
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        throw std::runtime_error(std::string("adam_step_cu kernel launch failed: ") + cudaGetErrorString(err));
+    }
+
+    CHECK_CUDA(config::debug, "adam step")
 }

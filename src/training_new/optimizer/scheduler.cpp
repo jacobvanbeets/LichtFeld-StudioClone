@@ -60,10 +60,13 @@ namespace lfs::training {
         } else {
             for (auto param_type : params_to_update_) {
                 if (optimizer_.has_param_lr(param_type)) {
-                    float current_param_lr = optimizer_.get_param_lr(param_type);
-                    float new_param_lr = current_param_lr * static_cast<float>(decay_factor);
+                    // Use double precision to match legacy behavior
+                    double current_param_lr = optimizer_.get_param_lr(param_type);
+                    double new_param_lr = current_param_lr * decay_factor;
                     optimizer_.set_param_lr(param_type, new_param_lr);
-                } else {
+
+                    LOG_DEBUG("ExponentialLR::step() - {} LR: {:.15e} → {:.15e}",
+                              param_names.at(param_type), current_param_lr, new_param_lr);
                 }
             }
 
@@ -130,9 +133,10 @@ namespace lfs::training {
 
             for (auto param_type : params_to_update_) {
                 if (optimizer_.has_param_lr(param_type)) {
-                    float current_param_lr = optimizer_.get_param_lr(param_type);
-                    float new_param_lr = current_param_lr * static_cast<float>(lr_ratio);
-                    LOG_DEBUG("  {} LR: {:.6e} → {:.6e} (ratio: {:.6f})",
+                    // Use double precision to avoid LR drift!
+                    double current_param_lr = optimizer_.get_param_lr(param_type);
+                    double new_param_lr = current_param_lr * lr_ratio;
+                    LOG_DEBUG("  {} LR: {:.15e} → {:.15e} (ratio: {:.6f})",
                               param_names.at(param_type), current_param_lr, new_param_lr, lr_ratio);
                     optimizer_.set_param_lr(param_type, new_param_lr);
                 } else {

@@ -145,9 +145,14 @@ namespace lfs::training {
         auto& state = states_[name];
         state.step_count++;
 
-        // Compute bias correction factors
-        float bias_correction1_rcp = 1.0f / (1.0f - std::pow(config_.beta1, state.step_count));
-        float bias_correction2_sqrt_rcp = 1.0f / std::sqrt(1.0f - std::pow(config_.beta2, state.step_count));
+        // Higher degree SH coefficients are not used in the first 1000 iterations
+        if (type == ParamType::ShN && iteration <= 1000) {
+            return;
+        }
+
+        // Compute bias correction factors (use double precision to avoid accumulation errors)
+        double bias_correction1_rcp = 1.0 / (1.0 - std::pow(config_.beta1, state.step_count));
+        double bias_correction2_sqrt_rcp = 1.0 / std::sqrt(1.0 - std::pow(config_.beta2, state.step_count));
 
         // Get per-parameter learning rate
         float param_lr = get_param_lr(type);
@@ -313,6 +318,7 @@ namespace lfs::training {
 
         // Copy data (manual memory copy as workaround)
         size_t bytes_to_copy = state.size * param.numel() / param.shape()[0] * sizeof(float);
+
         cudaMemcpy(exp_avg_trimmed.ptr<float>(), state.exp_avg.ptr<float>(), bytes_to_copy, cudaMemcpyDeviceToDevice);
         cudaMemcpy(exp_avg_sq_trimmed.ptr<float>(), state.exp_avg_sq.ptr<float>(), bytes_to_copy, cudaMemcpyDeviceToDevice);
 
@@ -327,8 +333,14 @@ namespace lfs::training {
         state.capacity = new_size;
         state.size = new_size;
 
-        LOG_DEBUG("Extended optimizer state for {} by {} parameters (size: {} -> {})",
-                  name, n_new, state.size - n_new, state.size);
+        LOG_DEBUG("Extended optimizer state for {} by {} parameters (size: {} -> {}, step_count={})",
+                  name, n_new, state.size - n_new, state.size, state.step_count);
+
+        // Verify shapes match after extend
+        if (state.exp_avg.shape()[0] != new_size || state.exp_avg_sq.shape()[0] != new_size) {
+            LOG_ERROR("SHAPE MISMATCH after extend_state for {}: exp_avg.shape={}, exp_avg_sq.shape={}, expected={}",
+                     name, state.exp_avg.shape()[0], state.exp_avg_sq.shape()[0], new_size);
+        }
     }
 
     size_t AdamOptimizer::compute_new_capacity(size_t current_capacity, size_t required_size) const {
@@ -437,18 +449,18 @@ namespace lfs::training {
                                    std::to_string(param.ndim()) + ", grad.ndim()=" + std::to_string(grad_updated.ndim()));
         }
 
-        // Extend gradient with zeros
-        std::vector<size_t> grad_dims(param.ndim());
-        for (size_t i = 0; i < param.ndim(); i++) {
-            grad_dims[i] = (i == 0) ? n_new : param.shape()[i];
-        }
-        auto zeros_grad = lfs::core::Tensor::zeros(lfs::core::TensorShape(grad_dims), param.device());
+        // Zero ALL gradients to match LEGACY behavior
+        // LEGACY creates new parameter tensors via torch::cat, which don't have .grad() defined,
+        // then initializes .grad() = zeros for ALL parameters (see mcmc.cpp:348-365).
+        // This means when add_new_gs is called, the optimizer step() uses ZERO gradients for ALL Gaussians.
+        // We must replicate this exact behavior for deterministic equivalence.
+        LOG_DEBUG("  add_new_params: Zeroing ALL gradients (matching LEGACY) for {}", param_name(type));
+        LOG_DEBUG("    grad before: shape={}, param after: shape={}",
+                  grad_updated.shape()[0], param.shape()[0]);
 
-        LOG_DEBUG("  add_new_params gradient concatenation:");
-        LOG_DEBUG("    existing grad: shape[0]={}, ndim={}", grad_updated.shape()[0], grad_updated.ndim());
-        LOG_DEBUG("    zeros_grad: shape[0]={}, ndim={}", zeros_grad.shape()[0], zeros_grad.ndim());
+        grad_updated = lfs::core::Tensor::zeros(param.shape(), param.device());
 
-        grad_updated = lfs::core::Tensor::cat(std::vector<lfs::core::Tensor>{grad_updated, zeros_grad}, 0);
+        LOG_DEBUG("    grad after: shape={} (all zeros)", grad_updated.shape()[0]);
 
         if (grad_updated.numel() == 0) {
             LOG_ERROR("  Gradient concatenation failed! Resulting tensor is empty");
@@ -485,15 +497,10 @@ namespace lfs::training {
         // Use fused append_gather() operation - NO INTERMEDIATE ALLOCATION!
         param.append_gather(indices);
 
-        // Extend gradient with zeros using append_zeros() - NO INTERMEDIATE ALLOCATION!
-        LOG_DEBUG("  add_new_params_gather gradient extension:");
-        LOG_DEBUG("    existing grad: shape[0]={}, capacity={}, ndim={}",
-                  grad.shape()[0], grad.capacity(), grad.ndim());
-
-        grad.append_zeros(n_new);
-
-        LOG_DEBUG("    result grad: shape[0]={}, capacity={}, ndim={}",
-                  grad.shape()[0], grad.capacity(), grad.ndim());
+        // Zero ALL gradients to match LEGACY behavior (same as add_new_params)
+        LOG_DEBUG("  add_new_params_gather: Zeroing ALL gradients (matching LEGACY) for {}", param_name(type));
+        grad = lfs::core::Tensor::zeros(param.shape(), param.device());
+        LOG_DEBUG("    grad after: shape={} (all zeros)", grad.shape()[0]);
 
         // Extend optimizer state (this can be optimized with capacity tracking)
         extend_state_for_new_params(type, n_new);

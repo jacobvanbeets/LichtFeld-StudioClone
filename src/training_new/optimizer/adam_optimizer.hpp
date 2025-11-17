@@ -98,12 +98,15 @@ namespace lfs::training {
 
     struct AdamConfig {
         float lr = 1e-3f;  // Default learning rate (used if per-param LRs not set)
-        float beta1 = 0.9f;
-        float beta2 = 0.999f;
-        float eps = 1e-8f;
+        // beta1, beta2, and eps must be double to match legacy precision
+        // Using float causes numerical divergence (0.999f != 0.999 in double)
+        double beta1 = 0.9;
+        double beta2 = 0.999;
+        double eps = 1e-15;  // INTENTIONALLY TUNED for 3DGS! (PyTorch default is 1e-8, but 1e-15 gives better results!)
 
         // Per-parameter learning rates (optional - if not set, uses lr)
-        std::unordered_map<std::string, float> param_lrs;
+        // IMPORTANT: Must be double to match legacy precision! Float causes LR drift over 2000 iterations
+        std::unordered_map<std::string, double> param_lrs;
 
         // Memory optimization settings (for optimizer state, not parameters)
         float growth_factor = 1.5f;      // Multiply capacity by this when growing (like std::vector)
@@ -147,18 +150,20 @@ namespace lfs::training {
         float get_lr() const { return config_.lr; }
 
         // Set per-parameter learning rate
-        void set_param_lr(ParamType type, float lr) {
+        // Takes double (not float) to preserve precision during LR decay!
+        void set_param_lr(ParamType type, double lr) {
             config_.param_lrs[param_name(type)] = lr;
         }
 
         // Get per-parameter learning rate (falls back to global lr if not set)
-        float get_param_lr(ParamType type) const {
+        // Returns double to preserve precision during LR decay over 2000 iterations
+        double get_param_lr(ParamType type) const {
             auto name = param_name(type);
             auto it = config_.param_lrs.find(name);
             if (it != config_.param_lrs.end()) {
                 return it->second;
             }
-            return config_.lr;
+            return static_cast<double>(config_.lr);
         }
 
         // Check if per-parameter learning rate is explicitly set

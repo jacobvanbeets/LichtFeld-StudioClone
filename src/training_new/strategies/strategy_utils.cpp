@@ -22,9 +22,10 @@ namespace lfs::training {
         // Create Adam config with per-parameter learning rates
         AdamConfig config;
         config.lr = params.means_lr * splat_data.get_scene_scale();  // Default LR (for means)
-        config.beta1 = 0.9f;
-        config.beta2 = 0.999f;
-        config.eps = 1e-15f;
+        // Use double literals (not float!) to match legacy precision
+        config.beta1 = 0.9;
+        config.beta2 = 0.999;
+        config.eps = 1e-15;
 
         // Set per-parameter learning rates (matching legacy MCMC strategy)
         config.param_lrs["means"] = params.means_lr * splat_data.get_scene_scale();
