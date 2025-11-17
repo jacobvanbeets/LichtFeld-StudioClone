@@ -1,4 +1,7 @@
-<div align="center"><img src="src/visualizer/gui/assets/logo/lichtfeld-logo-white.svg" alt="LichtFeld Studio" height="60"></div>
+<div align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="src/visualizer/gui/assets/logo/lichtfeld-logo-white.svg">
+  <img src="src/visualizer/gui/assets/logo/lichtfeld-logo.svg" alt="LichtFeld Studio" height="60">
+</picture></div>
 
 <div align="center">
 **A high-performance C++ and CUDA implementation of 3D Gaussian Splatting**
@@ -20,6 +23,18 @@
 [**Acknowledgments**](#acknowledgments) •
 [**Citation**](#citation) •
 [**License**](#license)
+
+</div>
+
+---
+
+## Sponsors
+
+<div align="center">
+
+<a href="https://www.core11.eu/">
+  <img src="docs/media/core11_multi.svg" alt="Core 11" height="60">
+</a>
 
 </div>
 
