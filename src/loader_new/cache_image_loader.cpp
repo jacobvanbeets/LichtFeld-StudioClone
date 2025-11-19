@@ -528,7 +528,8 @@ namespace lfs::loader {
 
             lfs::core::free_image(img_data);
 
-            std::size_t img_size = static_cast<std::size_t>(width) * height * channels;
+            // images are cached as float
+            std::size_t img_size = static_cast<std::size_t>(width) * height * channels * sizeof(float);
             std::size_t required_bytes = img_size * num_expected_images_;
             if (use_cpu_memory_ && has_sufficient_memory(required_bytes)) {
                 LOG_INFO("all images can be cached in RAM. Cache Loader will be in CPU memory mode.");

@@ -930,7 +930,12 @@ namespace lfs::training {
         cache_loader.reset_cache();
         // in case we call getInstance multiple times and cache parameters/dataset were changed by user
         cache_loader.update_cache_params(params_.dataset.loading_params.use_cpu_memory,
-                                         params_.dataset.loading_params.use_fs_cache, train_dataset_size_);
+                                         params_.dataset.loading_params.use_fs_cache,
+                                         train_dataset_size_,
+                                         params_.dataset.loading_params.min_cpu_free_GB,
+                                         params_.dataset.loading_params.min_cpu_free_memory_ratio,
+                                         params_.dataset.loading_params.print_cache_status,
+                                         params_.dataset.loading_params.print_status_freq_num);
 
         try {
             int iter = 1;

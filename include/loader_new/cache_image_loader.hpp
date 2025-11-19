@@ -74,10 +74,16 @@ namespace lfs::loader {
         void clean_cache_folders();
         void clear_cpu_cache();
 
-        void update_cache_params(bool use_cpu_memory, bool use_fs_cache, int num_expected_images) {
+        void update_cache_params(bool use_cpu_memory, bool use_fs_cache, int num_expected_images,
+            float min_cpu_free_GB, float min_cpu_free_memory_ratio, bool print_cache_status,
+            int print_status_freq_num) {
             use_cpu_memory_ = use_cpu_memory;
             use_fs_cache_ = use_fs_cache;
             num_expected_images_=num_expected_images;
+            min_cpu_free_GB_ = min_cpu_free_GB;
+            min_cpu_free_memory_ratio_ = min_cpu_free_memory_ratio;
+            print_cache_status_ = print_cache_status;
+            print_status_freq_num_ = print_status_freq_num;
         }
 
         enum class CacheMode {
@@ -110,7 +116,7 @@ namespace lfs::loader {
         // CPU cache params
         bool use_cpu_memory_;
         float min_cpu_free_memory_ratio_ = 0.1f; // make sure at least 10% RAM is free
-        std::size_t min_cpu_free_GB_ = 1;        // min GB we want to be free
+        float min_cpu_free_GB_ = 1.0f;        // min GB we want to be free
 
         // CPU cache storage
         std::unordered_map<std::string, CachedImageData> cpu_cache_;
@@ -139,9 +145,9 @@ namespace lfs::loader {
 
         // log/debug members
         mutable std::mutex counter_mutex_;
-        const bool print_cache_status_ = true;
+        bool print_cache_status_ = true;
         mutable int load_counter_ = 0;
-        const int print_status_freq_num_ = 500; // every print_status_freq_num calls for load print cache status
+        int print_status_freq_num_ = 500; // every print_status_freq_num calls for load print cache status
 
         const std::string LFS_CACHE_PREFIX = "lfs_cache_";
 

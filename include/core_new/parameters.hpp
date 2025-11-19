@@ -95,7 +95,7 @@ namespace lfs::core {
         struct LoadingParams {
             bool use_cpu_memory = true;
             float min_cpu_free_memory_ratio = 0.1f; // make sure at least 10% RAM is free
-            std::size_t min_cpu_free_GB = 1;        // min GB we want to be free
+            float min_cpu_free_GB = 1.0f;        // min GB we want to be free
             bool use_fs_cache = true;
             bool print_cache_status = true;
             int print_status_freq_num = 500; // every print_status_freq_num calls for load print cache status
