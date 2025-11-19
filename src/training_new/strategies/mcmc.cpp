@@ -459,14 +459,19 @@ namespace lfs::training {
         // Get current learning rate from optimizer (after scheduler has updated it)
         const float current_lr = _optimizer->get_lr() * _noise_lr;
 
-        // Generate noise (unfortunately creates allocation since Tensor API lacks in-place random generation)
-        // TODO: Add Tensor::randn_() in-place method to avoid this allocation
+        // Generate noise in pre-allocated buffer
         {
             LOG_TIMER("inject_noise_generate");
-            _noise_buffer = Tensor::randn(_splat_data.means().shape(), Device::CUDA, DataType::Float32);
+            if (_noise_buffer.is_valid() && _noise_buffer.capacity() > 0) {
+                // Fill pre-allocated buffer with random values (kernel will use first size() elements)
+                _noise_buffer.normal_(0.0f, 1.0f);
+            } else {
+                // Fallback for non-capacity mode
+                _noise_buffer = Tensor::randn(_splat_data.means().shape(), Device::CUDA, DataType::Float32);
+            }
         }
 
-        // Call CUDA add_noise kernel
+        // Call CUDA add_noise kernel (uses first size() elements of buffer)
         {
             LOG_TIMER("inject_noise_cuda_kernel");
             mcmc::launch_add_noise_kernel(
@@ -623,6 +628,10 @@ namespace lfs::training {
 
                     LOG_DEBUG("  Gradients allocated with direct cudaMalloc");
                 }
+
+                // Pre-allocate noise buffer with full capacity [max_cap, 3]
+                _noise_buffer = Tensor::zeros_direct(TensorShape({capacity, 3}), capacity);
+                LOG_DEBUG("  Noise buffer allocated with direct cudaMalloc: [{}, 3]", capacity);
 
                 LOG_INFO("✓ Tensor capacity pre-allocation complete: {}/{} Gaussians ({:.1f}% utilization)",
                          current_size, capacity, 100.0f * current_size / capacity);
