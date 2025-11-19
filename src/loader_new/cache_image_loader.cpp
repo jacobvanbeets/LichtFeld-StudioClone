@@ -43,6 +43,22 @@ namespace lfs::loader {
 
     std::size_t get_available_physical_memory() {
 #ifdef __linux__
+        // Use MemAvailable from /proc/meminfo which includes reclaimable cache/buffers
+        std::ifstream meminfo("/proc/meminfo");
+        if (meminfo.is_open()) {
+            std::string line;
+            while (std::getline(meminfo, line)) {
+                if (line.find("MemAvailable:") == 0) {
+                    std::istringstream iss(line);
+                    std::string label;
+                    size_t value_kb;
+                    iss >> label >> value_kb;
+                    return value_kb * 1024;  // Convert KB to bytes
+                }
+            }
+        }
+
+        // Fallback to sysinfo if /proc/meminfo parsing failed
         struct sysinfo info;
         if (sysinfo(&info) == 0) {
             return info.freeram * info.mem_unit;
