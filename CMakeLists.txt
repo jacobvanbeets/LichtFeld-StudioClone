@@ -519,19 +519,26 @@ target_link_libraries(${PROJECT_NAME}
 
 # Copy nvImageCodec shared libraries next to executable for easy deployment
 if(TARGET nvimgcodec)
-    # Add post-build command to copy libraries and create symlinks
+    # Add post-build command to copy libraries and create symlinks (Unix only)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:nvimgcodec>"
             "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            "$<TARGET_FILE_NAME:nvimgcodec>"
-            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/libnvimgcodec.so.0"
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            "libnvimgcodec.so.0"
-            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/libnvimgcodec.so"
-        COMMENT "Copying nvImageCodec library and creating symlinks"
+        COMMENT "Copying nvImageCodec library"
     )
+
+    # Create symlinks only on Unix-like systems (not Windows)
+    if(UNIX)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                "$<TARGET_FILE_NAME:nvimgcodec>"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/libnvimgcodec.so.0"
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                "libnvimgcodec.so.0"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/libnvimgcodec.so"
+            COMMENT "Creating nvImageCodec symlinks"
+        )
+    endif()
 
     # Create extensions directory and copy extension libraries
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
@@ -546,11 +553,17 @@ if(TARGET nvimgcodec)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "$<TARGET_FILE:nvjpeg_ext>"
                 "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/"
-            COMMAND ${CMAKE_COMMAND} -E create_symlink
-                "$<TARGET_FILE_NAME:nvjpeg_ext>"
-                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/libnvjpeg_ext.so"
             COMMENT "Copying nvjpeg extension to extensions/"
         )
+        # Create symlink only on Unix-like systems
+        if(UNIX)
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E create_symlink
+                    "$<TARGET_FILE_NAME:nvjpeg_ext>"
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/libnvjpeg_ext.so"
+                COMMENT "Creating nvjpeg extension symlink"
+            )
+        endif()
     endif()
 
     if(TARGET nvjpeg2k_ext)
@@ -558,11 +571,17 @@ if(TARGET nvimgcodec)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "$<TARGET_FILE:nvjpeg2k_ext>"
                 "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/"
-            COMMAND ${CMAKE_COMMAND} -E create_symlink
-                "$<TARGET_FILE_NAME:nvjpeg2k_ext>"
-                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/libnvjpeg2k_ext.so"
             COMMENT "Copying nvjpeg2k extension to extensions/"
         )
+        # Create symlink only on Unix-like systems
+        if(UNIX)
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E create_symlink
+                    "$<TARGET_FILE_NAME:nvjpeg2k_ext>"
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/libnvjpeg2k_ext.so"
+                COMMENT "Creating nvjpeg2k extension symlink"
+            )
+        endif()
     endif()
 
     message(STATUS "Post-build: nvImageCodec libraries will be copied to executable directory")
