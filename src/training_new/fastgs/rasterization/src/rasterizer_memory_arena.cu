@@ -842,7 +842,7 @@ char* RasterizerMemoryArena::allocate_internal(Arena& arena, size_t size, uint64
             // Can't grow anymore - we're at max capacity
             std::cerr << "\n[RasterizerMemoryArena] ⚠️  CAPACITY LIMIT REACHED ⚠️\n"
                       << "Arena at maximum size: " << (config_.max_physical >> 20) << " MB\n"
-                      << "Cannot allocate additional: " << (aligned_size >> 20) << " MB\n"
+                      << "Cannot allocate additional: " << (aligned_size >> 20) << " MB\n";
             return nullptr;
         }
 
