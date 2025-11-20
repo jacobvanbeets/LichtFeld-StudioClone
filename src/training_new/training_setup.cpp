@@ -49,9 +49,13 @@ namespace lfs::training {
                 std::expected<lfs::core::SplatData, std::string> splat_result;
                 int max_cap = params.optimization.max_cap;
                 if (params.init_ply.has_value()) {
-                    // I don't like this
-                    // PLYLoader is not exposed publicly so I have to use the general Loader class
-                    // which might load any format
+                    // Using PLY for initialization - free the COLMAP point cloud immediately
+                    if (data.point_cloud && data.point_cloud->size() > 0) {
+                        LOG_INFO("Freeing unused COLMAP point cloud ({} points) since --init-ply is used",
+                                 data.point_cloud->size());
+                        data.point_cloud.reset();  // Free the shared_ptr and release memory
+                    }
+
                     auto ply_loader = lfs::loader::Loader::create();
                     auto ply_load_result = ply_loader->load(params.init_ply.value());
 
@@ -77,36 +81,45 @@ namespace lfs::training {
                         if (max_cap > 0) {
                             // Move point cloud to CPU to avoid pool allocations (init will be on CPU)
                             LOG_INFO("Moving point cloud to CPU to avoid pool allocations ({} points)", data.point_cloud->size());
+                            auto& means_tensor = data.point_cloud->means;
+                            auto& colors_tensor = data.point_cloud->colors;
+                            void* means_ptr = means_tensor.template ptr<float>();
+                            void* colors_ptr = colors_tensor.template ptr<uint8_t>();
                             LOG_DEBUG("  Original point cloud: means.device={}, means.is_valid={}, means.shape={}, means.ptr={}",
-                                      data.point_cloud->means.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
-                                      data.point_cloud->means.is_valid(),
-                                      data.point_cloud->means.shape().str(),
-                                      static_cast<void*>(data.point_cloud->means.ptr<float>()));
+                                      means_tensor.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
+                                      means_tensor.is_valid(),
+                                      means_tensor.shape().str(),
+                                      means_ptr);
                             LOG_DEBUG("  Original point cloud: colors.device={}, colors.is_valid={}, colors.shape={}, colors.ptr={}",
-                                      data.point_cloud->colors.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
-                                      data.point_cloud->colors.is_valid(),
-                                      data.point_cloud->colors.shape().str(),
-                                      static_cast<void*>(data.point_cloud->colors.ptr<uint8_t>()));
+                                      colors_tensor.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
+                                      colors_tensor.is_valid(),
+                                      colors_tensor.shape().str(),
+                                      colors_ptr);
 
                             point_cloud_to_use = *data.point_cloud;
+                            auto& pc_means = point_cloud_to_use.means;
+                            void* pc_means_ptr = pc_means.template ptr<float>();
                             LOG_DEBUG("  After copy: point_cloud_to_use.means.device={}, is_valid={}, ptr={}",
-                                      point_cloud_to_use.means.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
-                                      point_cloud_to_use.means.is_valid(),
-                                      static_cast<void*>(point_cloud_to_use.means.ptr<float>()));
+                                      pc_means.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
+                                      pc_means.is_valid(),
+                                      pc_means_ptr);
 
                             point_cloud_to_use.means = point_cloud_to_use.means.cpu();
+                            const void* pc_means_cpu_ptr = pc_means.template ptr<float>();
                             LOG_DEBUG("  After .cpu() on means: device={}, is_valid={}, ptr={}, shape={}",
-                                      point_cloud_to_use.means.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
-                                      point_cloud_to_use.means.is_valid(),
-                                      static_cast<const void*>(point_cloud_to_use.means.ptr<float>()),
-                                      point_cloud_to_use.means.shape().str());
+                                      pc_means.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
+                                      pc_means.is_valid(),
+                                      pc_means_cpu_ptr,
+                                      pc_means.shape().str());
 
                             point_cloud_to_use.colors = point_cloud_to_use.colors.cpu();
+                            auto& pc_colors = point_cloud_to_use.colors;
+                            const void* pc_colors_cpu_ptr = pc_colors.template ptr<uint8_t>();
                             LOG_DEBUG("  After .cpu() on colors: device={}, is_valid={}, ptr={}, shape={}",
-                                      point_cloud_to_use.colors.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
-                                      point_cloud_to_use.colors.is_valid(),
-                                      static_cast<const void*>(point_cloud_to_use.colors.ptr<uint8_t>()),
-                                      point_cloud_to_use.colors.shape().str());
+                                      pc_colors.device() == lfs::core::Device::CUDA ? "CUDA" : "CPU",
+                                      pc_colors.is_valid(),
+                                      pc_colors_cpu_ptr,
+                                      pc_colors.shape().str());
 
                             // Free the original CUDA point cloud to eliminate pool allocations
                             data.point_cloud->means = lfs::core::Tensor();  // Clear CUDA tensor

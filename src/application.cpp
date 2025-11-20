@@ -5,6 +5,7 @@
 #include "core_new/application.hpp"
 #include "core_new/argument_parser.hpp"
 #include "core_new/logger.hpp"
+#include "core_new/tensor/internal/memory_pool.hpp"
 #include "project_new/project.hpp"
 #include "training_new/training_setup.hpp"
 #include "visualizer_new/visualizer.hpp"
@@ -45,6 +46,17 @@ namespace lfs::core {
             LOG_ERROR("Failed to initialize trainer: {}", init_result.error());
             return -1;
         }
+
+        // Free cached CUDA memory before starting training loop
+        // This releases memory held by cudaMallocAsync pools back to the OS
+        LOG_INFO("Releasing cached CUDA memory before training...");
+        CudaMemoryPool::instance().trim_cached_memory();
+
+        size_t free_mem, total_mem;
+        cudaMemGetInfo(&free_mem, &total_mem);
+        LOG_INFO("CUDA memory after cleanup: {:.2f} GB free / {:.2f} GB total",
+                 free_mem / (1024.0 * 1024.0 * 1024.0),
+                 total_mem / (1024.0 * 1024.0 * 1024.0));
 
         auto train_result = setup_result->trainer->train();
         if (!train_result) {
