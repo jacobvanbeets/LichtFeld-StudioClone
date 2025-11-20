@@ -427,6 +427,9 @@ namespace lfs::loader {
                 continue;
             if (!line.empty() && line.back() == '\r')
                 line.pop_back();
+            // Skip empty lines
+            if (line.empty())
+                continue;
             lines.push_back(line);
         }
 

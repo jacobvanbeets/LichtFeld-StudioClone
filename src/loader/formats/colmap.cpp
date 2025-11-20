@@ -472,6 +472,10 @@ namespace gs::loader {
             if (!line.empty() && line.back() == '\r') {
                 line.pop_back(); // Remove trailing carriage return
             }
+            // Skip empty lines
+            if (line.empty()) {
+                continue;
+            }
             lines.push_back(line);
         }
         file.close();
