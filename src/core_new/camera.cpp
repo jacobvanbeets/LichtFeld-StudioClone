@@ -233,7 +233,11 @@ namespace lfs::core {
     Tensor Camera::load_and_get_image(int resize_factor, int max_width) {
         auto& loader = lfs::loader::CacheLoader::getInstance();
         // Load image synchronously - returns preprocessed tensor [C,H,W] float32
-        lfs::loader::LoadParams params{.resize_factor = resize_factor, .max_width = max_width};
+        lfs::loader::LoadParams params{
+            .resize_factor = resize_factor,
+            .max_width = max_width,
+            .cuda_stream = _stream  // Use camera's CUDA stream
+        };
 
         auto image = loader.load_cached_image(_image_path, params);
 
@@ -247,13 +251,13 @@ namespace lfs::core {
         LOG_DEBUG("load_and_get_image(): Tensor shape [C,H,W]=[{},{},{}], setting dimensions: {}x{} → {}x{}",
                   shape[0], shape[1], shape[2], old_width, old_height, _image_width, _image_height);
 
-        // Transfer to CUDA using async stream transfer
-        image = image.to(Device::CUDA, _stream);
-
-        // Sync stream to ensure transfer completes before returning
-        // NOTE: This is necessary because the training loop needs the data immediately
-        if (_stream) {
-            cudaStreamSynchronize(_stream);
+        // Transfer to CUDA if not already there (GPU decode returns tensors already on CUDA!)
+        if (image.device() != Device::CUDA) {
+            image = image.to(Device::CUDA, _stream);
+            // Sync stream to ensure transfer completes
+            if (_stream) {
+                cudaStreamSynchronize(_stream);
+            }
         }
 
         return image;

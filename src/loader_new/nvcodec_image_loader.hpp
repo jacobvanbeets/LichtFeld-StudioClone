@@ -48,7 +48,8 @@ namespace lfs::loader {
         lfs::core::Tensor load_image_gpu(
             const std::filesystem::path& path,
             int resize_factor = 1,
-            int max_width = 0);
+            int max_width = 0,
+            void* cuda_stream = nullptr);
 
         /**
          * @brief Decode JPEG from memory to GPU
@@ -61,7 +62,8 @@ namespace lfs::loader {
         lfs::core::Tensor load_image_from_memory_gpu(
             const std::vector<uint8_t>& jpeg_data,
             int resize_factor = 1,
-            int max_width = 0);
+            int max_width = 0,
+            void* cuda_stream = nullptr);
 
         /**
          * @brief Load and decode multiple images in batch (Phase 2 - TODO)

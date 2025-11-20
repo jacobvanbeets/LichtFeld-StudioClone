@@ -13,6 +13,11 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/nvImageCodec/CMakeLists.txt")
     set(BUILD_NVJPEG_EXT ON CACHE BOOL "Build nvJPEG extension" FORCE)
     set(BUILD_NVJPEG2K_EXT ON CACHE BOOL "Build nvJPEG2000 extension" FORCE)
 
+    # Disable dynamic loading - statically link to CUDA libraries instead
+    # This makes deployment easier (no need for LD_LIBRARY_PATH or dlopen search paths)
+    set(WITH_DYNAMIC_NVJPEG OFF CACHE BOOL "Statically link nvJPEG instead of runtime dlopen" FORCE)
+    set(WITH_DYNAMIC_NVJPEG2K OFF CACHE BOOL "Statically link nvJPEG2K instead of runtime dlopen" FORCE)
+
     # Create missing cmake template directory to avoid config error
     file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/cmake/template")
     # Create a minimal Config.cmake.in to satisfy nvImageCodec build

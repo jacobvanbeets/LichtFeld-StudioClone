@@ -3,11 +3,13 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "loader_new/cache_image_loader.hpp"
+#include "loader_new/nvcodec_image_loader.hpp"
 #include "core_new/image_io.hpp"
 #include "core_new/logger.hpp"
 #include "core_new/tensor.hpp"
 #include "project_new/project.hpp"
 
+#include <algorithm>
 #include <fstream>
 
 // Platform-specific includes
@@ -228,8 +230,14 @@ namespace lfs::loader {
     }
 
     void CacheLoader::clear_cpu_cache() {
-        std::lock_guard<std::mutex> lock(cpu_cache_mutex_);
-        cpu_cache_.clear();
+        {
+            std::lock_guard<std::mutex> lock(cpu_cache_mutex_);
+            cpu_cache_.clear();
+        }
+        {
+            std::lock_guard<std::mutex> lock(jpeg_blob_mutex_);
+            jpeg_blob_cache_.clear();
+        }
     }
 
     bool CacheLoader::has_sufficient_memory(std::size_t required_bytes) const {
@@ -564,6 +572,13 @@ namespace lfs::loader {
     lfs::core::Tensor CacheLoader::load_cached_image(const std::filesystem::path& path, const LoadParams& params) {
         using namespace lfs::core;
 
+        // Check if this is a JPEG file and nvImageCodec is available
+        if (is_jpeg_format(path) && NvCodecImageLoader::is_available()) {
+            LOG_DEBUG("Routing JPEG to hardware decoder: {}", path.filename().string());
+            return load_jpeg_with_hardware_decode(path, params);
+        }
+
+        // Non-JPEG formats use existing cache strategy
         determine_cache_mode(path, params);
 
         if (use_cpu_memory_ && cache_mode_ == CacheMode::CPU_memory) {
@@ -600,12 +615,264 @@ namespace lfs::loader {
             double total_memory_gb = (double)get_total_physical_memory() / giga_to_bytes;
             double memory_ratio = get_memory_usage_ratio();
             double cache_ratio = (double)get_cpu_cache_size() / (double)get_total_physical_memory();
+            double jpeg_cache_ratio = (double)get_jpeg_blob_cache_size() / (double)get_total_physical_memory();
 
             LOG_TRACE("CacheInfo: Num images in cache {}", cpu_cache_.size());
+            LOG_TRACE("CacheInfo: Num JPEG blobs in cache {}", jpeg_blob_cache_.size());
             LOG_TRACE("CacheInfo: total memory {:.2f}GB", total_memory_gb);
             LOG_TRACE("CacheInfo: used memory {:.2f}%", 100 * memory_ratio);
             LOG_TRACE("CacheInfo: cache memory occupancy {:.2f}%", 100 * cache_ratio);
+            LOG_TRACE("CacheInfo: JPEG blob cache occupancy {:.2f}%", 100 * jpeg_cache_ratio);
             LOG_TRACE("*****"); // seperator
+        }
+    }
+
+    bool CacheLoader::is_jpeg_format(const std::filesystem::path& path) const {
+        std::string ext = path.extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        return (ext == ".jpg" || ext == ".jpeg" || ext == ".jp2");
+    }
+
+    std::size_t CacheLoader::get_jpeg_blob_cache_size() const {
+        std::size_t total = 0;
+        for (const auto& [key, data] : jpeg_blob_cache_) {
+            total += data.size_bytes;
+        }
+        return total;
+    }
+
+    void CacheLoader::evict_jpeg_blobs_if_needed(std::size_t required_bytes) {
+        // LRU eviction for JPEG blobs
+        while (!jpeg_blob_cache_.empty() && !has_sufficient_memory(required_bytes)) {
+            auto oldest = std::min_element(jpeg_blob_cache_.begin(), jpeg_blob_cache_.end(),
+                                           [](const auto& a, const auto& b) {
+                                               return a.second.last_access < b.second.last_access;
+                                           });
+
+            if (oldest != jpeg_blob_cache_.end()) {
+                LOG_DEBUG("Evicting JPEG blob {} ({} bytes) from cache",
+                          oldest->first, oldest->second.size_bytes);
+                jpeg_blob_cache_.erase(oldest);
+            } else {
+                break;
+            }
+        }
+    }
+
+    // Singleton for NvCodecImageLoader (thread-safe, lazy initialization)
+    static NvCodecImageLoader& get_nvcodec_loader() {
+        static std::once_flag init_flag;
+        static std::unique_ptr<NvCodecImageLoader> instance;
+
+        std::call_once(init_flag, [] {
+            NvCodecImageLoader::Options opts;
+            opts.device_id = 0;
+            opts.decoder_pool_size = 16;  // One decoder per worker thread
+            opts.enable_fallback = true;
+            instance = std::make_unique<NvCodecImageLoader>(opts);
+        });
+
+        return *instance;
+    }
+
+    lfs::core::Tensor CacheLoader::load_jpeg_with_hardware_decode(
+        const std::filesystem::path& path,
+        const LoadParams& params) {
+
+        using namespace lfs::core;
+
+        std::string cache_key = generate_cache_key(path, params);
+
+        // Stage 1: Check if JPEG blob is already cached
+        std::vector<uint8_t> jpeg_bytes;
+        bool found_in_cache = false;
+
+        {
+            std::lock_guard<std::mutex> lock(jpeg_blob_mutex_);
+            auto it = jpeg_blob_cache_.find(cache_key);
+            if (it != jpeg_blob_cache_.end()) {
+                // Update last access time
+                it->second.last_access = std::chrono::steady_clock::now();
+                jpeg_bytes = it->second.compressed_data;
+                found_in_cache = true;
+                LOG_DEBUG("JPEG blob cache HIT: {}", cache_key);
+            }
+        }
+
+        // Stage 2: Load from disk if not in cache
+        if (!found_in_cache) {
+            // Check if another thread is loading this JPEG
+            bool is_being_loaded = false;
+            {
+                std::lock_guard<std::mutex> lock(jpeg_blob_mutex_);
+                if (jpeg_being_loaded_.find(cache_key) != jpeg_being_loaded_.end()) {
+                    is_being_loaded = true;
+                }
+                if (!is_being_loaded) {
+                    jpeg_being_loaded_.insert(cache_key);
+                }
+            }
+
+            // If another thread is loading, fall back to direct load
+            if (is_being_loaded) {
+                LOG_DEBUG("JPEG {} is being loaded by another thread, loading directly", cache_key);
+
+                // Read file
+                std::ifstream file(path, std::ios::binary | std::ios::ate);
+                if (!file) {
+                    throw std::runtime_error("Failed to open JPEG file: " + path.string());
+                }
+                std::streamsize size = file.tellg();
+                file.seekg(0, std::ios::beg);
+                jpeg_bytes.resize(size);
+                file.read(reinterpret_cast<char*>(jpeg_bytes.data()), size);
+            } else {
+                // We're the loading thread - read and cache
+                LOG_DEBUG("JPEG blob cache MISS: loading {}", cache_key);
+
+                std::ifstream file(path, std::ios::binary | std::ios::ate);
+                if (!file) {
+                    std::lock_guard<std::mutex> lock(jpeg_blob_mutex_);
+                    jpeg_being_loaded_.erase(cache_key);
+                    throw std::runtime_error("Failed to open JPEG file: " + path.string());
+                }
+
+                std::streamsize size = file.tellg();
+                file.seekg(0, std::ios::beg);
+                jpeg_bytes.resize(size);
+                if (!file.read(reinterpret_cast<char*>(jpeg_bytes.data()), size)) {
+                    std::lock_guard<std::mutex> lock(jpeg_blob_mutex_);
+                    jpeg_being_loaded_.erase(cache_key);
+                    throw std::runtime_error("Failed to read JPEG file: " + path.string());
+                }
+
+                // Cache the compressed bytes (much smaller than decoded pixels!)
+                {
+                    std::lock_guard<std::mutex> lock(jpeg_blob_mutex_);
+
+                    if (has_sufficient_memory(jpeg_bytes.size())) {
+                        evict_jpeg_blobs_if_needed(jpeg_bytes.size());
+
+                        CachedJpegBlob blob;
+                        blob.compressed_data = jpeg_bytes;
+                        blob.size_bytes = jpeg_bytes.size();
+                        blob.last_access = std::chrono::steady_clock::now();
+                        // original_width/height will be filled after decode
+
+                        jpeg_blob_cache_[cache_key] = std::move(blob);
+
+                        LOG_DEBUG("Cached JPEG blob {} ({} bytes, total JPEG cache: {} bytes)",
+                                  cache_key, jpeg_bytes.size(), get_jpeg_blob_cache_size());
+                    } else {
+                        LOG_DEBUG("Insufficient memory to cache JPEG blob {} ({} bytes)",
+                                  cache_key, jpeg_bytes.size());
+                    }
+
+                    jpeg_being_loaded_.erase(cache_key);
+                }
+            }
+        }
+
+        // Detect image format by magic bytes
+        bool is_jpeg = false;
+        bool is_png = false;
+
+        if (jpeg_bytes.size() >= 4) {
+            // Check JPEG magic bytes (FF D8 FF)
+            is_jpeg = (jpeg_bytes[0] == 0xFF && jpeg_bytes[1] == 0xD8);
+
+            // Check PNG magic bytes (89 50 4E 47 0D 0A 1A 0A)
+            is_png = (jpeg_bytes[0] == 0x89 &&
+                     jpeg_bytes[1] == 0x50 &&
+                     jpeg_bytes[2] == 0x4E &&
+                     jpeg_bytes[3] == 0x47);
+        }
+
+        // Route to appropriate decoder based on actual format
+        if (is_jpeg) {
+            // Stage 3a: Decode JPEG directly to GPU using nvImageCodec hardware acceleration
+            LOG_DEBUG("Decoding JPEG to GPU: {} ({} bytes, resize_factor={})",
+                      path.filename().string(), jpeg_bytes.size(), params.resize_factor);
+
+            try {
+            auto& nvcodec_loader = get_nvcodec_loader();
+            auto gpu_tensor = nvcodec_loader.load_image_from_memory_gpu(
+                jpeg_bytes, params.resize_factor, params.max_width, params.cuda_stream);
+
+            // Stage 4: Return GPU tensor directly - no transfer needed!
+            // The camera will use it directly on GPU, avoiding GPU→CPU→GPU double transfer
+            LOG_DEBUG("JPEG hardware decode complete: {} → GPU tensor [{},{},{}]",
+                      path.filename().string(),
+                      gpu_tensor.shape()[0], gpu_tensor.shape()[1], gpu_tensor.shape()[2]);
+
+            return gpu_tensor;
+        } catch (const std::exception& e) {
+            // nvImageCodec failed (unsupported format, corrupted file, etc.)
+            // Fall back to CPU decoder (OpenImageIO via image_io)
+            LOG_WARN("nvImageCodec failed for {}: {} - falling back to CPU decoder",
+                     path.filename().string(), e.what());
+
+            // Use standard CPU image loading from file
+            auto [img_data, width, height, channels] = lfs::core::load_image(
+                path, params.resize_factor, params.max_width);
+
+            if (img_data == nullptr) {
+                throw std::runtime_error("CPU fallback failed: could not load image");
+            }
+
+            // Convert CPU buffer to tensor [H, W, C] uint8
+            using namespace lfs::core;
+            auto cpu_tensor = Tensor::empty_unpinned(
+                TensorShape({static_cast<size_t>(height), static_cast<size_t>(width), static_cast<size_t>(channels)}),
+                DataType::UInt8);
+
+            // Copy image data to tensor
+            std::memcpy(cpu_tensor.raw_ptr(), img_data, height * width * channels);
+            lfs::core::free_image(img_data);
+
+            // Convert to GPU [C, H, W] float32
+            auto gpu_tensor = cpu_tensor.cuda().to(DataType::Float32) / 255.0f;
+            gpu_tensor = gpu_tensor.permute({2, 0, 1}).contiguous();
+
+            LOG_DEBUG("CPU fallback decode complete: {} → GPU tensor [{},{},{}]",
+                      path.filename().string(),
+                      gpu_tensor.shape()[0], gpu_tensor.shape()[1], gpu_tensor.shape()[2]);
+
+            return gpu_tensor;
+        }
+        } else {
+            // Stage 3b: Non-JPEG format (PNG, WebP, etc.) - route directly to CPU decoder
+            const char* format_name = is_png ? "PNG" : "unknown";
+            LOG_DEBUG("Non-JPEG format ({}) detected for {}, using CPU decoder (OpenImageIO)",
+                      format_name, path.filename().string());
+
+            // Use standard CPU image loading from file
+            auto [img_data, width, height, channels] = lfs::core::load_image(
+                path, params.resize_factor, params.max_width);
+
+            if (img_data == nullptr) {
+                throw std::runtime_error("CPU decoder failed: could not load image");
+            }
+
+            // Convert CPU buffer to tensor [H, W, C] uint8
+            using namespace lfs::core;
+            auto cpu_tensor = Tensor::empty_unpinned(
+                TensorShape({static_cast<size_t>(height), static_cast<size_t>(width), static_cast<size_t>(channels)}),
+                DataType::UInt8);
+
+            // Copy image data to tensor
+            std::memcpy(cpu_tensor.raw_ptr(), img_data, height * width * channels);
+            lfs::core::free_image(img_data);
+
+            // Convert to GPU [C, H, W] float32
+            auto gpu_tensor = cpu_tensor.cuda().to(DataType::Float32) / 255.0f;
+            gpu_tensor = gpu_tensor.permute({2, 0, 1}).contiguous();
+
+            LOG_DEBUG("CPU decode complete: {} → GPU tensor [{},{},{}]",
+                      path.filename().string(),
+                      gpu_tensor.shape()[0], gpu_tensor.shape()[1], gpu_tensor.shape()[2]);
+
+            return gpu_tensor;
         }
     }
 

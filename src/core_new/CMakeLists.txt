@@ -8,6 +8,45 @@
 # Add tensor library
 add_subdirectory(tensor)
 
+add_library(lfs_lanczos_resize STATIC
+    lanczos_resize/lanczos_resize.cu
+)
+
+target_include_directories(lfs_lanczos_resize
+    PUBLIC
+        ${CMAKE_SOURCE_DIR}/include
+        ${CUDAToolkit_INCLUDE_DIRS}
+)
+
+target_link_libraries(lfs_lanczos_resize
+    PUBLIC
+        lfs_tensor
+        CUDA::cudart
+)
+
+set_target_properties(lfs_lanczos_resize PROPERTIES
+    CUDA_STANDARD 20
+    CUDA_STANDARD_REQUIRED ON
+    CUDA_SEPARABLE_COMPILATION ON
+    POSITION_INDEPENDENT_CODE ON
+    CUDA_RESOLVE_DEVICE_SYMBOLS ON
+)
+
+# CUDA compiler options for lfs_lanczos_resize
+target_compile_options(lfs_lanczos_resize PRIVATE
+    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Debug>>:-O0 -g -G -lineinfo --extended-lambda --expt-relaxed-constexpr -Xcompiler=/Od -Xcompiler=/Z7 -Xcompiler=/utf-8 -Xcompiler=/D_CRT_SECURE_NO_WARNINGS --diag-suppress=27>
+    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:-O3 -use_fast_math --extended-lambda --expt-relaxed-constexpr --ptxas-options=-v -Xcompiler=/O2 -Xcompiler=/DNDEBUG -Xcompiler=/utf-8 -Xcompiler=/D_CRT_SECURE_NO_WARNINGS --diag-suppress=27>
+    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:GNU>>:-O3 -use_fast_math --extended-lambda --expt-relaxed-constexpr --ptxas-options=-v>
+    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-O0 -g -G -lineinfo --extended-lambda --expt-relaxed-constexpr>
+)
+
+# Windows: Add compile definition for lfs_lanczos_resize
+if(MSVC)
+    target_compile_definitions(lfs_lanczos_resize PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:FMT_UNICODE=0>
+    )
+endif()
+
 # Core CUDA kernels library (kmeans, morton encoding)
 add_library(lfs_core_kernels STATIC
     kernels/kmeans_new.cu

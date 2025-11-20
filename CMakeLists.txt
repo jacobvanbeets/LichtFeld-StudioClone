@@ -517,14 +517,70 @@ target_link_libraries(${PROJECT_NAME}
         OpenImageIO::OpenImageIO
 )
 
+# Copy nvImageCodec shared libraries next to executable for easy deployment
+if(TARGET nvimgcodec)
+    # Add post-build command to copy libraries and create symlinks
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:nvimgcodec>"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "$<TARGET_FILE_NAME:nvimgcodec>"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/libnvimgcodec.so.0"
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "libnvimgcodec.so.0"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/libnvimgcodec.so"
+        COMMENT "Copying nvImageCodec library and creating symlinks"
+    )
+
+    # Create extensions directory and copy extension libraries
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions"
+        COMMENT "Creating extensions directory"
+    )
+
+    # Copy extension libraries to extensions/ subdirectory
+    if(TARGET nvjpeg_ext)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:nvjpeg_ext>"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/"
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                "$<TARGET_FILE_NAME:nvjpeg_ext>"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/libnvjpeg_ext.so"
+            COMMENT "Copying nvjpeg extension to extensions/"
+        )
+    endif()
+
+    if(TARGET nvjpeg2k_ext)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:nvjpeg2k_ext>"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/"
+            COMMAND ${CMAKE_COMMAND} -E create_symlink
+                "$<TARGET_FILE_NAME:nvjpeg2k_ext>"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/extensions/libnvjpeg2k_ext.so"
+            COMMENT "Copying nvjpeg2k extension to extensions/"
+        )
+    endif()
+
+    message(STATUS "Post-build: nvImageCodec libraries will be copied to executable directory")
+endif()
+
 # Platform-specific settings for new torch-free binary
 if(UNIX)
     target_link_libraries(${PROJECT_NAME} PRIVATE GL GLU)
 
     set_target_properties(${PROJECT_NAME} PROPERTIES
-            INSTALL_RPATH "${CUDAToolkit_LIBRARY_DIR}"
+            INSTALL_RPATH "$ORIGIN:${CUDAToolkit_LIBRARY_DIR}"
             BUILD_WITH_INSTALL_RPATH TRUE
             INSTALL_RPATH_USE_LINK_PATH TRUE
+    )
+elseif(WIN32)
+    # On Windows, DLLs in the same directory as the .exe are automatically found
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
     )
 endif()
 

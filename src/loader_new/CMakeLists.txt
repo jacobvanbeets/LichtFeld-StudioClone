@@ -33,6 +33,8 @@ add_library(lfs_loader STATIC
         loaders/sogs_loader.hpp
         loaders/sogs_loader.cpp
         cache_image_loader.cpp
+        nvcodec_image_loader.hpp
+        nvcodec_image_loader.cpp
 )
 
 # Set include directories
@@ -43,6 +45,7 @@ target_include_directories(lfs_loader
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/external/nvImageCodec/include
 )
 
 # Find the actual WebP library target
@@ -79,7 +82,18 @@ target_link_libraries(lfs_loader
         nlohmann_json::nlohmann_json
         ${WEBP_DECODE_LIB}     # WebP for SOG decompression
         ${ARCHIVE_LIB}         # LibArchive for SOG bundle support
+        CUDA::cudart           # CUDA runtime for nvImageCodec
+        lfs_lanczos_resize     # High-quality GPU Lanczos image resampling
 )
+
+# Link nvImageCodec if available
+if(TARGET nvimgcodec)
+    target_link_libraries(lfs_loader PRIVATE nvimgcodec)
+    add_dependencies(lfs_loader nvimgcodec)
+    message(STATUS "Linking nvImageCodec to lfs_loader")
+else()
+    message(WARNING "nvImageCodec target not found - JPEG hardware decode will not work")
+endif()
 
 # Set C++ standard
 target_compile_features(lfs_loader PUBLIC cxx_std_23)

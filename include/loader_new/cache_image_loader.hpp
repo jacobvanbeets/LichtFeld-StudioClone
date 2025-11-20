@@ -34,6 +34,7 @@ namespace lfs::loader {
     struct LoadParams {
         int resize_factor;
         int max_width;
+        void* cuda_stream = nullptr;
     };
 
 } // namespace lfs::loader
@@ -51,6 +52,14 @@ namespace lfs::loader {
         int height;
         int channels;
         std::size_t size_bytes;
+        std::chrono::steady_clock::time_point last_access;
+    };
+
+    struct CachedJpegBlob {
+        std::vector<uint8_t> compressed_data;  // Raw JPEG bytes (compressed)
+        int original_width;
+        int original_height;
+        std::size_t size_bytes;                // Compressed size (much smaller than pixels)
         std::chrono::steady_clock::time_point last_access;
     };
 
@@ -110,6 +119,8 @@ namespace lfs::loader {
     private:
         [[nodiscard]] lfs::core::Tensor load_cached_image_from_cpu(const std::filesystem::path& path, const LoadParams& params);
         [[nodiscard]] lfs::core::Tensor load_cached_image_from_fs(const std::filesystem::path& path, const LoadParams& params);
+        [[nodiscard]] lfs::core::Tensor load_jpeg_with_hardware_decode(const std::filesystem::path& path, const LoadParams& params);
+
         // Private constructor
         CacheLoader(bool use_cpu_memory, bool use_fs_cache);
 
@@ -118,19 +129,27 @@ namespace lfs::loader {
         float min_cpu_free_memory_ratio_ = 0.1f; // make sure at least 10% RAM is free
         float min_cpu_free_GB_ = 1.0f;        // min GB we want to be free
 
-        // CPU cache storage
+        // CPU cache storage (for non-JPEG formats)
         std::unordered_map<std::string, CachedImageData> cpu_cache_;
         std::mutex cpu_cache_mutex_;
         std::set<std::string> image_being_loaded_cpu_;
+
+        // JPEG blob cache storage (compressed bytes)
+        std::unordered_map<std::string, CachedJpegBlob> jpeg_blob_cache_;
+        std::mutex jpeg_blob_mutex_;
+        std::set<std::string> jpeg_being_loaded_;
 
         // Helper methods
         std::string generate_cache_key(const std::filesystem::path& path, const LoadParams& params) const;
         bool has_sufficient_memory(std::size_t required_bytes) const;
         void evict_if_needed(std::size_t required_bytes);
         void evict_until_satisfied();
+        void evict_jpeg_blobs_if_needed(std::size_t required_bytes);
         std::size_t get_cpu_cache_size() const;
+        std::size_t get_jpeg_blob_cache_size() const;
         void print_cache_status() const;
         void determine_cache_mode(const std::filesystem::path& path, const LoadParams& params);
+        bool is_jpeg_format(const std::filesystem::path& path) const;
 
         // FS cache params
         std::filesystem::path cache_folder_;
