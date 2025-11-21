@@ -269,6 +269,11 @@ namespace lfs::vis {
                 return;
             }
 
+            // Only handle camera controls if clicking within the viewport
+            if (!isInViewport(x, y)) {
+                return;
+            }
+
             // Start camera interaction
             viewport_.camera.initScreenPos(glm::vec2(x, y));
 
