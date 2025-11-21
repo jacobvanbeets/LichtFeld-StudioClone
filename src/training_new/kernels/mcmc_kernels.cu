@@ -3,8 +3,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "mcmc_kernels.hpp"
+#include "core_new/tensor.hpp"
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include <cub/cub.cuh>
 #include <thrust/device_vector.h>
 #include <thrust/sort.h>
 #include <thrust/scan.h>
@@ -841,6 +843,7 @@ namespace lfs::training::mcmc {
         const float* __restrict__ opacities,
         const float* __restrict__ scaling_raw,  // OPTIMIZATION: Takes raw scaling, applies exp() inline
         const int64_t* __restrict__ alive_indices,
+        const float* __restrict__ cumsum,  // Pre-computed cumulative sum
         size_t n_alive,
         size_t n_samples,
         float prob_sum,
@@ -861,26 +864,22 @@ namespace lfs::training::mcmc {
         // Generate random sample in [0, prob_sum]
         float u = curand_uniform(&state) * prob_sum;
 
-        // Perform cumulative sum search through alive_indices
-        // This finds the index where cumsum >= u
-        float cumsum = 0.0f;
-        int64_t selected_global_idx = alive_indices[n_alive - 1]; // default to last
+        // Binary search in pre-computed cumsum (O(log n) instead of O(n)!)
+        int left = 0;
+        int right = n_alive - 1;
+        int selected_idx = n_alive - 1;
 
-        for (size_t i = 0; i < n_alive; ++i) {
-            int64_t global_i = alive_indices[i];
-
-            // Bounds check
-            if (global_i < 0 || global_i >= static_cast<int64_t>(N)) {
-                continue; // Skip invalid index
-            }
-
-            cumsum += opacities[global_i];
-
-            if (u <= cumsum) {
-                selected_global_idx = global_i;
-                break;
+        while (left <= right) {
+            int mid = (left + right) / 2;
+            if (cumsum[mid] >= u) {
+                selected_idx = mid;
+                right = mid - 1;
+            } else {
+                left = mid + 1;
             }
         }
+
+        int64_t selected_global_idx = alive_indices[selected_idx];
 
         // Output global index
         sampled_global_indices[idx] = selected_global_idx;
@@ -946,14 +945,35 @@ namespace lfs::training::mcmc {
             return;
         }
 
-        // Launch fused kernel
+        // Pre-compute cumulative sum using Tensor lib for memory management
+        auto alive_probs = lfs::core::Tensor::empty({n_alive}, lfs::core::Device::CUDA, lfs::core::DataType::Float32);
+        auto cumsum_buf = lfs::core::Tensor::empty({n_alive}, lfs::core::Device::CUDA, lfs::core::DataType::Float32);
+
+        // Gather alive opacities
+        thrust::transform(thrust::cuda::par.on(cuda_stream),
+                         thrust::counting_iterator<int>(0),
+                         thrust::counting_iterator<int>(n_alive),
+                         thrust::device_ptr<float>(alive_probs.ptr<float>()),
+                         [=] __device__ (int i) { return opacities[alive_indices[i]]; });
+
+        // Compute cumulative sum using CUB
+        void* d_temp_storage = nullptr;
+        size_t temp_storage_bytes = 0;
+        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
+                                     alive_probs.ptr<float>(), cumsum_buf.ptr<float>(), n_alive, cuda_stream);
+        cudaMallocAsync(&d_temp_storage, temp_storage_bytes, cuda_stream);
+        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
+                                     alive_probs.ptr<float>(), cumsum_buf.ptr<float>(), n_alive, cuda_stream);
+
+        // Launch fused kernel with pre-computed cumsum
         dim3 sample_threads(256);
         dim3 sample_grid((n_samples + sample_threads.x - 1) / sample_threads.x);
 
         multinomial_sample_and_gather_kernel<<<sample_grid, sample_threads, 0, cuda_stream>>>(
             opacities,
-            scaling_raw,  // Pass raw scaling
+            scaling_raw,
             alive_indices,
+            cumsum_buf.ptr<float>(),  // Pass pre-computed cumsum
             n_alive,
             n_samples,
             prob_sum,
@@ -963,12 +983,16 @@ namespace lfs::training::mcmc {
             sampled_scales,
             N
         );
+
+        // Cleanup CUB temp storage
+        cudaFreeAsync(d_temp_storage, cuda_stream);
     }
 
     // Simplified multinomial kernel that samples from ALL N opacities (no alive_indices)
     __global__ void multinomial_sample_all_kernel(
         const float* __restrict__ opacities,
         const float* __restrict__ scaling_raw,  // OPTIMIZATION: Takes raw scaling, applies exp() inline
+        const float* __restrict__ cumsum,  // Pre-computed cumulative sum
         size_t N,
         size_t n_samples,
         float prob_sum,
@@ -988,15 +1012,18 @@ namespace lfs::training::mcmc {
         // Generate random sample in [0, prob_sum]
         float u = curand_uniform(&state) * prob_sum;
 
-        // Perform cumulative sum search through all opacities
-        float cumsum = 0.0f;
-        int64_t selected_idx = N - 1;  // default to last
+        // Binary search in pre-computed cumsum (O(log N) instead of O(N)!)
+        int left = 0;
+        int right = N - 1;
+        int64_t selected_idx = N - 1;
 
-        for (size_t i = 0; i < N; ++i) {
-            cumsum += opacities[i];
-            if (u <= cumsum) {
-                selected_idx = static_cast<int64_t>(i);
-                break;
+        while (left <= right) {
+            int mid = (left + right) / 2;
+            if (cumsum[mid] >= u) {
+                selected_idx = mid;
+                right = mid - 1;
+            } else {
+                left = mid + 1;
             }
         }
 
@@ -1093,13 +1120,26 @@ namespace lfs::training::mcmc {
             return;
         }
 
-        // Launch sampling kernel
+        // Pre-compute cumulative sum using Tensor lib for memory management
+        auto cumsum_buf = lfs::core::Tensor::empty({N}, lfs::core::Device::CUDA, lfs::core::DataType::Float32);
+
+        // Compute cumulative sum using CUB
+        void* d_temp_storage = nullptr;
+        size_t temp_storage_bytes = 0;
+        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
+                                     opacities, cumsum_buf.ptr<float>(), N, cuda_stream);
+        cudaMallocAsync(&d_temp_storage, temp_storage_bytes, cuda_stream);
+        cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
+                                     opacities, cumsum_buf.ptr<float>(), N, cuda_stream);
+
+        // Launch sampling kernel with pre-computed cumsum
         dim3 sample_threads(256);
         dim3 sample_grid((n_samples + sample_threads.x - 1) / sample_threads.x);
 
         multinomial_sample_all_kernel<<<sample_grid, sample_threads, 0, cuda_stream>>>(
             opacities,
-            scaling_raw,  // Pass raw scaling
+            scaling_raw,
+            cumsum_buf.ptr<float>(),  // Pass pre-computed cumsum
             N,
             n_samples,
             prob_sum,
@@ -1108,6 +1148,9 @@ namespace lfs::training::mcmc {
             sampled_opacities,
             sampled_scales
         );
+
+        // Cleanup CUB temp storage
+        cudaFreeAsync(d_temp_storage, cuda_stream);
     }
 
     // Compute rotation magnitude squared kernel (eliminates [N,4] intermediate tensor)
