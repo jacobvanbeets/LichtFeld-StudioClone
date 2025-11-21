@@ -83,7 +83,7 @@ target_link_libraries(lfs_loader
         ${WEBP_DECODE_LIB}     # WebP for SOG decompression
         ${ARCHIVE_LIB}         # LibArchive for SOG bundle support
         CUDA::cudart           # CUDA runtime for nvImageCodec
-        lfs_lanczos_resize     # High-quality GPU Lanczos image resampling
+        lfs_core_cuda          # CUDA utilities (lanczos_resize, etc.)
 )
 
 # Link nvImageCodec if available

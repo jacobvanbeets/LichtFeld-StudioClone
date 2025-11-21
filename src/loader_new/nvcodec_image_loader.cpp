@@ -5,7 +5,7 @@
 #include "loader_new/nvcodec_image_loader.hpp"
 #include "core_new/logger.hpp"
 #include "core_new/tensor.hpp"
-#include "core_new/lanczos_resize/lanczos_resize.hpp"
+#include "core_new/cuda/lanczos_resize/lanczos_resize.hpp"
 
 #include <nvimgcodec.h>
 #include <cuda_runtime.h>

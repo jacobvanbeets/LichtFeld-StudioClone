@@ -18,7 +18,7 @@
 // #include "kernels/regularization.cuh"
 #include "loader_new/cache_image_loader.hpp"
 #include "rasterization/fast_rasterizer.hpp"
-#include <rasterizer_memory_arena.h>
+#include "core_new/cuda/memory_arena.hpp"
 // TODO: Port 3DGUT rasterizer to LibTorch-free implementation
 // #include "rasterization/rasterizer.hpp"
 #include "losses/losses.hpp"
@@ -1028,7 +1028,7 @@ namespace lfs::training {
                         }
 
                         // 1. Emergency cleanup of arena (resets offsets, clears inactive frames)
-                        fast_lfs::rasterization::GlobalArenaManager::instance().get_arena().emergency_cleanup();
+                        lfs::core::GlobalArenaManager::instance().get_arena().emergency_cleanup();
 
                         // 2. Trim cached memory pool
                         lfs::core::CudaMemoryPool::instance().trim_cached_memory();

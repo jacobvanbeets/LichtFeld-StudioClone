@@ -2,7 +2,7 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include "rasterizer_memory_arena.h"
+#include "memory_arena.hpp"
 #include <cuda_runtime.h>
 #include <iostream>
 #include <iomanip>
@@ -12,7 +12,7 @@
 #include <thread>
 #include <cstring>
 
-namespace fast_lfs::rasterization {
+namespace lfs::core {
 
 // Default constructor implementation
 RasterizerMemoryArena::RasterizerMemoryArena()
@@ -1133,4 +1133,4 @@ void GlobalArenaManager::reset() {
     arena_.reset();
 }
 
-} // namespace fast_lfs::rasterization
+} // namespace lfs::core

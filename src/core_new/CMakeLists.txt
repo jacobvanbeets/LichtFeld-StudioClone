@@ -8,86 +8,9 @@
 # Add tensor library
 add_subdirectory(tensor)
 
-add_library(lfs_lanczos_resize STATIC
-    lanczos_resize/lanczos_resize.cu
-)
-
-target_include_directories(lfs_lanczos_resize
-    PUBLIC
-        ${CMAKE_SOURCE_DIR}/include
-        ${CUDAToolkit_INCLUDE_DIRS}
-)
-
-target_link_libraries(lfs_lanczos_resize
-    PUBLIC
-        lfs_tensor
-        CUDA::cudart
-)
-
-set_target_properties(lfs_lanczos_resize PROPERTIES
-    CUDA_STANDARD 20
-    CUDA_STANDARD_REQUIRED ON
-    CUDA_SEPARABLE_COMPILATION ON
-    POSITION_INDEPENDENT_CODE ON
-    CUDA_RESOLVE_DEVICE_SYMBOLS ON
-)
-
-# CUDA compiler options for lfs_lanczos_resize
-target_compile_options(lfs_lanczos_resize PRIVATE
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Debug>>:-O0 -g -G -lineinfo --extended-lambda --expt-relaxed-constexpr -Xcompiler=/Od -Xcompiler=/Z7 -Xcompiler=/utf-8 -Xcompiler=/D_CRT_SECURE_NO_WARNINGS --diag-suppress=27>
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:-O3 -use_fast_math --extended-lambda --expt-relaxed-constexpr --ptxas-options=-v -Xcompiler=/O2 -Xcompiler=/DNDEBUG -Xcompiler=/utf-8 -Xcompiler=/D_CRT_SECURE_NO_WARNINGS --diag-suppress=27>
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:GNU>>:-O3 -use_fast_math --extended-lambda --expt-relaxed-constexpr --ptxas-options=-v>
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-O0 -g -G -lineinfo --extended-lambda --expt-relaxed-constexpr>
-)
-
-# Windows: Add compile definition for lfs_lanczos_resize
-if(MSVC)
-    target_compile_definitions(lfs_lanczos_resize PRIVATE
-        $<$<COMPILE_LANGUAGE:CUDA>:FMT_UNICODE=0>
-    )
-endif()
-
-# Core CUDA kernels library (kmeans, morton encoding)
-add_library(lfs_core_kernels STATIC
-    kernels/kmeans_new.cu
-    kernels/morton_encoding_new.cu
-)
-
-target_include_directories(lfs_core_kernels
-    PUBLIC
-        ${CMAKE_SOURCE_DIR}/include
-        ${CUDAToolkit_INCLUDE_DIRS}
-        ${CMAKE_SOURCE_DIR}/src/core_new/tensor/internal  # For memory_pool.hpp and other internal headers
-)
-
-target_link_libraries(lfs_core_kernels
-    PUBLIC
-        lfs_tensor
-        CUDA::cudart
-)
-
-set_target_properties(lfs_core_kernels PROPERTIES
-    CUDA_STANDARD 20
-    CUDA_STANDARD_REQUIRED ON
-    CUDA_SEPARABLE_COMPILATION ON
-    POSITION_INDEPENDENT_CODE ON
-    CUDA_RESOLVE_DEVICE_SYMBOLS ON
-)
-
-# CUDA compiler options for lfs_core_kernels
-target_compile_options(lfs_core_kernels PRIVATE
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Debug>>:-O0 -g -G -lineinfo --extended-lambda --expt-relaxed-constexpr -Xcompiler=/Od -Xcompiler=/Z7 -Xcompiler=/utf-8 -Xcompiler=/D_CRT_SECURE_NO_WARNINGS --diag-suppress=27>
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:MSVC>,$<CONFIG:Release>>:-O3 -use_fast_math --extended-lambda --expt-relaxed-constexpr --ptxas-options=-v -Xcompiler=/O2 -Xcompiler=/DNDEBUG -Xcompiler=/utf-8 -Xcompiler=/D_CRT_SECURE_NO_WARNINGS --diag-suppress=27>
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:GNU>>:-O3 -use_fast_math --extended-lambda --expt-relaxed-constexpr --ptxas-options=-v>
-    $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-O0 -g -G -lineinfo --extended-lambda --expt-relaxed-constexpr>
-)
-
-# Windows: Add compile definition to tell fmt that UTF-8 is enabled for CUDA files
-if(MSVC)
-    target_compile_definitions(lfs_core_kernels PRIVATE
-        $<$<COMPILE_LANGUAGE:CUDA>:FMT_UNICODE=0>
-    )
-endif()
+# Add unified CUDA library (private to core module)
+# Contains: memory_arena, lanczos_resize, core_kernels (kmeans, morton)
+add_subdirectory(cuda)
 
 # Core module - fundamental data structures and utilities
 # Note: lfs_tensor library is now in src/core_new/tensor
@@ -142,8 +65,7 @@ endif()
 
 target_link_libraries(lfs_core
     PUBLIC
-        lfs_tensor      # LFS Tensor library (includes lfs_tensor_kernels)
-        lfs_core_kernels # Core CUDA kernels (kmeans, morton encoding)
+        lfs_core_cuda   # Unified CUDA library (tensor, memory arena, kernels, lanczos)
         TBB::tbb
         nlohmann_json::nlohmann_json
         glm::glm

@@ -7,7 +7,7 @@
 #include "helper_math.h"
 #include "rasterization_api.h"
 #include "rasterization_config.h"
-#include "rasterizer_memory_arena.h"
+#include "core_new/cuda/memory_arena.hpp"
 #include "buffer_utils.h"
 #include "utils.h"
 #include "cuda_utils.h"
@@ -66,7 +66,7 @@ ForwardContext forward_raw(
     const int n_tiles = grid.x * grid.y;
 
     // Get global arena and begin frame
-    auto& arena = GlobalArenaManager::instance().get_arena();
+    auto& arena = lfs::core::GlobalArenaManager::instance().get_arena();
     uint64_t frame_id = arena.begin_frame();
 
     // Get arena allocator for this frame
@@ -380,7 +380,7 @@ BackwardOutputs backward_raw(
             center_y);
 
         // Mark frame as complete
-        auto& arena = GlobalArenaManager::instance().get_arena();
+        auto& arena = lfs::core::GlobalArenaManager::instance().get_arena();
         arena.end_frame(forward_ctx.frame_id);
 
         outputs.success = true;
@@ -388,7 +388,7 @@ BackwardOutputs backward_raw(
 
     } catch (const std::exception& e) {
         // Clean up on error
-        auto& arena = GlobalArenaManager::instance().get_arena();
+        auto& arena = lfs::core::GlobalArenaManager::instance().get_arena();
         arena.end_frame(forward_ctx.frame_id);
 
         outputs.error_message = e.what();

@@ -15,7 +15,7 @@
 #include <functional>
 #include <chrono>
 
-namespace fast_lfs::rasterization {
+namespace lfs::core {
 
 class RasterizerMemoryArena {
 public:
@@ -178,4 +178,4 @@ private:
     std::mutex init_mutex_;
 };
 
-} // namespace fast_lfs::rasterization
+} // namespace lfs::core

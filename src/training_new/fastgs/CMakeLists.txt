@@ -9,7 +9,6 @@ set(FASTLFS_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/rasterization/src/rasterization_api.cu
         ${CMAKE_CURRENT_SOURCE_DIR}/rasterization/src/forward.cu
         ${CMAKE_CURRENT_SOURCE_DIR}/rasterization/src/backward.cu
-        ${CMAKE_CURRENT_SOURCE_DIR}/rasterization/src/rasterizer_memory_arena.cu
         # optimizer
         ${CMAKE_CURRENT_SOURCE_DIR}/optimizer/src/adam_api.cu
         ${CMAKE_CURRENT_SOURCE_DIR}/optimizer/src/adam.cu
@@ -42,6 +41,7 @@ target_link_libraries(fastlfs_backend
         CUDA::curand
         CUDA::cublas
         ${CUDA_CUDA_LIBRARY}
+        lfs_core_cuda  # CUDA utilities from core module (memory arena)
 )
 
 target_compile_options(fastlfs_backend PRIVATE
