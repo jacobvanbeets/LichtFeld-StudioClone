@@ -5,7 +5,6 @@
 #include "gui/panels/world_transform_panel.hpp"
 #include "gui/ui_widgets.hpp"
 #include "rendering/rendering_manager.hpp"
-#include "tools/translation_gizmo_tool.hpp"
 #include "visualizer_impl.hpp"
 #include <glm/gtc/quaternion.hpp>
 #include <imgui.h>

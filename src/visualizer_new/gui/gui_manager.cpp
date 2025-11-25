@@ -23,7 +23,6 @@
 #include "internal/resource_paths.hpp"
 #include "tools/align_tool.hpp"
 #include "tools/brush_tool.hpp"
-#include "tools/translation_gizmo_tool.hpp"
 #include "visualizer_impl.hpp"
 
 #include <chrono>
@@ -388,7 +387,6 @@ namespace lfs::vis::gui {
             panels::DrawGizmoToolbar(ctx, gizmo_toolbar_state_, viewport_pos_, viewport_size_);
             node_gizmo_operation_ = gizmo_toolbar_state_.current_operation;
 
-            auto* gizmo_tool = ctx.viewer->getTranslationGizmoTool();
             auto* brush_tool = ctx.viewer->getBrushTool();
             auto* align_tool = ctx.viewer->getAlignTool();
             bool is_brush_mode = (gizmo_toolbar_state_.current_tool == panels::ToolMode::Brush);
@@ -396,7 +394,6 @@ namespace lfs::vis::gui {
 
             if (brush_tool) brush_tool->setEnabled(is_brush_mode);
             if (align_tool) align_tool->setEnabled(is_align_mode);
-            if (gizmo_tool) gizmo_tool->setEnabled(!is_brush_mode && !is_align_mode);
         } else {
             auto* brush_tool = ctx.viewer->getBrushTool();
             auto* align_tool = ctx.viewer->getAlignTool();

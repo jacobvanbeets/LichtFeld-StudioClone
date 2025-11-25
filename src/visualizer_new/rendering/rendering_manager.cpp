@@ -1077,6 +1077,13 @@ namespace lfs::vis {
                     }
                 }
 
+                // Get scene transform from visible nodes (applies alignment transform)
+                glm::mat4 scene_transform(1.0f);
+                auto visible_transforms = context.scene_manager->getScene().getVisibleNodeTransforms();
+                if (!visible_transforms.empty()) {
+                    scene_transform = visible_transforms[0];
+                }
+
                 // Render frustums with world transform
                 LOG_TRACE("Rendering {} camera frustums with scale {}, highlighted index: {} (ID: {})",
                           cameras.size(), settings_.camera_frustum_scale, highlight_index, hovered_camera_id_);
@@ -1086,7 +1093,8 @@ namespace lfs::vis {
                     settings_.camera_frustum_scale,
                     settings_.train_camera_color,
                     settings_.eval_camera_color,
-                    highlight_index);
+                    highlight_index,
+                    scene_transform);
 
                 if (!frustum_result) {
                     LOG_ERROR("Failed to render camera frustums: {}", frustum_result.error());
@@ -1102,7 +1110,8 @@ namespace lfs::vis {
                         glm::vec2(context.viewport_region->x, context.viewport_region->y),
                         glm::vec2(context.viewport_region->width, context.viewport_region->height),
                         viewport,
-                        settings_.camera_frustum_scale);
+                        settings_.camera_frustum_scale,
+                        scene_transform);
 
                     if (pick_result) {
                         int cam_id = *pick_result;

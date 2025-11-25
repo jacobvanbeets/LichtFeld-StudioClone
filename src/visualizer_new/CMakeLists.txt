@@ -42,7 +42,6 @@ add_library(lfs_visualizer STATIC
         training/training_manager.cpp
 
         # Tools
-        tools/translation_gizmo_tool.cpp
         tools/brush_tool.cpp
         tools/align_tool.cpp
         gui/panels/menu_bar.cpp

@@ -9,7 +9,6 @@
 #include "tools/align_tool.hpp"
 #include "tools/brush_tool.hpp"
 #include "tools/tool_base.hpp"
-#include "tools/translation_gizmo_tool.hpp"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <format>
@@ -212,7 +211,7 @@ namespace lfs::vis {
             // If we have a hovered camera, check for double-click
             if (hovered_camera_id_ >= 0) {
                 if (is_double_click && hovered_camera_id_ == last_clicked_camera_id_) {
-                    LOG_INFO("Double-clicked on camera ID: {}", hovered_camera_id_);
+                    LOG_DEBUG("Double-clicked on camera ID: {}", hovered_camera_id_);
                     cmd::GoToCamView{.cam_id = hovered_camera_id_}.emit();
 
                     // Reset click tracking to prevent triple-click
@@ -224,9 +223,7 @@ namespace lfs::vis {
                 // First click on a camera - record it
                 last_click_time_ = now;
                 last_click_pos_ = {x, y};
-                last_clicked_camera_id_ = hovered_camera_id_; // Remember which camera was clicked
-                LOG_DEBUG("First click on camera ID: {} (time for double-click: {:.1f}s)",
-                          hovered_camera_id_, DOUBLE_CLICK_TIME);
+                last_clicked_camera_id_ = hovered_camera_id_;
             } else {
                 last_click_time_ = std::chrono::steady_clock::time_point();
                 last_click_pos_ = {-1000, -1000};
@@ -268,21 +265,6 @@ namespace lfs::vis {
         if (align_tool_ && align_tool_->isEnabled() && tool_context_) {
             if (!over_gui && align_tool_->handleMouseButton(button, action, x, y, *tool_context_)) {
                 return;
-            }
-        }
-
-        // CHECK GIZMO NEXT - before any other input handling
-        if (translation_gizmo_ && translation_gizmo_->isEnabled() && tool_context_) {
-            if (translation_gizmo_->handleMouseButton(button, action, x, y, *tool_context_)) {
-                // Gizmo consumed the event
-                if (action == GLFW_PRESS) {
-                    drag_mode_ = DragMode::Gizmo;
-                    LOG_TRACE("Started gizmo drag");
-                } else if (action == GLFW_RELEASE && drag_mode_ == DragMode::Gizmo) {
-                    drag_mode_ = DragMode::None;
-                    LOG_TRACE("Ended gizmo drag");
-                }
-                return; // Don't process camera controls
             }
         }
 
@@ -455,15 +437,6 @@ namespace lfs::vis {
             }
         }
 
-        // Check gizmo if not already in gizmo drag mode
-        if (translation_gizmo_ && translation_gizmo_->isEnabled() && tool_context_) {
-            if (drag_mode_ == DragMode::Gizmo ||
-                translation_gizmo_->handleMouseMove(x, y, *tool_context_)) {
-                last_mouse_pos_ = {x, y};
-                return;
-            }
-        }
-
         glm::vec2 pos(x, y);
         last_mouse_pos_ = current_pos;
 
@@ -540,12 +513,6 @@ namespace lfs::vis {
         }
         if (key == GLFW_KEY_R) {
             key_r_pressed_ = (action != GLFW_RELEASE);
-            // Reset gizmo position if R is pressed and gizmo is enabled
-            if (action == GLFW_PRESS && translation_gizmo_ && translation_gizmo_->isEnabled()) {
-                LOG_DEBUG("Reset key pressed with gizmo enabled");
-                // This would need to be exposed by the gizmo tool
-                // For now, let the gizmo handle it internally
-            }
         }
 
         if (key == GLFW_KEY_T && action == GLFW_PRESS && !ImGui::IsAnyItemActive()) {

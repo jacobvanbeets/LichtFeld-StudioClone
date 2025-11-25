@@ -17,7 +17,6 @@ namespace lfs::vis {
 
     // Forward declarations
     namespace tools {
-        class TranslationGizmoTool;
         class BrushTool;
         class AlignTool;
     } // namespace tools
@@ -35,11 +34,6 @@ namespace lfs::vis {
         // Set training manager for camera view commands
         void setTrainingManager(std::shared_ptr<TrainerManager> tm) {
             training_manager_ = tm;
-        }
-
-        // Set translation gizmo tool
-        void setTranslationGizmoTool(std::shared_ptr<tools::TranslationGizmoTool> tool) {
-            translation_gizmo_ = tool;
         }
 
         // Set brush tool
@@ -124,7 +118,6 @@ namespace lfs::vis {
         RenderingManager* rendering_manager_ = nullptr;
 
         // Tool support
-        std::shared_ptr<tools::TranslationGizmoTool> translation_gizmo_;
         std::shared_ptr<tools::BrushTool> brush_tool_;
         std::shared_ptr<tools::AlignTool> align_tool_;
         ToolContext* tool_context_ = nullptr;

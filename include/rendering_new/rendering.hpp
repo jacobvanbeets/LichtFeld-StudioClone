@@ -293,7 +293,8 @@ namespace lfs::rendering {
             const ViewportData& viewport,
             float scale = 0.1f,
             const glm::vec3& train_color = glm::vec3(0.0f, 1.0f, 0.0f),
-            const glm::vec3& eval_color = glm::vec3(1.0f, 0.0f, 0.0f)) = 0;
+            const glm::vec3& eval_color = glm::vec3(1.0f, 0.0f, 0.0f),
+            const glm::mat4& scene_transform = glm::mat4(1.0f)) = 0;
 
         // Camera frustum rendering with highlighting
         virtual Result<void> renderCameraFrustumsWithHighlight(
@@ -302,7 +303,8 @@ namespace lfs::rendering {
             float scale = 0.1f,
             const glm::vec3& train_color = glm::vec3(0.0f, 1.0f, 0.0f),
             const glm::vec3& eval_color = glm::vec3(1.0f, 0.0f, 0.0f),
-            int highlight_index = -1) = 0;
+            int highlight_index = -1,
+            const glm::mat4& scene_transform = glm::mat4(1.0f)) = 0;
 
         // Camera frustum picking
         virtual Result<int> pickCameraFrustum(
@@ -311,7 +313,8 @@ namespace lfs::rendering {
             const glm::vec2& viewport_pos,
             const glm::vec2& viewport_size,
             const ViewportData& viewport,
-            float scale = 0.1f) = 0;
+            float scale = 0.1f,
+            const glm::mat4& scene_transform = glm::mat4(1.0f)) = 0;
 
         // Get gizmo interaction interface
         virtual std::shared_ptr<GizmoInteraction> getGizmoInteraction() = 0;

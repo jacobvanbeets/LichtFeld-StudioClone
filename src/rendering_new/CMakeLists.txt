@@ -11,7 +11,6 @@ set(RENDERING_SOURCES
         rendering_pipeline.cpp
         gs_rasterizer_tensor.cpp
         point_cloud_renderer.cpp
-        translation_gizmo.cpp
         grid_renderer.cpp
         bbox_renderer.cpp
         axes_renderer.cpp

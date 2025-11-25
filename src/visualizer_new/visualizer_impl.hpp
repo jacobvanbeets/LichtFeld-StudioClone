@@ -31,7 +31,6 @@ namespace lfs::vis {
     class DataLoadingService;
 
     namespace tools {
-        class TranslationGizmoTool;
         class BrushTool;
         class AlignTool;
     } // namespace tools
@@ -78,14 +77,6 @@ namespace lfs::vis {
         // Antialiasing state
         bool isAntiAliasingEnabled() const {
             return rendering_manager_ ? rendering_manager_->getSettings().antialiasing : false;
-        }
-
-        tools::TranslationGizmoTool* getTranslationGizmoTool() {
-            return translation_gizmo_tool_.get();
-        }
-
-        const tools::TranslationGizmoTool* getTranslationGizmoTool() const {
-            return translation_gizmo_tool_.get();
         }
 
         tools::BrushTool* getBrushTool() {
@@ -145,7 +136,6 @@ namespace lfs::vis {
         std::unique_ptr<MainLoop> main_loop_;
 
         // Tools
-        std::shared_ptr<tools::TranslationGizmoTool> translation_gizmo_tool_;
         std::shared_ptr<tools::BrushTool> brush_tool_;
         std::shared_ptr<tools::AlignTool> align_tool_;
         std::unique_ptr<ToolContext> tool_context_;

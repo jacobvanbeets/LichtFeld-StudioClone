@@ -14,47 +14,9 @@
 #include "screen_renderer.hpp"
 #include "shader_manager.hpp"
 #include "split_view_renderer.hpp"
-#include "translation_gizmo.hpp"
 #include "viewport_gizmo.hpp"
 
 namespace lfs::rendering {
-
-    // Adapter to bridge public interface with internal implementation
-    class GizmoInteractionAdapter : public GizmoInteraction {
-        TranslationGizmo* gizmo_;
-
-    public:
-        explicit GizmoInteractionAdapter(TranslationGizmo* gizmo) : gizmo_(gizmo) {}
-
-        GizmoElement pick(const glm::vec2& mouse_pos, const glm::mat4& view,
-                          const glm::mat4& projection, const glm::vec3& position) override {
-            auto elem = gizmo_->pick(mouse_pos, view, projection, position);
-            return static_cast<GizmoElement>(elem);
-        }
-
-        glm::vec3 startDrag(GizmoElement element, const glm::vec2& mouse_pos,
-                            const glm::mat4& view, const glm::mat4& projection,
-                            const glm::vec3& position) override {
-            return gizmo_->startDrag(static_cast<TranslationGizmo::Element>(element),
-                                     mouse_pos, view, projection, position);
-        }
-
-        glm::vec3 updateDrag(const glm::vec2& mouse_pos, const glm::mat4& view,
-                             const glm::mat4& projection) override {
-            return gizmo_->updateDrag(mouse_pos, view, projection);
-        }
-
-        void endDrag() override { gizmo_->endDrag(); }
-        bool isDragging() const override { return gizmo_->isDragging(); }
-
-        void setHovered(GizmoElement element) override {
-            gizmo_->setHoveredElement(static_cast<TranslationGizmo::Element>(element));
-        }
-
-        GizmoElement getHovered() const override {
-            return static_cast<GizmoElement>(gizmo_->getHoveredElement());
-        }
-    };
 
     class RenderingEngineImpl : public RenderingEngine {
     public:
@@ -108,12 +70,15 @@ namespace lfs::rendering {
             const ViewportData& viewport,
             float scale) override;
 
+        std::shared_ptr<GizmoInteraction> getGizmoInteraction() override;
+
         Result<void> renderCameraFrustums(
             const std::vector<std::shared_ptr<const lfs::core::Camera>>& cameras,
             const ViewportData& viewport,
             float scale,
             const glm::vec3& train_color,
-            const glm::vec3& eval_color) override;
+            const glm::vec3& eval_color,
+            const glm::mat4& scene_transform = glm::mat4(1.0f)) override;
 
         Result<void> renderCameraFrustumsWithHighlight(
             const std::vector<std::shared_ptr<const lfs::core::Camera>>& cameras,
@@ -121,7 +86,8 @@ namespace lfs::rendering {
             float scale,
             const glm::vec3& train_color,
             const glm::vec3& eval_color,
-            int highlight_index) override;
+            int highlight_index,
+            const glm::mat4& scene_transform = glm::mat4(1.0f)) override;
 
         Result<int> pickCameraFrustum(
             const std::vector<std::shared_ptr<const lfs::core::Camera>>& cameras,
@@ -129,9 +95,8 @@ namespace lfs::rendering {
             const glm::vec2& viewport_pos,
             const glm::vec2& viewport_size,
             const ViewportData& viewport,
-            float scale) override;
-
-        std::shared_ptr<GizmoInteraction> getGizmoInteraction() override;
+            float scale,
+            const glm::mat4& scene_transform = glm::mat4(1.0f)) override;
 
         // Pipeline compatibility
         RenderingPipelineResult renderWithPipeline(
@@ -159,12 +124,8 @@ namespace lfs::rendering {
         RenderBoundingBox bbox_renderer_;
         RenderCoordinateAxes axes_renderer_;
         ViewportGizmo viewport_gizmo_;
-        TranslationGizmo translation_gizmo_;
         CameraFrustumRenderer camera_frustum_renderer_;
         RenderPivotPoint pivot_renderer_;
-
-        // Gizmo interaction adapter
-        std::shared_ptr<GizmoInteractionAdapter> gizmo_interaction_;
 
         // Shaders
         ManagedShader quad_shader_;

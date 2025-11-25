@@ -24,7 +24,8 @@ namespace lfs::rendering {
                             const glm::mat4& projection,
                             float scale = 0.1f,
                             const glm::vec3& train_color = glm::vec3(0.0f, 1.0f, 0.0f),
-                            const glm::vec3& eval_color = glm::vec3(1.0f, 0.0f, 0.0f));
+                            const glm::vec3& eval_color = glm::vec3(1.0f, 0.0f, 0.0f),
+                            const glm::mat4& scene_transform = glm::mat4(1.0f));
 
         Result<int> pickCamera(const std::vector<std::shared_ptr<const lfs::core::Camera>>& cameras,
                                const glm::vec2& mouse_pos,
@@ -32,7 +33,8 @@ namespace lfs::rendering {
                                const glm::vec2& viewport_size,
                                const glm::mat4& view,
                                const glm::mat4& projection,
-                               float scale = 0.1f);
+                               float scale = 0.1f,
+                               const glm::mat4& scene_transform = glm::mat4(1.0f));
 
         void setHighlightedCamera(int index) { highlighted_camera_ = index; }
         int getHighlightedCamera() const { return highlighted_camera_; }
@@ -47,7 +49,8 @@ namespace lfs::rendering {
                               const glm::vec3& train_color,
                               const glm::vec3& eval_color,
                               bool for_picking = false,
-                              const glm::vec3& view_position = glm::vec3(0, 0, 0));
+                              const glm::vec3& view_position = glm::vec3(0, 0, 0),
+                              const glm::mat4& scene_transform = glm::mat4(1.0f));
 
         void updateInstanceVisibility(const glm::vec3& view_position);
 
@@ -88,6 +91,7 @@ namespace lfs::rendering {
         glm::vec3 last_train_color_{-1, -1, -1};
         glm::vec3 last_eval_color_{-1, -1, -1};
         glm::vec3 last_view_position_{0, 0, 0};
+        glm::mat4 last_scene_transform_{1.0f};
     };
 
 } // namespace lfs::rendering

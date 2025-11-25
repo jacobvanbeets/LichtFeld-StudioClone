@@ -8,7 +8,6 @@
 #include "scene/scene_manager.hpp"
 #include "tools/align_tool.hpp"
 #include "tools/brush_tool.hpp"
-#include "tools/translation_gizmo_tool.hpp"
 #include <stdexcept>
 #ifdef WIN32
 #include <windows.h>
@@ -61,7 +60,6 @@ namespace lfs::vis {
 
     VisualizerImpl::~VisualizerImpl() {
         trainer_manager_.reset();
-        translation_gizmo_tool_.reset();
         brush_tool_.reset();
         tool_context_.reset();
         if (gui_manager_) {
@@ -83,20 +81,9 @@ namespace lfs::vis {
             &viewport_,
             window_manager_->getWindow());
 
-        // Create translation gizmo tool
-        translation_gizmo_tool_ = std::make_shared<tools::TranslationGizmoTool>();
-
-        // Initialize the tool with the context
-        if (!translation_gizmo_tool_->initialize(*tool_context_)) {
-            LOG_ERROR("Failed to initialize translation gizmo tool");
-            translation_gizmo_tool_.reset();
-        } else {
-            // Connect tool to input controller
-            if (input_controller_) {
-                input_controller_->setTranslationGizmoTool(translation_gizmo_tool_);
-                input_controller_->setToolContext(tool_context_.get());
-            }
-            LOG_DEBUG("Translation gizmo tool initialized successfully");
+        // Connect tool context to input controller
+        if (input_controller_) {
+            input_controller_->setToolContext(tool_context_.get());
         }
 
         brush_tool_ = std::make_shared<tools::BrushTool>();
@@ -310,11 +297,6 @@ namespace lfs::vis {
         viewport_.windowSize = window_manager_->getWindowSize();
         viewport_.frameBufferSize = window_manager_->getFramebufferSize();
 
-        // Update gizmo tool if active
-        if (translation_gizmo_tool_ && translation_gizmo_tool_->isEnabled() && tool_context_) {
-            translation_gizmo_tool_->update(*tool_context_);
-        }
-
         if (brush_tool_ && brush_tool_->isEnabled() && tool_context_) {
             brush_tool_->update(*tool_context_);
         }
@@ -427,11 +409,6 @@ namespace lfs::vis {
 
     void VisualizerImpl::shutdown() {
         // Shutdown tools
-        if (translation_gizmo_tool_) {
-            translation_gizmo_tool_->shutdown();
-            translation_gizmo_tool_.reset();
-        }
-
         if (brush_tool_) {
             brush_tool_->shutdown();
             brush_tool_.reset();

@@ -75,14 +75,6 @@ namespace lfs::rendering {
         }
         LOG_DEBUG("Viewport gizmo initialized");
 
-        // Initialize translation gizmo
-        if (auto result = translation_gizmo_.initialize(); !result) {
-            LOG_ERROR("Failed to initialize translation gizmo: {}", result.error());
-            shutdown();
-            return std::unexpected(result.error());
-        }
-        LOG_DEBUG("Translation gizmo initialized");
-
         // Initialize camera frustum renderer
         if (auto result = camera_frustum_renderer_.init(); !result) {
             LOG_ERROR("Failed to initialize camera frustum renderer: {}", result.error());
@@ -90,9 +82,6 @@ namespace lfs::rendering {
         } else {
             LOG_DEBUG("Camera frustum renderer initialized");
         }
-
-        // Create gizmo interaction adapter
-        gizmo_interaction_ = std::make_shared<GizmoInteractionAdapter>(&translation_gizmo_);
 
         auto shader_result = initializeShaders();
         if (!shader_result) {
@@ -111,9 +100,7 @@ namespace lfs::rendering {
         quad_shader_ = ManagedShader();
         screen_renderer_.reset();
         split_view_renderer_.reset();
-        translation_gizmo_.shutdown();
         viewport_gizmo_.shutdown();
-        gizmo_interaction_.reset();
         // Other components clean up in their destructors
     }
 
@@ -364,19 +351,16 @@ namespace lfs::rendering {
     }
 
     Result<void> RenderingEngineImpl::renderTranslationGizmo(
-        const glm::vec3& position,
-        const ViewportData& viewport,
-        float scale) {
+        [[maybe_unused]] const glm::vec3& position,
+        [[maybe_unused]] const ViewportData& viewport,
+        [[maybe_unused]] float scale) {
+        // Deprecated - translation gizmo removed, now using ImGuizmo
+        return {};
+    }
 
-        if (!isInitialized()) {
-            LOG_ERROR("Rendering engine not initialized");
-            return std::unexpected("Rendering engine not initialized");
-        }
-
-        auto view = createViewMatrix(viewport);
-        auto proj = createProjectionMatrix(viewport);
-
-        return translation_gizmo_.render(view, proj, position, scale);
+    std::shared_ptr<GizmoInteraction> RenderingEngineImpl::getGizmoInteraction() {
+        // Deprecated - return nullptr since gizmo is removed
+        return nullptr;
     }
 
     Result<void> RenderingEngineImpl::renderCameraFrustums(
@@ -384,7 +368,8 @@ namespace lfs::rendering {
         const ViewportData& viewport,
         float scale,
         const glm::vec3& train_color,
-        const glm::vec3& eval_color) {
+        const glm::vec3& eval_color,
+        const glm::mat4& scene_transform) {
 
         if (!camera_frustum_renderer_.isInitialized()) {
             return {}; // Silent fail if not initialized
@@ -393,7 +378,7 @@ namespace lfs::rendering {
         auto view = createViewMatrix(viewport);
         auto proj = createProjectionMatrix(viewport);
 
-        return camera_frustum_renderer_.render(cameras, view, proj, scale, train_color, eval_color);
+        return camera_frustum_renderer_.render(cameras, view, proj, scale, train_color, eval_color, scene_transform);
     }
 
     Result<void> RenderingEngineImpl::renderCameraFrustumsWithHighlight(
@@ -402,7 +387,8 @@ namespace lfs::rendering {
         float scale,
         const glm::vec3& train_color,
         const glm::vec3& eval_color,
-        int highlight_index) {
+        int highlight_index,
+        const glm::mat4& scene_transform) {
 
         if (!camera_frustum_renderer_.isInitialized()) {
             return {}; // Silent fail if not initialized
@@ -414,7 +400,7 @@ namespace lfs::rendering {
         auto view = createViewMatrix(viewport);
         auto proj = createProjectionMatrix(viewport);
 
-        return camera_frustum_renderer_.render(cameras, view, proj, scale, train_color, eval_color);
+        return camera_frustum_renderer_.render(cameras, view, proj, scale, train_color, eval_color, scene_transform);
     }
 
     Result<int> RenderingEngineImpl::pickCameraFrustum(
@@ -423,7 +409,8 @@ namespace lfs::rendering {
         const glm::vec2& viewport_pos,
         const glm::vec2& viewport_size,
         const ViewportData& viewport,
-        float scale) {
+        float scale,
+        const glm::mat4& scene_transform) {
 
         if (!camera_frustum_renderer_.isInitialized()) {
             return -1;
@@ -433,11 +420,7 @@ namespace lfs::rendering {
         auto proj = createProjectionMatrix(viewport);
 
         return camera_frustum_renderer_.pickCamera(
-            cameras, mouse_pos, viewport_pos, viewport_size, view, proj, scale);
-    }
-
-    std::shared_ptr<GizmoInteraction> RenderingEngineImpl::getGizmoInteraction() {
-        return gizmo_interaction_;
+            cameras, mouse_pos, viewport_pos, viewport_size, view, proj, scale, scene_transform);
     }
 
     RenderingPipelineResult RenderingEngineImpl::renderWithPipeline(
