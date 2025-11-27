@@ -128,7 +128,10 @@ void lfs::rendering::forward(
     bool brush_add_mode,
     bool* brush_selection_out,
     bool brush_saturation_mode,
-    float brush_saturation_amount) {
+    float brush_saturation_amount,
+    const float* crop_box_transform,
+    const float3* crop_box_min,
+    const float3* crop_box_max) {
 
     const dim3 grid(div_round_up(width, config::tile_width), div_round_up(height, config::tile_height), 1);
     const dim3 block(config::tile_width, config::tile_height, 1);
@@ -205,7 +208,10 @@ void lfs::rendering::forward(
         brush_add_mode,
         brush_selection_out,
         brush_saturation_mode,
-        brush_saturation_amount);
+        brush_saturation_amount,
+        crop_box_transform,
+        crop_box_min,
+        crop_box_max);
     CHECK_CUDA(config::debug, "preprocess")
 
 

@@ -613,108 +613,59 @@ namespace lfs::vis {
     }
 
     void SceneManager::handleCropActivePly(const lfs::geometry::BoundingBox& crop_box) {
-        LOG_DEBUG("Starting crop operation for active PLY files");
+        LOG_INFO("handleCropActivePly: Starting crop operation");
 
         changeContentType(ContentType::SplatFiles);
 
-        // Get all visible nodes from the scene
-        auto visible_nodes = scene_.getVisibleNodes();
-        if (visible_nodes.empty()) {
+        // Collect node names first to avoid iterator invalidation
+        std::vector<std::string> node_names;
+        for (const auto* node : scene_.getVisibleNodes()) {
+            node_names.push_back(node->name);
+        }
+
+        if (node_names.empty()) {
             LOG_DEBUG("No visible nodes to crop");
             return;
         }
 
-        LOG_INFO("Cropping {} visible splat files", visible_nodes.size());
+        LOG_INFO("Cropping {} visible splat files", node_names.size());
 
-        std::map<std::string, std::filesystem::path> crop_name_to_ply_path;
-
-        for (const auto* node : visible_nodes) {
-            const std::string& node_name = node->name;
-            const lfs::core::SplatData* node_data = node->model.get();
+        for (const auto& node_name : node_names) {
+            const auto* node = scene_.getNode(node_name);
+            if (!node || !node->model) {
+                continue;
+            }
 
             try {
+                const size_t original_count = node->model->size();
+                auto cropped_splat = lfs::core::crop_by_cropbox(*node->model, crop_box);
+                const size_t cropped_count = cropped_splat.size();
 
-                LOG_DEBUG("Processing node: {}", node_name);
-
-                // Generate new name with "_crop" suffix
-                std::string crop_name = node_name + "_cropped";
-
-                // Check if cropped version already exists
-                if (scene_.getNode(crop_name) != nullptr) {
-                    LOG_DEBUG("Cropped version '{}' already exists, skipping", crop_name);
+                if (cropped_count == original_count) {
+                    LOG_DEBUG("No splats removed for '{}', skipping", node_name);
                     continue;
                 }
 
-                // Perform the crop operation
-                auto cropped_splat = lfs::core::crop_by_cropbox(*node_data, crop_box);
+                LOG_INFO("Cropped '{}': {} -> {} gaussians (removed {})",
+                         node_name, original_count, cropped_count, original_count - cropped_count);
 
-                // Check if the number of splats changed after cropping
-                if (cropped_splat.size() == node_data->size()) {
-                    LOG_DEBUG("No splats were removed during cropping for '{}', skipping", node_name);
-                    continue;
-                }
+                scene_.replaceNodeModel(node_name, std::make_unique<lfs::core::SplatData>(std::move(cropped_splat)));
+                LOG_INFO("Model replaced in scene for '{}'", node_name);
 
-                LOG_DEBUG("Cropped '{}': {} -> {} splats", node_name, node_data->size(), cropped_splat.size());
-
-                // Find the original file path for this node
-                std::filesystem::path original_path;
-                {
-                    std::lock_guard<std::mutex> lock(state_mutex_);
-                    // accessing splat_paths_ is critical code
-                    if (!splat_paths_.empty()) {
-                        original_path = splat_paths_[node_name];
-                    }
-                }
-
-                if (original_path.empty()) {
-                    LOG_ERROR("Could not determine original path for node '{}'", node_name);
-                    continue;
-                }
-
-                // Create the new file path next to the original
-                std::filesystem::path crop_path = original_path.parent_path() / (crop_name + original_path.extension().string());
-
-                LOG_DEBUG("Saving cropped splat to: {}", crop_path.string());
-
-                // Save the cropped splat data
-                // We need to save as PLY format - using iteration 0 as a placeholder
-                std::filesystem::path temp_dir = crop_path.parent_path();
-                lfs::core::save_ply(cropped_splat, temp_dir, 0, true, crop_name); // join_threads = true for synchronous save
-
-                std::filesystem::path actual_saved_path = temp_dir / (crop_name + ".ply");
-
-                if (std::filesystem::exists(actual_saved_path)) {
-                    crop_name_to_ply_path[crop_name] = actual_saved_path;
-                    LOG_INFO("Successfully saved cropped splat: {}", actual_saved_path.string());
-                } else {
-                    LOG_ERROR("Failed to save cropped splat file: {}", actual_saved_path.string());
-                }
+                state::PLYAdded{
+                    .name = node_name,
+                    .node_gaussians = cropped_count,
+                    .total_gaussians = scene_.getTotalGaussianCount(),
+                    .is_visible = true
+                }.emit();
 
             } catch (const std::exception& e) {
                 LOG_ERROR("Failed to crop node '{}': {}", node_name, e.what());
-                continue;
             }
         }
 
-        // Add all successfully cropped files to the scene
-        for (const auto& [crop_name, crop_path] : crop_name_to_ply_path) {
-            try {
-                addSplatFile(crop_path, crop_name, true); // Use default name, make visible
-                if (lfs_project_) {
-                    if (!lfs_project_->addPly(false, crop_path, -1, crop_name)) {
-                        LOG_ERROR("Failed to add cropped ply '{}' to project", crop_name);
-                    }
-                }
-            } catch (const std::exception& e) {
-                LOG_ERROR("Failed to add cropped file '{}' to scene: {}", crop_path.string(), e.what());
-            }
-        }
-
-        if (!crop_name_to_ply_path.empty()) {
-            LOG_INFO("Crop operation completed. Added {} new cropped splat files", crop_name_to_ply_path.size());
-        } else {
-            LOG_INFO("Crop operation completed. No new files were created");
-        }
+        emitSceneChanged();
+        LOG_INFO("Crop operation completed");
     }
 
     void SceneManager::updatePlyPath(const std::string& ply_name, const std::filesystem::path& ply_path) {

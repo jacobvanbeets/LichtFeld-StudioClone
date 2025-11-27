@@ -699,9 +699,8 @@ namespace lfs::core {
             out_dtype = DataType::Bool;
         } else if (op == ReduceOp::Argmax || op == ReduceOp::Argmin) {
             out_dtype = DataType::Int64;
-        } else if (input->dtype_ == DataType::Bool && (op == ReduceOp::Sum || op == ReduceOp::Prod)) {
-            // Bool sum/prod should return Int64 (PyTorch behavior)
-            // Summing booleans is counting True values
+        } else if (input->dtype_ == DataType::Bool) {
+            // Bool reductions return Int64 (PyTorch behavior)
             out_dtype = DataType::Int64;
         }
 

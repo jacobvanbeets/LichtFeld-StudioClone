@@ -65,7 +65,10 @@ namespace lfs::rendering {
         bool brush_add_mode,
         Tensor* brush_selection_out,
         bool brush_saturation_mode,
-        float brush_saturation_amount) {
+        float brush_saturation_amount,
+        const Tensor* crop_box_transform,
+        const Tensor* crop_box_min,
+        const Tensor* crop_box_max) {
 
         check_tensor_input(config::debug, means, "means");
         check_tensor_input(config::debug, scales_raw, "scales_raw");
@@ -139,6 +142,22 @@ namespace lfs::rendering {
             brush_selection_ptr = brush_selection_out->ptr<bool>();
         }
 
+        // Prepare crop box parameters
+        const float* crop_box_transform_ptr = nullptr;
+        const float3* crop_box_min_ptr = nullptr;
+        const float3* crop_box_max_ptr = nullptr;
+        Tensor crop_box_transform_contig, crop_box_min_contig, crop_box_max_contig;
+        if (crop_box_transform != nullptr && crop_box_transform->is_valid() &&
+            crop_box_min != nullptr && crop_box_min->is_valid() &&
+            crop_box_max != nullptr && crop_box_max->is_valid()) {
+            crop_box_transform_contig = crop_box_transform->is_contiguous() ? *crop_box_transform : crop_box_transform->contiguous();
+            crop_box_min_contig = crop_box_min->is_contiguous() ? *crop_box_min : crop_box_min->contiguous();
+            crop_box_max_contig = crop_box_max->is_contiguous() ? *crop_box_max : crop_box_max->contiguous();
+            crop_box_transform_ptr = crop_box_transform_contig.ptr<float>();
+            crop_box_min_ptr = reinterpret_cast<const float3*>(crop_box_min_contig.ptr<float>());
+            crop_box_max_ptr = reinterpret_cast<const float3*>(crop_box_max_contig.ptr<float>());
+        }
+
         forward(
             per_primitive_buffers_func,
             per_tile_buffers_func,
@@ -179,7 +198,10 @@ namespace lfs::rendering {
             brush_add_mode,
             brush_selection_ptr,
             brush_saturation_mode,
-            brush_saturation_amount);
+            brush_saturation_amount,
+            crop_box_transform_ptr,
+            crop_box_min_ptr,
+            crop_box_max_ptr);
 
         arena.end_frame(frame_id, true);  // true = from_rendering
         arena.set_rendering_active(false);

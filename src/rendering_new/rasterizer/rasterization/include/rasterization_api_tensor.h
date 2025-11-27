@@ -73,7 +73,10 @@ namespace lfs::rendering {
         bool brush_add_mode = true,
         Tensor* brush_selection_out = nullptr,
         bool brush_saturation_mode = false,
-        float brush_saturation_amount = 0.0f);
+        float brush_saturation_amount = 0.0f,
+        const Tensor* crop_box_transform = nullptr,
+        const Tensor* crop_box_min = nullptr,
+        const Tensor* crop_box_max = nullptr);
 
     /**
      * @brief Select Gaussians within brush radius using GPU

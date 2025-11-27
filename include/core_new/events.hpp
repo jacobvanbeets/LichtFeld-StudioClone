@@ -56,6 +56,7 @@ namespace lfs::core {
             EVENT(RenamePLY, std::string old_name; std::string new_name;);
             EVENT(SetPLYVisibility, std::string name; bool visible;);
             EVENT(CropPLY, lfs::geometry::BoundingBox crop_box;);
+            EVENT(ApplyCropBox, );
             EVENT(CyclePLY, );
             EVENT(ToggleSplitView, );
             EVENT(ToggleGTComparison, );

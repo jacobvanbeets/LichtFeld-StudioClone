@@ -835,6 +835,36 @@ namespace lfs::vis::gui {
                 crop_gizmo_operation_ = ImGuizmo::BOUNDS;
             }
         });
+
+        // Handle Enter key to apply crop box
+        cmd::ApplyCropBox::when([this](const auto&) {
+            LOG_INFO("ApplyCropBox event received, current_tool={}", static_cast<int>(gizmo_toolbar_state_.current_tool));
+            if (gizmo_toolbar_state_.current_tool != panels::ToolMode::CropBox) {
+                LOG_INFO("Not in CropBox mode, ignoring");
+                return;
+            }
+            auto* render_manager = viewer_->getRenderingManager();
+            if (!render_manager) {
+                return;
+            }
+            const auto& settings = render_manager->getSettings();
+
+            LOG_INFO("ApplyCropBox: min=({},{},{}), max=({},{},{})",
+                     settings.crop_min.x, settings.crop_min.y, settings.crop_min.z,
+                     settings.crop_max.x, settings.crop_max.y, settings.crop_max.z);
+            LOG_INFO("ApplyCropBox: transform translation=({},{},{})",
+                     settings.crop_transform.getTranslation().x,
+                     settings.crop_transform.getTranslation().y,
+                     settings.crop_transform.getTranslation().z);
+
+            lfs::geometry::BoundingBox crop_box;
+            crop_box.setBounds(settings.crop_min, settings.crop_max);
+            crop_box.setworld2BBox(settings.crop_transform.inv());
+            cmd::CropPLY{.crop_box = crop_box}.emit();
+
+            // Deselect cropbox tool
+            gizmo_toolbar_state_.current_tool = panels::ToolMode::None;
+        });
     }
 
     void GuiManager::applyDefaultStyle() {

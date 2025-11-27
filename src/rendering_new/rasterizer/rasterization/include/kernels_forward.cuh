@@ -58,7 +58,10 @@ namespace lfs::rendering::kernels::forward {
         const bool brush_add_mode,
         bool* brush_selection_out,
         const bool brush_saturation_mode,
-        const float brush_saturation_amount) {
+        const float brush_saturation_amount,
+        const float* crop_box_transform,
+        const float3* crop_box_min,
+        const float3* crop_box_max) {
         auto primitive_idx = cg::this_grid().thread_rank();
         bool active = true;
         if (primitive_idx >= n_primitives) {
@@ -314,8 +317,35 @@ namespace lfs::rendering::kernels::forward {
         else if (!brush_saturation_mode) {
             const bool in_cumulative = (brush_selection_out != nullptr && brush_selection_out[primitive_idx]);
             const bool in_scene_selection = (selection_mask != nullptr && selection_mask[primitive_idx]);
+
+            // Check if outside crop box (highlight in yellow)
+            bool outside_crop_box = false;
+            if (crop_box_transform != nullptr && crop_box_min != nullptr && crop_box_max != nullptr) {
+                // Transform world position to crop box local space
+                const float3 box_min = *crop_box_min;
+                const float3 box_max = *crop_box_max;
+                // Apply world-to-box transform to original mean position
+                const float3 orig_mean = means[primitive_idx];
+                const float local_x = crop_box_transform[0] * orig_mean.x + crop_box_transform[1] * orig_mean.y +
+                                      crop_box_transform[2] * orig_mean.z + crop_box_transform[3];
+                const float local_y = crop_box_transform[4] * orig_mean.x + crop_box_transform[5] * orig_mean.y +
+                                      crop_box_transform[6] * orig_mean.z + crop_box_transform[7];
+                const float local_z = crop_box_transform[8] * orig_mean.x + crop_box_transform[9] * orig_mean.y +
+                                      crop_box_transform[10] * orig_mean.z + crop_box_transform[11];
+                // Check if outside bounds
+                outside_crop_box = (local_x < box_min.x || local_x > box_max.x ||
+                                    local_y < box_min.y || local_y > box_max.y ||
+                                    local_z < box_min.z || local_z > box_max.z);
+            }
+
             if (under_brush || in_cumulative || in_scene_selection) {
                 color.x = fminf(color.x * 2.0f + 0.4f, 1.0f);
+            }
+            if (outside_crop_box) {
+                // Tint red for outside crop box
+                color.x = fminf(color.x * 0.5f + 0.6f, 1.0f);
+                color.y = color.y * 0.3f;
+                color.z = color.z * 0.3f;
             }
         }
 

@@ -123,10 +123,6 @@ namespace lfs::core {
 
         const int num_points = splat_data._means.size(0);
 
-        LOG_DEBUG("Cropping {} points with bounding box: min({}, {}, {}), max({}, {}, {})",
-                  num_points, bbox_min.x, bbox_min.y, bbox_min.z,
-                  bbox_max.x, bbox_max.y, bbox_max.z);
-
         glm::mat4 world_to_bbox_matrix = world2bbox_transform.toMat4();
 
         std::vector<float> transform_data = {
@@ -161,13 +157,12 @@ namespace lfs::core {
         auto inside_min = local_points.ge(bbox_min_tensor.unsqueeze(0));
         auto inside_max = local_points.le(bbox_max_tensor.unsqueeze(0));
 
+
+        auto inside_both = inside_min && inside_max;
         std::vector<int> reduce_dims = {1};
-        auto inside_mask = (inside_min && inside_max).all(std::span<const int>(reduce_dims), false);
+        auto inside_mask = inside_both.all(std::span<const int>(reduce_dims), false);
 
         int points_inside = inside_mask.sum_scalar();
-
-        LOG_DEBUG("Found {} points inside bounding box ({:.1f}%)",
-                  points_inside, (float)points_inside / num_points * 100.0f);
 
         if (points_inside == 0) {
             LOG_WARN("No points found inside bounding box, returning empty SplatData");

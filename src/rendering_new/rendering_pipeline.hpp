@@ -57,6 +57,10 @@ namespace lfs::rendering {
             lfs::core::Tensor* brush_selection_tensor = nullptr;
             bool brush_saturation_mode = false;
             float brush_saturation_amount = 0.0f;
+            // Crop box visualization (highlight gaussians outside box)
+            const Tensor* crop_box_transform = nullptr;  // 4x4 world-to-box transform
+            const Tensor* crop_box_min = nullptr;        // Box min bounds
+            const Tensor* crop_box_max = nullptr;        // Box max bounds
         };
 
         struct RenderResult {

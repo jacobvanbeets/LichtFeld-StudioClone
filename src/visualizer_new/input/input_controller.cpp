@@ -636,6 +636,15 @@ namespace lfs::vis {
             }
         }
 
+        // Enter - apply crop box
+        if (key == GLFW_KEY_ENTER && action == GLFW_PRESS) {
+            LOG_INFO("Enter pressed, ImGui::IsAnyItemActive()={}", ImGui::IsAnyItemActive());
+            if (!ImGui::IsAnyItemActive()) {
+                cmd::ApplyCropBox{}.emit();
+            }
+            return;
+        }
+
         // WASD only works when viewport has focus and gizmo isn't active
         if (!shouldCameraHandleInput() || drag_mode_ == DragMode::Gizmo || drag_mode_ == DragMode::Splitter)
             return;

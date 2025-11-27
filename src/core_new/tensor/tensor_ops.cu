@@ -995,10 +995,41 @@ namespace lfs::core::tensor_ops {
         }
     };
 
-    // Internal Bool implementation (converts to int64 and reduces)
-    void launch_reduce_op_bool(const void* input, void* output, const size_t* shape, size_t rank,
-                                      const int* axes, size_t num_axes, bool keepdim, ReduceOp op,
-                                      cudaStream_t stream) {
+    // Partial bool reduction along axis (All/Any)
+    __global__ void bool_reduce_axis_kernel(
+        const bool* __restrict__ input,
+        bool* __restrict__ output,
+        const size_t outer_size,
+        const size_t reduce_size,
+        const size_t inner_size,
+        const bool is_all) {
+        const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+        const size_t output_size = outer_size * inner_size;
+        if (idx >= output_size) return;
+
+        const size_t outer_idx = idx / inner_size;
+        const size_t inner_idx = idx % inner_size;
+        const size_t base = outer_idx * reduce_size * inner_size + inner_idx;
+
+        if (is_all) {
+            bool result = true;
+            for (size_t r = 0; r < reduce_size && result; ++r) {
+                result = result && input[base + r * inner_size];
+            }
+            output[idx] = result;
+        } else {
+            bool result = false;
+            for (size_t r = 0; r < reduce_size && !result; ++r) {
+                result = result || input[base + r * inner_size];
+            }
+            output[idx] = result;
+        }
+    }
+
+    // Bool reduction implementation
+    void launch_reduce_op_bool(const void* input, void* output, const size_t* shape, const size_t rank,
+                               const int* axes, const size_t num_axes, const bool keepdim, const ReduceOp op,
+                               cudaStream_t stream) {
         size_t n = 1;
         for (size_t i = 0; i < rank; ++i)
             n *= shape[i];
@@ -1006,9 +1037,10 @@ namespace lfs::core::tensor_ops {
             return;
 
         const bool* d_in = static_cast<const bool*>(input);
-        int64_t* d_out = static_cast<int64_t*>(output); // Output as int64 (PyTorch behavior)
+        bool* d_out_bool = static_cast<bool*>(output);
+        int64_t* d_out_int64 = static_cast<int64_t*>(output);
 
-        // Only support full reduction for Bool (same as Int32)
+        // Full reduction
         if (num_axes == 0 || num_axes == rank) {
             void* d_temp_storage = nullptr;
             size_t temp_storage_bytes = 0;
@@ -1016,82 +1048,139 @@ namespace lfs::core::tensor_ops {
             switch (op) {
             case ReduceOp::Sum:
             case ReduceOp::Mean: {
-                // Create transformation iterator to convert bool→int64 on-the-fly
                 auto transform_iter = thrust::make_transform_iterator(
-                    thrust::device_pointer_cast(d_in),
-                    BoolToInt64Op());
+                    thrust::device_pointer_cast(d_in), BoolToInt64Op());
 
-                // Determine temp storage size
                 cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes,
-                                       transform_iter, d_out, n, stream);
+                                       transform_iter, d_out_int64, n, stream);
                 cudaMallocAsync(&d_temp_storage, temp_storage_bytes, stream);
-
-                // Run reduction (bool→int64→sum)
                 cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes,
-                                       transform_iter, d_out, n, stream);
+                                       transform_iter, d_out_int64, n, stream);
 
-                // For mean, divide by count
                 if (op == ReduceOp::Mean) {
-                    auto out_ptr = thrust::device_pointer_cast(d_out);
                     const int64_t count = static_cast<int64_t>(n);
+                    auto out_ptr = thrust::device_pointer_cast(d_out_int64);
                     thrust::transform(thrust::cuda::par_nosync.on(stream), out_ptr, out_ptr + 1, out_ptr,
                                       [count] __device__(int64_t val) { return val / count; });
                 }
-
                 cudaFreeAsync(d_temp_storage, stream);
             } break;
 
-            case ReduceOp::Max: {
-                // Max of bools: 1 if any true, 0 if all false
+            case ReduceOp::Max:
+            case ReduceOp::Any: {
                 auto transform_iter = thrust::make_transform_iterator(
-                    thrust::device_pointer_cast(d_in),
-                    BoolToInt64Op());
+                    thrust::device_pointer_cast(d_in), BoolToInt64Op());
+
+                int64_t* d_temp_result;
+                cudaMallocAsync(&d_temp_result, sizeof(int64_t), stream);
 
                 cub::DeviceReduce::Max(d_temp_storage, temp_storage_bytes,
-                                       transform_iter, d_out, n, stream);
+                                       transform_iter, d_temp_result, n, stream);
                 cudaMallocAsync(&d_temp_storage, temp_storage_bytes, stream);
                 cub::DeviceReduce::Max(d_temp_storage, temp_storage_bytes,
-                                       transform_iter, d_out, n, stream);
+                                       transform_iter, d_temp_result, n, stream);
 
+                if (op == ReduceOp::Any) {
+                    thrust::transform(thrust::cuda::par_nosync.on(stream),
+                        thrust::device_pointer_cast(d_temp_result),
+                        thrust::device_pointer_cast(d_temp_result) + 1,
+                        thrust::device_pointer_cast(d_out_bool),
+                        [] __device__(int64_t val) { return val != 0; });
+                } else {
+                    cudaMemcpyAsync(d_out_int64, d_temp_result, sizeof(int64_t), cudaMemcpyDeviceToDevice, stream);
+                }
+                cudaFreeAsync(d_temp_result, stream);
                 cudaFreeAsync(d_temp_storage, stream);
             } break;
 
-            case ReduceOp::Min: {
-                // Min of bools: 0 if any false, 1 if all true
-                auto transform_iter = thrust::make_transform_iterator(
-                    thrust::device_pointer_cast(d_in),
-                    BoolToInt64Op());
-
-                cub::DeviceReduce::Min(d_temp_storage, temp_storage_bytes,
-                                       transform_iter, d_out, n, stream);
-                cudaMallocAsync(&d_temp_storage, temp_storage_bytes, stream);
-                cub::DeviceReduce::Min(d_temp_storage, temp_storage_bytes,
-                                       transform_iter, d_out, n, stream);
-
-                cudaFreeAsync(d_temp_storage, stream);
-            } break;
-
+            case ReduceOp::Min:
+            case ReduceOp::All:
             case ReduceOp::Prod: {
-                // Prod of bools: 0 if any false, 1 if all true (same as Min)
                 auto transform_iter = thrust::make_transform_iterator(
-                    thrust::device_pointer_cast(d_in),
-                    BoolToInt64Op());
+                    thrust::device_pointer_cast(d_in), BoolToInt64Op());
+
+                int64_t* d_temp_result;
+                cudaMallocAsync(&d_temp_result, sizeof(int64_t), stream);
 
                 cub::DeviceReduce::Min(d_temp_storage, temp_storage_bytes,
-                                       transform_iter, d_out, n, stream);
+                                       transform_iter, d_temp_result, n, stream);
                 cudaMallocAsync(&d_temp_storage, temp_storage_bytes, stream);
                 cub::DeviceReduce::Min(d_temp_storage, temp_storage_bytes,
-                                       transform_iter, d_out, n, stream);
+                                       transform_iter, d_temp_result, n, stream);
 
+                if (op == ReduceOp::All) {
+                    thrust::transform(thrust::cuda::par_nosync.on(stream),
+                        thrust::device_pointer_cast(d_temp_result),
+                        thrust::device_pointer_cast(d_temp_result) + 1,
+                        thrust::device_pointer_cast(d_out_bool),
+                        [] __device__(int64_t val) { return val != 0; });
+                } else {
+                    cudaMemcpyAsync(d_out_int64, d_temp_result, sizeof(int64_t), cudaMemcpyDeviceToDevice, stream);
+                }
+                cudaFreeAsync(d_temp_result, stream);
                 cudaFreeAsync(d_temp_storage, stream);
             } break;
 
-            default: {
-                init_scalar_gpu(d_out, static_cast<int64_t>(0), stream);  // GPU init instead of CPU→GPU upload!
-            } break;
+            default:
+                init_scalar_gpu(d_out_int64, static_cast<int64_t>(0), stream);
+                break;
             }
+            return;
         }
-        // Partial reductions not supported for Bool yet
+
+        // Partial reduction for Any/All
+        if (op == ReduceOp::Any || op == ReduceOp::All) {
+            const int dim = axes[0];
+            size_t outer_size = 1;
+            for (int i = 0; i < dim; ++i)
+                outer_size *= shape[i];
+            const size_t reduce_size = shape[dim];
+            size_t inner_size = 1;
+            for (size_t i = dim + 1; i < rank; ++i)
+                inner_size *= shape[i];
+
+            // For multi-axis, extend reduce_size to cover all reduced dims
+            if (num_axes > 1) {
+                std::vector<bool> is_reduced(rank, false);
+                for (size_t i = 0; i < num_axes; ++i)
+                    is_reduced[axes[i]] = true;
+
+                int first = -1, last = -1;
+                for (size_t i = 0; i < rank; ++i) {
+                    if (is_reduced[i]) {
+                        if (first < 0) first = i;
+                        last = i;
+                    }
+                }
+
+                outer_size = 1;
+                for (int i = 0; i < first; ++i)
+                    outer_size *= shape[i];
+
+                size_t reduce_combined = 1;
+                for (int i = first; i <= last; ++i)
+                    reduce_combined *= shape[i];
+
+                inner_size = 1;
+                for (size_t i = last + 1; i < rank; ++i)
+                    inner_size *= shape[i];
+
+                const size_t output_size = outer_size * inner_size;
+                const int threads = 256;
+                const int blocks = (output_size + threads - 1) / threads;
+
+                bool_reduce_axis_kernel<<<blocks, threads, 0, stream>>>(
+                    d_in, d_out_bool, outer_size, reduce_combined, inner_size, op == ReduceOp::All);
+                return;
+            }
+
+            const size_t output_size = outer_size * inner_size;
+            const int threads = 256;
+            const int blocks = (output_size + threads - 1) / threads;
+
+            bool_reduce_axis_kernel<<<blocks, threads, 0, stream>>>(
+                d_in, d_out_bool, outer_size, reduce_size, inner_size, op == ReduceOp::All);
+        }
     }
 
     // Public dispatcher function

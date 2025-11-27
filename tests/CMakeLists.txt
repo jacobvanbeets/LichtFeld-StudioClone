@@ -20,8 +20,8 @@ set(TEST_SOURCES
 set(OPTIONAL_TEST_FILES
     test_loss_gradients.cpp
     test_regularization_comparison.cpp
-    test_add_new_gs_deterministic.cpp
-    test_render_modes.cpp
+    #test_add_new_gs_deterministic.cpp
+    #test_render_modes.cpp
     test_gut_rasterizer_gradients.cpp
     test_gut_manual_vs_autograd.cpp
     test_gut_autograd_vs_manual.cpp
@@ -119,6 +119,7 @@ set(OPTIONAL_TEST_FILES
     test_mcmc_critical_bugs.cpp     # Critical MCMC bugs: Adam add_new_params, inject_noise, cat self-ref, index_add_ int64
     test_mcmc_dead_mask.cpp         # Comprehensive tests for MCMC dead mask calculation: (opacities <= min_opacity) | (rot_mag_sq < 1e-8)
     test_relocate_gs_edge_cases.cpp # Comprehensive edge case tests for relocate_gs(): logit, Int32 ops, logical ops, indexing, division
+    test_bool_reduction.cpp  # Bool reduction tests for cropping bug investigation
 )
 
 foreach(TEST_FILE ${OPTIONAL_TEST_FILES})

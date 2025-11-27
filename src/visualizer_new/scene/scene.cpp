@@ -74,6 +74,26 @@ namespace lfs::vis {
         }
     }
 
+    void Scene::replaceNodeModel(const std::string& name, std::unique_ptr<lfs::core::SplatData> model) {
+        auto it = std::find_if(nodes_.begin(), nodes_.end(),
+                               [&name](const Node& node) { return node.name == name; });
+
+        if (it != nodes_.end()) {
+            const size_t gaussian_count = static_cast<size_t>(model->size());
+            const glm::vec3 centroid = computeCentroid(model.get());
+            LOG_INFO("Scene::replaceNodeModel '{}': old model {} gaussians, new model {} gaussians",
+                     name, it->gaussian_count, gaussian_count);
+            it->model = std::move(model);
+            it->gaussian_count = gaussian_count;
+            it->centroid = centroid;
+            LOG_INFO("Scene::replaceNodeModel invalidating cache, cache_valid_={}", cache_valid_);
+            invalidateCache();
+            LOG_INFO("Scene::replaceNodeModel after invalidate, cache_valid_={}", cache_valid_);
+        } else {
+            LOG_WARN("Scene::replaceNodeModel: node '{}' not found", name);
+        }
+    }
+
     void Scene::setNodeVisibility(const std::string& name, bool visible) {
         auto it = std::find_if(nodes_.begin(), nodes_.end(),
                                [&name](const Node& node) { return node.name == name; });
@@ -144,6 +164,9 @@ namespace lfs::vis {
 
     const lfs::core::SplatData* Scene::getCombinedModel() const {
         rebuildCacheIfNeeded();
+        LOG_DEBUG("Scene::getCombinedModel returning ptr={}, size={}",
+                  (void*)cached_combined_.get(),
+                  cached_combined_ ? cached_combined_->size() : 0);
         return cached_combined_.get();
     }
 
@@ -195,6 +218,8 @@ namespace lfs::vis {
     void Scene::rebuildCacheIfNeeded() const {
         if (cache_valid_)
             return;
+
+        LOG_INFO("Scene::rebuildCacheIfNeeded - REBUILDING CACHE");
 
         // Collect visible nodes (we need both model and transform)
         auto visible_nodes = nodes_ | std::views::filter([](const auto& node) {
@@ -322,6 +347,8 @@ namespace lfs::vis {
             std::move(opacity),
             stats.total_scene_scale / visible_nodes.size());
 
+        LOG_INFO("Scene::rebuildCache NEW combined model ptr={}, size={}",
+                 (void*)cached_combined_.get(), cached_combined_->size());
         cache_valid_ = true;
     }
 

@@ -574,8 +574,8 @@ namespace lfs::vis {
             .brush_saturation_mode = brush_saturation_mode_,
             .brush_saturation_amount = brush_saturation_amount_};
 
-        // Add crop box if enabled
-        if (settings_.use_crop_box) {
+        // Add crop box if enabled (for filtering) or if showing (for visualization)
+        if (settings_.use_crop_box || settings_.show_crop_box) {
             auto transform = settings_.crop_transform;
             request.crop_box = lfs::rendering::BoundingBox{
                 .min = settings_.crop_min,
@@ -648,6 +648,7 @@ namespace lfs::vis {
 
         // Detect model switch
         if (model_ptr != last_model_ptr_) {
+            LOG_INFO("Model ptr changed: {} -> {}, size={}", last_model_ptr_, model_ptr, model ? model->size() : 0);
             needs_render_ = true;
             render_texture_valid_ = false;
             last_model_ptr_ = model_ptr;
@@ -843,9 +844,9 @@ namespace lfs::vis {
             viewport_data.translation = glm::transpose(world_rot) * (viewport_data.translation - world_trans);
         }
 
-        // Create crop box if enabled
+        // Create crop box if enabled (for filtering) or if showing (for visualization)
         std::optional<lfs::rendering::BoundingBox> crop_box;
-        if (settings_.use_crop_box) {
+        if (settings_.use_crop_box || settings_.show_crop_box) {
             auto transform = settings_.crop_transform;
             crop_box = lfs::rendering::BoundingBox{
                 .min = settings_.crop_min,

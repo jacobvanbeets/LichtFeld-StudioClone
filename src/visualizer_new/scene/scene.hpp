@@ -39,6 +39,7 @@ namespace lfs::vis {
         // Node management
         void addNode(const std::string& name, std::unique_ptr<lfs::core::SplatData> model);
         void removeNode(const std::string& name);
+        void replaceNodeModel(const std::string& name, std::unique_ptr<lfs::core::SplatData> model);
         void setNodeVisibility(const std::string& name, bool visible);
         void setNodeTransform(const std::string& name, const glm::mat4& transform);
         glm::mat4 getNodeTransform(const std::string& name) const;

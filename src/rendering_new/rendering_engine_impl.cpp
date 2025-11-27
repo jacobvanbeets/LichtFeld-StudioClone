@@ -173,6 +173,7 @@ namespace lfs::rendering {
 
         // Convert crop box if present
         std::unique_ptr<lfs::geometry::BoundingBox> temp_crop_box;
+        Tensor crop_box_transform_tensor, crop_box_min_tensor, crop_box_max_tensor;
         if (request.crop_box.has_value()) {
             temp_crop_box = std::make_unique<lfs::geometry::BoundingBox>();
             temp_crop_box->setBounds(request.crop_box->min, request.crop_box->max);
@@ -182,6 +183,27 @@ namespace lfs::rendering {
             temp_crop_box->setworld2BBox(transform);
 
             pipeline_req.crop_box = temp_crop_box.get();
+
+            // Prepare crop box tensors for GPU visualization
+            // The transform is world-to-box (inverse of box-to-world)
+            const glm::mat4& w2b = request.crop_box->transform;
+            std::vector<float> transform_data(16);
+            for (int row = 0; row < 4; ++row) {
+                for (int col = 0; col < 4; ++col) {
+                    transform_data[row * 4 + col] = w2b[col][row];  // Transpose to row-major
+                }
+            }
+            crop_box_transform_tensor = Tensor::from_vector(transform_data, {4, 4}, lfs::core::Device::CPU).cuda();
+
+            std::vector<float> min_data = {request.crop_box->min.x, request.crop_box->min.y, request.crop_box->min.z};
+            crop_box_min_tensor = Tensor::from_vector(min_data, {3}, lfs::core::Device::CPU).cuda();
+
+            std::vector<float> max_data = {request.crop_box->max.x, request.crop_box->max.y, request.crop_box->max.z};
+            crop_box_max_tensor = Tensor::from_vector(max_data, {3}, lfs::core::Device::CPU).cuda();
+
+            pipeline_req.crop_box_transform = &crop_box_transform_tensor;
+            pipeline_req.crop_box_min = &crop_box_min_tensor;
+            pipeline_req.crop_box_max = &crop_box_max_tensor;
         }
 
         auto pipeline_result = pipeline_.render(splat_data, pipeline_req);

@@ -62,6 +62,10 @@ namespace lfs::rendering {
         bool brush_add_mode = true,
         bool* brush_selection_out = nullptr,
         bool brush_saturation_mode = false,
-        float brush_saturation_amount = 0.0f);
+        float brush_saturation_amount = 0.0f,
+        // Crop box visualization (highlight outside gaussians)
+        const float* crop_box_transform = nullptr,  // 4x4 world-to-box transform (row-major)
+        const float3* crop_box_min = nullptr,       // Box min bounds in local space
+        const float3* crop_box_max = nullptr);      // Box max bounds in local space
 
 }
