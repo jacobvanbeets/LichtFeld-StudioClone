@@ -304,16 +304,18 @@ namespace lfs::core {
             return false;
         }
 
-        const auto mins = means.min(0);
-        const auto maxs = means.max(0);
+        const int64_t n = means.size(0);
+        const int64_t lo = n / 100;      // 1st percentile
+        const int64_t hi = n - 1 - lo;   // 99th percentile
 
-        min_bounds.x = mins[0].item() - padding;
-        min_bounds.y = mins[1].item() - padding;
-        min_bounds.z = mins[2].item() - padding;
-
-        max_bounds.x = maxs[0].item() + padding;
-        max_bounds.y = maxs[1].item() + padding;
-        max_bounds.z = maxs[2].item() + padding;
+        // TODO: use kthvalue/partial_sort instead of full sort
+        for (int i = 0; i < 3; ++i) {
+            const auto sorted = means.slice(1, i, i + 1).squeeze(1).sort(0, false).first;
+            const float min_val = sorted[lo].item();
+            const float max_val = sorted[hi].item();
+            min_bounds[i] = min_val - padding;
+            max_bounds[i] = max_val + padding;
+        }
 
         return true;
     }
