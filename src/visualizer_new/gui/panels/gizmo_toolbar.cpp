@@ -13,26 +13,26 @@
 namespace lfs::vis::gui::panels {
 
     // Toolbar layout constants
-    constexpr float kButtonSize = 24.0f;
-    constexpr float kPadding = 6.0f;
-    constexpr float kItemSpacing = 4.0f;
-    constexpr float kWindowRounding = 6.0f;
+    constexpr float BUTTON_SIZE = 24.0f;
+    constexpr float PADDING = 6.0f;
+    constexpr float ITEM_SPACING = 4.0f;
+    constexpr float WINDOW_ROUNDING = 6.0f;
 
     // Computes toolbar dimensions for N buttons
     static ImVec2 ComputeToolbarSize(const int num_buttons) {
-        const float width = num_buttons * kButtonSize +
-                            (num_buttons - 1) * kItemSpacing +
-                            2.0f * kPadding;
-        const float height = kButtonSize + 2.0f * kPadding;
+        const float width = num_buttons * BUTTON_SIZE +
+                            (num_buttons - 1) * ITEM_SPACING +
+                            2.0f * PADDING;
+        const float height = BUTTON_SIZE + 2.0f * PADDING;
         return ImVec2(width, height);
     }
 
     // RAII helper for toolbar style setup
     struct ToolbarStyle {
         ToolbarStyle() {
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, kWindowRounding);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kPadding, kPadding));
-            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(kItemSpacing, 0.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, WINDOW_ROUNDING);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(PADDING, PADDING));
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ITEM_SPACING, 0.0f));
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
             ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15f, 0.15f, 0.15f, 0.9f));
         }
@@ -45,9 +45,9 @@ namespace lfs::vis::gui::panels {
     // Secondary toolbar style (slightly darker)
     struct SubToolbarStyle {
         SubToolbarStyle() {
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, kWindowRounding);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kPadding, kPadding));
-            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(kItemSpacing, 0.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, WINDOW_ROUNDING);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(PADDING, PADDING));
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ITEM_SPACING, 0.0f));
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, 0.0f));
             ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.12f, 0.12f, 0.12f, 0.95f));
         }
@@ -87,6 +87,7 @@ namespace lfs::vis::gui::panels {
 
         state.selection_texture = LoadIconTexture("selection.png");
         state.rectangle_texture = LoadIconTexture("rectangle.png");
+        state.lasso_texture = LoadIconTexture("lasso.png");
         state.ring_texture = LoadIconTexture("ring.png");
         state.translation_texture = LoadIconTexture("translation.png");
         state.rotation_texture = LoadIconTexture("rotation.png");
@@ -104,6 +105,7 @@ namespace lfs::vis::gui::panels {
 
         if (state.selection_texture) glDeleteTextures(1, &state.selection_texture);
         if (state.rectangle_texture) glDeleteTextures(1, &state.rectangle_texture);
+        if (state.lasso_texture) glDeleteTextures(1, &state.lasso_texture);
         if (state.ring_texture) glDeleteTextures(1, &state.ring_texture);
         if (state.translation_texture) glDeleteTextures(1, &state.translation_texture);
         if (state.rotation_texture) glDeleteTextures(1, &state.rotation_texture);
@@ -116,6 +118,7 @@ namespace lfs::vis::gui::panels {
 
         state.selection_texture = 0;
         state.rectangle_texture = 0;
+        state.lasso_texture = 0;
         state.ring_texture = 0;
         state.translation_texture = 0;
         state.rotation_texture = 0;
@@ -145,8 +148,8 @@ namespace lfs::vis::gui::panels {
             ImGuiWindowFlags_NoSavedSettings;
 
         // Main toolbar: 7 buttons
-        constexpr int kNumMainButtons = 7;
-        const ImVec2 toolbar_size = ComputeToolbarSize(kNumMainButtons);
+        constexpr int NUM_MAIN_BUTTONS = 7;
+        const ImVec2 toolbar_size = ComputeToolbarSize(NUM_MAIN_BUTTONS);
 
         const float pos_x = viewport->WorkPos.x + viewport_pos.x + (viewport_size.x - toolbar_size.x) * 0.5f;
         const float pos_y = viewport->WorkPos.y + viewport_pos.y + 5.0f;
@@ -157,7 +160,7 @@ namespace lfs::vis::gui::panels {
         {
             const ToolbarStyle style;
             if (ImGui::Begin("##GizmoToolbar", nullptr, flags)) {
-                const ImVec2 btn_size(kButtonSize, kButtonSize);
+                const ImVec2 btn_size(BUTTON_SIZE, BUTTON_SIZE);
 
                 const auto IconButton = [&](const char* id, const unsigned int texture,
                                             const ToolMode tool, const ImGuizmo::OPERATION op,
@@ -208,8 +211,8 @@ namespace lfs::vis::gui::panels {
 
         // Secondary toolbar for selection mode
         if (state.current_tool == ToolMode::Selection) {
-            constexpr int kNumSelButtons = 3;
-            const ImVec2 sub_size = ComputeToolbarSize(kNumSelButtons);
+            constexpr int NUM_SEL_BUTTONS = 4;
+            const ImVec2 sub_size = ComputeToolbarSize(NUM_SEL_BUTTONS);
 
             const float sub_pos_x = viewport->WorkPos.x + viewport_pos.x + (viewport_size.x - sub_size.x) * 0.5f;
             const float sub_pos_y = viewport->WorkPos.y + viewport_pos.y + toolbar_size.y + 8.0f;
@@ -220,7 +223,7 @@ namespace lfs::vis::gui::panels {
             {
                 const SubToolbarStyle style;
                 if (ImGui::Begin("##SelectionModeToolbar", nullptr, flags)) {
-                    const ImVec2 btn_size(kButtonSize, kButtonSize);
+                    const ImVec2 btn_size(BUTTON_SIZE, BUTTON_SIZE);
 
                     const auto SelectionModeButton = [&](const char* id, const unsigned int texture,
                                                          const SelectionSubMode mode, const char* fallback,
@@ -247,6 +250,9 @@ namespace lfs::vis::gui::panels {
                     SelectionModeButton("##rect", state.rectangle_texture, SelectionSubMode::Rectangle,
                                         "R", "Rectangle selection by center");
                     ImGui::SameLine();
+                    SelectionModeButton("##lasso", state.lasso_texture, SelectionSubMode::Lasso,
+                                        "L", "Lasso selection by center");
+                    ImGui::SameLine();
                     SelectionModeButton("##rings", state.ring_texture, SelectionSubMode::Rings,
                                         "O", "Single selection by visible pixels");
                 }
@@ -256,8 +262,8 @@ namespace lfs::vis::gui::panels {
 
         // Secondary toolbar for cropbox operations
         if (state.current_tool == ToolMode::CropBox) {
-            constexpr int kNumCropButtons = 5;
-            const ImVec2 sub_size = ComputeToolbarSize(kNumCropButtons);
+            constexpr int NUM_CROP_BUTTONS = 5;
+            const ImVec2 sub_size = ComputeToolbarSize(NUM_CROP_BUTTONS);
 
             const float sub_pos_x = viewport->WorkPos.x + viewport_pos.x + (viewport_size.x - sub_size.x) * 0.5f;
             const float sub_pos_y = viewport->WorkPos.y + viewport_pos.y + toolbar_size.y + 8.0f;
@@ -268,7 +274,7 @@ namespace lfs::vis::gui::panels {
             {
                 const SubToolbarStyle style;
                 if (ImGui::Begin("##CropBoxToolbar", nullptr, flags)) {
-                    const ImVec2 btn_size(kButtonSize, kButtonSize);
+                    const ImVec2 btn_size(BUTTON_SIZE, BUTTON_SIZE);
 
                     const auto CropOpButton = [&](const char* id, const unsigned int texture,
                                                   const CropBoxOperation op, const char* fallback,

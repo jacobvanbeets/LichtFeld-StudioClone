@@ -417,6 +417,7 @@ namespace lfs::vis::gui {
                     switch (gizmo_toolbar_state_.selection_mode) {
                         case panels::SelectionSubMode::Centers:   mode = lfs::rendering::SelectionMode::Centers; break;
                         case panels::SelectionSubMode::Rectangle: mode = lfs::rendering::SelectionMode::Rectangle; break;
+                        case panels::SelectionSubMode::Lasso:     mode = lfs::rendering::SelectionMode::Lasso; break;
                         case panels::SelectionSubMode::Rings:     mode = lfs::rendering::SelectionMode::Rings; break;
                     }
                     rm->setSelectionMode(mode);

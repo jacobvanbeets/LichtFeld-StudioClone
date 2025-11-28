@@ -8,6 +8,7 @@
 #include "core_new/tensor.hpp"
 #include <glm/glm.hpp>
 #include <memory>
+#include <vector>
 
 namespace lfs::vis::tools {
 
@@ -51,11 +52,17 @@ namespace lfs::vis::tools {
         glm::vec2 rect_start_{0.0f};
         glm::vec2 rect_end_{0.0f};
 
+        // Lasso selection state
+        bool is_lasso_dragging_ = false;
+        std::vector<glm::vec2> lasso_points_;
+
         void beginStroke(double x, double y, SelectionAction action, bool clear_existing, const ToolContext& ctx);
         void endStroke();
         void updateSelectionAtPoint(double x, double y, const ToolContext& ctx);
         void updateBrushPreview(double x, double y, const ToolContext& ctx);
         void selectInRectangle(const ToolContext& ctx);
+        void selectInLasso(const ToolContext& ctx);
+        static bool pointInPolygon(float px, float py, const std::vector<glm::vec2>& polygon);
     };
 
 } // namespace lfs::vis::tools

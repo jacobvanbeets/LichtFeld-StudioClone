@@ -32,6 +32,7 @@ namespace lfs::rendering {
     enum class SelectionMode {
         Centers,
         Rectangle,
+        Lasso,
         Rings
     };
 

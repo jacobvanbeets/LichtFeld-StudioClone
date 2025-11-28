@@ -31,6 +31,7 @@ namespace lfs::vis::gui::panels {
     enum class SelectionSubMode {
         Centers,
         Rectangle,
+        Lasso,
         Rings
     };
 
@@ -43,6 +44,7 @@ namespace lfs::vis::gui::panels {
         bool initialized = false;
         unsigned int selection_texture = 0;
         unsigned int rectangle_texture = 0;
+        unsigned int lasso_texture = 0;
         unsigned int ring_texture = 0;
         unsigned int translation_texture = 0;
         unsigned int rotation_texture = 0;
