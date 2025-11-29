@@ -4,6 +4,7 @@
 
 #include "input/input_controller.hpp"
 #include "core_new/logger.hpp"
+#include "gui/gui_manager.hpp"
 #include "loader_new/loader.hpp"
 #include "rendering/rendering_manager.hpp"
 #include "tools/align_tool.hpp"
@@ -558,15 +559,18 @@ namespace lfs::vis {
             key_r_pressed_ = (action != GLFW_RELEASE);
         }
 
-        // T - cycle PLY, Ctrl+T - toggle crop inverse mode
+        // T: cycle PLY, Ctrl+T: cycle visualization mode in Selection tool
         if (key == GLFW_KEY_T && action == GLFW_PRESS && !ImGui::IsAnyItemActive()) {
-            const bool ctrl_pressed = glfwGetKey(window_, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-                                      glfwGetKey(window_, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
-            if (ctrl_pressed) {
-                cmd::ToggleCropInverse{}.emit();
+            const bool ctrl = glfwGetKey(window_, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                              glfwGetKey(window_, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+            if (ctrl && gui_manager_ &&
+                gui_manager_->getCurrentToolMode() == gui::panels::ToolMode::Selection) {
+                cmd::CycleSelectionVisualization{}.emit();
                 return;
             }
-            cmd::CyclePLY{}.emit();
+            if (!ctrl) {
+                cmd::CyclePLY{}.emit();
+            }
             return;
         }
 
@@ -693,6 +697,15 @@ namespace lfs::vis {
             }
             if (key == GLFW_KEY_D) {
                 cmd::DeselectAll{}.emit();
+                return;
+            }
+            // Ctrl+1..5: selection sub-mode shortcuts
+            if (gui_manager_ && key >= GLFW_KEY_1 && key <= GLFW_KEY_5) {
+                using Mode = gui::panels::SelectionSubMode;
+                static constexpr Mode SELECTION_MODES[] = {
+                    Mode::Centers, Mode::Rectangle, Mode::Polygon, Mode::Lasso, Mode::Rings
+                };
+                gui_manager_->setSelectionSubMode(SELECTION_MODES[key - GLFW_KEY_1]);
                 return;
             }
         }

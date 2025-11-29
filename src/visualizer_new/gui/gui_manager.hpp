@@ -63,6 +63,11 @@ namespace lfs::vis {
             ImGuizmo::OPERATION getCropGizmoOperation() const { return crop_gizmo_operation_; }
             ImGuizmo::MODE getCropGizmoMode() const { return crop_gizmo_mode_; }
 
+            // Selection sub-mode shortcuts (Ctrl+1..5)
+            void setSelectionSubMode(panels::SelectionSubMode mode);
+            panels::SelectionSubMode getSelectionSubMode() const { return gizmo_toolbar_state_.selection_mode; }
+            panels::ToolMode getCurrentToolMode() const { return gizmo_toolbar_state_.current_tool; }
+
             bool isForceExit() const { return force_exit_; }
 
         private:
@@ -125,14 +130,6 @@ namespace lfs::vis {
 
             // Gizmo toolbar state
             panels::GizmoToolbarState gizmo_toolbar_state_;
-
-            // Ring selection auto-toggle state
-            bool ring_mode_was_active_ = false;
-            bool show_rings_before_ring_mode_ = false;
-
-            // Center markers auto-toggle state
-            bool center_markers_mode_was_active_ = false;
-            bool show_center_markers_before_ = false;
 
             // Cropbox undo/redo state
             bool cropbox_gizmo_active_ = false;

@@ -248,19 +248,19 @@ namespace lfs::vis::gui::panels {
                     };
 
                     SelectionModeButton("##centers", state.selection_texture, SelectionSubMode::Centers,
-                                        "C", "Brush selection by center");
+                                        "C", "Brush selection (Ctrl+1)");
                     ImGui::SameLine();
                     SelectionModeButton("##rect", state.rectangle_texture, SelectionSubMode::Rectangle,
-                                        "R", "Rectangle selection by center");
+                                        "R", "Rectangle selection (Ctrl+2)");
                     ImGui::SameLine();
                     SelectionModeButton("##polygon", state.polygon_texture, SelectionSubMode::Polygon,
-                                        "P", "Polygon selection (Enter to confirm)");
+                                        "P", "Polygon selection (Ctrl+3)");
                     ImGui::SameLine();
                     SelectionModeButton("##lasso", state.lasso_texture, SelectionSubMode::Lasso,
-                                        "L", "Lasso selection by center");
+                                        "L", "Lasso selection (Ctrl+4)");
                     ImGui::SameLine();
                     SelectionModeButton("##rings", state.ring_texture, SelectionSubMode::Rings,
-                                        "O", "Single selection by visible pixels");
+                                        "O", "Ring selection (Ctrl+5)");
                 }
                 ImGui::End();
             }

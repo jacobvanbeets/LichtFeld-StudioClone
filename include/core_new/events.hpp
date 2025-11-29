@@ -61,6 +61,7 @@ namespace lfs::core {
             EVENT(FitCropBoxToScene, bool use_percentile;);
             EVENT(ToggleCropInverse, );
             EVENT(CyclePLY, );
+            EVENT(CycleSelectionVisualization, );
             EVENT(ToggleSplitView, );
             EVENT(ToggleGTComparison, );
             EVENT(ToggleGimbalLock, bool locked;);

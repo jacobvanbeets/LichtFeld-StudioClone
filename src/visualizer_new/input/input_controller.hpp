@@ -21,6 +21,9 @@ namespace lfs::vis {
         class AlignTool;
         class SelectionTool;
     } // namespace tools
+    namespace gui {
+        class GuiManager;
+    }
     class ToolContext;
     class RenderingManager;
 
@@ -60,6 +63,11 @@ namespace lfs::vis {
         // Set rendering manager for split view
         void setRenderingManager(RenderingManager* rm) {
             rendering_manager_ = rm;
+        }
+
+        // Set GUI manager for selection mode shortcuts
+        void setGuiManager(gui::GuiManager* gm) {
+            gui_manager_ = gm;
         }
 
         // Called every frame by GUI manager to update viewport bounds
@@ -125,6 +133,7 @@ namespace lfs::vis {
         Viewport& viewport_;
         std::shared_ptr<TrainerManager> training_manager_;
         RenderingManager* rendering_manager_ = nullptr;
+        gui::GuiManager* gui_manager_ = nullptr;
 
         // Tool support
         std::shared_ptr<tools::BrushTool> brush_tool_;
