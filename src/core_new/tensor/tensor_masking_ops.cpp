@@ -193,65 +193,50 @@ namespace lfs::core {
             }
             // No sync - tensor operation
         } else {
+            // CPU implementation
             size_t outer = 1, inner = 1;
             for (int i = 0; i < dim; ++i)
                 outer *= shape_[i];
             for (size_t i = dim + 1; i < shape_.rank(); ++i)
                 inner *= shape_[i];
 
-            const int* idx = indices_same_device.ptr<int>();
+            const int* const idx = is_int64 ? indices_int32.ptr<int>() : indices_same_device.ptr<int>();
+            const size_t n_indices = indices.numel();
+            const size_t dim_size = shape_[dim];
 
-            auto process_idx = [&](int sel) -> int {
+            const auto process_idx = [dim_size, mode](int sel) -> int {
                 if (mode == BoundaryMode::Clamp) {
-                    return std::clamp(sel, 0, static_cast<int>(shape_[dim]) - 1);
+                    return std::clamp(sel, 0, static_cast<int>(dim_size) - 1);
                 } else if (mode == BoundaryMode::Wrap) {
-                    return ((sel % static_cast<int>(shape_[dim])) + shape_[dim]) % shape_[dim];
+                    return ((sel % static_cast<int>(dim_size)) + dim_size) % dim_size;
                 }
                 if (sel < 0)
-                    sel += shape_[dim];
+                    sel += dim_size;
                 return sel;
             };
 
-            // Dispatch based on dtype
+            // Templated copy for all dtypes
+            const auto copy_selected = [&]<typename T>(const T* src, T* dst) {
+                for (size_t o = 0; o < outer; ++o) {
+                    for (size_t i = 0; i < n_indices; ++i) {
+                        const int sel = process_idx(idx[i]);
+                        if (sel >= 0 && sel < static_cast<int>(dim_size)) {
+                            std::copy_n(src + (o * dim_size + sel) * inner,
+                                        inner,
+                                        dst + (o * n_indices + i) * inner);
+                        }
+                    }
+                }
+            };
+
             if (dtype_ == DataType::Float32) {
-                const float* src = ptr<float>();
-                float* dst = result.ptr<float>();
-                for (size_t o = 0; o < outer; ++o) {
-                    for (size_t i = 0; i < indices.numel(); ++i) {
-                        int sel = process_idx(idx[i]);
-                        if (sel >= 0 && sel < static_cast<int>(shape_[dim])) {
-                            std::copy_n(src + (o * shape_[dim] + sel) * inner,
-                                        inner,
-                                        dst + (o * indices.numel() + i) * inner);
-                        }
-                    }
-                }
+                copy_selected(ptr<float>(), result.ptr<float>());
             } else if (dtype_ == DataType::Int64) {
-                const int64_t* src = ptr<int64_t>();
-                int64_t* dst = result.ptr<int64_t>();
-                for (size_t o = 0; o < outer; ++o) {
-                    for (size_t i = 0; i < indices.numel(); ++i) {
-                        int sel = process_idx(idx[i]);
-                        if (sel >= 0 && sel < static_cast<int>(shape_[dim])) {
-                            std::copy_n(src + (o * shape_[dim] + sel) * inner,
-                                        inner,
-                                        dst + (o * indices.numel() + i) * inner);
-                        }
-                    }
-                }
+                copy_selected(ptr<int64_t>(), result.ptr<int64_t>());
             } else if (dtype_ == DataType::Int32) {
-                const int32_t* src = ptr<int32_t>();
-                int32_t* dst = result.ptr<int32_t>();
-                for (size_t o = 0; o < outer; ++o) {
-                    for (size_t i = 0; i < indices.numel(); ++i) {
-                        int sel = process_idx(idx[i]);
-                        if (sel >= 0 && sel < static_cast<int>(shape_[dim])) {
-                            std::copy_n(src + (o * shape_[dim] + sel) * inner,
-                                        inner,
-                                        dst + (o * indices.numel() + i) * inner);
-                        }
-                    }
-                }
+                copy_selected(ptr<int32_t>(), result.ptr<int32_t>());
+            } else if (dtype_ == DataType::Bool) {
+                copy_selected(ptr<unsigned char>(), result.ptr<unsigned char>());
             } else {
                 throw std::runtime_error("index_select: unsupported dtype for CPU");
             }

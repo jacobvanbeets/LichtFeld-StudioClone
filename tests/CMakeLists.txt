@@ -41,6 +41,7 @@ set(OPTIONAL_TEST_FILES
     test_tensor_random.cpp
     test_tensor_broadcast.cpp
     test_tensor_masking.cpp
+    test_tensor_masked_select_rows.cpp
     test_tensor_bitwise.cpp
     test_tensor_accessor.cpp
     test_tensor_random_advanced.cpp

@@ -326,10 +326,10 @@ namespace lfs::core {
             return false;
         }
 
-        // Filter out deleted gaussians if deletion mask exists
+        // Filter deleted gaussians (index_select preserves [N,3] shape)
         Tensor visible_means = means;
         if (splat_data.has_deleted_mask()) {
-            visible_means = means.masked_select(splat_data.deleted().logical_not());
+            visible_means = means.index_select(0, splat_data.deleted().logical_not());
         }
 
         if (visible_means.size(0) == 0) {
