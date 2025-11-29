@@ -796,19 +796,17 @@ namespace lfs::vis::gui {
             return;
         }
 
-        // Position overlay centered in viewport
-        const float overlay_width = 300.0f;
-        const float overlay_height = 80.0f;
-        // Shift down when crop box tool is active to avoid toolbar overlap
-        const float padding = (gizmo_toolbar_state_.current_tool == panels::ToolMode::CropBox) ? 130.0f : 20.0f;
+        // Position overlay centered in viewport, below all possible toolbars
+        constexpr float OVERLAY_WIDTH = 300.0f;
+        constexpr float OVERLAY_HEIGHT = 80.0f;
+        constexpr float TOOLBAR_CLEARANCE = 100.0f;
 
-        ImVec2 overlay_pos(
-            viewport_pos_.x + (viewport_size_.x - overlay_width) * 0.5f,
-            viewport_pos_.y + padding);
+        const ImVec2 overlay_pos(
+            viewport_pos_.x + (viewport_size_.x - OVERLAY_WIDTH) * 0.5f,
+            viewport_pos_.y + TOOLBAR_CLEARANCE);
 
-        // Create overlay window
         ImGui::SetNextWindowPos(overlay_pos, ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(overlay_width, overlay_height), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(OVERLAY_WIDTH, OVERLAY_HEIGHT), ImGuiCond_Always);
 
         // Window flags to make it non-interactive and styled nicely
         ImGuiWindowFlags overlay_flags =
@@ -896,19 +894,19 @@ namespace lfs::vis::gui {
             return;
         }
 
-        constexpr float kOverlayWidth = 300.0f;
-        constexpr float kOverlayHeight = 80.0f;
-        constexpr float kFadeDuration = 500.0f;
+        constexpr float OVERLAY_WIDTH = 300.0f;
+        constexpr float OVERLAY_HEIGHT = 80.0f;
+        constexpr float FADE_DURATION = 500.0f;
+        constexpr float TOOLBAR_CLEARANCE = 100.0f;
+        constexpr float WASD_OVERLAY_HEIGHT = 90.0f;
 
-        // Base padding shifts down when crop box tool is active
-        const float base_padding = (gizmo_toolbar_state_.current_tool == panels::ToolMode::CropBox) ? 130.0f : 20.0f;
-        const float y_offset = speed_overlay_visible_ ? (base_padding + 90.0f) : base_padding;
+        const float y_offset = speed_overlay_visible_ ? (TOOLBAR_CLEARANCE + WASD_OVERLAY_HEIGHT) : TOOLBAR_CLEARANCE;
         const ImVec2 overlay_pos(
-            viewport_pos_.x + (viewport_size_.x - kOverlayWidth) * 0.5f,
+            viewport_pos_.x + (viewport_size_.x - OVERLAY_WIDTH) * 0.5f,
             viewport_pos_.y + y_offset);
 
         ImGui::SetNextWindowPos(overlay_pos, ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(kOverlayWidth, kOverlayHeight), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(OVERLAY_WIDTH, OVERLAY_HEIGHT), ImGuiCond_Always);
 
         constexpr ImGuiWindowFlags kOverlayFlags =
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
@@ -929,7 +927,7 @@ namespace lfs::vis::gui {
 
             float fade_alpha = 1.0f;
             if (remaining < std::chrono::milliseconds(500)) {
-                fade_alpha = static_cast<float>(remaining.count()) / kFadeDuration;
+                fade_alpha = static_cast<float>(remaining.count()) / FADE_DURATION;
             }
 
             const ImVec2 window_size = ImGui::GetWindowSize();
@@ -963,7 +961,15 @@ namespace lfs::vis::gui {
             showWindow(e.window_name, e.show);
         });
 
-        // Reset toolbar state when node is deselected
+        // Switch to translate tool when node is selected/deselected
+        ui::NodeSelected::when([this](const auto&) {
+            if (gizmo_toolbar_state_.current_tool == panels::ToolMode::Selection ||
+                gizmo_toolbar_state_.current_tool == panels::ToolMode::Brush) {
+                gizmo_toolbar_state_.current_tool = panels::ToolMode::Translate;
+                gizmo_toolbar_state_.current_operation = ImGuizmo::TRANSLATE;
+            }
+        });
+
         ui::NodeDeselected::when([this](const auto&) {
             gizmo_toolbar_state_.current_tool = panels::ToolMode::Translate;
             gizmo_toolbar_state_.current_operation = ImGuizmo::TRANSLATE;

@@ -82,19 +82,21 @@ namespace lfs::vis::tools {
             const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
 
             if (current_mode_ == BrushMode::Select) {
-                if (ctrl) {
-                    beginStroke(x, y, BrushAction::Add, false, ctx);
-                } else if (shift) {
-                    beginStroke(x, y, BrushAction::Remove, false, ctx);
-                } else {
-                    beginStroke(x, y, BrushAction::Add, true, ctx);
-                }
+                // No modifier = allow navigation
+                if (!shift && !ctrl) return false;
+                const BrushAction action_type = ctrl ? BrushAction::Remove : BrushAction::Add;
+                beginStroke(x, y, action_type, false, ctx);
                 updateSelectionAtPoint(x, y, ctx);
-            } else if (current_mode_ == BrushMode::Saturation) {
+                return true;
+            }
+            if (current_mode_ == BrushMode::Saturation) {
+                // No modifier = allow navigation
+                if (!shift && !ctrl) return false;
                 beginSaturationStroke(x, y, ctx);
                 updateSaturationAtPoint(x, y, ctx);
+                return true;
             }
-            return true;
+            return false;
         }
 
         if (action == GLFW_RELEASE && is_painting_) {

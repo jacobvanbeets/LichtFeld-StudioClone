@@ -96,7 +96,9 @@ class Viewport {
 
         void translate(const glm::vec2& pos) {
             const glm::vec2 delta = pos - prePos;
-            const glm::vec3 movement = -(delta.x * translateSpeed) * R[0] - (delta.y * translateSpeed) * R[1];
+            const float dist_to_pivot = glm::length(pivot - t);
+            const float adaptive_speed = translateSpeed * dist_to_pivot;
+            const glm::vec3 movement = -(delta.x * adaptive_speed) * R[0] - (delta.y * adaptive_speed) * R[1];
             t += movement;
             pivot += movement;
             prePos = pos;

@@ -203,29 +203,48 @@ namespace lfs::vis::tools {
             const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0;
             const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
 
+            // No modifier = allow navigation
+            if (!ctrl && !shift) return false;
+
             if (is_polygon_mode) {
                 const float px = static_cast<float>(x);
                 const float py = static_cast<float>(y);
-                current_action_ = SelectionAction::Add;
+                current_action_ = ctrl ? SelectionAction::Remove : SelectionAction::Add;
 
                 if (polygon_closed_) {
-                    // Drag vertex
-                    if (const int vi = findPolygonVertexAt(px, py); vi >= 0) {
-                        polygon_dragged_vertex_ = vi;
-                        ctx.requestRender();
-                        return true;
-                    }
-                    // Insert vertex on edge
-                    float t = 0.0f;
-                    if (const int ei = findPolygonEdgeAt(px, py, t); ei >= 0) {
-                        const auto& a = polygon_points_[ei];
-                        const auto& b = polygon_points_[(ei + 1) % polygon_points_.size()];
-                        polygon_points_.insert(polygon_points_.begin() + ei + 1, a + t * (b - a));
-                        polygon_dragged_vertex_ = ei + 1;
+                    const int vi = findPolygonVertexAt(px, py);
+
+                    // Ctrl+click on vertex: delete it (keep min 3)
+                    if (ctrl && vi >= 0 && polygon_points_.size() > 3) {
+                        polygon_points_.erase(polygon_points_.begin() + vi);
                         updatePolygonPreview(ctx);
                         ctx.requestRender();
                         return true;
                     }
+
+                    // Shift+click on vertex: drag it
+                    if (shift && vi >= 0) {
+                        polygon_dragged_vertex_ = vi;
+                        ctx.requestRender();
+                        return true;
+                    }
+
+                    // Shift+click on edge: insert vertex
+                    if (shift) {
+                        float t = 0.0f;
+                        if (const int ei = findPolygonEdgeAt(px, py, t); ei >= 0) {
+                            const auto& a = polygon_points_[ei];
+                            const auto& b = polygon_points_[(ei + 1) % polygon_points_.size()];
+                            polygon_points_.insert(polygon_points_.begin() + ei + 1, a + t * (b - a));
+                            polygon_dragged_vertex_ = ei + 1;
+                            updatePolygonPreview(ctx);
+                            ctx.requestRender();
+                            return true;
+                        }
+                    }
+
+                    // Start new polygon
+                    clearPreview(ctx);
                     resetPolygon();
                 }
 
@@ -247,13 +266,13 @@ namespace lfs::vis::tools {
                     return true;
                 }
 
+                // Add new vertex
                 polygon_points_.emplace_back(px, py);
                 ctx.requestRender();
                 return true;
             }
 
             if (is_rect_mode || is_lasso_mode) {
-                // Rectangle/Lasso mode: start dragging
                 if (is_rect_mode) {
                     is_rect_dragging_ = true;
                     rect_start_ = glm::vec2(static_cast<float>(x), static_cast<float>(y));
@@ -263,24 +282,16 @@ namespace lfs::vis::tools {
                     lasso_points_.clear();
                     lasso_points_.emplace_back(static_cast<float>(x), static_cast<float>(y));
                 }
-                current_action_ = shift ? SelectionAction::Remove : SelectionAction::Add;
+                current_action_ = ctrl ? SelectionAction::Remove : SelectionAction::Add;
 
-                // Prepare selection state
                 auto* const sm = ctx.getSceneManager();
                 if (sm) {
                     const size_t num_gaussians = sm->getScene().getTotalGaussianCount();
                     if (num_gaussians > 0) {
                         auto existing = sm->getScene().getSelectionMask();
-                        if (existing && existing->is_valid()) {
-                            selection_before_stroke_ = std::make_shared<lfs::core::Tensor>(existing->clone());
-                        } else {
-                            selection_before_stroke_.reset();
-                        }
-                        if (!ctrl && !shift) {
-                            sm->getScene().clearSelection();
-                            cumulative_selection_ = lfs::core::Tensor::zeros(
-                                {num_gaussians}, lfs::core::Device::CUDA, lfs::core::DataType::Bool);
-                        } else if (existing && existing->is_valid() && existing->size(0) == num_gaussians) {
+                        selection_before_stroke_ = (existing && existing->is_valid())
+                            ? std::make_shared<lfs::core::Tensor>(existing->clone()) : nullptr;
+                        if (existing && existing->is_valid() && existing->size(0) == num_gaussians) {
                             cumulative_selection_ = existing->to(lfs::core::DataType::Bool);
                         } else {
                             cumulative_selection_ = lfs::core::Tensor::zeros(
@@ -291,14 +302,9 @@ namespace lfs::vis::tools {
                 return true;
             }
 
-            // Brush/Ring mode
-            if (ctrl) {
-                beginStroke(x, y, SelectionAction::Add, false, ctx);
-            } else if (shift) {
-                beginStroke(x, y, SelectionAction::Remove, false, ctx);
-            } else {
-                beginStroke(x, y, SelectionAction::Add, true, ctx);
-            }
+            // Brush/Ring mode: Shift=Add, Ctrl=Remove
+            const SelectionAction action_type = ctrl ? SelectionAction::Remove : SelectionAction::Add;
+            beginStroke(x, y, action_type, false, ctx);
             updateSelectionAtPoint(x, y, ctx);
             return true;
         }
@@ -573,9 +579,9 @@ namespace lfs::vis::tools {
         const float image_y = rel_y * scale_y;
 
         const auto sel_mode = rm->getSelectionMode();
-        const bool shift_held = glfwGetKey(ctx.getWindow(), GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
-                                glfwGetKey(ctx.getWindow(), GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-        const bool add_mode = !shift_held;
+        const bool ctrl_held = glfwGetKey(ctx.getWindow(), GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                               glfwGetKey(ctx.getWindow(), GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+        const bool add_mode = !ctrl_held;
 
         if (sel_mode == lfs::rendering::SelectionMode::Rings ||
             sel_mode == lfs::rendering::SelectionMode::Rectangle ||
@@ -946,7 +952,7 @@ namespace lfs::vis::tools {
                 const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
                 clearPreview(ctx);
                 prepareSelectionState(ctx, ctrl || shift);
-                current_action_ = shift ? SelectionAction::Remove : SelectionAction::Add;
+                current_action_ = ctrl ? SelectionAction::Remove : SelectionAction::Add;
                 selectInPolygon(ctx);
                 resetPolygon();
                 ctx.requestRender();
