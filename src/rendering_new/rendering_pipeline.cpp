@@ -148,7 +148,8 @@ namespace lfs::rendering {
                                                 request.crop_inverse,
                                                 request.deleted_mask,
                                                 request.hovered_depth_id,
-                                                request.highlight_gaussian_id);
+                                                request.highlight_gaussian_id,
+                                                request.far_plane);
                 result.image = std::move(image);
                 result.depth = std::move(depth);
                 if (request.output_screen_positions) {
@@ -188,7 +189,8 @@ namespace lfs::rendering {
                                             request.crop_inverse,
                                             request.deleted_mask,
                                             request.hovered_depth_id,
-                                            request.highlight_gaussian_id);
+                                            request.highlight_gaussian_id,
+                                            request.far_plane);
             result.image = std::move(image);
             result.depth = std::move(depth);
             if (request.output_screen_positions) {

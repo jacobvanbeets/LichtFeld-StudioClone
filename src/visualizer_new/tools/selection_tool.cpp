@@ -12,7 +12,10 @@
 #include "core_new/tensor.hpp"
 #include "rendering_new/rasterizer/rasterization/include/forward.h"
 #include "rendering_new/rasterizer/rasterization/include/rasterization_api_tensor.h"
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <imgui.h>
+#include <cmath>
 
 namespace lfs::vis::tools {
 
@@ -33,6 +36,11 @@ namespace lfs::vis::tools {
             double mx, my;
             glfwGetCursorPos(ctx.getWindow(), &mx, &my);
             last_mouse_pos_ = glm::vec2(static_cast<float>(mx), static_cast<float>(my));
+
+            // Update depth filter crop box to follow camera when enabled
+            if (depth_filter_enabled_) {
+                updateSelectionCropBox(ctx);
+            }
         }
     }
 
@@ -161,6 +169,11 @@ namespace lfs::vis::tools {
         constexpr ImU32 shadow_color = IM_COL32(0, 0, 0, 180);
         draw_list->AddText(ImGui::GetFont(), font_size, ImVec2(text_pos.x + 1, text_pos.y + 1), shadow_color, info_text);
         draw_list->AddText(ImGui::GetFont(), font_size, text_pos, IM_COL32(255, 255, 255, 255), info_text);
+
+        // Draw depth filter frustum if enabled
+        if (depth_filter_enabled_ && tool_context_) {
+            drawDepthFrustum(*tool_context_);
+        }
     }
 
     bool SelectionTool::handleMouseButton(const int button, const int action, const int mods,
@@ -364,23 +377,38 @@ namespace lfs::vis::tools {
                                       const int mods, const ToolContext& ctx) {
         if (!isEnabled()) return false;
 
-        const auto* const rm = ctx.getRenderingManager();
-        if (rm) {
-            const auto mode = rm->getSelectionMode();
-            if (mode == lfs::rendering::SelectionMode::Rings ||
-                mode == lfs::rendering::SelectionMode::Rectangle ||
-                mode == lfs::rendering::SelectionMode::Polygon ||
-                mode == lfs::rendering::SelectionMode::Lasso) {
-                return false;
-            }
-        }
-
         const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0;
         const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
         const bool alt = glfwGetKey(ctx.getWindow(), GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
                          glfwGetKey(ctx.getWindow(), GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
 
-        if (is_painting_ || ctrl || shift || alt) {
+        const auto* const rm = ctx.getRenderingManager();
+        const auto mode = rm ? rm->getSelectionMode() : lfs::rendering::SelectionMode::Centers;
+
+        // Alt+Scroll: depth filter adjustment
+        if (alt && depth_filter_enabled_ && mode != lfs::rendering::SelectionMode::Rings) {
+            const float scale = (y_offset > 0) ? ADJUST_FACTOR : (1.0f / ADJUST_FACTOR);
+
+            if (ctrl) {
+                frustum_half_width_ = std::clamp(frustum_half_width_ * scale, WIDTH_MIN, WIDTH_MAX);
+            } else {
+                depth_far_ = std::clamp(depth_far_ * scale, DEPTH_MIN, DEPTH_MAX);
+            }
+
+            updateSelectionCropBox(ctx, true);  // Force update - params changed
+            ctx.requestRender();
+            return true;
+        }
+
+        // Brush radius adjustment only for brush/center mode
+        if (mode == lfs::rendering::SelectionMode::Rings ||
+            mode == lfs::rendering::SelectionMode::Rectangle ||
+            mode == lfs::rendering::SelectionMode::Polygon ||
+            mode == lfs::rendering::SelectionMode::Lasso) {
+            return false;
+        }
+
+        if (is_painting_ || ctrl || shift) {
             const float scale = (y_offset > 0) ? 1.1f : 0.9f;
             brush_radius_ = std::clamp(brush_radius_ * scale, 1.0f, 500.0f);
             updateBrushPreview(last_mouse_pos_.x, last_mouse_pos_.y, ctx);
@@ -889,6 +917,26 @@ namespace lfs::vis::tools {
         const auto* const rm = ctx.getRenderingManager();
         const auto sel_mode = rm ? rm->getSelectionMode() : lfs::rendering::SelectionMode::Centers;
 
+        // Ctrl+F toggles depth filter
+        if (key == GLFW_KEY_F && (mods & GLFW_MOD_CONTROL) && sel_mode != lfs::rendering::SelectionMode::Rings) {
+            if (depth_filter_enabled_) {
+                disableDepthFilter(ctx);
+            } else {
+                depth_filter_enabled_ = true;
+                updateSelectionCropBox(ctx, true);  // Force initial update
+            }
+            ctx.requestRender();
+            return true;
+        }
+
+        // Escape disables depth filter
+        if (key == GLFW_KEY_ESCAPE && depth_filter_enabled_) {
+            disableDepthFilter(ctx);
+            ctx.requestRender();
+            return true;
+        }
+
+        // Polygon-specific key handling
         if (sel_mode != lfs::rendering::SelectionMode::Polygon) return false;
 
         // Confirm polygon selection
@@ -916,6 +964,105 @@ namespace lfs::vis::tools {
         }
 
         return false;
+    }
+
+    void SelectionTool::resetDepthFilter() {
+        depth_filter_enabled_ = false;
+        depth_far_ = 100.0f;
+        frustum_half_width_ = 50.0f;
+    }
+
+    void SelectionTool::updateSelectionCropBox(const ToolContext& ctx, const bool force) {
+        auto* const rm = ctx.getRenderingManager();
+        if (!rm) return;
+
+        const auto& viewport = ctx.getViewport();
+        const glm::vec3& cam_pos = viewport.camera.t;
+        const glm::vec3 cam_fwd = viewport.camera.R[2];
+
+        // Skip update if camera hasn't moved (unless forced)
+        constexpr float EPSILON = 1e-5f;
+        if (!force &&
+            glm::dot(cam_pos - last_cam_pos_, cam_pos - last_cam_pos_) < EPSILON &&
+            glm::dot(cam_fwd - last_cam_fwd_, cam_fwd - last_cam_fwd_) < EPSILON) {
+            return;
+        }
+        last_cam_pos_ = cam_pos;
+        last_cam_fwd_ = cam_fwd;
+
+        // Build camera-aligned crop box transform
+        const glm::quat cam_quat = glm::quat_cast(viewport.camera.R);
+        const lfs::geometry::EuclideanTransform crop_transform(cam_quat, cam_pos);
+
+        // Crop box in camera local space: X bounded by width, Y unbounded, Z from 0 to depth_far
+        constexpr float Y_BOUND = 10000.0f;
+        const glm::vec3 crop_min(-frustum_half_width_, -Y_BOUND, 0.0f);
+        const glm::vec3 crop_max(frustum_half_width_, Y_BOUND, depth_far_);
+
+        auto settings = rm->getSettings();
+        settings.crop_transform = crop_transform;
+        settings.crop_min = crop_min;
+        settings.crop_max = crop_max;
+        settings.use_crop_box = true;
+        settings.show_crop_box = false;
+        settings.crop_inverse = false;
+        rm->updateSettings(settings);
+    }
+
+    void SelectionTool::disableDepthFilter(const ToolContext& ctx) {
+        depth_filter_enabled_ = false;
+
+        auto* const rm = ctx.getRenderingManager();
+        if (rm) {
+            auto settings = rm->getSettings();
+            settings.use_crop_box = false;
+            rm->updateSettings(settings);
+        }
+    }
+
+    void SelectionTool::drawDepthFrustum(const ToolContext& ctx) const {
+        constexpr float BAR_HEIGHT = 8.0f;
+        constexpr float BAR_WIDTH = 200.0f;
+        constexpr float FONT_SIZE = 16.0f;
+        constexpr float HINT_FONT_SIZE = 12.0f;
+        constexpr ImU32 BAR_BG_COLOR = IM_COL32(50, 50, 50, 180);
+        constexpr ImU32 BAR_FILL_COLOR = IM_COL32(255, 180, 50, 200);
+        constexpr ImU32 MARKER_COLOR = IM_COL32(255, 100, 100, 200);
+        constexpr ImU32 TEXT_COLOR = IM_COL32(255, 255, 255, 255);
+        constexpr ImU32 SHADOW_COLOR = IM_COL32(0, 0, 0, 180);
+        constexpr ImU32 HINT_COLOR = IM_COL32(180, 180, 180, 200);
+
+        const auto& bounds = ctx.getViewportBounds();
+        const float bar_x = bounds.x + 10.0f;
+        const float bar_y = bounds.y + bounds.height - 45.0f;
+
+        ImDrawList* const draw_list = ImGui::GetForegroundDrawList();
+
+        // Background bar
+        draw_list->AddRectFilled({bar_x, bar_y}, {bar_x + BAR_WIDTH, bar_y + BAR_HEIGHT}, BAR_BG_COLOR);
+
+        // Map depth to bar position (log scale)
+        const float log_range = std::log10(DEPTH_MAX) - std::log10(DEPTH_MIN);
+        const float far_pos = bar_x + (std::log10(depth_far_) - std::log10(DEPTH_MIN)) / log_range * BAR_WIDTH;
+
+        // Fill and marker
+        draw_list->AddRectFilled({bar_x, bar_y}, {far_pos, bar_y + BAR_HEIGHT}, BAR_FILL_COLOR);
+        draw_list->AddLine({far_pos, bar_y - 3}, {far_pos, bar_y + BAR_HEIGHT + 3}, MARKER_COLOR, 2.0f);
+
+        // Info text with shadow
+        char info_text[64];
+        if (frustum_half_width_ < WIDTH_MAX - 1.0f) {
+            snprintf(info_text, sizeof(info_text), "Depth: %.1f  Width: %.1f", depth_far_, frustum_half_width_ * 2.0f);
+        } else {
+            snprintf(info_text, sizeof(info_text), "Depth: %.1f", depth_far_);
+        }
+        const ImVec2 text_pos(bar_x, bar_y - 20.0f);
+        draw_list->AddText(ImGui::GetFont(), FONT_SIZE, {text_pos.x + 1, text_pos.y + 1}, SHADOW_COLOR, info_text);
+        draw_list->AddText(ImGui::GetFont(), FONT_SIZE, text_pos, TEXT_COLOR, info_text);
+
+        // Hint
+        draw_list->AddText(ImGui::GetFont(), HINT_FONT_SIZE, {bar_x, bar_y + BAR_HEIGHT + 5.0f}, HINT_COLOR,
+                           "Alt+Scroll: depth | Ctrl+Alt+Scroll: width | Esc: off");
     }
 
 } // namespace lfs::vis::tools

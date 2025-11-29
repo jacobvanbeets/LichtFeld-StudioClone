@@ -173,7 +173,8 @@ namespace lfs::rendering {
             .brush_saturation_amount = request.brush_saturation_amount,
             .selection_mode_rings = request.selection_mode_rings,
             .hovered_depth_id = request.hovered_depth_id,
-            .highlight_gaussian_id = request.highlight_gaussian_id};
+            .highlight_gaussian_id = request.highlight_gaussian_id,
+            .far_plane = request.far_plane};
 
         // Convert crop box if present
         std::unique_ptr<lfs::geometry::BoundingBox> temp_crop_box;

@@ -138,18 +138,22 @@ namespace lfs::vis::tools {
         const bool alt = glfwGetKey(ctx.getWindow(), GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
                          glfwGetKey(ctx.getWindow(), GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
 
-        if (is_painting_ || ctrl || shift || alt) {
-            // In saturation mode with alt, adjust saturation amount
-            if (current_mode_ == BrushMode::Saturation && alt) {
+        // Alt+scroll: only handle in saturation mode, otherwise let selection tool handle it
+        if (alt) {
+            if (current_mode_ == BrushMode::Saturation) {
                 const float delta = (y_offset > 0) ? 0.1f : -0.1f;
                 saturation_amount_ = std::clamp(saturation_amount_ + delta, -1.0f, 1.0f);
-            } else {
-                // Adjust brush radius
-                const float scale = (y_offset > 0) ? 1.1f : 0.9f;
-                brush_radius_ = std::clamp(brush_radius_ * scale, 1.0f, 500.0f);
+                updateBrushPreview(last_mouse_pos_.x, last_mouse_pos_.y, ctx);
+                ctx.requestRender();
+                return true;
             }
+            return false;  // Let other handlers deal with Alt+scroll
+        }
 
-            // Update brush preview to reflect the changes immediately
+        // Ctrl or Shift or painting: adjust brush radius
+        if (is_painting_ || ctrl || shift) {
+            const float scale = (y_offset > 0) ? 1.1f : 0.9f;
+            brush_radius_ = std::clamp(brush_radius_ * scale, 1.0f, 500.0f);
             updateBrushPreview(last_mouse_pos_.x, last_mouse_pos_.y, ctx);
             ctx.requestRender();
             return true;

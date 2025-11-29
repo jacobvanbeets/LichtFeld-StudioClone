@@ -39,6 +39,7 @@ namespace lfs::rendering {
         bool crop_inverse = false,
         const Tensor* deleted_mask = nullptr,
         unsigned long long* hovered_depth_id = nullptr,
-        int highlight_gaussian_id = -1);
+        int highlight_gaussian_id = -1,
+        float far_plane = 1e10f);
 
 } // namespace lfs::rendering

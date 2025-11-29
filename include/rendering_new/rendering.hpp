@@ -84,6 +84,7 @@ namespace lfs::rendering {
         bool crop_inverse = false;
         unsigned long long* hovered_depth_id = nullptr;
         int highlight_gaussian_id = -1;
+        float far_plane = 1e10f;
     };
 
     struct RenderResult {

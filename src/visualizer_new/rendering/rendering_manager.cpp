@@ -590,7 +590,8 @@ namespace lfs::vis {
             .brush_saturation_amount = brush_saturation_amount_,
             .selection_mode_rings = (selection_mode_ == lfs::rendering::SelectionMode::Rings),
             .hovered_depth_id = nullptr,
-            .highlight_gaussian_id = (selection_mode_ == lfs::rendering::SelectionMode::Rings) ? hovered_gaussian_id_ : -1};
+            .highlight_gaussian_id = (selection_mode_ == lfs::rendering::SelectionMode::Rings) ? hovered_gaussian_id_ : -1,
+            .far_plane = settings_.depth_clip_enabled ? settings_.depth_clip_far : 1e10f};
 
         // Ring mode hover preview: allocate device buffer if needed
         const bool need_hovered_output = (selection_mode_ == lfs::rendering::SelectionMode::Rings) && brush_active_;

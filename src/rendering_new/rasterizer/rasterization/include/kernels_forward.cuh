@@ -364,14 +364,15 @@ namespace lfs::rendering::kernels::forward {
         // Selection highlights
         if (!brush_saturation_mode) {
             const bool is_committed = selection_mask != nullptr && selection_mask[primitive_idx];
-            const bool is_preview = brush_selection_out != nullptr && brush_selection_out[primitive_idx];
+            const bool is_preview_add = brush_selection_out != nullptr && brush_selection_out[primitive_idx];
+            const bool is_preview_remove = under_brush && !brush_add_mode && is_committed;
             const bool is_hovered = selection_mode_rings && highlight_gaussian_id >= 0 &&
                                     static_cast<int>(primitive_idx) == highlight_gaussian_id;
 
-            if (is_committed) {
-                color = config::SELECTION_COLOR_COMMITTED;
-            } else if (is_preview || is_hovered) {
+            if (is_preview_add || is_preview_remove || is_hovered) {
                 color = config::SELECTION_COLOR_PREVIEW;
+            } else if (is_committed) {
+                color = config::SELECTION_COLOR_COMMITTED;
             }
         }
 

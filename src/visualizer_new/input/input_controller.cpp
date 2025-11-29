@@ -534,16 +534,14 @@ namespace lfs::vis {
         if (!shouldCameraHandleInput())
             return;
 
-        float delta = static_cast<float>(yoff);
+        const float delta = static_cast<float>(yoff);
         if (std::abs(delta) < 0.01f)
             return;
 
         if (key_r_pressed_) {
             viewport_.camera.rotate_roll(delta);
-            LOG_TRACE("Camera roll: {}", delta);
         } else {
             viewport_.camera.zoom(delta);
-            LOG_TRACE("Camera zoom: {}", delta);
         }
 
         onCameraMovementStart();
@@ -554,6 +552,9 @@ namespace lfs::vis {
         // Track modifier keys (always, even if GUI has focus)
         if (key == GLFW_KEY_LEFT_CONTROL || key == GLFW_KEY_RIGHT_CONTROL) {
             key_ctrl_pressed_ = (action != GLFW_RELEASE);
+        }
+        if (key == GLFW_KEY_LEFT_ALT || key == GLFW_KEY_RIGHT_ALT) {
+            key_alt_pressed_ = (action != GLFW_RELEASE);
         }
         if (key == GLFW_KEY_R) {
             key_r_pressed_ = (action != GLFW_RELEASE);

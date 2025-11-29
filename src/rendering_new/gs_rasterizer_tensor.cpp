@@ -35,19 +35,19 @@ namespace lfs::rendering {
         bool crop_inverse,
         const Tensor* deleted_mask,
         unsigned long long* hovered_depth_id,
-        int highlight_gaussian_id) {
+        int highlight_gaussian_id,
+        float far_plane) {
 
         // Get camera parameters
-        float fx = viewpoint_camera.focal_x();
-        float fy = viewpoint_camera.focal_y();
-        float cx = viewpoint_camera.center_x();
-        float cy = viewpoint_camera.center_y();
+        const float fx = viewpoint_camera.focal_x();
+        const float fy = viewpoint_camera.focal_y();
+        const float cx = viewpoint_camera.center_x();
+        const float cy = viewpoint_camera.center_y();
 
         const int sh_degree = gaussian_model.get_active_sh_degree();
         const int active_sh_bases = (sh_degree + 1) * (sh_degree + 1);
 
-        constexpr float near_plane = 0.01f;
-        constexpr float far_plane = 1e10f;
+        constexpr float NEAR_PLANE = 0.01f;
 
         // Build world-to-camera transform matrix [4, 4]
         // w2c = [R | t]
@@ -116,7 +116,7 @@ namespace lfs::rendering {
             fy,
             cx,
             cy,
-            near_plane,
+            NEAR_PLANE,
             far_plane,
             show_rings,
             ring_width,

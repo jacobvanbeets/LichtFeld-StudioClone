@@ -40,6 +40,10 @@ namespace lfs::vis::tools {
         void clearPolygon();
         void onSelectionModeChanged();
 
+        // Depth filter
+        [[nodiscard]] bool isDepthFilterEnabled() const { return depth_filter_enabled_; }
+        void resetDepthFilter();
+
     protected:
         void onEnabledChanged(bool enabled) override;
 
@@ -86,6 +90,23 @@ namespace lfs::vis::tools {
         void updatePolygonPreview(const ToolContext& ctx);
         int findPolygonVertexAt(float x, float y) const;
         int findPolygonEdgeAt(float x, float y, float& t_out) const;
+
+        // Depth filter state (camera-aligned crop box)
+        bool depth_filter_enabled_ = false;
+        float depth_far_ = 100.0f;
+        float frustum_half_width_ = 50.0f;
+        glm::vec3 last_cam_pos_{0.0f};
+        glm::vec3 last_cam_fwd_{0.0f, 0.0f, 1.0f};
+
+        static constexpr float DEPTH_MIN = 0.01f;
+        static constexpr float DEPTH_MAX = 1000.0f;
+        static constexpr float WIDTH_MIN = 0.1f;
+        static constexpr float WIDTH_MAX = 10000.0f;
+        static constexpr float ADJUST_FACTOR = 1.15f;
+
+        void drawDepthFrustum(const ToolContext& ctx) const;
+        void updateSelectionCropBox(const ToolContext& ctx, bool force = false);
+        void disableDepthFilter(const ToolContext& ctx);
     };
 
 } // namespace lfs::vis::tools
