@@ -65,6 +65,7 @@ namespace lfs::vis {
         SceneManager* getSceneManager() { return scene_manager_.get(); }
         ::GLFWwindow* getWindow() const { return window_manager_->getWindow(); }
         RenderingManager* getRenderingManager() { return rendering_manager_.get(); }
+        gui::GuiManager* getGuiManager() { return gui_manager_.get(); }
         const Viewport& getViewport() const { return viewport_; }
 
         // FPS monitoring

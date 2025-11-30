@@ -22,6 +22,7 @@ add_library(lfs_visualizer STATIC
         gui/panels/main_panel.cpp
         gui/panels/training_panel.cpp
         gui/panels/crop_box_panel.cpp
+        gui/panels/transform_panel.cpp
         gui/panels/gizmo_toolbar.cpp
         gui/panels/scene_panel.cpp
         gui/panels/tools_panel.cpp

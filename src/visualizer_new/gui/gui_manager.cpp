@@ -18,6 +18,7 @@
 #include "gui/panels/tools_panel.hpp"
 #include "gui/panels/training_panel.hpp"
 #include "gui/ui_widgets.hpp"
+#include "gui/utils/crop_box_sync.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "gui/windows/file_browser.hpp"
 #include "gui/windows/project_changed_dialog_box.hpp"
@@ -1417,19 +1418,15 @@ namespace lfs::vis::gui {
             const glm::vec3 new_gizmo_position = glm::vec3(gizmo_matrix[3]);
             const glm::vec3 new_translation = new_gizmo_position - centroid;
 
-            // Build new node transform with the updated values
             glm::mat4 new_transform = gizmo_matrix;
             new_transform[3] = glm::vec4(new_translation, 1.0f);
 
             scene_manager->setSelectedNodeTransform(new_transform);
 
-            // Sync crop box with node transform
-            if (render_manager) {
-                auto settings = render_manager->getSettings();
-                const lfs::geometry::EuclideanTransform delta(delta_matrix);
-                settings.crop_transform = delta * settings.crop_transform;
-                render_manager->updateSettings(settings);
-            }
+            // Sync crop box
+            auto settings = render_manager->getSettings();
+            utils::applyCropBoxDelta(settings, delta_matrix);
+            render_manager->updateSettings(settings);
         }
 
         // Restore clip rect after ImGuizmo rendering
