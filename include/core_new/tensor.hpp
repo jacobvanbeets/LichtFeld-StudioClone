@@ -22,3 +22,4 @@
 // ============================================================================
 
 #include "../../src/core_new/tensor/internal/tensor_impl.hpp"
+#include "../../src/core_new/tensor/internal/tensor_serialization.hpp"

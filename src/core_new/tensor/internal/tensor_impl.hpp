@@ -189,7 +189,7 @@ namespace lfs::core {
     class TensorShape {
     private:
         std::vector<size_t> dims_;
-        size_t total_elements_ = 0;
+        size_t total_elements_ = 1;
 
     public:
         TensorShape() = default;
