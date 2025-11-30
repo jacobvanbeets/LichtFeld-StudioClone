@@ -1247,6 +1247,8 @@ namespace lfs::vis {
         brush_saturation_mode_ = false;
         brush_saturation_amount_ = 0.0f;
         hovered_gaussian_id_ = -1;
+        preview_selection_ = nullptr;
+        markDirty();
     }
 
     void RenderingManager::adjustSaturation(const float mouse_x, const float mouse_y, const float radius,
