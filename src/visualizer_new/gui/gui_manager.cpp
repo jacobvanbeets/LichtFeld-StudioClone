@@ -1024,9 +1024,6 @@ namespace lfs::vis::gui {
             crop_box.setBounds(settings.crop_min, settings.crop_max);
             crop_box.setworld2BBox(settings.crop_transform.inv());
             cmd::CropPLY{.crop_box = crop_box, .inverse = settings.crop_inverse}.emit();
-
-            // Refit crop box to remaining visible gaussians
-            cmd::FitCropBoxToScene{.use_percentile = true}.emit();
         });
 
         // Handle Ctrl+T to toggle crop inverse mode
@@ -1424,8 +1421,15 @@ namespace lfs::vis::gui {
             glm::mat4 new_transform = gizmo_matrix;
             new_transform[3] = glm::vec4(new_translation, 1.0f);
 
-            // Update the node's full transform
             scene_manager->setSelectedNodeTransform(new_transform);
+
+            // Sync crop box with node transform
+            if (render_manager) {
+                auto settings = render_manager->getSettings();
+                const lfs::geometry::EuclideanTransform delta(delta_matrix);
+                settings.crop_transform = delta * settings.crop_transform;
+                render_manager->updateSettings(settings);
+            }
         }
 
         // Restore clip rect after ImGuizmo rendering

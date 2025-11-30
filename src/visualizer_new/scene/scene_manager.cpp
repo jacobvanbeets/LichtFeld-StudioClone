@@ -647,7 +647,18 @@ namespace lfs::vis {
                     ? node->model->deleted().clone()
                     : lfs::core::Tensor::zeros({original_count}, lfs::core::Device::CUDA, lfs::core::DataType::Bool);
 
-                const auto applied_mask = lfs::core::soft_crop_by_cropbox(*node->model, crop_box, inverse);
+                // Transform crop box to node's local space if node has a transform
+                lfs::geometry::BoundingBox local_crop_box = crop_box;
+                static const glm::mat4 IDENTITY_MATRIX(1.0f);
+
+                if (node->transform != IDENTITY_MATRIX) {
+                    // Combine: local -> world -> box = world2bbox * node_to_world
+                    const auto& world2bbox = crop_box.getworld2BBox();
+                    const lfs::geometry::EuclideanTransform node_to_world(node->transform);
+                    local_crop_box.setworld2BBox(world2bbox * node_to_world);
+                }
+
+                const auto applied_mask = lfs::core::soft_crop_by_cropbox(*node->model, local_crop_box, inverse);
                 if (!applied_mask.is_valid()) {
                     continue;
                 }

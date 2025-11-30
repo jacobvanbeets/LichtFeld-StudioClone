@@ -117,9 +117,9 @@ namespace lfs::core {
 
         const int num_points = means.size(0);
 
-        glm::mat4 world_to_bbox_matrix = world2bbox_transform.toMat4();
+        const glm::mat4 world_to_bbox_matrix = world2bbox_transform.toMat4();
 
-        std::vector<float> transform_data = {
+        const std::vector<float> transform_data = {
             world_to_bbox_matrix[0][0], world_to_bbox_matrix[1][0], world_to_bbox_matrix[2][0], world_to_bbox_matrix[3][0],
             world_to_bbox_matrix[0][1], world_to_bbox_matrix[1][1], world_to_bbox_matrix[2][1], world_to_bbox_matrix[3][1],
             world_to_bbox_matrix[0][2], world_to_bbox_matrix[1][2], world_to_bbox_matrix[2][2], world_to_bbox_matrix[3][2],
@@ -132,11 +132,11 @@ namespace lfs::core {
         auto ones = Tensor::ones({static_cast<size_t>(num_points), 1}, means.device());
         auto means_homo = means.cat(ones, 1);
 
-        auto transformed_points = transform_tensor.mm(means_homo.t()).t();
-        auto local_points = transformed_points.slice(1, 0, 3);
+        const auto transformed_points = transform_tensor.mm(means_homo.t()).t();
+        const auto local_points = transformed_points.slice(1, 0, 3);
 
-        std::vector<float> bbox_min_data = {bbox_min.x, bbox_min.y, bbox_min.z};
-        std::vector<float> bbox_max_data = {bbox_max.x, bbox_max.y, bbox_max.z};
+        const std::vector<float> bbox_min_data = {bbox_min.x, bbox_min.y, bbox_min.z};
+        const std::vector<float> bbox_max_data = {bbox_max.x, bbox_max.y, bbox_max.z};
 
         auto bbox_min_tensor = Tensor::from_vector(bbox_min_data, TensorShape({3}), means.device());
         auto bbox_max_tensor = Tensor::from_vector(bbox_max_data, TensorShape({3}), means.device());
