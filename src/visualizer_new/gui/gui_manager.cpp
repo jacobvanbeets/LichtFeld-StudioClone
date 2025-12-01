@@ -1402,9 +1402,9 @@ namespace lfs::vis::gui {
 
         const glm::vec3 centroid = scene_manager->getSelectedNodeCentroid();
         const glm::mat4 node_transform = scene_manager->getSelectedNodeTransform();
-        const glm::vec3 translation(node_transform[3]);
         const glm::mat3 rotation_scale(node_transform);
-        const glm::vec3 gizmo_position = centroid + translation;
+        // Transform centroid to world space
+        const glm::vec3 gizmo_position = glm::vec3(node_transform * glm::vec4(centroid, 1.0f));
         const bool use_world_space =
             (gizmo_toolbar_state_.transform_space == panels::TransformSpace::World);
 
@@ -1468,17 +1468,20 @@ namespace lfs::vis::gui {
         }
 
         if (gizmo_changed) {
-            const glm::vec3 new_translation = glm::vec3(gizmo_matrix[3]) - centroid;
+            const glm::vec3 new_gizmo_pos = glm::vec3(gizmo_matrix[3]);
 
             glm::mat4 new_transform;
             if (use_world_space) {
                 const glm::mat3 old_rs(node_transform);
                 const glm::mat3 delta_rs(delta_matrix);
-                new_transform = glm::mat4(delta_rs * old_rs);
+                const glm::mat3 new_rs = delta_rs * old_rs;
+                new_transform = glm::mat4(new_rs);
+                new_transform[3] = glm::vec4(new_gizmo_pos - new_rs * centroid, 1.0f);
             } else {
+                const glm::mat3 new_rs(gizmo_matrix);
                 new_transform = gizmo_matrix;
+                new_transform[3] = glm::vec4(new_gizmo_pos - new_rs * centroid, 1.0f);
             }
-            new_transform[3] = glm::vec4(new_translation, 1.0f);
 
             scene_manager->setSelectedNodeTransform(new_transform);
 
