@@ -1400,31 +1400,21 @@ namespace lfs::vis::gui {
         const glm::mat4 projection = glm::perspective(fov_rad, aspect,
             lfs::rendering::DEFAULT_NEAR_PLANE, lfs::rendering::DEFAULT_FAR_PLANE);
 
-        // Get current node transform and centroid
-        glm::vec3 centroid = scene_manager->getSelectedNodeCentroid();
-        glm::mat4 node_transform = scene_manager->getSelectedNodeTransform();
+        const glm::vec3 centroid = scene_manager->getSelectedNodeCentroid();
+        const glm::mat4 node_transform = scene_manager->getSelectedNodeTransform();
+        const glm::vec3 translation(node_transform[3]);
+        const glm::mat3 rotation_scale(node_transform);
+        const glm::vec3 gizmo_position = centroid + translation;
+        const bool use_world_space =
+            (gizmo_toolbar_state_.transform_space == panels::TransformSpace::World);
 
-        // The gizmo should be positioned at centroid, with the node's rotation/scale applied
-        // Node transform stores: T * R * S relative to origin
-        // We need gizmo at: centroid + translation, with rotation/scale from node_transform
-
-        // Extract translation from node transform
-        glm::vec3 translation(node_transform[3]);
-
-        // Extract rotation and scale (upper 3x3)
-        glm::mat3 rotation_scale(node_transform);
-
-        // Build gizmo matrix: translate to centroid + node_translation, apply rotation/scale
-        glm::mat4 gizmo_matrix = glm::mat4(1.0f);
-
-        // Set position at centroid + translation
-        glm::vec3 gizmo_position = centroid + translation;
+        glm::mat4 gizmo_matrix(1.0f);
         gizmo_matrix[3] = glm::vec4(gizmo_position, 1.0f);
-
-        // Apply rotation/scale to the gizmo
-        gizmo_matrix[0] = glm::vec4(rotation_scale[0], 0.0f);
-        gizmo_matrix[1] = glm::vec4(rotation_scale[1], 0.0f);
-        gizmo_matrix[2] = glm::vec4(rotation_scale[2], 0.0f);
+        if (!use_world_space) {
+            gizmo_matrix[0] = glm::vec4(rotation_scale[0], 0.0f);
+            gizmo_matrix[1] = glm::vec4(rotation_scale[1], 0.0f);
+            gizmo_matrix[2] = glm::vec4(rotation_scale[2], 0.0f);
+        }
 
         ImGuizmo::SetOrthographic(false);
 
@@ -1454,13 +1444,9 @@ namespace lfs::vis::gui {
         ImVec2 clip_max(clip_min.x + viewport_size_.x, clip_min.y + viewport_size_.y);
         overlay_drawlist->PushClipRect(clip_min, clip_max, true);
 
-        // Set drawlist after pushing clip rect
         ImGuizmo::SetDrawlist(overlay_drawlist);
 
-        // LOCAL mode for rotation/scale, WORLD for translation
-        const ImGuizmo::MODE gizmo_mode = (node_gizmo_operation_ == ImGuizmo::TRANSLATE)
-                                              ? ImGuizmo::WORLD
-                                              : ImGuizmo::LOCAL;
+        const ImGuizmo::MODE gizmo_mode = use_world_space ? ImGuizmo::WORLD : ImGuizmo::LOCAL;
 
         glm::mat4 delta_matrix;
         const bool gizmo_changed = ImGuizmo::Manipulate(
@@ -1472,22 +1458,54 @@ namespace lfs::vis::gui {
             glm::value_ptr(delta_matrix),
             nullptr);
 
-        if (gizmo_changed) {
-            const glm::vec3 new_gizmo_position = glm::vec3(gizmo_matrix[3]);
-            const glm::vec3 new_translation = new_gizmo_position - centroid;
+        // Capture state for undo when drag starts
+        if (is_using && !node_gizmo_active_) {
+            node_gizmo_active_ = true;
+            node_gizmo_node_name_ = scene_manager->getSelectedNodeName();
+            node_transform_before_drag_ = node_transform;
+            const auto& s = render_manager->getSettings();
+            node_crop_before_drag_ = {s.crop_min, s.crop_max, s.crop_transform, s.crop_inverse};
+        }
 
-            glm::mat4 new_transform = gizmo_matrix;
+        if (gizmo_changed) {
+            const glm::vec3 new_translation = glm::vec3(gizmo_matrix[3]) - centroid;
+
+            glm::mat4 new_transform;
+            if (use_world_space) {
+                const glm::mat3 old_rs(node_transform);
+                const glm::mat3 delta_rs(delta_matrix);
+                new_transform = glm::mat4(delta_rs * old_rs);
+            } else {
+                new_transform = gizmo_matrix;
+            }
             new_transform[3] = glm::vec4(new_translation, 1.0f);
 
             scene_manager->setSelectedNodeTransform(new_transform);
 
-            // Sync crop box
-            auto settings = render_manager->getSettings();
-            utils::applyCropBoxDelta(settings, delta_matrix);
-            render_manager->updateSettings(settings);
+            const glm::mat4 effective_delta = new_transform * glm::inverse(node_transform);
+            auto crop_settings = render_manager->getSettings();
+            utils::applyCropBoxDelta(crop_settings, effective_delta);
+            render_manager->updateSettings(crop_settings);
         }
 
-        // Restore clip rect after ImGuizmo rendering
+        // Create undo command when drag ends
+        if (!is_using && node_gizmo_active_) {
+            node_gizmo_active_ = false;
+            const glm::mat4 final_transform = scene_manager->getSelectedNodeTransform();
+            if (node_transform_before_drag_ != final_transform) {
+                const auto& s = render_manager->getSettings();
+                const command::CropBoxState new_crop{s.crop_min, s.crop_max, s.crop_transform, s.crop_inverse};
+
+                auto composite = std::make_unique<command::CompositeCommand>();
+                composite->add(std::make_unique<command::TransformCommand>(
+                    scene_manager, node_gizmo_node_name_,
+                    node_transform_before_drag_, final_transform));
+                composite->add(std::make_unique<command::CropBoxCommand>(
+                    render_manager, node_crop_before_drag_, new_crop));
+                viewer_->getCommandHistory().execute(std::move(composite));
+            }
+        }
+
         overlay_drawlist->PopClipRect();
     }
 

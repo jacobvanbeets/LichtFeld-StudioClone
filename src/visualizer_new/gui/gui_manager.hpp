@@ -4,10 +4,13 @@
 
 #pragma once
 
+#include "command/commands/composite_command.hpp"
 #include "command/commands/cropbox_command.hpp"
+#include "command/commands/transform_command.hpp"
 #include "core_new/events.hpp"
 #include "gui/panels/gizmo_toolbar.hpp"
 #include "gui/panels/menu_bar.hpp"
+#include "gui/panels/transform_panel.hpp"
 #include "gui/ui_context.hpp"
 #include "gui/windows/save_project_browser.hpp"
 #include "windows/project_changed_dialog_box.hpp"
@@ -67,6 +70,8 @@ namespace lfs::vis {
             void setSelectionSubMode(panels::SelectionSubMode mode);
             panels::SelectionSubMode getSelectionSubMode() const { return gizmo_toolbar_state_.selection_mode; }
             panels::ToolMode getCurrentToolMode() const { return gizmo_toolbar_state_.current_tool; }
+            const panels::GizmoToolbarState& getGizmoToolbarState() const { return gizmo_toolbar_state_; }
+            panels::TransformPanelState& getTransformPanelState() { return transform_panel_state_; }
 
             bool isForceExit() const { return force_exit_; }
 
@@ -137,10 +142,17 @@ namespace lfs::vis {
 
             // Gizmo toolbar state
             panels::GizmoToolbarState gizmo_toolbar_state_;
+            panels::TransformPanelState transform_panel_state_;
 
             // Cropbox undo/redo state
             bool cropbox_gizmo_active_ = false;
             std::optional<command::CropBoxState> cropbox_state_before_drag_;
+
+            // Node transform undo/redo state
+            bool node_gizmo_active_ = false;
+            std::string node_gizmo_node_name_;
+            glm::mat4 node_transform_before_drag_{1.0f};
+            command::CropBoxState node_crop_before_drag_{};
 
             // Previous tool/selection mode for detecting changes
             panels::ToolMode previous_tool_ = panels::ToolMode::None;

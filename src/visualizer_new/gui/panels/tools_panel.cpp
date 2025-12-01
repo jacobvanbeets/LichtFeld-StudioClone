@@ -16,11 +16,10 @@ namespace lfs::vis::gui::panels {
         if (!gui_manager) return;
 
         const ToolMode current_tool = gui_manager->getCurrentToolMode();
+        const TransformSpace transform_space = gui_manager->getGizmoToolbarState().transform_space;
 
-        // Draw transform controls for translate/rotate/scale tools
-        DrawTransformControls(ctx, current_tool);
+        DrawTransformControls(ctx, current_tool, transform_space, gui_manager->getTransformPanelState());
 
-        // Draw crop box controls only when crop box tool is active
         if (current_tool == ToolMode::CropBox) {
             DrawCropBoxControls(ctx);
         }

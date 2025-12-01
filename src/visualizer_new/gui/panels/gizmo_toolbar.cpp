@@ -17,6 +17,13 @@ namespace lfs::vis::gui::panels {
     constexpr float PADDING = 6.0f;
     constexpr float ITEM_SPACING = 4.0f;
     constexpr float WINDOW_ROUNDING = 6.0f;
+    constexpr float SUBTOOLBAR_OFFSET_Y = 8.0f;
+
+    // Button colors
+    const ImVec4 BTN_SELECTED{0.3f, 0.5f, 0.8f, 1.0f};
+    const ImVec4 BTN_NORMAL{0.2f, 0.2f, 0.2f, 1.0f};
+    const ImVec4 BTN_SELECTED_HOVER{0.4f, 0.6f, 0.9f, 1.0f};
+    const ImVec4 BTN_NORMAL_HOVER{0.3f, 0.3f, 0.3f, 1.0f};
 
     // Computes toolbar dimensions for N buttons
     static ImVec2 ComputeToolbarSize(const int num_buttons) {
@@ -98,6 +105,8 @@ namespace lfs::vis::gui::panels {
         state.cropbox_texture = LoadIconTexture("cropbox.png");
         state.bounds_texture = LoadIconTexture("bounds.png");
         state.reset_texture = LoadIconTexture("reset.png");
+        state.local_texture = LoadIconTexture("local.png");
+        state.world_texture = LoadIconTexture("world.png");
         state.initialized = true;
     }
 
@@ -117,6 +126,8 @@ namespace lfs::vis::gui::panels {
         if (state.cropbox_texture) glDeleteTextures(1, &state.cropbox_texture);
         if (state.bounds_texture) glDeleteTextures(1, &state.bounds_texture);
         if (state.reset_texture) glDeleteTextures(1, &state.reset_texture);
+        if (state.local_texture) glDeleteTextures(1, &state.local_texture);
+        if (state.world_texture) glDeleteTextures(1, &state.world_texture);
 
         state.selection_texture = 0;
         state.rectangle_texture = 0;
@@ -131,6 +142,8 @@ namespace lfs::vis::gui::panels {
         state.cropbox_texture = 0;
         state.bounds_texture = 0;
         state.reset_texture = 0;
+        state.local_texture = 0;
+        state.world_texture = 0;
         state.initialized = false;
     }
 
@@ -266,67 +279,98 @@ namespace lfs::vis::gui::panels {
             }
         }
 
-        // Secondary toolbar for cropbox operations
+        // Transform space toolbar (Local/World toggle)
+        const bool is_transform_tool = (state.current_tool == ToolMode::Translate ||
+                                        state.current_tool == ToolMode::Rotate ||
+                                        state.current_tool == ToolMode::Scale);
+        if (is_transform_tool) {
+            constexpr int NUM_BUTTONS = 2;
+            const ImVec2 sub_size = ComputeToolbarSize(NUM_BUTTONS);
+            const float sub_x = viewport->WorkPos.x + viewport_pos.x + (viewport_size.x - sub_size.x) * 0.5f;
+            const float sub_y = viewport->WorkPos.y + viewport_pos.y + toolbar_size.y + SUBTOOLBAR_OFFSET_Y;
+
+            ImGui::SetNextWindowPos(ImVec2(sub_x, sub_y), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(sub_size, ImGuiCond_Always);
+
+            const SubToolbarStyle style;
+            if (ImGui::Begin("##TransformSpaceToolbar", nullptr, flags)) {
+                const ImVec2 btn_size(BUTTON_SIZE, BUTTON_SIZE);
+
+                const auto SpaceButton = [&](const char* id, const unsigned int tex,
+                                             const TransformSpace space, const char* fallback,
+                                             const char* tooltip) {
+                    const bool selected = (state.transform_space == space);
+                    ImGui::PushStyleColor(ImGuiCol_Button, selected ? BTN_SELECTED : BTN_NORMAL);
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, selected ? BTN_SELECTED_HOVER : BTN_NORMAL_HOVER);
+
+                    const bool clicked = tex
+                        ? ImGui::ImageButton(id, static_cast<ImTextureID>(tex),
+                                             btn_size, ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0))
+                        : ImGui::Button(fallback, btn_size);
+
+                    ImGui::PopStyleColor(2);
+                    if (clicked) { state.transform_space = space; }
+                    if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tooltip); }
+                };
+
+                SpaceButton("##local", state.local_texture, TransformSpace::Local, "L", "Local Space");
+                ImGui::SameLine();
+                SpaceButton("##world", state.world_texture, TransformSpace::World, "W", "World Space");
+            }
+            ImGui::End();
+        }
+
+        // Cropbox operations toolbar
         if (state.current_tool == ToolMode::CropBox) {
             constexpr int NUM_CROP_BUTTONS = 5;
             const ImVec2 sub_size = ComputeToolbarSize(NUM_CROP_BUTTONS);
+            const float sub_x = viewport->WorkPos.x + viewport_pos.x + (viewport_size.x - sub_size.x) * 0.5f;
+            const float sub_y = viewport->WorkPos.y + viewport_pos.y + toolbar_size.y + SUBTOOLBAR_OFFSET_Y;
 
-            const float sub_pos_x = viewport->WorkPos.x + viewport_pos.x + (viewport_size.x - sub_size.x) * 0.5f;
-            const float sub_pos_y = viewport->WorkPos.y + viewport_pos.y + toolbar_size.y + 8.0f;
-
-            ImGui::SetNextWindowPos(ImVec2(sub_pos_x, sub_pos_y), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(sub_x, sub_y), ImGuiCond_Always);
             ImGui::SetNextWindowSize(sub_size, ImGuiCond_Always);
 
-            {
-                const SubToolbarStyle style;
-                if (ImGui::Begin("##CropBoxToolbar", nullptr, flags)) {
-                    const ImVec2 btn_size(BUTTON_SIZE, BUTTON_SIZE);
+            const SubToolbarStyle style;
+            if (ImGui::Begin("##CropBoxToolbar", nullptr, flags)) {
+                const ImVec2 btn_size(BUTTON_SIZE, BUTTON_SIZE);
 
-                    const auto CropOpButton = [&](const char* id, const unsigned int texture,
-                                                  const CropBoxOperation op, const char* fallback,
-                                                  const char* tooltip) {
-                        const bool is_selected = (state.cropbox_operation == op);
-                        ImGui::PushStyleColor(ImGuiCol_Button, is_selected ?
-                            ImVec4(0.3f, 0.5f, 0.8f, 1.0f) : ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
-                        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, is_selected ?
-                            ImVec4(0.4f, 0.6f, 0.9f, 1.0f) : ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
+                const auto CropOpButton = [&](const char* id, const unsigned int tex,
+                                              const CropBoxOperation op, const char* fallback,
+                                              const char* tooltip) {
+                    const bool selected = (state.cropbox_operation == op);
+                    ImGui::PushStyleColor(ImGuiCol_Button, selected ? BTN_SELECTED : BTN_NORMAL);
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, selected ? BTN_SELECTED_HOVER : BTN_NORMAL_HOVER);
 
-                        const bool clicked = texture ?
-                            ImGui::ImageButton(id, (ImTextureID)(intptr_t)texture, btn_size,
-                                               ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0)) :
-                            ImGui::Button(fallback, btn_size);
+                    const bool clicked = tex
+                        ? ImGui::ImageButton(id, static_cast<ImTextureID>(tex), btn_size,
+                                             ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0))
+                        : ImGui::Button(fallback, btn_size);
 
-                        ImGui::PopStyleColor(2);
-                        if (clicked) state.cropbox_operation = op;
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
-                    };
-
-                    CropOpButton("##crop_bounds", state.bounds_texture, CropBoxOperation::Bounds,
-                                 "B", "Resize Bounds");
-                    ImGui::SameLine();
-                    CropOpButton("##crop_translate", state.translation_texture, CropBoxOperation::Translate,
-                                 "T", "Translate");
-                    ImGui::SameLine();
-                    CropOpButton("##crop_rotate", state.rotation_texture, CropBoxOperation::Rotate,
-                                 "R", "Rotate");
-                    ImGui::SameLine();
-                    CropOpButton("##crop_scale", state.scaling_texture, CropBoxOperation::Scale,
-                                 "S", "Scale");
-                    ImGui::SameLine();
-
-                    // Reset button (not a mode toggle)
-                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.2f, 1.0f));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-                    const bool reset_clicked = state.reset_texture ?
-                        ImGui::ImageButton("##crop_reset", (ImTextureID)(intptr_t)state.reset_texture, btn_size,
-                                           ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0)) :
-                        ImGui::Button("X", btn_size);
                     ImGui::PopStyleColor(2);
-                    if (reset_clicked) state.reset_cropbox_requested = true;
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Reset to Default");
-                }
-                ImGui::End();
+                    if (clicked) { state.cropbox_operation = op; }
+                    if (ImGui::IsItemHovered()) { ImGui::SetTooltip("%s", tooltip); }
+                };
+
+                CropOpButton("##crop_bounds", state.bounds_texture, CropBoxOperation::Bounds, "B", "Resize Bounds");
+                ImGui::SameLine();
+                CropOpButton("##crop_translate", state.translation_texture, CropBoxOperation::Translate, "T", "Translate");
+                ImGui::SameLine();
+                CropOpButton("##crop_rotate", state.rotation_texture, CropBoxOperation::Rotate, "R", "Rotate");
+                ImGui::SameLine();
+                CropOpButton("##crop_scale", state.scaling_texture, CropBoxOperation::Scale, "S", "Scale");
+                ImGui::SameLine();
+
+                ImGui::PushStyleColor(ImGuiCol_Button, BTN_NORMAL);
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, BTN_NORMAL_HOVER);
+                const bool reset_clicked = state.reset_texture
+                    ? ImGui::ImageButton("##crop_reset", static_cast<ImTextureID>(state.reset_texture),
+                                         btn_size, ImVec2(0, 0), ImVec2(1, 1), ImVec4(0, 0, 0, 0))
+                    : ImGui::Button("X", btn_size);
+                ImGui::PopStyleColor(2);
+                if (reset_clicked) { state.reset_cropbox_requested = true; }
+                if (ImGui::IsItemHovered()) { ImGui::SetTooltip("Reset to Default"); }
             }
+            ImGui::End();
         }
     }
 

@@ -53,6 +53,7 @@ add_library(lfs_visualizer STATIC
         command/commands/crop_command.cpp
         command/commands/selection_command.cpp
         command/commands/saturation_command.cpp
+        command/commands/transform_command.cpp
         gui/panels/menu_bar.cpp
         gui/panels/menu_bar.hpp
         gui/utils/windows_utils.cpp

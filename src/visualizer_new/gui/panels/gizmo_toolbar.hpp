@@ -36,12 +36,18 @@ namespace lfs::vis::gui::panels {
         Rings
     };
 
+    enum class TransformSpace {
+        Local,
+        World
+    };
+
     struct GizmoToolbarState {
         ImGuizmo::OPERATION current_operation = ImGuizmo::TRANSLATE;
         ToolMode current_tool = ToolMode::Translate;
         CropBoxOperation cropbox_operation = CropBoxOperation::Bounds;
         bool reset_cropbox_requested = false;
         SelectionSubMode selection_mode = SelectionSubMode::Centers;
+        TransformSpace transform_space = TransformSpace::Local;
         bool initialized = false;
         unsigned int selection_texture = 0;
         unsigned int rectangle_texture = 0;
@@ -56,6 +62,8 @@ namespace lfs::vis::gui::panels {
         unsigned int cropbox_texture = 0;
         unsigned int bounds_texture = 0;
         unsigned int reset_texture = 0;
+        unsigned int local_texture = 0;
+        unsigned int world_texture = 0;
     };
 
     void InitGizmoToolbar(GizmoToolbarState& state);
