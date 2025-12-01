@@ -602,9 +602,10 @@ namespace lfs::vis::gui {
         // Render node transform gizmo (for translating selected PLY nodes)
         renderNodeTransformGizmo(ctx);
 
-        // Render speed overlays if visible
+        // Render overlays
         renderSpeedOverlay();
         renderZoomSpeedOverlay();
+        updateCropFlash();
 
         // Render split view indicator if enabled
         if (rendering_manager) {
@@ -957,6 +958,32 @@ namespace lfs::vis::gui {
         ImGui::PopStyleColor(2);
     }
 
+    void GuiManager::triggerCropFlash() {
+        crop_flash_active_ = true;
+        crop_flash_start_ = std::chrono::steady_clock::now();
+    }
+
+    void GuiManager::updateCropFlash() {
+        if (!crop_flash_active_) return;
+
+        auto* const rm = viewer_->getRenderingManager();
+        if (!rm) return;
+
+        constexpr int DURATION_MS = 400;
+        const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - crop_flash_start_).count();
+
+        auto settings = rm->getSettings();
+        if (elapsed_ms >= DURATION_MS) {
+            crop_flash_active_ = false;
+            settings.crop_flash_intensity = 0.0f;
+        } else {
+            settings.crop_flash_intensity = 1.0f - static_cast<float>(elapsed_ms) / DURATION_MS;
+        }
+        rm->updateSettings(settings);
+        rm->markDirty();
+    }
+
     void GuiManager::deactivateAllTools() {
         if (auto* const t = viewer_->getSelectionTool()) t->setEnabled(false);
         if (auto* const t = viewer_->getBrushTool()) t->setEnabled(false);
@@ -1008,12 +1035,11 @@ namespace lfs::vis::gui {
             }
         });
 
-        // Handle Enter key to apply crop box
         cmd::ApplyCropBox::when([this](const auto&) {
             if (gizmo_toolbar_state_.current_tool != panels::ToolMode::CropBox) {
                 return;
             }
-            auto* render_manager = viewer_->getRenderingManager();
+            auto* const render_manager = viewer_->getRenderingManager();
             if (!render_manager) {
                 return;
             }
@@ -1023,6 +1049,7 @@ namespace lfs::vis::gui {
             crop_box.setBounds(settings.crop_min, settings.crop_max);
             crop_box.setworld2BBox(settings.crop_transform.inv());
             cmd::CropPLY{.crop_box = crop_box, .inverse = settings.crop_inverse}.emit();
+            triggerCropFlash();
         });
 
         // Handle Ctrl+T to toggle crop inverse mode

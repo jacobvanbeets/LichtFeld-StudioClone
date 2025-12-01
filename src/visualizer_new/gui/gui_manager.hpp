@@ -142,6 +142,12 @@ namespace lfs::vis {
             // Tool cleanup
             void deactivateAllTools();
 
+            // Crop box flash effect
+            std::chrono::steady_clock::time_point crop_flash_start_;
+            bool crop_flash_active_ = false;
+            void triggerCropFlash();
+            void updateCropFlash();
+
             // Save PLY dialog state
             bool show_save_ply_dialog_ = false;
             std::string save_ply_node_name_;

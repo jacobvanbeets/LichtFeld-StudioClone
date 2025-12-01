@@ -43,6 +43,7 @@ namespace lfs::vis {
         glm::vec3 crop_max = glm::vec3(1.0f, 1.0f, 1.0f);
         glm::vec3 crop_color = glm::vec3(1.0f, 1.0f, 0.0f);
         float crop_line_width = 2.0f;
+        float crop_flash_intensity = 0.0f;
         lfs::geometry::EuclideanTransform crop_transform;
 
         // Background

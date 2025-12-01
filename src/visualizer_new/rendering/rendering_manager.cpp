@@ -1050,19 +1050,22 @@ namespace lfs::vis {
 
         // Crop box wireframe
         if (settings_.show_crop_box && engine_) {
-            auto transform = settings_.crop_transform;
+            const auto transform = settings_.crop_transform;
 
-            lfs::rendering::BoundingBox box{
+            const lfs::rendering::BoundingBox box{
                 .min = settings_.crop_min,
                 .max = settings_.crop_max,
                 .transform = transform.inv().toMat4()};
 
-            // Red color when inverse mode active, otherwise use configured color
-            const glm::vec3 color = settings_.crop_inverse
+            const glm::vec3 base_color = settings_.crop_inverse
                 ? glm::vec3(1.0f, 0.2f, 0.2f)
                 : settings_.crop_color;
+            const float flash = settings_.crop_flash_intensity;
+            const glm::vec3 color = glm::mix(base_color, glm::vec3(1.0f), flash);
+            constexpr float FLASH_LINE_BOOST = 4.0f;
+            const float line_width = settings_.crop_line_width + flash * FLASH_LINE_BOOST;
 
-            auto bbox_result = engine_->renderBoundingBox(box, viewport, color, settings_.crop_line_width);
+            auto bbox_result = engine_->renderBoundingBox(box, viewport, color, line_width);
             if (!bbox_result) {
                 LOG_WARN("Failed to render bounding box: {}", bbox_result.error());
             }
