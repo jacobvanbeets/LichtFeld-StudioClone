@@ -143,11 +143,9 @@ namespace lfs::rendering {
             screen_positions_ptr = reinterpret_cast<float2*>(screen_positions_out->ptr<float>());
         }
 
-        // Get brush selection buffer pointer (tensor owned by caller)
-        bool* brush_selection_ptr = nullptr;
-        if (brush_active && brush_selection_out != nullptr && brush_selection_out->is_valid()) {
-            brush_selection_ptr = brush_selection_out->ptr<bool>();
-        }
+        // Preview selection tensor (used by rectangle/lasso/polygon modes regardless of brush_active)
+        bool* const brush_selection_ptr = (brush_selection_out && brush_selection_out->is_valid())
+            ? brush_selection_out->ptr<bool>() : nullptr;
 
         // Prepare crop box parameters
         const float* crop_box_transform_ptr = nullptr;

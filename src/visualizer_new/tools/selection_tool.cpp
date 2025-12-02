@@ -599,14 +599,14 @@ namespace lfs::vis::tools {
                 }
             }
             rm->setBrushState(true, image_x, image_y, 0.0f, add_mode, nullptr, false, 0.0f);
-            rm->setPreviewSelection(&cumulative_selection_);
+            rm->setPreviewSelection(&cumulative_selection_, add_mode);
         } else {
             const float scaled_radius = brush_radius_ * scale_x;
             rm->setBrushState(true, image_x, image_y, scaled_radius, add_mode, &cumulative_selection_);
             if (transform_indices) {
                 lfs::rendering::filter_selection_by_node(cumulative_selection_, *transform_indices, target_node);
             }
-            rm->setPreviewSelection(&cumulative_selection_);
+            rm->setPreviewSelection(&cumulative_selection_, add_mode);
         }
     }
 
