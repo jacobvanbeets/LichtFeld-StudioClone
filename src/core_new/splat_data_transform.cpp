@@ -27,17 +27,19 @@ namespace lfs::core {
         const int num_points = splat_data._means.size(0);
         auto device = splat_data._means.device();
 
-        // 1. Transform positions (means)
-        std::vector<float> transform_data = {
-            transform_matrix[0][0], transform_matrix[0][1], transform_matrix[0][2], transform_matrix[0][3],
-            transform_matrix[1][0], transform_matrix[1][1], transform_matrix[1][2], transform_matrix[1][3],
-            transform_matrix[2][0], transform_matrix[2][1], transform_matrix[2][2], transform_matrix[2][3],
-            transform_matrix[3][0], transform_matrix[3][1], transform_matrix[3][2], transform_matrix[3][3]};
+        // GLM uses column-major storage: mat[col][row], so mat[3] is the translation column.
+        // Our tensor MM expects row-major, so we transpose during construction.
+        // Final transform: M * p^T where p is [N,4] homogeneous points.
+        const std::vector<float> transform_data = {
+            transform_matrix[0][0], transform_matrix[1][0], transform_matrix[2][0], transform_matrix[3][0],
+            transform_matrix[0][1], transform_matrix[1][1], transform_matrix[2][1], transform_matrix[3][1],
+            transform_matrix[0][2], transform_matrix[1][2], transform_matrix[2][2], transform_matrix[3][2],
+            transform_matrix[0][3], transform_matrix[1][3], transform_matrix[2][3], transform_matrix[3][3]};
 
-        auto transform_tensor = Tensor::from_vector(transform_data, TensorShape({4, 4}), device);
-        auto ones = Tensor::ones({static_cast<size_t>(num_points), 1}, device);
-        auto means_homo = splat_data._means.cat(ones, 1);
-        auto transformed_means = transform_tensor.mm(means_homo.t()).t();
+        const auto transform_tensor = Tensor::from_vector(transform_data, TensorShape({4, 4}), device);
+        const auto ones = Tensor::ones({static_cast<size_t>(num_points), 1}, device);
+        const auto means_homo = splat_data._means.cat(ones, 1);
+        const auto transformed_means = transform_tensor.mm(means_homo.t()).t();
 
         splat_data._means = transformed_means.slice(1, 0, 3).contiguous();
 

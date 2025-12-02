@@ -15,8 +15,10 @@
 #include "rendering/rendering_manager.hpp"
 #include "training/training_manager.hpp"
 #include "training_new/training_setup.hpp"
+#include <algorithm>
 #include <format>
 #include <glm/gtc/quaternion.hpp>
+#include <set>
 #include <stdexcept>
 
 namespace lfs::vis {
@@ -413,6 +415,20 @@ namespace lfs::vis {
         return node->centroid;
     }
 
+    glm::vec3 SceneManager::getSelectedNodeCenter() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        if (selected_node_.empty()) { return glm::vec3(0.0f); }
+
+        const auto* const node = scene_.getNode(selected_node_);
+        if (!node || !node->model) { return glm::vec3(0.0f); }
+
+        glm::vec3 min_bounds, max_bounds;
+        if (lfs::core::compute_bounds(*node->model, min_bounds, max_bounds)) {
+            return (min_bounds + max_bounds) * 0.5f;
+        }
+        return node->centroid;
+    }
+
     void SceneManager::setSelectedNodeTransform(const glm::mat4& transform) {
         std::string node_name;
         {
@@ -800,25 +816,104 @@ namespace lfs::vis {
         const auto* const model = scene_.getCombinedModel();
         if (!model) { return false; }
 
-        // Try selection mask first
+        const auto transforms = scene_.getVisibleNodeTransforms();
+        const auto transform_indices = scene_.getTransformIndices();
+        const auto IDENTITY = glm::mat4(1.0f);
+
+        // Bake per-gaussian transforms into extracted data
+        auto bake_transforms = [&](lfs::core::SplatData& extracted, const lfs::core::Tensor& mask) {
+            if (transforms.empty() || !transform_indices || !transform_indices->is_valid()) { return; }
+
+            const bool all_identity = std::all_of(transforms.begin(), transforms.end(),
+                [&](const glm::mat4& t) { return t == IDENTITY; });
+            if (all_identity) { return; }
+
+            if (transforms.size() == 1) {
+                lfs::core::transform(extracted, transforms[0]);
+                return;
+            }
+
+            // Multi-node: apply transforms per node group
+            const auto selection_mask = mask.to(lfs::core::DataType::Bool);
+            auto selected_indices = selection_mask.nonzero();
+            if (selected_indices.ndim() == 2) { selected_indices = selected_indices.squeeze(1); }
+
+            const auto selected_xform_indices = transform_indices->index_select(0, selected_indices).cpu();
+            const int* const idx_data = selected_xform_indices.ptr<int>();
+            const size_t num_selected = extracted.size();
+            const std::set<int> unique_nodes(idx_data, idx_data + num_selected);
+
+            for (const int node_idx : unique_nodes) {
+                if (node_idx < 0 || node_idx >= static_cast<int>(transforms.size())) { continue; }
+                if (transforms[node_idx] == IDENTITY) { continue; }
+
+                std::vector<bool> node_mask_data(num_selected, false);
+                for (size_t i = 0; i < num_selected; ++i) {
+                    node_mask_data[i] = (idx_data[i] == node_idx);
+                }
+
+                auto node_mask = lfs::core::Tensor::from_vector(
+                    node_mask_data, {num_selected}, extracted.means_raw().device());
+                auto node_gaussians = lfs::core::extract_by_mask(extracted, node_mask);
+                lfs::core::transform(node_gaussians, transforms[node_idx]);
+
+                auto put_indices = node_mask.nonzero();
+                if (put_indices.ndim() == 2) { put_indices = put_indices.squeeze(1); }
+
+                extracted.means_raw().index_put_(put_indices, node_gaussians.means_raw());
+                extracted.rotation_raw().index_put_(put_indices, node_gaussians.rotation_raw());
+                extracted.scaling_raw().index_put_(put_indices, node_gaussians.scaling_raw());
+            }
+        };
+
+        // Priority 1: Brush/lasso selection
         if (const auto mask = scene_.getSelectionMask(); mask && mask->is_valid()) {
             auto extracted = lfs::core::extract_by_mask(*model, *mask);
             if (extracted.size() > 0) {
+                bake_transforms(extracted, *mask);
                 clipboard_ = std::make_unique<lfs::core::SplatData>(std::move(extracted));
                 LOG_INFO("Copied {} gaussians from selection", clipboard_->size());
                 return true;
             }
         }
 
-        // Fall back to crop box
+        // Priority 2: Selected node in scene panel
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            if (!selected_node_.empty()) {
+                const auto* const node = scene_.getNode(selected_node_);
+                if (node && node->model && node->model->size() > 0) {
+                    const auto& src = *node->model;
+                    auto cloned = std::make_unique<lfs::core::SplatData>(
+                        src.get_max_sh_degree(),
+                        src.means_raw().clone(), src.sh0_raw().clone(), src.shN_raw().clone(),
+                        src.scaling_raw().clone(), src.rotation_raw().clone(), src.opacity_raw().clone(),
+                        src.get_scene_scale());
+                    cloned->set_active_sh_degree(src.get_active_sh_degree());
+
+                    if (node->transform != IDENTITY) {
+                        lfs::core::transform(*cloned, node->transform);
+                    }
+                    clipboard_ = std::move(cloned);
+                    LOG_INFO("Copied {} gaussians from node '{}'", clipboard_->size(), selected_node_);
+                    return true;
+                }
+            }
+        }
+
+        // Priority 3: Crop box
         if (rendering_manager_) {
             const auto& settings = rendering_manager_->getSettings();
             if (settings.show_crop_box || settings.use_crop_box) {
                 lfs::geometry::BoundingBox bbox;
                 bbox.setBounds(settings.crop_min, settings.crop_max);
                 bbox.setworld2BBox(settings.crop_transform.inv());
+
                 auto extracted = lfs::core::crop_by_cropbox(*model, bbox, settings.crop_inverse);
                 if (extracted.size() > 0) {
+                    if (transforms.size() == 1 && transforms[0] != IDENTITY) {
+                        lfs::core::transform(extracted, transforms[0]);
+                    }
                     clipboard_ = std::make_unique<lfs::core::SplatData>(std::move(extracted));
                     LOG_INFO("Copied {} gaussians from crop box", clipboard_->size());
                     return true;
@@ -833,19 +928,14 @@ namespace lfs::vis {
 
         auto paste_data = std::make_unique<lfs::core::SplatData>(
             clipboard_->get_max_sh_degree(),
-            clipboard_->means_raw().clone(),
-            clipboard_->sh0_raw().clone(),
-            clipboard_->shN_raw().clone(),
-            clipboard_->scaling_raw().clone(),
-            clipboard_->rotation_raw().clone(),
-            clipboard_->opacity_raw().clone(),
+            clipboard_->means_raw().clone(), clipboard_->sh0_raw().clone(), clipboard_->shN_raw().clone(),
+            clipboard_->scaling_raw().clone(), clipboard_->rotation_raw().clone(), clipboard_->opacity_raw().clone(),
             clipboard_->get_scene_scale());
         paste_data->set_active_sh_degree(clipboard_->get_active_sh_degree());
 
         ++clipboard_counter_;
         const std::string name = std::format("Pasted_{}", clipboard_counter_);
         const size_t count = clipboard_->size();
-
         scene_.addNode(name, std::move(paste_data));
 
         {

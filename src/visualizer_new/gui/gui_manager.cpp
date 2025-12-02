@@ -1400,11 +1400,11 @@ namespace lfs::vis::gui {
         const glm::mat4 projection = glm::perspective(fov_rad, aspect,
             lfs::rendering::DEFAULT_NEAR_PLANE, lfs::rendering::DEFAULT_FAR_PLANE);
 
-        const glm::vec3 centroid = scene_manager->getSelectedNodeCentroid();
+        const glm::vec3 center = scene_manager->getSelectedNodeCenter();
         const glm::mat4 node_transform = scene_manager->getSelectedNodeTransform();
         const glm::mat3 rotation_scale(node_transform);
-        // Transform centroid to world space
-        const glm::vec3 gizmo_position = glm::vec3(node_transform * glm::vec4(centroid, 1.0f));
+        // Transform center to world space
+        const glm::vec3 gizmo_position = glm::vec3(node_transform * glm::vec4(center, 1.0f));
         const bool use_world_space =
             (gizmo_toolbar_state_.transform_space == panels::TransformSpace::World);
 
@@ -1476,11 +1476,11 @@ namespace lfs::vis::gui {
                 const glm::mat3 delta_rs(delta_matrix);
                 const glm::mat3 new_rs = delta_rs * old_rs;
                 new_transform = glm::mat4(new_rs);
-                new_transform[3] = glm::vec4(new_gizmo_pos - new_rs * centroid, 1.0f);
+                new_transform[3] = glm::vec4(new_gizmo_pos - new_rs * center, 1.0f);
             } else {
                 const glm::mat3 new_rs(gizmo_matrix);
                 new_transform = gizmo_matrix;
-                new_transform[3] = glm::vec4(new_gizmo_pos - new_rs * centroid, 1.0f);
+                new_transform[3] = glm::vec4(new_gizmo_pos - new_rs * center, 1.0f);
             }
 
             scene_manager->setSelectedNodeTransform(new_transform);
