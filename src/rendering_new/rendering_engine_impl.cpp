@@ -171,6 +171,7 @@ namespace lfs::rendering {
             .brush_selection_tensor = request.brush_selection_tensor,
             .brush_saturation_mode = request.brush_saturation_mode,
             .brush_saturation_amount = request.brush_saturation_amount,
+            .depth_map_mode = request.depth_map_mode,
             .selection_mode_rings = request.selection_mode_rings,
             .hovered_depth_id = request.hovered_depth_id,
             .highlight_gaussian_id = request.highlight_gaussian_id,

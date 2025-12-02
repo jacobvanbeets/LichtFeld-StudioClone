@@ -31,6 +31,7 @@ namespace lfs::rendering {
         Tensor* brush_selection_out = nullptr,
         bool brush_saturation_mode = false,
         float brush_saturation_amount = 0.0f,
+        bool depth_map_mode = false,
         bool selection_mode_rings = false,
         bool show_center_markers = false,
         const Tensor* crop_box_transform = nullptr,

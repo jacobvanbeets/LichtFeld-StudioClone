@@ -107,6 +107,7 @@ namespace lfs::vis::gui::panels {
         state.reset_texture = LoadIconTexture("reset.png");
         state.local_texture = LoadIconTexture("local.png");
         state.world_texture = LoadIconTexture("world.png");
+        state.depthmap_texture = LoadIconTexture("depthmap.png");
         state.initialized = true;
     }
 
@@ -128,6 +129,7 @@ namespace lfs::vis::gui::panels {
         if (state.reset_texture) glDeleteTextures(1, &state.reset_texture);
         if (state.local_texture) glDeleteTextures(1, &state.local_texture);
         if (state.world_texture) glDeleteTextures(1, &state.world_texture);
+        if (state.depthmap_texture) glDeleteTextures(1, &state.depthmap_texture);
 
         state.selection_texture = 0;
         state.rectangle_texture = 0;
@@ -144,6 +146,7 @@ namespace lfs::vis::gui::panels {
         state.reset_texture = 0;
         state.local_texture = 0;
         state.world_texture = 0;
+        state.depthmap_texture = 0;
         state.initialized = false;
     }
 
@@ -322,7 +325,7 @@ namespace lfs::vis::gui::panels {
 
         // Cropbox operations toolbar
         if (state.current_tool == ToolMode::CropBox) {
-            constexpr int NUM_CROP_BUTTONS = 5;
+            constexpr int NUM_CROP_BUTTONS = 6;
             const ImVec2 sub_size = ComputeToolbarSize(NUM_CROP_BUTTONS);
             const float sub_x = viewport->WorkPos.x + viewport_pos.x + (viewport_size.x - sub_size.x) * 0.5f;
             const float sub_y = viewport->WorkPos.y + viewport_pos.y + toolbar_size.y + SUBTOOLBAR_OFFSET_Y;
@@ -358,6 +361,8 @@ namespace lfs::vis::gui::panels {
                 CropOpButton("##crop_rotate", state.rotation_texture, CropBoxOperation::Rotate, "R", "Rotate");
                 ImGui::SameLine();
                 CropOpButton("##crop_scale", state.scaling_texture, CropBoxOperation::Scale, "S", "Scale");
+                ImGui::SameLine();
+                CropOpButton("##crop_depthmap", state.depthmap_texture, CropBoxOperation::DepthMap, "D", "Depth Map");
                 ImGui::SameLine();
 
                 ImGui::PushStyleColor(ImGuiCol_Button, BTN_NORMAL);

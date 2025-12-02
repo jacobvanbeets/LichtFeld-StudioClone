@@ -528,11 +528,25 @@ namespace lfs::vis::gui {
             }
 
             if (is_cropbox_mode) {
+                // Check if cropbox operation changed
+                if (gizmo_toolbar_state_.cropbox_operation != previous_cropbox_operation_) {
+                    // Only emit depth map toggle when switching TO DepthMap mode
+                    if (gizmo_toolbar_state_.cropbox_operation == panels::CropBoxOperation::DepthMap) {
+                        lfs::core::events::cmd::ToggleDepthMapMode{}.emit();
+                    }
+                    // Or when switching FROM DepthMap mode
+                    else if (previous_cropbox_operation_ == panels::CropBoxOperation::DepthMap) {
+                        lfs::core::events::cmd::ToggleDepthMapMode{}.emit();
+                    }
+                    previous_cropbox_operation_ = gizmo_toolbar_state_.cropbox_operation;
+                }
+
                 switch (gizmo_toolbar_state_.cropbox_operation) {
                     case panels::CropBoxOperation::Bounds:    crop_gizmo_operation_ = ImGuizmo::BOUNDS; break;
                     case panels::CropBoxOperation::Translate: crop_gizmo_operation_ = ImGuizmo::TRANSLATE; break;
                     case panels::CropBoxOperation::Rotate:    crop_gizmo_operation_ = ImGuizmo::ROTATE; break;
                     case panels::CropBoxOperation::Scale:     crop_gizmo_operation_ = ImGuizmo::SCALE; break;
+                    case panels::CropBoxOperation::DepthMap:  break; // Depth map mode, no gizmo operation
                 }
             }
 

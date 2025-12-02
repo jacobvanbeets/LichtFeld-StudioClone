@@ -58,6 +58,7 @@ namespace lfs::rendering {
             lfs::core::Tensor* brush_selection_tensor = nullptr;
             bool brush_saturation_mode = false;
             float brush_saturation_amount = 0.0f;
+            bool depth_map_mode = false;  // Depth map visualization based on crop box Z
             bool selection_mode_rings = false;  // Ring mode hover detection
             // Crop box filtering
             const Tensor* crop_box_transform = nullptr;

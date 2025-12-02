@@ -25,7 +25,8 @@ namespace lfs::vis::gui::panels {
         Bounds,
         Translate,
         Rotate,
-        Scale
+        Scale,
+        DepthMap
     };
 
     enum class SelectionSubMode {
@@ -64,6 +65,7 @@ namespace lfs::vis::gui::panels {
         unsigned int reset_texture = 0;
         unsigned int local_texture = 0;
         unsigned int world_texture = 0;
+        unsigned int depthmap_texture = 0;
     };
 
     void InitGizmoToolbar(GizmoToolbarState& state);

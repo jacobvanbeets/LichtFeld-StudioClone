@@ -65,6 +65,8 @@ namespace lfs::core {
             EVENT(ToggleSplitView, );
             EVENT(ToggleGTComparison, );
             EVENT(ToggleGimbalLock, bool locked;);
+            EVENT(ToggleDepthMapMode, );  // Toggle depth map visualization mode
+            EVENT(SaveDepthMapScreenshot, std::filesystem::path path;);  // Save current view as PNG
             EVENT(Undo, );
             EVENT(Redo, );
             EVENT(DeleteSelected, );  // Delete selected Gaussians (soft delete)

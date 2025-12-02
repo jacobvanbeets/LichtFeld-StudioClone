@@ -67,6 +67,7 @@ namespace lfs::rendering::kernels::forward {
         bool* brush_selection_out,
         const bool brush_saturation_mode,
         const float brush_saturation_amount,
+        const bool depth_map_mode,
         const bool selection_mode_rings,
         const float* crop_box_transform,
         const float3* crop_box_min,
@@ -325,6 +326,55 @@ namespace lfs::rendering::kernels::forward {
             color.x = fmaxf(0.0f, fminf(1.0f, lum + sat * (color.x - lum)));
             color.y = fmaxf(0.0f, fminf(1.0f, lum + sat * (color.y - lum)));
             color.z = fmaxf(0.0f, fminf(1.0f, lum + sat * (color.z - lum)));
+        }
+
+        // Depth map mode: color by Z-coordinate within crop box
+        if (depth_map_mode && !outside_crop && crop_box_min != nullptr && crop_box_max != nullptr && crop_box_transform != nullptr) {
+            // Transform position to crop box space (same as crop box test above)
+            const float* const c = crop_box_transform;
+            const float lx = c[0] * mean3d.x + c[1] * mean3d.y + c[2] * mean3d.z + c[3];
+            const float ly = c[4] * mean3d.x + c[5] * mean3d.y + c[6] * mean3d.z + c[7];
+            const float lz = c[8] * mean3d.x + c[9] * mean3d.y + c[10] * mean3d.z + c[11];
+            
+            // Normalize Y coordinate within crop box bounds
+            const float y_min = crop_box_min->y;
+            const float y_max = crop_box_max->y;
+            const float y_range = y_max - y_min;
+            
+            if (y_range > 1e-6f) {
+                float depth_normalized = (ly - y_min) / y_range;
+                depth_normalized = fmaxf(0.0f, fminf(1.0f, depth_normalized));
+                
+                // Apply jet colormap (blue->cyan->green->yellow->red)
+                float3 jet_color;
+                if (depth_normalized < 0.25f) {
+                    // Blue to Cyan
+                    jet_color.x = 0.0f;
+                    jet_color.y = 4.0f * depth_normalized;
+                    jet_color.z = 1.0f;
+                } else if (depth_normalized < 0.5f) {
+                    // Cyan to Green
+                    const float t = (depth_normalized - 0.25f) * 4.0f;
+                    jet_color.x = 0.0f;
+                    jet_color.y = 1.0f;
+                    jet_color.z = 1.0f - t;
+                } else if (depth_normalized < 0.75f) {
+                    // Green to Yellow
+                    const float t = (depth_normalized - 0.5f) * 4.0f;
+                    jet_color.x = t;
+                    jet_color.y = 1.0f;
+                    jet_color.z = 0.0f;
+                } else {
+                    // Yellow to Red
+                    const float t = (depth_normalized - 0.75f) * 4.0f;
+                    jet_color.x = 1.0f;
+                    jet_color.y = 1.0f - t;
+                    jet_color.z = 0.0f;
+                }
+                
+                // Override color with depth visualization
+                color = jet_color;
+            }
         }
 
         // Depth filter: dim outside gaussians

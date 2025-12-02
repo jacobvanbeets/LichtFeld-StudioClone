@@ -39,6 +39,7 @@ namespace lfs::vis {
         bool use_crop_box = false;
         bool crop_inverse = false;
         bool crop_desaturate = false;
+        bool depth_map_mode = false;  // Visualize depth based on crop box Z
         glm::vec3 crop_min = glm::vec3(-1.0f, -1.0f, -1.0f);
         glm::vec3 crop_max = glm::vec3(1.0f, 1.0f, 1.0f);
         glm::vec3 crop_color = glm::vec3(1.0f, 1.0f, 0.0f);

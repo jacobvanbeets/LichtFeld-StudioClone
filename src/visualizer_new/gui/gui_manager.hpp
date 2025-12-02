@@ -157,6 +157,7 @@ namespace lfs::vis {
             // Previous tool/selection mode for detecting changes
             panels::ToolMode previous_tool_ = panels::ToolMode::None;
             panels::SelectionSubMode previous_selection_mode_ = panels::SelectionSubMode::Centers;
+            panels::CropBoxOperation previous_cropbox_operation_ = panels::CropBoxOperation::Bounds;
 
             // Tool cleanup
             void deactivateAllTools();

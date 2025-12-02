@@ -372,6 +372,14 @@ namespace lfs::vis {
             markDirty();
         });
 
+        // Depth map mode toggle
+        cmd::ToggleDepthMapMode::when([this](const auto&) {
+            std::lock_guard<std::mutex> lock(settings_mutex_);
+            settings_.depth_map_mode = !settings_.depth_map_mode;
+            LOG_INFO("Depth map mode: {}", settings_.depth_map_mode ? "enabled" : "disabled");
+            markDirty();
+        });
+
         // Point cloud mode changes
         ui::PointCloudModeChanged::when([this](const auto& event) {
             std::lock_guard<std::mutex> lock(settings_mutex_);
@@ -590,6 +598,7 @@ namespace lfs::vis {
             .brush_selection_tensor = preview_selection_ ? preview_selection_ : brush_selection_tensor_,
             .brush_saturation_mode = brush_saturation_mode_,
             .brush_saturation_amount = brush_saturation_amount_,
+            .depth_map_mode = settings_.depth_map_mode,
             .selection_mode_rings = (selection_mode_ == lfs::rendering::SelectionMode::Rings),
             .hovered_depth_id = nullptr,
             .highlight_gaussian_id = (selection_mode_ == lfs::rendering::SelectionMode::Rings) ? hovered_gaussian_id_ : -1,
