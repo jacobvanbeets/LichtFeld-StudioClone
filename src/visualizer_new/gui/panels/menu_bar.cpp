@@ -644,7 +644,8 @@ namespace lfs::vis::gui {
                 ImGui::Spacing();
 
                 constexpr ImGuiTableFlags TABLE_FLAGS = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY;
-                const float available_height = ImGui::GetContentRegionAvail().y - 100.0f;
+                constexpr float FOOTER_HEIGHT = 150.0f;  // Space for buttons below table
+                const float available_height = ImGui::GetContentRegionAvail().y - FOOTER_HEIGHT;
                 const float table_height = std::max(200.0f, available_height);
 
                 if (ImGui::BeginTable("bindings_table", 3, TABLE_FLAGS, ImVec2(0, table_height))) {
