@@ -420,7 +420,7 @@ namespace lfs::vis::input {
         case Action::CAMERA_MOVE_RIGHT: return "Move Right";
         case Action::CAMERA_MOVE_UP: return "Move Up";
         case Action::CAMERA_MOVE_DOWN: return "Move Down";
-        case Action::CAMERA_RESET_HOME: return "Reset Home";
+        case Action::CAMERA_RESET_HOME: return "Go to Home";
         case Action::CAMERA_SET_PIVOT: return "Set Pivot";
         case Action::CAMERA_NEXT_VIEW: return "Next Camera View";
         case Action::CAMERA_PREV_VIEW: return "Previous Camera View";
