@@ -7,6 +7,7 @@
 #include "gui/gui_manager.hpp"
 #include "loader_new/loader.hpp"
 #include "rendering/rendering_manager.hpp"
+#include "scene/scene_manager.hpp"
 #include "tools/align_tool.hpp"
 #include "tools/brush_tool.hpp"
 #include "tools/selection_tool.hpp"
@@ -341,6 +342,22 @@ namespace lfs::vis {
                         return;
                     }
                 }
+
+                // Node picking (controlled by bindings, skips if ImGuizmo active)
+                const input::ToolMode input_mode = getCurrentToolMode();
+                const input::Action pick_action = bindings_.getActionForMouseButton(
+                    input_mode, input::MouseButton::LEFT, mods);
+                const input::Action drag_action = bindings_.getActionForDrag(
+                    input_mode, input::MouseButton::LEFT, mods);
+                const bool has_node_binding = (pick_action == input::Action::NODE_PICK ||
+                                               drag_action == input::Action::NODE_RECT_SELECT);
+
+                if (!over_gui && button == GLFW_MOUSE_BUTTON_LEFT && tool_context_ &&
+                    !ImGuizmo::IsOver() && !ImGuizmo::IsUsing() && has_node_binding) {
+                    is_node_rect_dragging_ = true;
+                    node_rect_start_ = glm::vec2(static_cast<float>(x), static_cast<float>(y));
+                    node_rect_end_ = node_rect_start_;
+                }
                 break;
             }
         } else if (action == GLFW_RELEASE) {
@@ -372,6 +389,47 @@ namespace lfs::vis {
                     .translation = viewport_.getTranslation()}
                     .emit();
                 onCameraMovementEnd();
+            }
+
+            // Node picking on release
+            if (is_node_rect_dragging_ && button == GLFW_MOUSE_BUTTON_LEFT && tool_context_) {
+                is_node_rect_dragging_ = false;
+                auto* scene_manager = tool_context_->getSceneManager();
+                if (scene_manager) {
+                    constexpr float CLICK_THRESHOLD_PX = 5.0f;
+                    const float drag_dist = glm::length(node_rect_end_ - node_rect_start_);
+
+                    if (drag_dist < CLICK_THRESHOLD_PX) {
+                        // Point pick
+                        const glm::vec3 world_pos = unprojectScreenPoint(x, y);
+                        const std::string picked = scene_manager->pickNodeAtWorldPosition(world_pos);
+                        if (!picked.empty()) {
+                            scene_manager->selectNode(picked);
+                        } else {
+                            scene_manager->clearSelection();
+                        }
+                    } else {
+                        // Rectangle selection
+                        const glm::vec2 rect_min(
+                            std::min(node_rect_start_.x, node_rect_end_.x),
+                            std::min(node_rect_start_.y, node_rect_end_.y));
+                        const glm::vec2 rect_max(
+                            std::max(node_rect_start_.x, node_rect_end_.x),
+                            std::max(node_rect_start_.y, node_rect_end_.y));
+
+                        const std::vector<std::string> picked_nodes = scene_manager->pickNodesInScreenRect(
+                            rect_min, rect_max,
+                            viewport_.getViewMatrix(),
+                            viewport_.getProjectionMatrix(),
+                            viewport_.windowSize);
+
+                        if (picked_nodes.empty()) {
+                            scene_manager->clearSelection();
+                        } else {
+                            scene_manager->selectNodes(picked_nodes);
+                        }
+                    }
+                }
             }
         }
     }
@@ -498,6 +556,12 @@ namespace lfs::vis {
 
         glm::vec2 pos(x, y);
         last_mouse_pos_ = current_pos;
+
+        // Node rectangle dragging
+        if (is_node_rect_dragging_) {
+            node_rect_end_ = glm::vec2(static_cast<float>(x), static_cast<float>(y));
+            if (tool_context_) tool_context_->requestRender();
+        }
 
         // Block camera dragging if ImGuizmo is being used
         if (ImGuizmo::IsUsing()) {

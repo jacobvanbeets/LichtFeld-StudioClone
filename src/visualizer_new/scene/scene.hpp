@@ -174,6 +174,7 @@ namespace lfs::vis {
         // When a group is selected, all descendant SPLAT nodes are marked as selected
         // Returns vector of bools, one per visible SPLAT node (same order as transforms)
         [[nodiscard]] std::vector<bool> getSelectedNodeMask(const std::string& selected_node_name) const;
+        [[nodiscard]] std::vector<bool> getSelectedNodeMask(const std::vector<std::string>& selected_node_names) const;
 
         // Selection mask for highlighting selected Gaussians
         // Returns nullptr if no selection (all zeros = no selection)

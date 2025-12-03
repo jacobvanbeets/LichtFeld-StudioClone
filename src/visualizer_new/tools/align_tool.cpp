@@ -193,48 +193,17 @@ namespace lfs::vis::tools {
     }
 
     glm::vec3 AlignTool::unprojectScreenPoint(double x, double y, const ToolContext& ctx) {
+        constexpr glm::vec3 INVALID_POS(-1e10f);
+
         auto* const rendering_manager = ctx.getRenderingManager();
-        if (!rendering_manager) return glm::vec3(-1e10f);
+        if (!rendering_manager) return INVALID_POS;
 
         const float depth = rendering_manager->getDepthAtPixel(static_cast<int>(x), static_cast<int>(y));
-        if (depth < 0.0f) return glm::vec3(-1e10f);
+        if (depth < 0.0f) return INVALID_POS;
 
         const auto& viewport = ctx.getViewport();
-        const float width = viewport.windowSize.x;
-        const float height = viewport.windowSize.y;
-
-        // Pinhole camera unprojection matching the rasterizer
-        const float fov_y = glm::radians(rendering_manager->getFovDegrees());
-        const float aspect = width / height;
-        const float fov_x = 2.0f * atan(tan(fov_y / 2.0f) * aspect);
-
-        const float fx = width / (2.0f * tan(fov_x / 2.0f));
-        const float fy = height / (2.0f * tan(fov_y / 2.0f));
-        const float cx = width / 2.0f;
-        const float cy = height / 2.0f;
-
-        const glm::vec4 view_pos(
-            (static_cast<float>(x) - cx) * depth / fx,
-            (static_cast<float>(y) - cy) * depth / fy,
-            depth,
-            1.0f
-        );
-
-        // Build w2c matrix matching rasterizer: w2c = [R^T | -R^T*t]
-        const glm::mat3 R = viewport.getRotationMatrix();
-        const glm::vec3 t = viewport.getTranslation();
-        const glm::mat3 R_inv = glm::transpose(R);
-        const glm::vec3 t_inv = -R_inv * t;
-
-        glm::mat4 w2c(1.0f);
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                w2c[i][j] = R_inv[i][j];
-        w2c[3][0] = t_inv.x;
-        w2c[3][1] = t_inv.y;
-        w2c[3][2] = t_inv.z;
-
-        return glm::vec3(glm::inverse(w2c) * view_pos);
+        return viewport.unprojectPixel(static_cast<float>(x), static_cast<float>(y), depth,
+                                       rendering_manager->getFovDegrees());
     }
 
     void AlignTool::applyAlignment(const ToolContext& ctx) {

@@ -115,9 +115,18 @@ namespace lfs::vis {
         // Handle node selection from scene panel (both PLYs and Groups)
         ui::NodeSelected::when([this](const auto& event) {
             if (event.type == "PLY" || event.type == "Group") {
+                // Skip if this is a multi-select event (already handled by selectNodes)
+                auto it = event.metadata.find("multi_select");
+                if (it != event.metadata.end() && it->second != "1") {
+                    // Multi-select already set selected_nodes_, just sync cropbox
+                    syncCropBoxToRenderSettings();
+                    return;
+                }
+
                 {
                     std::lock_guard<std::mutex> lock(state_mutex_);
-                    selected_node_ = event.path;
+                    selected_nodes_.clear();
+                    selected_nodes_.insert(event.path);
                 }
                 // Sync selected node's cropbox to render settings
                 syncCropBoxToRenderSettings();
@@ -127,7 +136,7 @@ namespace lfs::vis {
         // Handle node deselection
         ui::NodeDeselected::when([this](const auto&) {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            selected_node_.clear();
+            selected_nodes_.clear();
         });
     }
 
@@ -397,7 +406,8 @@ namespace lfs::vis {
         if (node != nullptr) {
             {
                 std::lock_guard<std::mutex> lock(state_mutex_);
-                selected_node_ = name;
+                selected_nodes_.clear();
+                selected_nodes_.insert(name);
             }
             ui::NodeSelected{
                 .path = name,
@@ -411,44 +421,194 @@ namespace lfs::vis {
         }
     }
 
+    void SceneManager::selectNodes(const std::vector<std::string>& names) {
+        std::string first_name;
+        size_t num_selected = 0;
+        size_t gaussians = 0;
+        bool visible = false;
+
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            selected_nodes_.clear();
+            for (const auto& name : names) {
+                if (scene_.getNode(name) != nullptr) {
+                    selected_nodes_.insert(name);
+                }
+            }
+            if (!selected_nodes_.empty()) {
+                first_name = *selected_nodes_.begin();
+                num_selected = selected_nodes_.size();
+                const auto* node = scene_.getNode(first_name);
+                if (node) {
+                    gaussians = node->model ? node->model->size() : 0;
+                    visible = node->visible;
+                }
+            }
+        }
+
+        if (!first_name.empty()) {
+            ui::NodeSelected{
+                .path = first_name,
+                .type = "PLY",
+                .metadata = {
+                    {"name", first_name},
+                    {"gaussians", std::to_string(gaussians)},
+                    {"visible", visible ? "true" : "false"},
+                    {"multi_select", std::to_string(num_selected)}
+                }
+            }.emit();
+        }
+    }
+
+    void SceneManager::addToSelection(const std::string& name) {
+        const auto* node = scene_.getNode(name);
+        if (node != nullptr) {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            selected_nodes_.insert(name);
+        }
+    }
+
     void SceneManager::clearSelection() {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        selected_node_.clear();
+        selected_nodes_.clear();
         LOG_TRACE("Cleared node selection");
     }
 
     std::string SceneManager::getSelectedNodeName() const {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        return selected_node_;
+        if (selected_nodes_.empty()) return "";
+        return *selected_nodes_.begin();
+    }
+
+    std::vector<std::string> SceneManager::getSelectedNodeNames() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        return std::vector<std::string>(selected_nodes_.begin(), selected_nodes_.end());
     }
 
     bool SceneManager::hasSelectedNode() const {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        return !selected_node_.empty() && scene_.getNode(selected_node_) != nullptr;
+        if (selected_nodes_.empty()) return false;
+        // Check if at least one selected node still exists
+        for (const auto& name : selected_nodes_) {
+            if (scene_.getNode(name) != nullptr) return true;
+        }
+        return false;
     }
 
     bool SceneManager::isSelectedNodeLocked() const {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        if (selected_node_.empty()) return false;
-        return scene_.isNodeLocked(selected_node_);
+        if (selected_nodes_.empty()) return false;
+        // Return true if any selected node is locked
+        for (const auto& name : selected_nodes_) {
+            if (scene_.isNodeLocked(name)) return true;
+        }
+        return false;
     }
 
     int SceneManager::getSelectedNodeIndex() const {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        if (selected_node_.empty()) { return -1; }
-        return scene_.getVisibleNodeIndex(selected_node_);
+        if (selected_nodes_.empty()) { return -1; }
+        return scene_.getVisibleNodeIndex(*selected_nodes_.begin());
     }
 
     std::vector<bool> SceneManager::getSelectedNodeMask() const {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        return scene_.getSelectedNodeMask(selected_node_);
+        return scene_.getSelectedNodeMask(std::vector<std::string>(selected_nodes_.begin(), selected_nodes_.end()));
+    }
+
+    std::string SceneManager::pickNodeAtWorldPosition(const glm::vec3& world_pos) const {
+        constexpr float INVALID_COORD = -1e9f;
+        if (world_pos.x <= INVALID_COORD) {
+            return "";
+        }
+
+        for (const auto* node : scene_.getVisibleNodes()) {
+            if (node->type != NodeType::SPLAT) continue;
+
+            glm::vec3 local_min, local_max;
+            if (!scene_.getNodeBounds(node->id, local_min, local_max)) continue;
+
+            const glm::mat4 world_to_local = glm::inverse(scene_.getWorldTransform(node->id));
+            const glm::vec3 local_pos = glm::vec3(world_to_local * glm::vec4(world_pos, 1.0f));
+
+            if (local_pos.x >= local_min.x && local_pos.x <= local_max.x &&
+                local_pos.y >= local_min.y && local_pos.y <= local_max.y &&
+                local_pos.z >= local_min.z && local_pos.z <= local_max.z) {
+                return node->name;
+            }
+        }
+        return "";
+    }
+
+    std::vector<std::string> SceneManager::pickNodesInScreenRect(
+        const glm::vec2& rect_min, const glm::vec2& rect_max,
+        const glm::mat4& view, const glm::mat4& proj,
+        const glm::ivec2& viewport_size) const {
+
+        constexpr float BEHIND_CAMERA = -1e10f;
+        constexpr int BBOX_CORNERS = 8;
+
+        std::vector<std::string> result;
+
+        const auto projectToScreen = [&](const glm::vec3& world_pos) -> glm::vec2 {
+            const glm::vec4 clip = proj * view * glm::vec4(world_pos, 1.0f);
+            if (clip.w <= 0.0f) return glm::vec2(BEHIND_CAMERA);
+            const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            return glm::vec2(
+                (ndc.x * 0.5f + 0.5f) * static_cast<float>(viewport_size.x),
+                (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(viewport_size.y));
+        };
+
+        const auto rectsOverlap = [](const glm::vec2& a_min, const glm::vec2& a_max,
+                                     const glm::vec2& b_min, const glm::vec2& b_max) {
+            return !(a_max.x < b_min.x || b_max.x < a_min.x ||
+                     a_max.y < b_min.y || b_max.y < a_min.y);
+        };
+
+        for (const auto* node : scene_.getVisibleNodes()) {
+            if (node->type != NodeType::SPLAT) continue;
+
+            glm::vec3 local_min, local_max;
+            if (!scene_.getNodeBounds(node->id, local_min, local_max)) continue;
+
+            const glm::mat4 world_transform = scene_.getWorldTransform(node->id);
+
+            glm::vec2 screen_min(1e10f);
+            glm::vec2 screen_max(-1e10f);
+            bool any_visible = false;
+
+            for (int i = 0; i < BBOX_CORNERS; ++i) {
+                const glm::vec3 corner(
+                    (i & 1) ? local_max.x : local_min.x,
+                    (i & 2) ? local_max.y : local_min.y,
+                    (i & 4) ? local_max.z : local_min.z);
+                const glm::vec3 world_corner = glm::vec3(world_transform * glm::vec4(corner, 1.0f));
+                const glm::vec2 screen_pos = projectToScreen(world_corner);
+
+                if (screen_pos.x > BEHIND_CAMERA + 1e5f) {
+                    screen_min = glm::min(screen_min, screen_pos);
+                    screen_max = glm::max(screen_max, screen_pos);
+                    any_visible = true;
+                }
+            }
+
+            if (!any_visible) continue;
+
+            // Check if the screen-space bbox overlaps with the selection rectangle
+            if (rectsOverlap(rect_min, rect_max, screen_min, screen_max)) {
+                result.push_back(node->name);
+            }
+        }
+
+        return result;
     }
 
     void SceneManager::ensureCropBoxForSelectedNode() {
         std::string node_name;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            node_name = selected_node_;
+            if (selected_nodes_.empty()) return;
+            node_name = *selected_nodes_.begin();
         }
         if (node_name.empty()) return;
 
@@ -523,7 +683,11 @@ namespace lfs::vis {
         std::string node_name;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            node_name = selected_node_;
+            if (selected_nodes_.empty()) {
+                LOG_TRACE("No node selected for translation");
+                return;
+            }
+            node_name = *selected_nodes_.begin();
         }
 
         if (node_name.empty()) {
@@ -545,7 +709,8 @@ namespace lfs::vis {
         std::string node_name;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            node_name = selected_node_;
+            if (selected_nodes_.empty()) return glm::vec3(0.0f);
+            node_name = *selected_nodes_.begin();
         }
 
         if (node_name.empty()) {
@@ -560,37 +725,23 @@ namespace lfs::vis {
         std::string node_name;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            node_name = selected_node_;
+            if (selected_nodes_.empty()) return glm::vec3(0.0f);
+            node_name = *selected_nodes_.begin();
         }
 
-        if (node_name.empty()) {
-            LOG_INFO("getSelectedNodeCentroid: no node selected");
-            return glm::vec3(0.0f);
-        }
-
-        // Get the node - centroid is pre-cached when model was loaded
         const auto* node = scene_.getNode(node_name);
-        if (!node || !node->model) {
-            LOG_INFO("getSelectedNodeCentroid: node '{}' not found or no model", node_name);
-            return glm::vec3(0.0f);
-        }
-
+        if (!node || !node->model) return glm::vec3(0.0f);
         return node->centroid;
     }
 
     glm::vec3 SceneManager::getSelectedNodeCenter() const {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        if (selected_node_.empty()) {
-            return glm::vec3(0.0f);
-        }
+        if (selected_nodes_.empty()) return glm::vec3(0.0f);
 
-        const auto* const node = scene_.getNode(selected_node_);
-        if (!node) {
-            LOG_INFO("getSelectedNodeCenter: node '{}' not found!", selected_node_);
-            return glm::vec3(0.0f);
-        }
+        const std::string& node_name = *selected_nodes_.begin();
+        const auto* const node = scene_.getNode(node_name);
+        if (!node) return glm::vec3(0.0f);
 
-        // Use unified bounds calculation (works for both splats and groups)
         return scene_.getNodeBoundsCenter(node->id);
     }
 
@@ -598,12 +749,11 @@ namespace lfs::vis {
         std::string node_name;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            node_name = selected_node_;
-        }
-
-        if (node_name.empty()) {
-            LOG_TRACE("No node selected for transform");
-            return;
+            if (selected_nodes_.empty()) {
+                LOG_TRACE("No node selected for transform");
+                return;
+            }
+            node_name = *selected_nodes_.begin();
         }
 
         LOG_DEBUG("setSelectedNodeTransform '{}': pos=[{:.2f}, {:.2f}, {:.2f}]",
@@ -616,11 +766,8 @@ namespace lfs::vis {
         std::string node_name;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            node_name = selected_node_;
-        }
-
-        if (node_name.empty()) {
-            return glm::mat4(1.0f);
+            if (selected_nodes_.empty()) return glm::mat4(1.0f);
+            node_name = *selected_nodes_.begin();
         }
 
         return scene_.getNodeTransform(node_name);
@@ -630,9 +777,9 @@ namespace lfs::vis {
 
     NodeId SceneManager::getSelectedNodeCropBoxId() const {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        if (selected_node_.empty()) return NULL_NODE;
+        if (selected_nodes_.empty()) return NULL_NODE;
 
-        const auto* node = scene_.getNode(selected_node_);
+        const auto* node = scene_.getNode(*selected_nodes_.begin());
         if (!node) return NULL_NODE;
 
         // If selected node is a cropbox, return its ID
@@ -840,15 +987,15 @@ namespace lfs::vis {
 
         // Get selected node info for desaturation
         // Use mask-based approach: when a group is selected, all descendant SPLAT nodes are marked
-        state.selected_node_name = selected_node_;
-        state.selected_node_mask = scene_.getSelectedNodeMask(selected_node_);
+        state.selected_node_name = selected_nodes_.empty() ? "" : *selected_nodes_.begin();
+        state.selected_node_mask = scene_.getSelectedNodeMask(std::vector<std::string>(selected_nodes_.begin(), selected_nodes_.end()));
 
         // Get cropboxes
         state.cropboxes = scene_.getVisibleCropBoxes();
 
         // Find selected cropbox index
-        if (!selected_node_.empty()) {
-            const auto* selected = scene_.getNode(selected_node_);
+        if (!selected_nodes_.empty()) {
+            const auto* selected = scene_.getNode(*selected_nodes_.begin());
             if (selected) {
                 NodeId cropbox_id = NULL_NODE;
                 if (selected->type == NodeType::CROPBOX) {
@@ -934,18 +1081,20 @@ namespace lfs::vis {
         bool had_selection = false;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            if (!selected_node_.empty()) {
+            if (!selected_nodes_.empty()) {
                 had_selection = true;
-                // Get the selected node - it may be a group or a PLY
-                const auto* selected = scene_.getNode(selected_node_);
-                if (selected && selected->type == NodeType::SPLAT) {
-                    node_names.push_back(selected_node_);
-                    LOG_INFO("Cropping selected SPLAT node: {}", selected_node_);
-                } else if (selected) {
-                    LOG_INFO("Selected node '{}' is not a SPLAT (type={}), not cropping",
-                              selected_node_, static_cast<int>(selected->type));
-                } else {
-                    LOG_WARN("Selected node '{}' not found in scene", selected_node_);
+                // Add all selected SPLAT nodes
+                for (const auto& node_name : selected_nodes_) {
+                    const auto* selected = scene_.getNode(node_name);
+                    if (selected && selected->type == NodeType::SPLAT) {
+                        node_names.push_back(node_name);
+                        LOG_INFO("Cropping selected SPLAT node: {}", node_name);
+                    } else if (selected) {
+                        LOG_INFO("Selected node '{}' is not a SPLAT (type={}), not cropping",
+                                  node_name, static_cast<int>(selected->type));
+                    } else {
+                        LOG_WARN("Selected node '{}' not found in scene", node_name);
+                    }
                 }
             }
         }
@@ -1203,11 +1352,11 @@ namespace lfs::vis {
         bool was_selected = false;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            was_selected = (selected_node_ == name);
-            LOG_INFO("handleMergeGroup: was_selected={}, selected_node_='{}'", was_selected, selected_node_);
+            was_selected = (selected_nodes_.count(name) > 0);
+            LOG_INFO("handleMergeGroup: was_selected={}, selected_nodes_.size()={}", was_selected, selected_nodes_.size());
             if (was_selected) {
-                selected_node_.clear();
-                LOG_INFO("handleMergeGroup: cleared selected_node_");
+                selected_nodes_.erase(name);
+                LOG_INFO("handleMergeGroup: removed '{}' from selected_nodes_", name);
             }
         }
 
@@ -1271,7 +1420,7 @@ namespace lfs::vis {
             if (was_selected) {
                 {
                     std::lock_guard<std::mutex> lock(state_mutex_);
-                    selected_node_ = merged_name;
+                    selected_nodes_.insert(merged_name);
                     LOG_INFO("handleMergeGroup: re-selected merged node '{}'", merged_name);
                 }
                 ui::NodeSelected{
@@ -1400,11 +1549,12 @@ namespace lfs::vis {
             }
         }
 
-        // Priority 2: Selected node in scene panel
+        // Priority 2: Selected node in scene panel (first selected node)
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            if (!selected_node_.empty()) {
-                const auto* const node = scene_.getNode(selected_node_);
+            if (!selected_nodes_.empty()) {
+                const std::string& node_name = *selected_nodes_.begin();
+                const auto* const node = scene_.getNode(node_name);
                 if (node && node->model && node->model->size() > 0) {
                     const auto& src = *node->model;
                     auto cloned = std::make_unique<lfs::core::SplatData>(
@@ -1418,7 +1568,7 @@ namespace lfs::vis {
                         lfs::core::transform(*cloned, node->local_transform);
                     }
                     clipboard_ = std::move(cloned);
-                    LOG_INFO("Copied {} gaussians from node '{}'", clipboard_->size(), selected_node_);
+                    LOG_INFO("Copied {} gaussians from node '{}'", clipboard_->size(), node_name);
                     return true;
                 }
             }

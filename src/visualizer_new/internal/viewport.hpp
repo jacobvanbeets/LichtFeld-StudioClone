@@ -289,9 +289,49 @@ public:
     glm::mat4 getProjectionMatrix(float fov_degrees = lfs::rendering::DEFAULT_FOV,
                                    float near_plane = lfs::rendering::DEFAULT_NEAR_PLANE,
                                    float far_plane = lfs::rendering::DEFAULT_FAR_PLANE) const {
-        // Create perspective projection matrix
         float aspect_ratio = static_cast<float>(windowSize.x) / static_cast<float>(windowSize.y);
         float fov_radians = glm::radians(fov_degrees);
         return glm::perspective(fov_radians, aspect_ratio, near_plane, far_plane);
+    }
+
+    // Unproject screen pixel to world position (returns INVALID_WORLD_POS if invalid)
+    [[nodiscard]] glm::vec3 unprojectPixel(float screen_x, float screen_y, float depth,
+                                           float fov_degrees = lfs::rendering::DEFAULT_FOV) const {
+        constexpr float INVALID_WORLD_POS = -1e10f;
+        constexpr float MAX_DEPTH = 1e9f;
+
+        if (depth <= 0.0f || depth > MAX_DEPTH) {
+            return glm::vec3(INVALID_WORLD_POS);
+        }
+
+        const float width = static_cast<float>(windowSize.x);
+        const float height = static_cast<float>(windowSize.y);
+        const float fov_y = glm::radians(fov_degrees);
+        const float aspect = width / height;
+        const float fov_x = 2.0f * std::atan(std::tan(fov_y * 0.5f) * aspect);
+
+        const float fx = width / (2.0f * std::tan(fov_x * 0.5f));
+        const float fy = height / (2.0f * std::tan(fov_y * 0.5f));
+        const float cx = width * 0.5f;
+        const float cy = height * 0.5f;
+
+        const glm::vec4 view_pos(
+            (screen_x - cx) * depth / fx,
+            (screen_y - cy) * depth / fy,
+            depth,
+            1.0f);
+
+        const glm::mat3 R_inv = glm::transpose(camera.R);
+        const glm::vec3 t_inv = -R_inv * camera.t;
+
+        glm::mat4 w2c(1.0f);
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                w2c[i][j] = R_inv[i][j];
+        w2c[3][0] = t_inv.x;
+        w2c[3][1] = t_inv.y;
+        w2c[3][2] = t_inv.z;
+
+        return glm::vec3(glm::inverse(w2c) * view_pos);
     }
 };

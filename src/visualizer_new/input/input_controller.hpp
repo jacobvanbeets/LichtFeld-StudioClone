@@ -89,6 +89,11 @@ namespace lfs::vis {
         // Update function for continuous input (WASD movement and inertia)
         void update(float delta_time);
 
+        // Node rectangle selection state (for rendering)
+        [[nodiscard]] bool isNodeRectDragging() const { return is_node_rect_dragging_; }
+        [[nodiscard]] glm::vec2 getNodeRectStart() const { return node_rect_start_; }
+        [[nodiscard]] glm::vec2 getNodeRectEnd() const { return node_rect_end_; }
+
     private:
         // Store original ImGui callbacks so we can chain
         struct {
@@ -220,6 +225,11 @@ namespace lfs::vis {
         std::chrono::steady_clock::time_point last_general_click_time_;
         glm::dvec2 last_general_click_pos_{0, 0};
         int last_general_click_button_ = -1;
+
+        // Rectangle selection for nodes (when no tool is active)
+        bool is_node_rect_dragging_ = false;
+        glm::vec2 node_rect_start_{0.0f};
+        glm::vec2 node_rect_end_{0.0f};
 
         static InputController* instance_;
     };

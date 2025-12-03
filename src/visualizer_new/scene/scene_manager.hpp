@@ -11,6 +11,7 @@
 #include "scene/scene_render_state.hpp"
 #include <filesystem>
 #include <mutex>
+#include <set>
 #include <project_new/project.hpp>
 
 namespace lfs::vis {
@@ -111,15 +112,25 @@ namespace lfs::vis {
         void removePLY(const std::string& name, bool keep_children = false);
         void setPLYVisibility(const std::string& name, bool visible);
 
-        // Node selection for transforms
+        // Node selection
         void selectNode(const std::string& name);
+        void selectNodes(const std::vector<std::string>& names);
+        void addToSelection(const std::string& name);
         void clearSelection();
-        std::string getSelectedNodeName() const;
-        bool hasSelectedNode() const;
-        bool isSelectedNodeLocked() const;  // Check if selected node is locked
-        int getSelectedNodeIndex() const;  // Index in combined model, -1 if none
-        std::vector<bool> getSelectedNodeMask() const;  // Valid node mask for selection (supports groups)
-        void ensureCropBoxForSelectedNode();  // Create cropbox if missing, fit to bounds
+        [[nodiscard]] std::string getSelectedNodeName() const;
+        [[nodiscard]] std::vector<std::string> getSelectedNodeNames() const;
+        [[nodiscard]] bool hasSelectedNode() const;
+        [[nodiscard]] bool isSelectedNodeLocked() const;
+        [[nodiscard]] int getSelectedNodeIndex() const;
+        [[nodiscard]] std::vector<bool> getSelectedNodeMask() const;
+        void ensureCropBoxForSelectedNode();
+
+        // Node picking
+        [[nodiscard]] std::string pickNodeAtWorldPosition(const glm::vec3& world_pos) const;
+        [[nodiscard]] std::vector<std::string> pickNodesInScreenRect(
+            const glm::vec2& rect_min, const glm::vec2& rect_max,
+            const glm::mat4& view, const glm::mat4& proj,
+            const glm::ivec2& viewport_size) const;
 
         // Node transforms
         void setNodeTransform(const std::string& name, const glm::mat4& transform);
@@ -209,8 +220,7 @@ namespace lfs::vis {
         // project
         std::shared_ptr<lfs::project::Project> lfs_project_ = nullptr;
 
-        // Selected node for transforms
-        std::string selected_node_;
+        std::set<std::string> selected_nodes_;
 
         std::unique_ptr<lfs::core::SplatData> clipboard_;
         int clipboard_counter_ = 0;

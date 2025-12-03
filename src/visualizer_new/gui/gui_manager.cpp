@@ -614,6 +614,19 @@ namespace lfs::vis::gui {
             align_tool->renderUI(ctx, nullptr);
         }
 
+        // Render node selection rectangle if dragging
+        if (auto* input_controller = ctx.viewer->getInputController()) {
+            if (input_controller->isNodeRectDragging()) {
+                const auto start = input_controller->getNodeRectStart();
+                const auto end = input_controller->getNodeRectEnd();
+                ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+                constexpr ImU32 RECT_COLOR = IM_COL32(255, 200, 100, 220);
+                constexpr ImU32 FILL_COLOR = IM_COL32(255, 200, 100, 40);
+                draw_list->AddRectFilled(ImVec2(start.x, start.y), ImVec2(end.x, end.y), FILL_COLOR);
+                draw_list->AddRect(ImVec2(start.x, start.y), ImVec2(end.x, end.y), RECT_COLOR, 0.0f, 0, 2.0f);
+            }
+        }
+
         // Render crop box gizmo over viewport
         renderCropBoxGizmo(ctx);
 

@@ -79,6 +79,9 @@ namespace lfs::vis::input {
         SELECT_MODE_RINGS,
         // Misc
         APPLY_CROP_BOX,
+        // Node picking
+        NODE_PICK,
+        NODE_RECT_SELECT,
     };
 
     // Using MODIFIER_ prefix to avoid Windows macro conflicts

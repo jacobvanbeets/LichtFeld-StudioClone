@@ -388,20 +388,25 @@ namespace lfs::vis::input {
             {KeyTrigger{GLFW_KEY_5, MODIFIER_CTRL}, Action::SELECT_MODE_RINGS, "Rings"},
         };
 
-        // All modes that need bindings
-        constexpr ToolMode MODES[] = {
-            ToolMode::GLOBAL,
-            ToolMode::SELECTION,
-            ToolMode::BRUSH,
-            ToolMode::ALIGN,
-            ToolMode::CROP_BOX,
+        constexpr ToolMode ALL_MODES[] = {
+            ToolMode::GLOBAL, ToolMode::SELECTION, ToolMode::BRUSH, ToolMode::ALIGN,
+            ToolMode::CROP_BOX, ToolMode::TRANSLATE, ToolMode::ROTATE, ToolMode::SCALE,
         };
 
-        // Duplicate base bindings for each mode
-        for (const auto mode : MODES) {
+        for (const auto mode : ALL_MODES) {
             for (const auto& b : base) {
                 profile.bindings.push_back({mode, b.trigger, b.action, b.desc});
             }
+        }
+
+        // Node picking only for transform modes (not selection/cropbox/brush/align)
+        constexpr ToolMode NODE_PICK_MODES[] = {
+            ToolMode::GLOBAL, ToolMode::TRANSLATE, ToolMode::ROTATE, ToolMode::SCALE,
+        };
+
+        for (const auto mode : NODE_PICK_MODES) {
+            profile.bindings.push_back({mode, MouseButtonTrigger{MouseButton::LEFT, MODIFIER_NONE}, Action::NODE_PICK, "Pick node"});
+            profile.bindings.push_back({mode, MouseDragTrigger{MouseButton::LEFT, MODIFIER_NONE}, Action::NODE_RECT_SELECT, "Rectangle select nodes"});
         }
 
         return profile;
@@ -455,6 +460,8 @@ namespace lfs::vis::input {
         case Action::SELECT_MODE_LASSO: return "Selection: Lasso";
         case Action::SELECT_MODE_RINGS: return "Selection: Rings";
         case Action::APPLY_CROP_BOX: return "Apply Crop Box";
+        case Action::NODE_PICK: return "Pick Node";
+        case Action::NODE_RECT_SELECT: return "Rectangle Select Nodes";
         default: return "Unknown";
         }
     }

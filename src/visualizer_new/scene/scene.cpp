@@ -14,6 +14,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <numeric>
 #include <ranges>
+#include <set>
 
 namespace lfs::vis {
 
@@ -492,25 +493,25 @@ namespace lfs::vis {
     }
 
     std::vector<bool> Scene::getSelectedNodeMask(const std::string& selected_node_name) const {
+        const size_t visible_count = std::count_if(nodes_.begin(), nodes_.end(),
+            [](const auto& n) { return n->visible && n->model; });
+
         if (selected_node_name.empty()) {
-            return {};  // Empty = no desaturation
+            return std::vector<bool>(visible_count, false);
         }
 
         const Node* selected = getNode(selected_node_name);
         if (!selected) {
-            return {};
+            return std::vector<bool>(visible_count, false);
         }
 
-        // CROPBOX -> use parent SPLAT
         if (selected->type == NodeType::CROPBOX && selected->parent_id != NULL_NODE) {
             selected = getNodeById(selected->parent_id);
             if (!selected) return {};
         }
 
         const NodeId selected_id = selected->id;
-
-        // Check if node is selected or descendant of selected
-        auto isSelected = [this, selected_id](const Node* node) {
+        const auto isSelectedOrDescendant = [this, selected_id](const Node* node) {
             for (const Node* n = node; n; n = (n->parent_id != NULL_NODE) ? getNodeById(n->parent_id) : nullptr) {
                 if (n->id == selected_id) return true;
             }
@@ -518,9 +519,51 @@ namespace lfs::vis {
         };
 
         std::vector<bool> mask;
+        mask.reserve(visible_count);
         for (const auto& node : nodes_) {
             if (node->visible && node->model) {
-                mask.push_back(isSelected(node.get()));
+                mask.push_back(isSelectedOrDescendant(node.get()));
+            }
+        }
+        return mask;
+    }
+
+    std::vector<bool> Scene::getSelectedNodeMask(const std::vector<std::string>& selected_node_names) const {
+        const size_t visible_count = std::count_if(nodes_.begin(), nodes_.end(),
+            [](const auto& n) { return n->visible && n->model; });
+
+        if (selected_node_names.empty()) {
+            return std::vector<bool>(visible_count, false);
+        }
+
+        std::set<NodeId> selected_ids;
+        for (const auto& name : selected_node_names) {
+            const Node* selected = getNode(name);
+            if (!selected) continue;
+
+            if (selected->type == NodeType::CROPBOX && selected->parent_id != NULL_NODE) {
+                selected = getNodeById(selected->parent_id);
+                if (!selected) continue;
+            }
+            selected_ids.insert(selected->id);
+        }
+
+        if (selected_ids.empty()) {
+            return std::vector<bool>(visible_count, false);
+        }
+
+        const auto isSelectedOrDescendant = [this, &selected_ids](const Node* node) {
+            for (const Node* n = node; n; n = (n->parent_id != NULL_NODE) ? getNodeById(n->parent_id) : nullptr) {
+                if (selected_ids.count(n->id) > 0) return true;
+            }
+            return false;
+        };
+
+        std::vector<bool> mask;
+        mask.reserve(visible_count);
+        for (const auto& node : nodes_) {
+            if (node->visible && node->model) {
+                mask.push_back(isSelectedOrDescendant(node.get()));
             }
         }
         return mask;
