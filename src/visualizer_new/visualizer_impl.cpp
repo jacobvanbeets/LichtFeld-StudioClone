@@ -592,15 +592,20 @@ namespace lfs::vis {
     void VisualizerImpl::pasteSelection() {
         if (!scene_manager_) return;
 
-        const std::string name = scene_manager_->pasteSelection();
-        if (name.empty()) return;
+        const auto pasted_names = scene_manager_->pasteSelection();
+        if (pasted_names.empty()) return;
 
         if (selection_tool_) {
             selection_tool_->clearPolygon();
             selection_tool_->setEnabled(false);
         }
         scene_manager_->getScene().resetSelectionState();
-        scene_manager_->selectNode(name);
+
+        // Select all pasted nodes
+        scene_manager_->clearSelection();
+        for (const auto& name : pasted_names) {
+            scene_manager_->addToSelection(name);
+        }
 
         if (rendering_manager_) rendering_manager_->markDirty();
     }

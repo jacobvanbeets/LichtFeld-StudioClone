@@ -188,8 +188,8 @@ namespace lfs::vis {
 
         // Clipboard
         bool copySelection();
-        std::string pasteSelection();
-        [[nodiscard]] bool hasClipboard() const { return clipboard_ != nullptr; }
+        std::vector<std::string> pasteSelection();
+        [[nodiscard]] bool hasClipboard() const { return !clipboard_.empty(); }
 
     private:
         void setupEventHandlers();
@@ -226,22 +226,23 @@ namespace lfs::vis {
 
         std::set<std::string> selected_nodes_;
 
-        std::unique_ptr<lfs::core::SplatData> clipboard_;
+        // Clipboard for copy/paste (supports multi-selection)
+        struct ClipboardEntry {
+            std::unique_ptr<lfs::core::SplatData> data;
+            glm::mat4 transform{1.0f};
+            struct HierarchyNode {
+                NodeType type = NodeType::SPLAT;
+                glm::mat4 local_transform{1.0f};
+                std::unique_ptr<CropBoxData> cropbox;
+                std::vector<HierarchyNode> children;
+            };
+            std::optional<HierarchyNode> hierarchy;
+        };
+        std::vector<ClipboardEntry> clipboard_;
         int clipboard_counter_ = 0;
 
-        // Clipboard node hierarchy (recursive copy of children)
-        struct ClipboardNode {
-            NodeType type = NodeType::SPLAT;
-            glm::mat4 local_transform{1.0f};
-            // For CROPBOX nodes
-            std::unique_ptr<CropBoxData> cropbox;
-            // Children
-            std::vector<ClipboardNode> children;
-        };
-        std::optional<ClipboardNode> clipboard_hierarchy_;
-
-        ClipboardNode copyNodeHierarchy(const SceneNode* node);
-        void pasteNodeHierarchy(const ClipboardNode& src, const NodeId parent_id);
+        ClipboardEntry::HierarchyNode copyNodeHierarchy(const SceneNode* node);
+        void pasteNodeHierarchy(const ClipboardEntry::HierarchyNode& src, NodeId parent_id);
     };
 
 } // namespace lfs::vis

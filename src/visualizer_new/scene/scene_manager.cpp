@@ -357,6 +357,7 @@ namespace lfs::vis {
 
             emitSceneChanged();
             updateCropBoxToFitScene(true);
+            selectNode(name);
 
             LOG_INFO("Added '{}' ({} gaussians)", name, gaussian_count);
 
@@ -1506,10 +1507,10 @@ namespace lfs::vis {
                  center.x, center.y, center.z, size.x, size.y, size.z);
     }
 
-    SceneManager::ClipboardNode SceneManager::copyNodeHierarchy(const SceneNode* node) {
-        ClipboardNode result;
+    SceneManager::ClipboardEntry::HierarchyNode SceneManager::copyNodeHierarchy(const SceneNode* node) {
+        ClipboardEntry::HierarchyNode result;
         result.type = node->type;
-        result.local_transform = scene_.getWorldTransform(node->id);
+        result.local_transform = node->local_transform.get();
 
         if (node->cropbox) {
             result.cropbox = std::make_unique<CropBoxData>(*node->cropbox);
@@ -1524,7 +1525,7 @@ namespace lfs::vis {
         return result;
     }
 
-    void SceneManager::pasteNodeHierarchy(const ClipboardNode& src, const NodeId parent_id) {
+    void SceneManager::pasteNodeHierarchy(const ClipboardEntry::HierarchyNode& src, const NodeId parent_id) {
         for (const auto& child : src.children) {
             if (child.type == NodeType::CROPBOX && child.cropbox) {
                 const NodeId cropbox_id = scene_.getOrCreateCropBoxForSplat(parent_id);
@@ -1548,122 +1549,120 @@ namespace lfs::vis {
 
         std::lock_guard<std::mutex> lock(state_mutex_);
         if (selected_nodes_.empty()) {
-            clipboard_hierarchy_.reset();
+            clipboard_.clear();
             return false;
         }
 
-        const std::string& node_name = *selected_nodes_.begin();
-        const auto* node = scene_.getNode(node_name);
-        if (!node || !node->model || node->model->size() == 0) {
-            clipboard_hierarchy_.reset();
-            return false;
+        clipboard_.clear();
+        clipboard_.reserve(selected_nodes_.size());
+
+        for (const auto& node_name : selected_nodes_) {
+            const auto* node = scene_.getNode(node_name);
+            if (!node || !node->model || node->model->size() == 0) continue;
+
+            const auto& src = *node->model;
+            auto cloned = std::make_unique<lfs::core::SplatData>(
+                src.get_max_sh_degree(),
+                src.means_raw().clone(), src.sh0_raw().clone(), src.shN_raw().clone(),
+                src.scaling_raw().clone(), src.rotation_raw().clone(), src.opacity_raw().clone(),
+                src.get_scene_scale());
+            cloned->set_active_sh_degree(src.get_active_sh_degree());
+
+            ClipboardEntry entry;
+            entry.data = std::move(cloned);
+            entry.transform = node->local_transform.get();
+            entry.hierarchy = copyNodeHierarchy(node);
+
+            clipboard_.push_back(std::move(entry));
         }
 
-        // Clone model data
-        const auto& src = *node->model;
-        auto cloned = std::make_unique<lfs::core::SplatData>(
-            src.get_max_sh_degree(),
-            src.means_raw().clone(), src.sh0_raw().clone(), src.shN_raw().clone(),
-            src.scaling_raw().clone(), src.rotation_raw().clone(), src.opacity_raw().clone(),
-            src.get_scene_scale());
-        cloned->set_active_sh_degree(src.get_active_sh_degree());
-
-        // Bake node transform into model
-        if (node->local_transform != IDENTITY) {
-            lfs::core::transform(*cloned, node->local_transform.get());
-        }
-        clipboard_ = std::move(cloned);
-        clipboard_hierarchy_ = copyNodeHierarchy(node);
-
-        LOG_DEBUG("Copied {} gaussians from '{}'", clipboard_->size(), node_name);
-        return true;
+        LOG_DEBUG("Copied {} nodes to clipboard", clipboard_.size());
+        return !clipboard_.empty();
     }
 
-    std::string SceneManager::pasteSelection() {
-        if (!clipboard_ || clipboard_->size() == 0) {
-            return "";
+    std::vector<std::string> SceneManager::pasteSelection() {
+        std::vector<std::string> pasted_names;
+        if (clipboard_.empty()) {
+            return pasted_names;
         }
 
-        auto paste_data = std::make_unique<lfs::core::SplatData>(
-            clipboard_->get_max_sh_degree(),
-            clipboard_->means_raw().clone(), clipboard_->sh0_raw().clone(), clipboard_->shN_raw().clone(),
-            clipboard_->scaling_raw().clone(), clipboard_->rotation_raw().clone(), clipboard_->opacity_raw().clone(),
-            clipboard_->get_scene_scale());
-        paste_data->set_active_sh_degree(clipboard_->get_active_sh_degree());
+        pasted_names.reserve(clipboard_.size());
 
-        ++clipboard_counter_;
-        const std::string name = std::format("Pasted_{}", clipboard_counter_);
-        const size_t count = clipboard_->size();
-        scene_.addNode(name, std::move(paste_data));
+        for (const auto& entry : clipboard_) {
+            if (!entry.data || entry.data->size() == 0) continue;
 
-        // Paste node hierarchy
-        const auto* splat_node = scene_.getNode(name);
-        if (splat_node && clipboard_hierarchy_) {
-            pasteNodeHierarchy(*clipboard_hierarchy_, splat_node->id);
-            scene_.invalidateCache();
+            auto paste_data = std::make_unique<lfs::core::SplatData>(
+                entry.data->get_max_sh_degree(),
+                entry.data->means_raw().clone(), entry.data->sh0_raw().clone(), entry.data->shN_raw().clone(),
+                entry.data->scaling_raw().clone(), entry.data->rotation_raw().clone(), entry.data->opacity_raw().clone(),
+                entry.data->get_scene_scale());
+            paste_data->set_active_sh_degree(entry.data->get_active_sh_degree());
+
+            ++clipboard_counter_;
+            const std::string name = std::format("Pasted_{}", clipboard_counter_);
+            const size_t count = entry.data->size();
+            scene_.addNode(name, std::move(paste_data));
+
+            // Apply original transform
+            static constexpr glm::mat4 IDENTITY{1.0f};
+            if (entry.transform != IDENTITY) {
+                scene_.setNodeTransform(name, entry.transform);
+            }
+
+            // Paste node hierarchy (cropbox)
+            const auto* splat_node = scene_.getNode(name);
+            if (splat_node && entry.hierarchy) {
+                pasteNodeHierarchy(*entry.hierarchy, splat_node->id);
+            }
+
+            state::PLYAdded{
+                .name = name,
+                .node_gaussians = count,
+                .total_gaussians = scene_.getTotalGaussianCount(),
+                .is_visible = true,
+                .parent_name = "",
+                .is_group = false,
+                .node_type = 0
+            }.emit();
+
+            // Emit PLYAdded for cropbox
+            const auto* pasted_splat = scene_.getNode(name);
+            if (pasted_splat) {
+                const NodeId cropbox_id = scene_.getCropBoxForSplat(pasted_splat->id);
+                if (cropbox_id != NULL_NODE) {
+                    if (const auto* cropbox_node = scene_.getNodeById(cropbox_id)) {
+                        state::PLYAdded{
+                            .name = cropbox_node->name,
+                            .node_gaussians = 0,
+                            .total_gaussians = scene_.getTotalGaussianCount(),
+                            .is_visible = true,
+                            .parent_name = name,
+                            .is_group = false,
+                            .node_type = 2
+                        }.emit();
+                    }
+                }
+            }
+
+            pasted_names.push_back(name);
         }
 
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
-            if (content_type_ == ContentType::Empty) {
+            if (content_type_ == ContentType::Empty && !pasted_names.empty()) {
                 content_type_ = ContentType::SplatFiles;
             }
         }
 
-        state::PLYAdded{
-            .name = name,
-            .node_gaussians = count,
-            .total_gaussians = scene_.getTotalGaussianCount(),
-            .is_visible = true,
-            .parent_name = "",
-            .is_group = false,
-            .node_type = 0
-        }.emit();
-
-        // Emit PLYAdded for cropbox
-        const auto* pasted_splat = scene_.getNode(name);
-        if (pasted_splat) {
-            const NodeId cropbox_id = scene_.getCropBoxForSplat(pasted_splat->id);
-            if (cropbox_id != NULL_NODE) {
-                if (const auto* cropbox_node = scene_.getNodeById(cropbox_id)) {
-                    state::PLYAdded{
-                        .name = cropbox_node->name,
-                        .node_gaussians = 0,
-                        .total_gaussians = scene_.getTotalGaussianCount(),
-                        .is_visible = true,
-                        .parent_name = name,
-                        .is_group = false,
-                        .node_type = 2
-                    }.emit();
-                }
-            }
-        }
-
+        scene_.invalidateCache();
         emitSceneChanged();
-
-        // Recompute cropbox only if no hierarchy was copied
-        if (!clipboard_hierarchy_) {
-            glm::vec3 min_bounds, max_bounds;
-            if (lfs::core::compute_bounds(*clipboard_, min_bounds, max_bounds)) {
-                const glm::vec3 center = (min_bounds + max_bounds) * 0.5f;
-                const glm::vec3 half_size = (max_bounds - min_bounds) * 0.5f;
-
-                auto* cropbox_node = scene_.getMutableNode(name + "_cropbox");
-                if (cropbox_node && cropbox_node->cropbox) {
-                    cropbox_node->cropbox->min = -half_size;
-                    cropbox_node->cropbox->max = half_size;
-                    cropbox_node->local_transform = glm::translate(glm::mat4(1.0f), center);
-                    cropbox_node->transform_dirty = true;
-                }
-            }
-        }
 
         if (rendering_manager_) {
             rendering_manager_->markDirty();
         }
 
-        LOG_DEBUG("Pasted {} gaussians as '{}'", count, name);
-        return name;
+        LOG_DEBUG("Pasted {} nodes", pasted_names.size());
+        return pasted_names;
     }
 
 } // namespace lfs::vis
