@@ -77,9 +77,9 @@ namespace lfs::rendering {
         size_t current_point_count_ = 0;
 
 #ifdef CUDA_GL_INTEROP_ENABLED
-        // CUDA-GL interop for direct GPU→OpenGL data transfer
+        // CUDA-GL interop disabled - causes maybe race conditions with training thread
         std::optional<CudaGLInteropBuffer> interop_buffer_;
-        bool use_interop_ = true;
+        bool use_interop_ = false;
 #endif
 
         // Cube vertices
