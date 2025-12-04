@@ -37,7 +37,7 @@ namespace lfs::rendering {
             return std::unexpected("Invalid viewport dimensions");
         }
 
-        // Check if we should use point cloud rendering
+        // Point cloud rendering mode
         if (request.point_cloud_mode) {
             LOG_TRACE("Using point cloud rendering mode");
             return renderPointCloud(model, request);

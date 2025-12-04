@@ -376,7 +376,7 @@ namespace lfs::vis {
             settings_.voxel_size = event.voxel_size;
             LOG_DEBUG("Point cloud mode: {}, voxel size: {}",
                       event.enabled ? "enabled" : "disabled", event.voxel_size);
-            cached_result_ = {};  // Clear cache (was rendered in different mode)
+            cached_result_ = {};
             markDirty();
         });
     }
@@ -849,7 +849,6 @@ namespace lfs::vis {
             renderToTexture(context, scene_manager, model);
 
             if (render_texture_valid_) {
-                // Blit the texture to screen
                 glm::ivec2 viewport_pos(0, 0);
                 if (context.viewport_region) {
                     // Convert ImGui Y (top=0) to OpenGL Y (bottom=0)
@@ -870,8 +869,15 @@ namespace lfs::vis {
                 }
             }
         } else if (scene_manager) {
-            // Try to render point cloud (pre-training mode)
+            // No splat model - try to render point cloud (pre-training mode only)
             auto scene_state = scene_manager->buildRenderState();
+
+            // Invalidate point cloud cache if source removed
+            if (!scene_state.point_cloud && cached_source_point_cloud_) {
+                cached_filtered_point_cloud_.reset();
+                cached_source_point_cloud_ = nullptr;
+            }
+
             if (scene_state.point_cloud && scene_state.point_cloud->size() > 0) {
                 // Check for enabled cropbox and filter points if needed
                 const lfs::core::PointCloud* point_cloud_to_render = scene_state.point_cloud;

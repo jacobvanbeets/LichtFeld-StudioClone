@@ -57,7 +57,7 @@ namespace lfs::vis {
 
         // Point cloud
         bool point_cloud_mode = false;
-        float voxel_size = 0.01f;
+        float voxel_size = 0.03f;
 
         // Ring mode (only active in splat mode)
         bool show_rings = false;

@@ -99,7 +99,7 @@ namespace lfs::vis::gui::panels {
 
         // Show voxel size slider only when in point cloud mode
         if (settings.point_cloud_mode) {
-            if (widgets::SliderWithReset("Voxel Size", &settings.voxel_size, 0.001f, 0.1f, 0.01f)) {
+            if (widgets::SliderWithReset("Voxel Size", &settings.voxel_size, 0.001f, 0.1f, 0.03f)) {
                 settings_changed = true;
 
                 ui::PointCloudModeChanged{

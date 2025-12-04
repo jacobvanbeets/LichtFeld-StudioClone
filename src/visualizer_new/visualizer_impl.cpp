@@ -68,7 +68,7 @@ namespace lfs::vis {
         if (gui_manager_) {
             gui_manager_->shutdown();
         }
-        LOG_INFO("Visualizer destroyed");
+        LOG_DEBUG("Visualizer destroyed");
     }
 
     void VisualizerImpl::initializeTools() {
@@ -230,7 +230,7 @@ namespace lfs::vis {
         state::TrainingStarted::when([this](const auto&) {
             ui::PointCloudModeChanged{
                 .enabled = false,
-                .voxel_size = 0.0f}
+                .voxel_size = 0.03f}
                 .emit();
 
             // Select the training model so it's visible
@@ -466,6 +466,15 @@ namespace lfs::vis {
     }
 
     void VisualizerImpl::shutdown() {
+        // Stop training before GPU resources are freed
+        if (trainer_manager_) {
+            if (trainer_manager_->isTrainingActive()) {
+                trainer_manager_->stopTraining();
+                trainer_manager_->waitForCompletion();
+            }
+            trainer_manager_.reset();
+        }
+
         // Shutdown tools
         if (brush_tool_) {
             brush_tool_->shutdown();

@@ -997,7 +997,7 @@ namespace lfs::vis {
             if (num_gaussians > 0 && trainer_manager_ && trainer_manager_->getTrainer()) {
                 ui::PointCloudModeChanged{
                     .enabled = true,
-                    .voxel_size = 0.01f}
+                    .voxel_size = 0.03f}
                     .emit();
                 LOG_INFO("Switched to point cloud rendering mode for dataset ({} gaussians)", num_gaussians);
             }

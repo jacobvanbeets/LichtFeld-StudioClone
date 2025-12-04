@@ -362,7 +362,7 @@ namespace lfs::rendering {
             return std::unexpected("Invalid render result");
         }
 
-        LOG_TRACE("Presenting to screen at position ({}, {}) with size {}x{}",
+        LOG_TRACE("Presenting to screen at ({}, {}) size {}x{}",
                   viewport_pos.x, viewport_pos.y, viewport_size.x, viewport_size.y);
 
         // Convert back to internal result type
@@ -377,7 +377,6 @@ namespace lfs::rendering {
             return upload_result;
         }
 
-        // Set viewport for rendering
         glViewport(viewport_pos.x, viewport_pos.y, viewport_size.x, viewport_size.y);
 
         // Use the quad shader directly
