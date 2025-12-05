@@ -697,6 +697,7 @@ namespace lfs::vis::gui {
                         mode == input::ToolMode::SELECTION ||
                         mode == input::ToolMode::BRUSH) {
                         renderSectionHeader("SELECTION");
+                        renderBindingRow(input::Action::SELECTION_REPLACE, mode);
                         renderBindingRow(input::Action::SELECTION_ADD, mode);
                         renderBindingRow(input::Action::SELECTION_REMOVE, mode);
 
