@@ -155,6 +155,7 @@ namespace lfs::rendering {
         int target_node_index = -1);
 
     // Apply selection with node mask (supports groups)
+    // replace_mode: if true, clears active group first, then applies new selection
     void apply_selection_group_tensor_mask(
         const Tensor& cumulative_selection,
         const Tensor& existing_mask,
@@ -163,7 +164,8 @@ namespace lfs::rendering {
         const uint32_t* locked_groups,
         bool add_mode,
         const Tensor* transform_indices,
-        const std::vector<bool>& valid_nodes);
+        const std::vector<bool>& valid_nodes,
+        bool replace_mode = false);
 
     // Filter selection by single node index
     void filter_selection_by_node(

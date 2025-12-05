@@ -449,13 +449,15 @@ namespace lfs::rendering {
         const bool add_mode,
         const int* __restrict__ node_indices,
         const bool* __restrict__ valid_nodes,
-        const int num_nodes) {
+        const int num_nodes,
+        const bool replace_mode) {
 
         const int idx = blockIdx.x * blockDim.x + threadIdx.x;
         if (idx >= n) return;
 
         const uint8_t existing_group = existing ? existing[idx] : 0;
 
+        // Skip if node not in valid set
         if (node_indices && valid_nodes) {
             const int node_idx = node_indices[idx];
             if (node_idx < 0 || node_idx >= num_nodes || !valid_nodes[node_idx]) {
@@ -465,17 +467,27 @@ namespace lfs::rendering {
         }
 
         const bool selected = cumulative[idx];
-        if (add_mode) {
+
+        // Check if existing group is locked (can't be modified)
+        const bool is_other_locked = existing_group != 0 &&
+                                     existing_group != group_id &&
+                                     locked_groups &&
+                                     (locked_groups[existing_group / 32] & (1u << (existing_group % 32)));
+
+        if (replace_mode) {
+            // Replace: clear active group, apply new selection
             if (selected) {
-                const bool is_locked = existing_group != 0 &&
-                                       existing_group != group_id &&
-                                       locked_groups &&
-                                       (locked_groups[existing_group / 32] & (1u << (existing_group % 32)));
-                output[idx] = is_locked ? existing_group : group_id;
+                output[idx] = is_other_locked ? existing_group : group_id;
+            } else if (existing_group == group_id) {
+                output[idx] = 0;
             } else {
                 output[idx] = existing_group;
             }
+        } else if (add_mode) {
+            // Add: set selected to group_id
+            output[idx] = (selected && !is_other_locked) ? group_id : existing_group;
         } else {
+            // Remove: clear from active group only
             output[idx] = (selected && existing_group == group_id) ? 0 : existing_group;
         }
     }
@@ -488,7 +500,8 @@ namespace lfs::rendering {
         const uint32_t* locked_groups,
         const bool add_mode,
         const Tensor* transform_indices,
-        const std::vector<bool>& valid_nodes) {
+        const std::vector<bool>& valid_nodes,
+        const bool replace_mode) {
 
         if (!cumulative_selection.is_valid() || cumulative_selection.size(0) == 0) return;
         if (valid_nodes.empty()) return;
@@ -515,7 +528,8 @@ namespace lfs::rendering {
             add_mode,
             node_indices_ptr,
             reinterpret_cast<const bool*>(valid_nodes_gpu.ptr<uint8_t>()),
-            num_nodes);
+            num_nodes,
+            replace_mode);
     }
 
     __global__ void filter_selection_by_node_kernel(

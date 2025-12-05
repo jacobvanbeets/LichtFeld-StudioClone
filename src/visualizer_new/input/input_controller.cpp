@@ -330,6 +330,7 @@ namespace lfs::vis {
                 break;
             }
 
+            case input::Action::SELECTION_REPLACE:
             case input::Action::SELECTION_ADD:
             case input::Action::SELECTION_REMOVE:
                 if (!over_gui && tool_context_) {
@@ -663,6 +664,13 @@ namespace lfs::vis {
             return;
         }
 
+        // Selection tool handles Enter/Escape before global bindings consume them
+        if (action == GLFW_PRESS && !ImGui::IsAnyItemActive() &&
+            selection_tool_ && selection_tool_->isEnabled() && tool_context_ &&
+            selection_tool_->handleKeyPress(key, mods, *tool_context_)) {
+            return;
+        }
+
         // Handle key press/repeat actions through bindings
         if ((action == GLFW_PRESS || action == GLFW_REPEAT) && !ImGui::IsAnyItemActive()) {
             const auto tool_mode = getCurrentToolMode();
@@ -830,16 +838,6 @@ namespace lfs::vis {
 
                 default:
                     break;
-                }
-            }
-        }
-
-        // Selection tool key handling (Enter/Escape for polygon mode, Ctrl+F for depth)
-        // These need to be handled by the tool itself for proper state management
-        if (action == GLFW_PRESS && !ImGui::IsAnyItemActive()) {
-            if (selection_tool_ && selection_tool_->isEnabled() && tool_context_) {
-                if (selection_tool_->handleKeyPress(key, mods, *tool_context_)) {
-                    return;
                 }
             }
         }

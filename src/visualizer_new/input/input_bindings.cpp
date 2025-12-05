@@ -399,6 +399,7 @@ namespace lfs::vis::input {
             {KeyTrigger{GLFW_KEY_ENTER, MODIFIER_NONE}, Action::APPLY_CROP_BOX, "Apply/confirm"},
             {KeyTrigger{GLFW_KEY_ESCAPE, MODIFIER_NONE}, Action::CANCEL_POLYGON, "Cancel"},
             // Selection
+            {MouseDragTrigger{MouseButton::LEFT, MODIFIER_NONE}, Action::SELECTION_REPLACE, "Select"},
             {MouseDragTrigger{MouseButton::LEFT, MODIFIER_SHIFT}, Action::SELECTION_ADD, "Add sel"},
             {MouseDragTrigger{MouseButton::LEFT, MODIFIER_CTRL}, Action::SELECTION_REMOVE, "Remove sel"},
             {KeyTrigger{GLFW_KEY_1, MODIFIER_CTRL}, Action::SELECT_MODE_CENTERS, "Centers"},
@@ -488,6 +489,7 @@ namespace lfs::vis::input {
         case Action::CANCEL_POLYGON: return "Cancel Polygon";
         case Action::UNDO_POLYGON_VERTEX: return "Undo Polygon Vertex";
         case Action::CYCLE_SELECTION_VIS: return "Cycle Selection Visualization";
+        case Action::SELECTION_REPLACE: return "Selection: Replace";
         case Action::SELECTION_ADD: return "Selection: Add";
         case Action::SELECTION_REMOVE: return "Selection: Remove";
         case Action::SELECT_MODE_CENTERS: return "Selection: Centers";

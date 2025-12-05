@@ -73,6 +73,7 @@ namespace lfs::vis::input {
         UNDO_POLYGON_VERTEX,
         CYCLE_SELECTION_VIS,
         // Selection
+        SELECTION_REPLACE,
         SELECTION_ADD,
         SELECTION_REMOVE,
         SELECT_MODE_CENTERS,
