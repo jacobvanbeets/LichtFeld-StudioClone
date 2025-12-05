@@ -235,6 +235,12 @@ namespace lfs::vis::gui::panels {
             ImGui::Unindent();
         }
 
+        // Camera Frustums
+        ImGui::Separator();
+        if (widgets::SliderWithReset("Camera Scale", &settings.camera_frustum_scale, 0.01f, 10.0f, 0.25f)) {
+            settings_changed = true;
+        }
+
         // Selection Colors
         ImGui::Separator();
         if (ImGui::CollapsingHeader("Selection Colors")) {
