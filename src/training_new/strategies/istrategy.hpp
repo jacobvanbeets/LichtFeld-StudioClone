@@ -34,6 +34,10 @@ namespace lfs::training {
         virtual lfs::core::SplatData& get_model() = 0;
         virtual const lfs::core::SplatData& get_model() const = 0;
 
+        // Get the optimizer (for gradient access during backward pass)
+        virtual class AdamOptimizer& get_optimizer() = 0;
+        virtual const class AdamOptimizer& get_optimizer() const = 0;
+
         // Remove Gaussians based on mask
         virtual void remove_gaussians(const lfs::core::Tensor& mask) = 0;
 

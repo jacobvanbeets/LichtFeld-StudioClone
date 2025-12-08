@@ -54,9 +54,8 @@ protected:
             std::move(opacity_raw),
             1.0f  // scene_scale
         );
-        splat_data->allocate_gradients();
 
-        // Create optimizer
+        // Create optimizer and allocate gradients
         AdamConfig config;
         config.lr = 0.01f;
         config.beta1 = 0.9f;
@@ -64,6 +63,7 @@ protected:
         config.eps = 1e-15f;
 
         optimizer = std::make_unique<AdamOptimizer>(*splat_data, config);
+        optimizer->allocate_gradients();
     }
 
     size_t n_gaussians;
@@ -81,10 +81,10 @@ TEST_F(MCMCRelocateOptimizerStateBugTest, DeadIndicesKeepStaleMomentum) {
         // Set non-zero gradients for all Gaussians
         // This simulates gradients from loss computation
         auto grad_means = Tensor::ones({n_gaussians, 3}, Device::CUDA) * 0.1f;
-        splat_data->means_grad() = grad_means;
+        optimizer->get_grad(ParamType::Means) = grad_means;
 
         auto grad_opacity = Tensor::ones({n_gaussians, 1}, Device::CUDA) * 0.1f;
-        splat_data->opacity_grad() = grad_opacity;
+        optimizer->get_grad(ParamType::Opacity) = grad_opacity;
 
         // Apply optimizer step (builds momentum)
         optimizer->step(iter);
@@ -278,7 +278,7 @@ TEST_F(MCMCRelocateOptimizerStateBugTest, CorrectBehaviorShouldResetBothIndices)
     // Build momentum (same as previous test)
     for (int iter = 0; iter < 5; iter++) {
         auto grad_means = Tensor::ones({n_gaussians, 3}, Device::CUDA) * 0.1f;
-        splat_data->means_grad() = grad_means;
+        optimizer->get_grad(ParamType::Means) = grad_means;
         optimizer->step(iter);
         optimizer->zero_grad(iter);
     }

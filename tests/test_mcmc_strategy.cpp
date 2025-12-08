@@ -100,12 +100,13 @@ float mean_diff(const lfs::core::Tensor& lfs_tensor, const torch::Tensor& torch_
 void warm_up_optimizers(lfs::training::MCMC& lfs_mcmc, gs::training::MCMC& gs_mcmc, int num_steps = 5) {
     for (int i = 0; i < num_steps; i++) {
         // Set fake gradients (same for both)
-        lfs_mcmc.get_model().means_grad().fill_(0.001f);
-        lfs_mcmc.get_model().sh0_grad().fill_(0.001f);
-        lfs_mcmc.get_model().shN_grad().fill_(0.0005f);
-        lfs_mcmc.get_model().scaling_grad().fill_(0.001f);
-        lfs_mcmc.get_model().rotation_grad().fill_(0.001f);
-        lfs_mcmc.get_model().opacity_grad().fill_(0.001f);
+        auto& lfs_opt = lfs_mcmc.get_optimizer();
+        lfs_opt.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        lfs_opt.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        lfs_opt.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        lfs_opt.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        lfs_opt.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        lfs_opt.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         // For reference impl, allocate gradients using mutable_grad()
         auto& gs_model = gs_mcmc.get_model();
@@ -211,7 +212,6 @@ gs::SplatData create_gs_splat_data(const lfs::core::SplatData& lfs_splat) {
 TEST(MCMCStrategyTest, Initialization) {
     // Test that MCMC strategy initializes correctly
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -226,7 +226,6 @@ TEST(MCMCStrategyTest, Initialization) {
 
 TEST(MCMCStrategyTest, IsRefining) {
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -265,7 +264,6 @@ TEST(MCMCStrategyTest, RelocateDeadGaussians_WithOptimizerState) {
 
     std::cout << "Creating splat data..." << std::endl;
     auto lfs_splat = create_lfs_splat_data(500, 3);
-    lfs_splat.allocate_gradients();
     std::cout << "Created splat data" << std::endl;
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
@@ -277,15 +275,16 @@ TEST(MCMCStrategyTest, RelocateDeadGaussians_WithOptimizerState) {
     lfs_mcmc.initialize(lfs_params);
 
     auto& lfs_model = lfs_mcmc.get_model();
+    auto& lfs_opt = lfs_mcmc.get_optimizer();
 
     // Warm up optimizer with normal gradients
     for (int i = 0; i < 5; i++) {
-        lfs_model.means_grad().fill_(0.001f);
-        lfs_model.sh0_grad().fill_(0.001f);
-        lfs_model.shN_grad().fill_(0.0005f);
-        lfs_model.scaling_grad().fill_(0.001f);
-        lfs_model.rotation_grad().fill_(0.001f);
-        lfs_model.opacity_grad().fill_(0.001f);
+        lfs_opt.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        lfs_opt.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        lfs_opt.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        lfs_opt.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        lfs_opt.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        lfs_opt.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
         lfs_mcmc.step(i);
     }
 
@@ -318,7 +317,6 @@ TEST(MCMCStrategyTest, RelocateDeadGaussians_WithOptimizerState) {
 TEST(MCMCStrategyTest, AddNewGaussians_GrowthBehavior) {
     // Test Gaussian growth (5% per refinement)
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     auto gs_splat = create_gs_splat_data(lfs_splat);
 
@@ -390,7 +388,6 @@ TEST(MCMCStrategyTest, AddNewGaussians_GrowthBehavior) {
 
 TEST(MCMCStrategyTest, AddNewGaussians_RespectsMaxCap) {
     auto lfs_splat = create_lfs_splat_data(150, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -409,7 +406,6 @@ TEST(MCMCStrategyTest, AddNewGaussians_RespectsMaxCap) {
 TEST(MCMCStrategyTest, NoiseInjection_EveryIteration) {
     // Test that noise is injected every iteration (not just during refinement)
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
     auto params = create_test_params();
@@ -436,7 +432,6 @@ TEST(MCMCStrategyTest, SHDegreeIncrement) {
     // Test SH degree increments correctly
     // Create with max_sh_degree=3, but active starts at 0
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     auto gs_splat = create_gs_splat_data(lfs_splat);
 
@@ -481,15 +476,15 @@ TEST(MCMCStrategyTest, SHDegreeIncrement) {
 TEST(MCMCStrategyTest, OptimizationStep_GradientsCorrect) {
     // Test that optimization step updates parameters correctly and zeroes gradients
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
     auto params = create_test_params();
     lfs_mcmc.initialize(params);
 
     // Set some fake gradients
-    lfs_mcmc.get_model().means_grad().fill_(1.0f);
-    lfs_mcmc.get_model().sh0_grad().fill_(0.5f);
+    auto& opt = lfs_mcmc.get_optimizer();
+    opt.get_grad(lfs::training::ParamType::Means).fill_(1.0f);
+    opt.get_grad(lfs::training::ParamType::Sh0).fill_(0.5f);
 
     auto initial_means = lfs_mcmc.get_model().means().clone();
 
@@ -503,13 +498,12 @@ TEST(MCMCStrategyTest, OptimizationStep_GradientsCorrect) {
     EXPECT_GT(diff, 0.0f) << "Parameters should change after step";
 
     // Gradients should be zeroed
-    EXPECT_FLOAT_EQ(lfs_mcmc.get_model().means_grad().sum_scalar(), 0.0f);
-    EXPECT_FLOAT_EQ(lfs_mcmc.get_model().sh0_grad().sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(opt.get_grad(lfs::training::ParamType::Means).sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(opt.get_grad(lfs::training::ParamType::Sh0).sum_scalar(), 0.0f);
 }
 
 TEST(MCMCStrategyTest, RemoveGaussians) {
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
     auto params = create_test_params();
@@ -535,7 +529,6 @@ TEST(MCMCStrategyTest, RemoveGaussians) {
 TEST(MCMCStrategyTest, FullTrainingLoop_ShortRun) {
     // Test LFS only - full training loop with growth and refinement
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -549,11 +542,12 @@ TEST(MCMCStrategyTest, FullTrainingLoop_ShortRun) {
     lfs_mcmc.initialize(lfs_params);
 
     lfs::training::RenderOutput lfs_render_out;
+    auto& opt = lfs_mcmc.get_optimizer();
 
     // Run for 300 iterations
     for (int iter = 0; iter < 300; iter++) {
         // Set fake gradients
-        lfs_mcmc.get_model().means_grad().fill_(0.01f);
+        opt.get_grad(lfs::training::ParamType::Means).fill_(0.01f);
 
         // Post-backward (handles refinement, noise injection, SH increment)
         lfs_mcmc.post_backward(iter, lfs_render_out);
@@ -579,7 +573,6 @@ TEST(MCMCStrategyTest, FullTrainingLoop_ShortRun) {
 TEST(MCMCStrategyTest, EdgeCase_AllGaussiansDead) {
     // Test edge case: all Gaussians are dead
     auto lfs_splat = create_lfs_splat_data(50, 3);
-    lfs_splat.allocate_gradients();
 
     // Make all Gaussians dead
     lfs_splat.opacity_raw().fill_(-20.0f);  // Very low opacity
@@ -602,7 +595,6 @@ TEST(MCMCStrategyTest, EdgeCase_AllGaussiansDead) {
 TEST(MCMCStrategyTest, EdgeCase_NoDeadGaussians) {
     // Test edge case: no dead Gaussians (all healthy)
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     // Make all Gaussians very healthy
     lfs_splat.opacity_raw().fill_(2.0f);     // High opacity
@@ -625,7 +617,6 @@ TEST(MCMCStrategyTest, EdgeCase_NoDeadGaussians) {
 
 TEST(MCMCStrategyTest, EdgeCase_MaxCapReachedExactly) {
     auto lfs_splat = create_lfs_splat_data(95, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
     auto params = create_test_params();
@@ -646,7 +637,6 @@ TEST(MCMCStrategyTest, EdgeCase_MaxCapReachedExactly) {
 TEST(MCMCStrategyTest, EdgeCase_HighSHDegree) {
     // Test with maximum SH degree (3) - LFS only (reference crashes)
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -672,7 +662,6 @@ TEST(MCMCStrategyTest, EdgeCase_HighSHDegree) {
 TEST(MCMCStrategyStressTest, LongTrainingLoop_100Iterations) {
     // Simulate 100 iterations of training with multiple refinements and SH degree increments
     auto lfs_splat = create_lfs_splat_data(200, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -686,6 +675,7 @@ TEST(MCMCStrategyStressTest, LongTrainingLoop_100Iterations) {
     lfs_mcmc.initialize(params);
 
     auto& model = lfs_mcmc.get_model();
+    auto& optimizer = lfs_mcmc.get_optimizer();
     lfs::training::RenderOutput render_out;
 
     // Track metrics throughout training
@@ -694,12 +684,12 @@ TEST(MCMCStrategyStressTest, LongTrainingLoop_100Iterations) {
 
     for (int iter = 0; iter < 100; iter++) {
         // Simulate gradients
-        model.means_grad().fill_(0.001f);
-        model.sh0_grad().fill_(0.001f);
-        model.shN_grad().fill_(0.0005f);
-        model.scaling_grad().fill_(0.001f);
-        model.rotation_grad().fill_(0.001f);
-        model.opacity_grad().fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         // Step optimizer
         lfs_mcmc.step(iter);
@@ -741,7 +731,6 @@ TEST(MCMCStrategyStressTest, LongTrainingLoop_100Iterations) {
 TEST(MCMCStrategyStressTest, MultiplePostBackward_ConsecutiveCalls) {
     // Test calling post_backward multiple times in a row at refinement iterations
     auto lfs_splat = create_lfs_splat_data(150, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -750,16 +739,17 @@ TEST(MCMCStrategyStressTest, MultiplePostBackward_ConsecutiveCalls) {
     lfs_mcmc.initialize(params);
 
     auto& model = lfs_mcmc.get_model();
+    auto& optimizer = lfs_mcmc.get_optimizer();
     lfs::training::RenderOutput render_out;
 
     // Warm up optimizer
     for (int i = 0; i < 10; i++) {
-        model.means_grad().fill_(0.001f);
-        model.sh0_grad().fill_(0.001f);
-        model.shN_grad().fill_(0.0005f);
-        model.scaling_grad().fill_(0.001f);
-        model.rotation_grad().fill_(0.001f);
-        model.opacity_grad().fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
         lfs_mcmc.step(i);
     }
 
@@ -788,7 +778,6 @@ TEST(MCMCStrategyStressTest, MultiplePostBackward_ConsecutiveCalls) {
 TEST(MCMCStrategyStressTest, SHDegreeIncrement_DuringGrowth) {
     // Test SH degree increments happening simultaneously with Gaussian growth
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -802,6 +791,7 @@ TEST(MCMCStrategyStressTest, SHDegreeIncrement_DuringGrowth) {
     lfs_mcmc.initialize(params);
 
     auto& model = lfs_mcmc.get_model();
+    auto& optimizer = lfs_mcmc.get_optimizer();
     lfs::training::RenderOutput render_out;
 
     int initial_sh_degree = model.get_active_sh_degree();
@@ -809,12 +799,12 @@ TEST(MCMCStrategyStressTest, SHDegreeIncrement_DuringGrowth) {
 
     // Run training with both growth and SH increments
     for (int iter = 0; iter < 50; iter++) {
-        model.means_grad().fill_(0.001f);
-        model.sh0_grad().fill_(0.001f);
-        model.shN_grad().fill_(0.0005f);
-        model.scaling_grad().fill_(0.001f);
-        model.rotation_grad().fill_(0.001f);
-        model.opacity_grad().fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         lfs_mcmc.step(iter);
         lfs_mcmc.post_backward(iter, render_out);
@@ -842,7 +832,6 @@ TEST(MCMCStrategyStressTest, SHDegreeIncrement_DuringGrowth) {
 TEST(MCMCStrategyStressTest, RapidRefinements_EveryIteration) {
     // Extreme case: refinement every single iteration
     auto lfs_splat = create_lfs_splat_data(50, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -855,15 +844,16 @@ TEST(MCMCStrategyStressTest, RapidRefinements_EveryIteration) {
     lfs_mcmc.initialize(params);
 
     auto& model = lfs_mcmc.get_model();
+    auto& optimizer = lfs_mcmc.get_optimizer();
     lfs::training::RenderOutput render_out;
 
     for (int iter = 0; iter < 30; iter++) {
-        model.means_grad().fill_(0.001f);
-        model.sh0_grad().fill_(0.001f);
-        model.shN_grad().fill_(0.0005f);
-        model.scaling_grad().fill_(0.001f);
-        model.rotation_grad().fill_(0.001f);
-        model.opacity_grad().fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         lfs_mcmc.step(iter);
         lfs_mcmc.post_backward(iter, render_out);
@@ -885,7 +875,6 @@ TEST(MCMCStrategyStressTest, RapidRefinements_EveryIteration) {
 TEST(MCMCStrategyStressTest, GrowthToMaxCap_ThenContinue) {
     // Test growing to max cap, then continuing training
     auto lfs_splat = create_lfs_splat_data(90, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -898,16 +887,17 @@ TEST(MCMCStrategyStressTest, GrowthToMaxCap_ThenContinue) {
     lfs_mcmc.initialize(params);
 
     auto& model = lfs_mcmc.get_model();
+    auto& optimizer = lfs_mcmc.get_optimizer();
     lfs::training::RenderOutput render_out;
 
     // Grow to max cap
     for (int iter = 0; iter < 20; iter++) {
-        model.means_grad().fill_(0.001f);
-        model.sh0_grad().fill_(0.001f);
-        model.shN_grad().fill_(0.0005f);
-        model.scaling_grad().fill_(0.001f);
-        model.rotation_grad().fill_(0.001f);
-        model.opacity_grad().fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         lfs_mcmc.step(iter);
         lfs_mcmc.post_backward(iter, render_out);
@@ -919,12 +909,12 @@ TEST(MCMCStrategyStressTest, GrowthToMaxCap_ThenContinue) {
 
     // Continue training after reaching max cap
     for (int iter = 20; iter < 40; iter++) {
-        model.means_grad().fill_(0.001f);
-        model.sh0_grad().fill_(0.001f);
-        model.shN_grad().fill_(0.0005f);
-        model.scaling_grad().fill_(0.001f);
-        model.rotation_grad().fill_(0.001f);
-        model.opacity_grad().fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         lfs_mcmc.step(iter);
         lfs_mcmc.post_backward(iter, render_out);
@@ -946,7 +936,6 @@ TEST(MCMCStrategyStressTest, GrowthToMaxCap_ThenContinue) {
 TEST(MCMCStrategyStressTest, AlternatingRefinementAndNormal) {
     // Test alternating between refinement and non-refinement iterations
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -959,17 +948,18 @@ TEST(MCMCStrategyStressTest, AlternatingRefinementAndNormal) {
     lfs_mcmc.initialize(params);
 
     auto& model = lfs_mcmc.get_model();
+    auto& optimizer = lfs_mcmc.get_optimizer();
     lfs::training::RenderOutput render_out;
 
     std::vector<int> sizes;
 
     for (int iter = 0; iter < 50; iter++) {
-        model.means_grad().fill_(0.001f);
-        model.sh0_grad().fill_(0.001f);
-        model.shN_grad().fill_(0.0005f);
-        model.scaling_grad().fill_(0.001f);
-        model.rotation_grad().fill_(0.001f);
-        model.opacity_grad().fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         lfs_mcmc.step(iter);
         lfs_mcmc.post_backward(iter, render_out);
@@ -992,7 +982,6 @@ TEST(MCMCStrategyStressTest, AlternatingRefinementAndNormal) {
 TEST(MCMCStrategyStressTest, ZeroGradients_NoCorruption) {
     // Test that zero gradients don't cause issues
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -1000,16 +989,17 @@ TEST(MCMCStrategyStressTest, ZeroGradients_NoCorruption) {
     lfs_mcmc.initialize(params);
 
     auto& model = lfs_mcmc.get_model();
+    auto& optimizer = lfs_mcmc.get_optimizer();
     lfs::training::RenderOutput render_out;
 
     // All zero gradients for multiple iterations
     for (int iter = 0; iter < 20; iter++) {
-        model.means_grad().fill_(0.0f);
-        model.sh0_grad().fill_(0.0f);
-        model.shN_grad().fill_(0.0f);
-        model.scaling_grad().fill_(0.0f);
-        model.rotation_grad().fill_(0.0f);
-        model.opacity_grad().fill_(0.0f);
+        optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.0f);
+        optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.0f);
+        optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0f);
+        optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.0f);
+        optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.0f);
+        optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.0f);
 
         lfs_mcmc.step(iter);
 
@@ -1037,7 +1027,6 @@ TEST(MCMCStrategyStressTest, ZeroGradients_NoCorruption) {
 TEST(MCMCStrategyStressTest, VeryLargeModel_10kGaussians) {
     // Test with a large model (10k Gaussians)
     auto lfs_splat = create_lfs_splat_data(10000, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
 
@@ -1046,16 +1035,17 @@ TEST(MCMCStrategyStressTest, VeryLargeModel_10kGaussians) {
     lfs_mcmc.initialize(params);
 
     auto& model = lfs_mcmc.get_model();
+    auto& optimizer = lfs_mcmc.get_optimizer();
     lfs::training::RenderOutput render_out;
 
     // Run several iterations with large model
     for (int iter = 0; iter < 10; iter++) {
-        model.means_grad().fill_(0.001f);
-        model.sh0_grad().fill_(0.001f);
-        model.shN_grad().fill_(0.0005f);
-        model.scaling_grad().fill_(0.001f);
-        model.rotation_grad().fill_(0.001f);
-        model.opacity_grad().fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         lfs_mcmc.step(iter);
 

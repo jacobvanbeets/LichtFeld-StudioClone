@@ -159,36 +159,23 @@ namespace lfs::training {
     void fast_rasterize_backward(
         const FastRasterizeContext& ctx,
         const core::Tensor& grad_image,
-        core::SplatData& gaussian_model) {
+        core::SplatData& gaussian_model,
+        AdamOptimizer& optimizer) {
 
-        // Compute gradient w.r.t. alpha from background blending
-        // Forward: output_image = image + (1 - alpha) * bg_color
-        // where bg_color is [3], alpha is [1, H, W], output_image is [3, H, W]
-        //
-        // Backward:
-        // ∂L/∂image_raw = ∂L/∂output_image (grad_image)
-        // ∂L/∂alpha = -sum_over_channels(∂L/∂output_image * bg_color)
-        //
-        // grad_image shape: [3, H, W] or [H, W, 3]
-        // bg_color shape: [3]
-        // alpha shape: [1, H, W]
-
-        // Use fused kernel (4-5x faster than LibTorch, 18-252x faster than separate ops)
+        // Compute grad_alpha from background blending: output = image + (1 - alpha) * bg
         int H, W;
         bool is_chw_layout;
 
         if (grad_image.shape()[0] == 3) {
-            // Layout: [3, H, W]
             is_chw_layout = true;
             H = static_cast<int>(grad_image.shape()[1]);
             W = static_cast<int>(grad_image.shape()[2]);
         } else if (grad_image.shape()[2] == 3) {
-            // Layout: [H, W, 3]
             is_chw_layout = false;
             H = static_cast<int>(grad_image.shape()[0]);
             W = static_cast<int>(grad_image.shape()[1]);
         } else {
-            throw std::runtime_error("Unexpected grad_image shape in fast_rasterize_backward");
+            throw std::runtime_error("Unexpected grad_image shape");
         }
 
         auto grad_alpha = core::Tensor::empty({static_cast<size_t>(H), static_cast<size_t>(W)}, core::Device::CUDA);
@@ -199,14 +186,14 @@ namespace lfs::training {
             grad_alpha.ptr<float>(),
             H, W,
             is_chw_layout,
-            nullptr  // default stream
+            nullptr
         );
 
         const int n_primitives = static_cast<int>(ctx.means.shape()[0]);
-
-        // Call backward_raw with raw pointers to SplatData gradient buffers
         const bool update_densification_info = gaussian_model._densification_info.ndim() > 0 &&
                                                 gaussian_model._densification_info.shape()[0] > 0;
+
+        // Get gradient pointers from optimizer
         auto backward_result = fast_lfs::rasterization::backward_raw(
             update_densification_info ? gaussian_model._densification_info.ptr<float>() : nullptr,
             grad_image.ptr<float>(),
@@ -220,13 +207,13 @@ namespace lfs::training {
             ctx.w2c_ptr,
             ctx.cam_position_ptr,
             ctx.forward_ctx,
-            gaussian_model.means_grad().ptr<float>(),        // Direct access to SplatData gradients
-            gaussian_model.scaling_grad().ptr<float>(),
-            gaussian_model.rotation_grad().ptr<float>(),
-            gaussian_model.opacity_grad().ptr<float>(),
-            gaussian_model.sh0_grad().ptr<float>(),
-            gaussian_model.shN_grad().ptr<float>(),
-            nullptr,  // grad_w2c not needed for now
+            optimizer.get_grad(ParamType::Means).ptr<float>(),
+            optimizer.get_grad(ParamType::Scaling).ptr<float>(),
+            optimizer.get_grad(ParamType::Rotation).ptr<float>(),
+            optimizer.get_grad(ParamType::Opacity).ptr<float>(),
+            optimizer.get_grad(ParamType::Sh0).ptr<float>(),
+            optimizer.get_grad(ParamType::ShN).ptr<float>(),
+            nullptr,
             n_primitives,
             ctx.active_sh_bases,
             ctx.total_bases_sh_rest,
@@ -240,9 +227,5 @@ namespace lfs::training {
         if (!backward_result.success) {
             throw std::runtime_error(std::string("Backward failed: ") + backward_result.error_message);
         }
-
-        // Gradients are ACCUMULATED (+=) directly into SplatData buffers
-        // This allows multiple loss terms (photometric, regularization, etc.) to contribute
-        // The trainer calls zero_gradients() at the END of strategy->step() (after optimizer update)
     }
 } // namespace lfs::training

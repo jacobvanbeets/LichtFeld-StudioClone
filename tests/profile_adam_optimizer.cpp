@@ -41,14 +41,14 @@ public:
 
 // Helper to create test splat data
 SplatData create_test_splat_data(size_t N, size_t dims) {
-    SplatData splat_data;
-    splat_data.means() = Tensor::randn({N, dims}, Device::CUDA);
-    splat_data.sh0() = Tensor::randn({N, 1}, Device::CUDA);
-    splat_data.shN() = Tensor::randn({N, 15}, Device::CUDA);
-    splat_data.scaling_raw() = Tensor::randn({N, 3}, Device::CUDA);
-    splat_data.rotation_raw() = Tensor::randn({N, 4}, Device::CUDA);
-    splat_data.opacity_raw() = Tensor::randn({N, 1}, Device::CUDA);
-    return splat_data;
+    auto means = Tensor::randn({N, dims}, Device::CUDA);
+    auto sh0 = Tensor::randn({N, 1, 3}, Device::CUDA);
+    auto shN = Tensor::randn({N, 15, 3}, Device::CUDA);
+    auto scaling = Tensor::randn({N, 3}, Device::CUDA);
+    auto rotation = Tensor::randn({N, 4}, Device::CUDA);
+    auto opacity = Tensor::randn({N, 1}, Device::CUDA);
+    return SplatData(3, std::move(means), std::move(sh0), std::move(shN),
+                     std::move(scaling), std::move(rotation), std::move(opacity), 1.0f);
 }
 
 // Convert between tensor types
@@ -76,7 +76,6 @@ void profile_lfs_optimizer() {
     NVTX_SCOPED_RANGE("LFS_Optimizer_Setup");
 
     auto splat_data = create_test_splat_data(N_initial, 3);
-    splat_data.allocate_gradients();
 
     AdamConfig config;
     config.lr = lr;
@@ -84,6 +83,7 @@ void profile_lfs_optimizer() {
     config.initial_capacity = N_initial + (n_iterations / add_every) * N_add;
 
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     size_t current_N = N_initial;
 
@@ -104,7 +104,7 @@ void profile_lfs_optimizer() {
             {
                 NVTX_SCOPED_RANGE("LFS_Step");
                 // OPTIMIZATION: Use in-place normal_() to avoid allocation
-                splat_data.means_grad().normal_(0.0f, 1.0f);
+                optimizer.get_grad(ParamType::Means).normal_(0.0f, 1.0f);
                 optimizer.step(iter + 1);
             }
 
@@ -215,11 +215,11 @@ void profile_step_operation_detailed() {
     {
         NVTX_SCOPED_RANGE("LFS_DetailedSteps_Setup");
         auto splat_data = create_test_splat_data(N, 3);
-        splat_data.allocate_gradients();
 
         AdamConfig config;
         config.lr = lr;
         AdamOptimizer optimizer(splat_data, config);
+        optimizer.allocate_gradients();
 
         cudaDeviceSynchronize();
         auto start = std::chrono::high_resolution_clock::now();
@@ -229,7 +229,7 @@ void profile_step_operation_detailed() {
             for (int i = 0; i < n_steps; i++) {
                 NVTX_SCOPED_RANGE("LFS_SingleStep");
                 // OPTIMIZATION: Use in-place normal_() to avoid allocation
-                splat_data.means_grad().normal_(0.0f, 1.0f);
+                optimizer.get_grad(ParamType::Means).normal_(0.0f, 1.0f);
                 optimizer.step(i + 1);
             }
         }

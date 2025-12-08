@@ -149,9 +149,9 @@ TEST(DefaultStrategyBenchmark, TrainingStep) {
     RenderOutput render_output;
 
     // Simulate some gradients
-    if (strategy.get_model().has_gradients()) {
-        auto& grad = strategy.get_model().means_grad();
-        grad = Tensor::rand_like(grad) * 0.001f;
+    auto& means_grad = strategy.get_optimizer().get_grad(lfs::training::ParamType::Means);
+    if (means_grad.is_valid()) {
+        means_grad = Tensor::rand_like(means_grad) * 0.001f;
     }
 
     double avg_time = time_operation([&strategy, &render_output]() {
@@ -190,9 +190,9 @@ TEST(DefaultStrategyBenchmark, FullTrainingLoop_100Iterations) {
 
     for (int iter = 0; iter < n_iterations; ++iter) {
         // Simulate gradients
-        if (strategy.get_model().has_gradients()) {
-            auto& grad = strategy.get_model().means_grad();
-            grad = Tensor::rand_like(grad) * 0.001f;
+        auto& means_grad = strategy.get_optimizer().get_grad(lfs::training::ParamType::Means);
+        if (means_grad.is_valid()) {
+            means_grad = Tensor::rand_like(means_grad) * 0.001f;
         }
 
         int size_before = strategy.get_model().size();
@@ -253,9 +253,9 @@ TEST(DefaultStrategyBenchmark, ScalingTest) {
 
         RenderOutput render_output;
 
-        if (strategy.get_model().has_gradients()) {
-            auto& grad = strategy.get_model().means_grad();
-            grad = Tensor::rand_like(grad) * 0.001f;
+        auto& means_grad = strategy.get_optimizer().get_grad(lfs::training::ParamType::Means);
+        if (means_grad.is_valid()) {
+            means_grad = Tensor::rand_like(means_grad) * 0.001f;
         }
 
         double step_time = time_operation([&strategy, &render_output]() {

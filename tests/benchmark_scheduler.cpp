@@ -28,7 +28,6 @@ SplatData create_test_splat_data(size_t n_points = 100000) {
     auto opacity = Tensor::randn({n_points, 1}, Device::CUDA);
 
     SplatData splat_data(3, means, sh0, shN, scaling, rotation, opacity, 1.0f);
-    splat_data.allocate_gradients();
     return splat_data;
 }
 

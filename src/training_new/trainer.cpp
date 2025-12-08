@@ -130,17 +130,19 @@ namespace lfs::training {
     // Returns GPU tensor for loss - NO SYNC!
     std::expected<lfs::core::Tensor, std::string> Trainer::compute_scale_reg_loss(
         lfs::core::SplatData& splatData,
+        AdamOptimizer& optimizer,
         const lfs::core::param::OptimizationParameters& opt_params) {
         lfs::training::losses::ScaleRegularization::Params params{.weight = opt_params.scale_reg};
-        return lfs::training::losses::ScaleRegularization::forward(splatData.scaling_raw(), splatData.scaling_grad(), params);
+        return lfs::training::losses::ScaleRegularization::forward(splatData.scaling_raw(), optimizer.get_grad(ParamType::Scaling), params);
     }
 
     // Returns GPU tensor for loss - NO SYNC!
     std::expected<lfs::core::Tensor, std::string> Trainer::compute_opacity_reg_loss(
         lfs::core::SplatData& splatData,
+        AdamOptimizer& optimizer,
         const lfs::core::param::OptimizationParameters& opt_params) {
         lfs::training::losses::OpacityRegularization::Params params{.weight = opt_params.opacity_reg};
-        return lfs::training::losses::OpacityRegularization::forward(splatData.opacity_raw(), splatData.opacity_grad(), params);
+        return lfs::training::losses::OpacityRegularization::forward(splatData.opacity_raw(), optimizer.get_grad(ParamType::Opacity), params);
     }
 
     //     std::expected<std::pair<float, BilateralGridTVContext>, std::string> Trainer::compute_bilateral_grid_tv_loss(
@@ -778,9 +780,8 @@ namespace lfs::training {
                     nvtxRangePop();
                 }
 
-                // Backward pass for this tile (gradients accumulate in SplatData)
                 nvtxRangePush("rasterize_backward");
-                fast_rasterize_backward(ctx, raster_grad, strategy_->get_model());
+                fast_rasterize_backward(ctx, raster_grad, strategy_->get_model(), strategy_->get_optimizer());
                 nvtxRangePop();
 
                 nvtxRangePop();  // End tile
@@ -798,7 +799,7 @@ namespace lfs::training {
             // Scale regularization loss - accumulate on GPU (AFTER rasterizer backward)
             if (params_.optimization.scale_reg > 0.0f) {
                 nvtxRangePush("compute_scale_reg_loss");
-                auto scale_loss_result = compute_scale_reg_loss(strategy_->get_model(), params_.optimization);
+                auto scale_loss_result = compute_scale_reg_loss(strategy_->get_model(), strategy_->get_optimizer(), params_.optimization);
                 if (!scale_loss_result) {
                     return std::unexpected(scale_loss_result.error());
                 }
@@ -809,7 +810,7 @@ namespace lfs::training {
             // Opacity regularization loss - accumulate on GPU (AFTER rasterizer backward)
             if (params_.optimization.opacity_reg > 0.0f) {
                 nvtxRangePush("compute_opacity_reg_loss");
-                auto opacity_loss_result = compute_opacity_reg_loss(strategy_->get_model(), params_.optimization);
+                auto opacity_loss_result = compute_opacity_reg_loss(strategy_->get_model(), strategy_->get_optimizer(), params_.optimization);
                 if (!opacity_loss_result) {
                     return std::unexpected(opacity_loss_result.error());
                 }

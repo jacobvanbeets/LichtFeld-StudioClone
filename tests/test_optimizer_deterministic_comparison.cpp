@@ -260,17 +260,18 @@ TEST(OptimizerComparison, DeterministicMCMC100Steps) {
         legacy_model.opacity_raw().mutable_grad() = grad_opacity.clone();
 
         // Apply gradients to new (convert from torch)
-        cudaMemcpy(new_model.means_grad().ptr<float>(), grad_means.data_ptr<float>(),
+        auto& new_optimizer = new_strategy.get_optimizer();
+        cudaMemcpy(new_optimizer.get_grad(lfs::training::ParamType::Means).ptr<float>(), grad_means.data_ptr<float>(),
                    grad_means.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.sh0_grad().ptr<float>(), grad_sh0.data_ptr<float>(),
+        cudaMemcpy(new_optimizer.get_grad(lfs::training::ParamType::Sh0).ptr<float>(), grad_sh0.data_ptr<float>(),
                    grad_sh0.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.shN_grad().ptr<float>(), grad_shN.data_ptr<float>(),
+        cudaMemcpy(new_optimizer.get_grad(lfs::training::ParamType::ShN).ptr<float>(), grad_shN.data_ptr<float>(),
                    grad_shN.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.scaling_grad().ptr<float>(), grad_scaling.data_ptr<float>(),
+        cudaMemcpy(new_optimizer.get_grad(lfs::training::ParamType::Scaling).ptr<float>(), grad_scaling.data_ptr<float>(),
                    grad_scaling.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.rotation_grad().ptr<float>(), grad_rotation.data_ptr<float>(),
+        cudaMemcpy(new_optimizer.get_grad(lfs::training::ParamType::Rotation).ptr<float>(), grad_rotation.data_ptr<float>(),
                    grad_rotation.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.opacity_grad().ptr<float>(), grad_opacity.data_ptr<float>(),
+        cudaMemcpy(new_optimizer.get_grad(lfs::training::ParamType::Opacity).ptr<float>(), grad_opacity.data_ptr<float>(),
                    grad_opacity.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
 
         // Create minimal render outputs for post_backward
@@ -381,7 +382,7 @@ TEST(OptimizerComparison, DeterministicMCMC100Steps) {
 
             // Get new model gradients for last 4
             float new_grad_last4[12];
-            cudaMemcpy(new_grad_last4, new_model.means_grad().ptr<float>() + 100 * 3, 12 * sizeof(float), cudaMemcpyDeviceToHost);
+            cudaMemcpy(new_grad_last4, new_strategy.get_optimizer().get_grad(lfs::training::ParamType::Means).ptr<float>() + 100 * 3, 12 * sizeof(float), cudaMemcpyDeviceToHost);
             std::cout << "New grad for new Gaussians [100:104]:" << std::endl;
             std::cout << "  [100]: " << new_grad_last4[0] << ", " << new_grad_last4[1] << ", " << new_grad_last4[2] << std::endl;
             std::cout << "  [101]: " << new_grad_last4[3] << ", " << new_grad_last4[4] << ", " << new_grad_last4[5] << std::endl;

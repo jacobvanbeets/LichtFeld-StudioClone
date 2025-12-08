@@ -285,25 +285,6 @@ namespace lfs::core {
         splat_data._rotation = splat_data._rotation.index_select(0, indices_tensor).contiguous();
         splat_data._opacity = splat_data._opacity.index_select(0, indices_tensor).contiguous();
 
-        if (splat_data._means_grad.is_valid()) {
-            splat_data._means_grad = splat_data._means_grad.index_select(0, indices_tensor).contiguous();
-        }
-        if (splat_data._sh0_grad.is_valid()) {
-            splat_data._sh0_grad = splat_data._sh0_grad.index_select(0, indices_tensor).contiguous();
-        }
-        if (splat_data._shN_grad.is_valid()) {
-            splat_data._shN_grad = splat_data._shN_grad.index_select(0, indices_tensor).contiguous();
-        }
-        if (splat_data._scaling_grad.is_valid()) {
-            splat_data._scaling_grad = splat_data._scaling_grad.index_select(0, indices_tensor).contiguous();
-        }
-        if (splat_data._rotation_grad.is_valid()) {
-            splat_data._rotation_grad = splat_data._rotation_grad.index_select(0, indices_tensor).contiguous();
-        }
-        if (splat_data._opacity_grad.is_valid()) {
-            splat_data._opacity_grad = splat_data._opacity_grad.index_select(0, indices_tensor).contiguous();
-        }
-
         if (splat_data._densification_info.is_valid() && splat_data._densification_info.size(0) == num_points) {
             splat_data._densification_info = splat_data._densification_info.index_select(0, indices_tensor).contiguous();
         }

@@ -26,10 +26,8 @@ namespace lfs::training {
 
         initialize_gaussians(*_splat_data, _params->max_cap);
 
-        // Initialize optimizer
         _optimizer = create_optimizer(*_splat_data, *_params);
-
-        // Initialize exponential scheduler
+        _optimizer->allocate_gradients(_params->max_cap > 0 ? static_cast<size_t>(_params->max_cap) : 0);
         _scheduler = create_scheduler(*_params, *_optimizer);
 
         // Initialize densification info: [2, N] tensor for tracking gradients
@@ -97,51 +95,25 @@ namespace lfs::training {
         LOG_DEBUG("duplicate(): About to cat opacity: existing={}, selected={}", _splat_data->opacity_raw().shape().str(), op_selected.shape().str());
         _splat_data->opacity_raw() = _splat_data->opacity_raw().cat(op_selected, 0);
 
-        // Update gradients to match new size
-        if (_splat_data->has_gradients()) {
-            auto means_shape = _splat_data->means().shape();
-            auto rotation_shape = _splat_data->rotation_raw().shape();
-            auto scaling_shape = _splat_data->scaling_raw().shape();
-            auto sh0_shape = _splat_data->sh0().shape();
-            auto shN_shape = _splat_data->shN().shape();
-            auto opacity_shape = _splat_data->opacity_raw().shape();
-
-            _splat_data->means_grad() = lfs::core::Tensor::zeros(means_shape, _splat_data->means().device());
-            _splat_data->rotation_grad() = lfs::core::Tensor::zeros(rotation_shape, _splat_data->rotation_raw().device());
-            _splat_data->scaling_grad() = lfs::core::Tensor::zeros(scaling_shape, _splat_data->scaling_raw().device());
-            _splat_data->sh0_grad() = lfs::core::Tensor::zeros(sh0_shape, _splat_data->sh0().device());
-            _splat_data->shN_grad() = lfs::core::Tensor::zeros(shN_shape, _splat_data->shN().device());
-            _splat_data->opacity_grad() = lfs::core::Tensor::zeros(opacity_shape, _splat_data->opacity_raw().device());
-        }
-
-        // Update optimizer states: duplicate the optimizer states for the duplicated Gaussians
-        // Following the same pattern as split()
+        // Update optimizer states for duplicated Gaussians
         auto update_optimizer_state = [&](ParamType param_type, const char* name) {
-            if (const auto* state = _optimizer->get_state(param_type)) {
-                LOG_DEBUG("update_optimizer_state for {}: state->exp_avg shape = {}", name, state->exp_avg.shape().str());
+            const auto* state = _optimizer->get_state(param_type);
+            if (!state) return;
 
-                // Keep all existing states
-                lfs::core::Tensor existing_exp_avg = state->exp_avg;
-                lfs::core::Tensor existing_exp_avg_sq = state->exp_avg_sq;
-
-                // Get the states for the gaussians we're duplicating
-                lfs::core::Tensor dup_exp_avg = state->exp_avg.index_select(0, sampled_idxs);
-                lfs::core::Tensor dup_exp_avg_sq = state->exp_avg_sq.index_select(0, sampled_idxs);
-
-                LOG_DEBUG("  existing_exp_avg shape: {}", existing_exp_avg.shape().str());
-                LOG_DEBUG("  dup_exp_avg shape: {}", dup_exp_avg.shape().str());
-
-                // Create new state and set it
-                AdamParamState new_state = *state;
-                new_state.exp_avg = existing_exp_avg.cat(dup_exp_avg, 0);
-                new_state.exp_avg_sq = existing_exp_avg_sq.cat(dup_exp_avg_sq, 0);
-                // Update size to match new parameter count
-                size_t old_size = state->size;
-                size_t new_size = state->size + num_duplicated;
-                new_state.size = new_size;
-                LOG_DEBUG("  duplicate() size update: {} -> {} (added {})", old_size, new_size, num_duplicated);
-                _optimizer->set_state(param_type, new_state);
+            const auto& grad_shape = state->grad.shape();
+            std::vector<size_t> zero_dims = {static_cast<size_t>(num_duplicated)};
+            for (size_t i = 1; i < grad_shape.rank(); ++i) {
+                zero_dims.push_back(grad_shape[i]);
             }
+            auto zero_grads = lfs::core::Tensor::zeros(lfs::core::TensorShape(zero_dims), state->grad.device());
+
+            AdamParamState new_state = *state;
+            new_state.exp_avg = state->exp_avg.cat(state->exp_avg.index_select(0, sampled_idxs), 0);
+            new_state.exp_avg_sq = state->exp_avg_sq.cat(state->exp_avg_sq.index_select(0, sampled_idxs), 0);
+            new_state.grad = state->grad.cat(zero_grads, 0);
+            new_state.size = state->size + num_duplicated;
+            _optimizer->set_state(param_type, new_state);
+            LOG_DEBUG("duplicate(): {} size {} -> {}", name, state->size, new_state.size);
         };
 
         update_optimizer_state(ParamType::Means, "means");
@@ -226,54 +198,26 @@ namespace lfs::training {
         _splat_data->shN() = shN_out;
         _splat_data->opacity_raw() = opacities_out.squeeze(-1);
 
-        // Update gradients to match new size
-        if (_splat_data->has_gradients()) {
-            _splat_data->means_grad() = lfs::core::Tensor::zeros(positions_out.shape(), positions_out.device());
-            _splat_data->rotation_grad() = lfs::core::Tensor::zeros(rotations_out.shape(), rotations_out.device());
-            _splat_data->scaling_grad() = lfs::core::Tensor::zeros(scales_out.shape(), scales_out.device());
-            _splat_data->sh0_grad() = lfs::core::Tensor::zeros(sh0_out.shape(), sh0_out.device());
-            _splat_data->shN_grad() = lfs::core::Tensor::zeros(shN_out.shape(), shN_out.device());
-            _splat_data->opacity_grad() = lfs::core::Tensor::zeros(opacities_out.squeeze(-1).shape(), opacities_out.device());
-        }
-
-        // Update optimizer states: keep old states for kept Gaussians, add zeros for split Gaussians
+        // Update optimizer states for split Gaussians
         auto update_optimizer_state = [&](ParamType param_type) {
-            if (const auto* state = _optimizer->get_state(param_type)) {
-                LOG_DEBUG("split() updating optimizer state for param_type={}", static_cast<int>(param_type));
-                LOG_DEBUG("  Old state.size = {}", state->size);
-                LOG_DEBUG("  num_keep = {}, num_split = {}, split_size = {}", num_keep, num_split, split_size);
+            const auto* state = _optimizer->get_state(param_type);
+            if (!state) return;
 
-                // Keep states for kept Gaussians
-                lfs::core::Tensor keep_exp_avg = state->exp_avg.index_select(0, keep_idxs);
-                lfs::core::Tensor keep_exp_avg_sq = state->exp_avg_sq.index_select(0, keep_idxs);
+            const size_t n_new = num_split * split_size;
 
-                // CRITICAL: Create zeros tensor with same shape as existing state (preserving all dimensions!)
-                // Get the shape from existing state, but update the first dimension for new Gaussians
-                auto existing_shape = state->exp_avg.shape();
-                std::vector<size_t> zero_dims(existing_shape.rank());
-                zero_dims[0] = num_split * split_size;  // New Gaussians from split
-                for (size_t i = 1; i < existing_shape.rank(); i++) {
-                    zero_dims[i] = existing_shape[i];  // Keep all other dimensions
-                }
+            auto make_zeros = [&](const lfs::core::Tensor& t) {
+                const auto& shape = t.shape();
+                std::vector<size_t> dims = {n_new};
+                for (size_t i = 1; i < shape.rank(); i++) dims.push_back(shape[i]);
+                return lfs::core::Tensor::zeros(lfs::core::TensorShape(dims), t.device(), t.dtype());
+            };
 
-                auto zeros = lfs::core::Tensor::zeros(
-                    lfs::core::TensorShape(zero_dims),
-                    state->exp_avg.device(),
-                    state->exp_avg.dtype());
-
-                LOG_DEBUG("  keep_exp_avg shape: {}, zeros shape: {}", keep_exp_avg.shape().str(), zeros.shape().str());
-
-                // Create new state and set it
-                AdamParamState new_state = *state;
-                new_state.exp_avg = keep_exp_avg.cat(zeros, 0);
-                new_state.exp_avg_sq = keep_exp_avg_sq.cat(zeros, 0);
-                // CRITICAL: Update size to match new parameter count
-                size_t new_size = num_keep + num_split * split_size;
-                new_state.size = new_size;
-                LOG_DEBUG("  New state.size = {}", new_state.size);
-                LOG_DEBUG("  exp_avg shape after cat: {}", new_state.exp_avg.shape().str());
-                _optimizer->set_state(param_type, new_state);
-            }
+            AdamParamState new_state = *state;
+            new_state.exp_avg = state->exp_avg.index_select(0, keep_idxs).cat(make_zeros(state->exp_avg), 0);
+            new_state.exp_avg_sq = state->exp_avg_sq.index_select(0, keep_idxs).cat(make_zeros(state->exp_avg_sq), 0);
+            new_state.grad = state->grad.index_select(0, keep_idxs).cat(make_zeros(state->grad), 0);
+            new_state.size = num_keep + n_new;
+            _optimizer->set_state(param_type, new_state);
         };
 
         update_optimizer_state(ParamType::Means);

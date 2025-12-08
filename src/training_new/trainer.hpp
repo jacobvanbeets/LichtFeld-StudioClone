@@ -35,6 +35,7 @@ namespace lfs::vis {
 }
 
 namespace lfs::training {
+    class AdamOptimizer;
     class Trainer {
     public:
         // Legacy constructor - takes ownership of strategy and shares datasets
@@ -147,11 +148,13 @@ namespace lfs::training {
         // Returns GPU tensor for loss (avoid sync!)
         std::expected<lfs::core::Tensor, std::string> compute_scale_reg_loss(
             lfs::core::SplatData& splatData,
+            AdamOptimizer& optimizer,
             const lfs::core::param::OptimizationParameters& opt_params);
 
         // Returns GPU tensor for loss (avoid sync!)
         std::expected<lfs::core::Tensor, std::string> compute_opacity_reg_loss(
             lfs::core::SplatData& splatData,
+            AdamOptimizer& optimizer,
             const lfs::core::param::OptimizationParameters& opt_params);
 
         // Temporarily disabled - requires LibTorch

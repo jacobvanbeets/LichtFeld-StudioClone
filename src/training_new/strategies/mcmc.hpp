@@ -45,9 +45,9 @@ namespace lfs::training {
 
         void remove_gaussians(const lfs::core::Tensor& mask) override;
 
-        // Accessor for debugging/comparison
-        AdamOptimizer* get_optimizer() { return _optimizer.get(); }
-        const AdamOptimizer* get_optimizer() const { return _optimizer.get(); }
+        // IStrategy interface - optimizer access
+        AdamOptimizer& get_optimizer() override { return *_optimizer; }
+        const AdamOptimizer& get_optimizer() const override { return *_optimizer; }
         ExponentialLR* get_scheduler() { return _scheduler.get(); }
         const ExponentialLR* get_scheduler() const { return _scheduler.get(); }
 

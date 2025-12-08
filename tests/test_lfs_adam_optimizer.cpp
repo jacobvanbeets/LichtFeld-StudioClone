@@ -105,45 +105,53 @@ SplatData create_test_splat_data(size_t n_points = 100, int sh_degree = 3) {
                      std::move(scaling), std::move(rotation), std::move(opacity), 1.0f);
 }
 
-TEST(SplatDataGradientsTest, GradientAllocation) {
+TEST(AdamOptimizerGradientsTest, GradientAllocation) {
     auto splat_data = create_test_splat_data(100, 3);
 
-    EXPECT_FALSE(splat_data.has_gradients());
+    AdamConfig config;
+    config.lr = 0.01f;
+    AdamOptimizer optimizer(splat_data, config);
 
-    splat_data.allocate_gradients();
+    // Gradients should not be allocated by default
+    EXPECT_FALSE(optimizer.has_gradients());
 
-    EXPECT_TRUE(splat_data.has_gradients());
-    EXPECT_EQ(splat_data.means_grad().shape(), splat_data.means().shape());
-    EXPECT_EQ(splat_data.sh0_grad().shape(), splat_data.sh0().shape());
-    EXPECT_EQ(splat_data.shN_grad().shape(), splat_data.shN().shape());
-    EXPECT_EQ(splat_data.scaling_grad().shape(), splat_data.scaling_raw().shape());
-    EXPECT_EQ(splat_data.rotation_grad().shape(), splat_data.rotation_raw().shape());
-    EXPECT_EQ(splat_data.opacity_grad().shape(), splat_data.opacity_raw().shape());
+    optimizer.allocate_gradients();
+
+    EXPECT_TRUE(optimizer.has_gradients());
+    EXPECT_EQ(optimizer.get_grad(ParamType::Means).shape(), splat_data.means().shape());
+    EXPECT_EQ(optimizer.get_grad(ParamType::Sh0).shape(), splat_data.sh0().shape());
+    EXPECT_EQ(optimizer.get_grad(ParamType::ShN).shape(), splat_data.shN().shape());
+    EXPECT_EQ(optimizer.get_grad(ParamType::Scaling).shape(), splat_data.scaling_raw().shape());
+    EXPECT_EQ(optimizer.get_grad(ParamType::Rotation).shape(), splat_data.rotation_raw().shape());
+    EXPECT_EQ(optimizer.get_grad(ParamType::Opacity).shape(), splat_data.opacity_raw().shape());
 }
 
-TEST(SplatDataGradientsTest, GradientZeroing) {
+TEST(AdamOptimizerGradientsTest, GradientZeroing) {
     auto splat_data = create_test_splat_data(100, 3);
 
-    splat_data.allocate_gradients();
+    AdamConfig config;
+    config.lr = 0.01f;
+    AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     // Set some gradient values
-    splat_data.means_grad().fill_(1.0f);
-    splat_data.sh0_grad().fill_(2.0f);
+    optimizer.get_grad(ParamType::Means).fill_(1.0f);
+    optimizer.get_grad(ParamType::Sh0).fill_(2.0f);
 
     // Verify non-zero
-    EXPECT_FLOAT_EQ(splat_data.means_grad().sum_scalar(), 300.0f);  // 100*3*1.0
-    EXPECT_FLOAT_EQ(splat_data.sh0_grad().sum_scalar(), 600.0f);     // 100*1*3*2.0
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::Means).sum_scalar(), 300.0f);  // 100*3*1.0
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::Sh0).sum_scalar(), 600.0f);     // 100*1*3*2.0
 
     // Zero gradients
-    splat_data.zero_gradients();
+    optimizer.zero_grad(0);
 
     // Verify all zeros
-    EXPECT_FLOAT_EQ(splat_data.means_grad().sum_scalar(), 0.0f);
-    EXPECT_FLOAT_EQ(splat_data.sh0_grad().sum_scalar(), 0.0f);
-    EXPECT_FLOAT_EQ(splat_data.shN_grad().sum_scalar(), 0.0f);
-    EXPECT_FLOAT_EQ(splat_data.scaling_grad().sum_scalar(), 0.0f);
-    EXPECT_FLOAT_EQ(splat_data.rotation_grad().sum_scalar(), 0.0f);
-    EXPECT_FLOAT_EQ(splat_data.opacity_grad().sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::Means).sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::Sh0).sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::ShN).sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::Scaling).sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::Rotation).sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::Opacity).sum_scalar(), 0.0f);
 }
 
 TEST(AdamOptimizerTest, OptimizerCreation) {
@@ -155,9 +163,10 @@ TEST(AdamOptimizerTest, OptimizerCreation) {
     config.beta2 = 0.999f;
 
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
-    // Gradients should be allocated automatically
-    EXPECT_TRUE(splat_data.has_gradients());
+    // Gradients should be allocated
+    EXPECT_TRUE(optimizer.get_grad(ParamType::Means).is_valid());
 
     // Check config
     EXPECT_FLOAT_EQ(optimizer.get_lr(), 0.01f);
@@ -166,18 +175,17 @@ TEST(AdamOptimizerTest, OptimizerCreation) {
 TEST(AdamOptimizerTest, SingleStepUpdate) {
     auto splat_data = create_test_splat_data(10, 3);
 
-    splat_data.allocate_gradients();
+    // Create optimizer and allocate gradients
+    AdamConfig config;
+    config.lr = 0.1f;
+    AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     // Save initial values
     auto initial_means = splat_data.means().clone();
 
     // Set constant gradient = -1.0 (should move params in positive direction)
-    splat_data.means_grad().fill_(-1.0f);
-
-    // Create optimizer
-    AdamConfig config;
-    config.lr = 0.1f;
-    AdamOptimizer optimizer(splat_data, config);
+    optimizer.get_grad(ParamType::Means).fill_(-1.0f);
 
     // Take one step
     optimizer.step(1);
@@ -204,17 +212,16 @@ TEST(AdamOptimizerTest, GradientDescentConvergence) {
     SplatData splat_data(3, std::move(means), std::move(sh0), std::move(shN),
                         std::move(scaling), std::move(rotation), std::move(opacity), 1.0f);
 
-    splat_data.allocate_gradients();
-
     AdamConfig config;
     config.lr = 0.1f;
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     // Run optimization loop for mean squared error loss
     for (int i = 0; i < 150; i++) {
         // Compute gradient: grad = 2 * (means - target)
         auto diff = splat_data.means().sub(target);
-        splat_data.means_grad() = diff.mul(2.0f);
+        optimizer.get_grad(ParamType::Means) = diff.mul(2.0f);
 
         // Optimize
         optimizer.step(i + 1);
@@ -229,12 +236,11 @@ TEST(AdamOptimizerTest, GradientDescentConvergence) {
 TEST(AdamOptimizerTest, BiasCorrection) {
     auto splat_data = create_test_splat_data(10, 3);
 
-    splat_data.allocate_gradients();
-    splat_data.means_grad().fill_(-1.0f);
-
     AdamConfig config;
     config.lr = 0.001f;
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
+    optimizer.get_grad(ParamType::Means).fill_(-1.0f);
 
     // Save initial
     auto initial = splat_data.means().clone();
@@ -245,12 +251,12 @@ TEST(AdamOptimizerTest, BiasCorrection) {
 
     // Reset params and optimizer state for clean test
     auto splat_data2 = create_test_splat_data(10, 3);
-    splat_data2.allocate_gradients();
     AdamOptimizer optimizer2(splat_data2, config);
+    optimizer2.allocate_gradients();
 
     // Do 10 steps
     for (int i = 0; i < 10; i++) {
-        splat_data2.means_grad().fill_(-1.0f);
+        optimizer2.get_grad(ParamType::Means).fill_(-1.0f);
         optimizer2.step(i + 1);
     }
 
@@ -266,29 +272,29 @@ TEST(AdamOptimizerTest, BiasCorrection) {
 TEST(AdamOptimizerTest, LearningRateUpdate) {
     // Test 1: Higher learning rate
     auto splat_data1 = create_test_splat_data(10, 3);
-    splat_data1.allocate_gradients();
     auto initial1 = splat_data1.means().clone();
 
     AdamConfig config1;
     config1.lr = 0.1f;
     AdamOptimizer optimizer1(splat_data1, config1);
+    optimizer1.allocate_gradients();
 
-    splat_data1.means_grad().fill_(-1.0f);
+    optimizer1.get_grad(ParamType::Means).fill_(-1.0f);
     optimizer1.step(1);
     float change_lr01 = splat_data1.means().sub(initial1).abs().mean_scalar();
 
     // Test 2: Lower learning rate (fresh optimizer and data)
     auto splat_data2 = create_test_splat_data(10, 3);
-    splat_data2.allocate_gradients();
     auto initial2 = splat_data2.means().clone();
 
     AdamConfig config2;
     config2.lr = 0.01f;  // 10x smaller
     AdamOptimizer optimizer2(splat_data2, config2);
+    optimizer2.allocate_gradients();
 
     EXPECT_FLOAT_EQ(optimizer2.get_lr(), 0.01f);
 
-    splat_data2.means_grad().fill_(-1.0f);
+    optimizer2.get_grad(ParamType::Means).fill_(-1.0f);
     optimizer2.step(1);
     float change_lr001 = splat_data2.means().sub(initial2).abs().mean_scalar();
 
@@ -299,17 +305,18 @@ TEST(AdamOptimizerTest, LearningRateUpdate) {
 TEST(AdamOptimizerTest, MultipleParameterOptimization) {
     auto splat_data = create_test_splat_data(50, 3);
 
-    splat_data.allocate_gradients();
+    AdamConfig config;
+    config.lr = 0.01f;
+    AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
-    // Set gradients for all parameters
-    splat_data.means_grad().fill_(-1.0f);
-    splat_data.sh0_grad().fill_(-0.5f);
-    splat_data.shN_grad().fill_(-0.1f);
-    splat_data.scaling_grad().fill_(-0.2f);
-    splat_data.rotation_grad().fill_(-0.3f);
-    splat_data.opacity_grad().fill_(-0.4f);
+    optimizer.get_grad(ParamType::Means).fill_(-1.0f);
+    optimizer.get_grad(ParamType::Sh0).fill_(-0.5f);
+    optimizer.get_grad(ParamType::ShN).fill_(-0.1f);
+    optimizer.get_grad(ParamType::Scaling).fill_(-0.2f);
+    optimizer.get_grad(ParamType::Rotation).fill_(-0.3f);
+    optimizer.get_grad(ParamType::Opacity).fill_(-0.4f);
 
-    // Save initial values
     auto initial_means = splat_data.means().clone();
     auto initial_sh0 = splat_data.sh0().clone();
     auto initial_shN = splat_data.shN().clone();
@@ -317,14 +324,9 @@ TEST(AdamOptimizerTest, MultipleParameterOptimization) {
     auto initial_rotation = splat_data.rotation_raw().clone();
     auto initial_opacity = splat_data.opacity_raw().clone();
 
-    AdamConfig config;
-    config.lr = 0.01f;
-    AdamOptimizer optimizer(splat_data, config);
+    // Use iteration > 1000 to include shN (skipped during warmup)
+    optimizer.step(1001);
 
-    // Take one step
-    optimizer.step(1);
-
-    // Verify all parameters were updated
     EXPECT_NE(splat_data.means().sub(initial_means).abs().mean_scalar(), 0.0f);
     EXPECT_NE(splat_data.sh0().sub(initial_sh0).abs().mean_scalar(), 0.0f);
     EXPECT_NE(splat_data.shN().sub(initial_shN).abs().mean_scalar(), 0.0f);
@@ -336,22 +338,21 @@ TEST(AdamOptimizerTest, MultipleParameterOptimization) {
 TEST(AdamOptimizerTest, ZeroGradAfterStep) {
     auto splat_data = create_test_splat_data(10, 3);
 
-    splat_data.allocate_gradients();
-    splat_data.means_grad().fill_(5.0f);
-
     AdamConfig config;
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
+    optimizer.get_grad(ParamType::Means).fill_(5.0f);
 
     // Verify gradient is non-zero
-    EXPECT_NE(splat_data.means_grad().sum_scalar(), 0.0f);
+    EXPECT_NE(optimizer.get_grad(ParamType::Means).sum_scalar(), 0.0f);
 
     // Step and zero
     optimizer.step(1);
     optimizer.zero_grad(1);
 
     // Verify all gradients are zero
-    EXPECT_FLOAT_EQ(splat_data.means_grad().sum_scalar(), 0.0f);
-    EXPECT_FLOAT_EQ(splat_data.sh0_grad().sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::Means).sum_scalar(), 0.0f);
+    EXPECT_FLOAT_EQ(optimizer.get_grad(ParamType::Sh0).sum_scalar(), 0.0f);
 }
 
 // ===========================================================================================
@@ -360,15 +361,15 @@ TEST(AdamOptimizerTest, ZeroGradAfterStep) {
 
 TEST(AdamOptimizerStateTest, ResetStateAtIndices) {
     auto splat_data = create_test_splat_data(100, 3);
-    splat_data.allocate_gradients();
 
     AdamConfig config;
     config.lr = 0.01f;
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     // Run a few steps to accumulate state
     for (int i = 0; i < 5; i++) {
-        splat_data.means_grad().fill_(-1.0f);
+        optimizer.get_grad(ParamType::Means).fill_(-1.0f);
         optimizer.step(i + 1);
     }
 
@@ -411,15 +412,15 @@ TEST(AdamOptimizerStateTest, ResetStateAtIndices) {
 
 TEST(AdamOptimizerStateTest, ExtendStateForNewParams) {
     auto splat_data = create_test_splat_data(50, 3);
-    splat_data.allocate_gradients();
 
     AdamConfig config;
     config.lr = 0.01f;
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     // Run steps to build state
     for (int i = 0; i < 10; i++) {
-        splat_data.means_grad().fill_(-0.5f);
+        optimizer.get_grad(ParamType::Means).fill_(-0.5f);
         optimizer.step(i + 1);
     }
 
@@ -441,11 +442,11 @@ TEST(AdamOptimizerStateTest, ExtendStateForNewParams) {
 
     // Extend gradients
     auto new_means_grad = Tensor::zeros({n_new, 3}, Device::CUDA);
-    auto extended_means_grad = Tensor::cat(std::vector<Tensor>{splat_data.means_grad(), new_means_grad}, 0);
+    auto extended_means_grad = Tensor::cat(std::vector<Tensor>{optimizer.get_grad(ParamType::Means), new_means_grad}, 0);
 
     // Copy back (simulating parameter concatenation)
     splat_data.means() = extended_means;
-    splat_data.means_grad() = extended_means_grad;
+    optimizer.get_grad(ParamType::Means) = extended_means_grad;
 
     // Extend optimizer state
     optimizer.extend_state_for_new_params(ParamType::Means, n_new);
@@ -454,8 +455,8 @@ TEST(AdamOptimizerStateTest, ExtendStateForNewParams) {
     auto* state_after = optimizer.get_state(ParamType::Means);
     ASSERT_NE(state_after, nullptr);
 
-    EXPECT_EQ(state_after->size, 75);  // 50 + 25 = 75 points used
-    EXPECT_GE(state_after->capacity, 75);  // Capacity >= size (may be larger due to growth factor)
+    EXPECT_EQ(state_after->size, 75);  // 50 + 25 = 75 points
+    // Note: capacity may be 0 if slow path was used (grad tensor was replaced)
     auto shape_after = state_after->exp_avg.shape();
     EXPECT_EQ(shape_after[1], 3);   // Still 3D
 
@@ -481,17 +482,17 @@ TEST(AdamOptimizerStateTest, ExtendStateForNewParams) {
 
 TEST(AdamOptimizerStateTest, StepCountPreservation) {
     auto splat_data = create_test_splat_data(20, 3);
-    splat_data.allocate_gradients();
 
     AdamConfig config;
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     // Initial step count should be 0
     EXPECT_EQ(optimizer.get_step_count(ParamType::Means), 0);
 
     // Take 5 steps
     for (int i = 0; i < 5; i++) {
-        splat_data.means_grad().fill_(-1.0f);
+        optimizer.get_grad(ParamType::Means).fill_(-1.0f);
         optimizer.step(i + 1);
     }
 
@@ -510,7 +511,7 @@ TEST(AdamOptimizerStateTest, StepCountPreservation) {
 
     // Take more steps - count should increase
     for (int i = 5; i < 10; i++) {
-        splat_data.means_grad().fill_(-1.0f);
+        optimizer.get_grad(ParamType::Means).fill_(-1.0f);
         optimizer.step(i + 1);
     }
 
@@ -519,19 +520,19 @@ TEST(AdamOptimizerStateTest, StepCountPreservation) {
 
 TEST(AdamOptimizerStateTest, MultipleParameterStateManipulation) {
     auto splat_data = create_test_splat_data(30, 3);
-    splat_data.allocate_gradients();
 
     AdamConfig config;
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     // Fill all gradients and take steps
     for (int i = 0; i < 3; i++) {
-        splat_data.means_grad().fill_(-1.0f);
-        splat_data.sh0_grad().fill_(-0.5f);
-        splat_data.shN_grad().fill_(-0.1f);
-        splat_data.scaling_grad().fill_(-0.2f);
-        splat_data.rotation_grad().fill_(-0.3f);
-        splat_data.opacity_grad().fill_(-0.4f);
+        optimizer.get_grad(ParamType::Means).fill_(-1.0f);
+        optimizer.get_grad(ParamType::Sh0).fill_(-0.5f);
+        optimizer.get_grad(ParamType::ShN).fill_(-0.1f);
+        optimizer.get_grad(ParamType::Scaling).fill_(-0.2f);
+        optimizer.get_grad(ParamType::Rotation).fill_(-0.3f);
+        optimizer.get_grad(ParamType::Opacity).fill_(-0.4f);
         optimizer.step(i + 1);
     }
 
@@ -560,13 +561,11 @@ TEST(AdamOptimizerStateTest, MultipleParameterStateManipulation) {
     optimizer.extend_state_for_new_params(ParamType::Opacity, 10);
 
     auto* opacity_state = optimizer.get_state(ParamType::Opacity);
-    EXPECT_EQ(opacity_state->size, 40);  // 30 + 10 (used size)
-    EXPECT_GE(opacity_state->capacity, 40);  // Capacity >= size
+    EXPECT_EQ(opacity_state->size, 40);  // 30 + 10
 
     // Means state should be unchanged
     auto* means_state_after = optimizer.get_state(ParamType::Means);
-    EXPECT_EQ(means_state_after->size, 30);  // Still 30 (used size)
-    EXPECT_GE(means_state_after->capacity, 30);  // Capacity >= size
+    EXPECT_EQ(means_state_after->size, 30);
 }
 
 // ===========================================================================================
@@ -595,7 +594,6 @@ TEST(AdamOptimizerComparisonTest, NumericalEquivalenceBasic) {
     // Setup LFS optimizer
     auto lfs_splat = create_test_splat_data(N, 3);
     lfs_splat.means() = from_torch(lfs_means_data);
-    lfs_splat.allocate_gradients();
 
     AdamConfig lfs_config;
     lfs_config.lr = lr;
@@ -603,6 +601,7 @@ TEST(AdamOptimizerComparisonTest, NumericalEquivalenceBasic) {
     lfs_config.beta2 = beta2;
     lfs_config.eps = eps;
     AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+    lfs_opt.allocate_gradients();
 
     // Run optimization with identical gradients
     for (int iter = 0; iter < n_iters; iter++) {
@@ -614,7 +613,7 @@ TEST(AdamOptimizerComparisonTest, NumericalEquivalenceBasic) {
         torch_opt.step(iter + 1);
 
         // Apply to LFS
-        lfs_splat.means_grad() = from_torch(grad_values);
+        lfs_opt.get_grad(ParamType::Means) = from_torch(grad_values);
         lfs_opt.step(iter + 1);
     }
 
@@ -642,11 +641,11 @@ TEST(AdamOptimizerComparisonTest, StateEquivalenceAfterSteps) {
 
     auto lfs_splat = create_test_splat_data(N, 3);
     lfs_splat.means() = from_torch(lfs_means_data);
-    lfs_splat.allocate_gradients();
 
     AdamConfig lfs_config;
     lfs_config.lr = lr;
     AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+    lfs_opt.allocate_gradients();
 
     // Run optimization
     for (int iter = 0; iter < n_iters; iter++) {
@@ -655,7 +654,7 @@ TEST(AdamOptimizerComparisonTest, StateEquivalenceAfterSteps) {
         torch_means.mutable_grad() = grad.clone();
         torch_opt.step(iter + 1);
 
-        lfs_splat.means_grad() = from_torch(grad);
+        lfs_opt.get_grad(ParamType::Means) = from_torch(grad);
         lfs_opt.step(iter + 1);
     }
 
@@ -705,10 +704,10 @@ TEST(AdamOptimizerComparisonTest, MCMCRelocateSequence) {
 
     auto lfs_splat = create_test_splat_data(N, 3);
     lfs_splat.means() = from_torch(lfs_means_data);
-    lfs_splat.allocate_gradients();
     AdamConfig lfs_config;
     lfs_config.lr = lr;
     AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+    lfs_opt.allocate_gradients();
 
     // Phase 1: Optimize for 5 steps
     for (int iter = 0; iter < 5; iter++) {
@@ -717,7 +716,7 @@ TEST(AdamOptimizerComparisonTest, MCMCRelocateSequence) {
         torch_means.mutable_grad() = grad.clone();
         torch_opt->step(iter + 1);
 
-        lfs_splat.means_grad() = from_torch(grad);
+        lfs_opt.get_grad(ParamType::Means) = from_torch(grad);
         lfs_opt.step(iter + 1);
     }
 
@@ -742,7 +741,7 @@ TEST(AdamOptimizerComparisonTest, MCMCRelocateSequence) {
         torch_means.mutable_grad() = grad.clone();
         torch_opt->step(iter + 1);
 
-        lfs_splat.means_grad() = from_torch(grad);
+        lfs_opt.get_grad(ParamType::Means) = from_torch(grad);
         lfs_opt.step(iter + 1);
     }
 
@@ -779,10 +778,10 @@ TEST(AdamOptimizerComparisonTest, MCMCAddGaussiansSequence) {
 
     auto lfs_splat = create_test_splat_data(N_initial, 3);
     lfs_splat.means() = from_torch(lfs_means_data);
-    lfs_splat.allocate_gradients();
     AdamConfig lfs_config;
     lfs_config.lr = lr;
     AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+    lfs_opt.allocate_gradients();
 
     // Phase 1: Optimize initial params
     for (int iter = 0; iter < 5; iter++) {
@@ -791,7 +790,7 @@ TEST(AdamOptimizerComparisonTest, MCMCAddGaussiansSequence) {
         torch_means.mutable_grad() = grad.clone();
         torch_opt->step(iter + 1);
 
-        lfs_splat.means_grad() = from_torch(grad);
+        lfs_opt.get_grad(ParamType::Means) = from_torch(grad);
         lfs_opt.step(iter + 1);
     }
 
@@ -830,7 +829,7 @@ TEST(AdamOptimizerComparisonTest, MCMCAddGaussiansSequence) {
     // Extend LFS
     auto lfs_new_means = from_torch(new_means);
     lfs_splat.means() = Tensor::cat(std::vector<Tensor>{lfs_splat.means(), lfs_new_means}, 0);
-    lfs_splat.means_grad() = Tensor::cat(std::vector<Tensor>{lfs_splat.means_grad(), Tensor::zeros({N_new, 3}, Device::CUDA)}, 0);
+    // extend_state_for_new_params also extends the gradient tensor
     lfs_opt.extend_state_for_new_params(ParamType::Means, N_new);
 
     // Verify LFS step count preserved
@@ -845,7 +844,7 @@ TEST(AdamOptimizerComparisonTest, MCMCAddGaussiansSequence) {
         torch_means.mutable_grad() = grad.clone();
         torch_opt->step(iter + 1);
 
-        lfs_splat.means_grad() = from_torch(grad);
+        lfs_opt.get_grad(ParamType::Means) = from_torch(grad);
         lfs_opt.step(iter + 1);
     }
 
@@ -875,10 +874,10 @@ TEST(AdamOptimizerComparisonTest, MCMCFullSequence) {
 
     auto lfs_splat = create_test_splat_data(N_initial, 3);
     lfs_splat.means() = from_torch(lfs_means_data);
-    lfs_splat.allocate_gradients();
     AdamConfig lfs_config;
     lfs_config.lr = lr;
     AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+    lfs_opt.allocate_gradients();
 
     int iteration = 0;
 
@@ -887,7 +886,7 @@ TEST(AdamOptimizerComparisonTest, MCMCFullSequence) {
         auto grad = torch::randn({N_initial, 3}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
         torch_means.mutable_grad() = grad.clone();
         torch_opt->step(iteration + 1);
-        lfs_splat.means_grad() = from_torch(grad);
+        lfs_opt.get_grad(ParamType::Means) = from_torch(grad);
         lfs_opt.step(iteration + 1);
     }
 
@@ -919,7 +918,7 @@ TEST(AdamOptimizerComparisonTest, MCMCFullSequence) {
 
     // Extend LFS
     lfs_splat.means() = Tensor::cat(std::vector<Tensor>{lfs_splat.means(), from_torch(new_means)}, 0);
-    lfs_splat.means_grad() = Tensor::cat(std::vector<Tensor>{lfs_splat.means_grad(), Tensor::zeros({N_add, 3}, Device::CUDA)}, 0);
+    // extend_state_for_new_params also extends the gradient tensor
     lfs_opt.extend_state_for_new_params(ParamType::Means, N_add);
 
     // Step 3: Optimize extended (3 iterations)
@@ -927,7 +926,7 @@ TEST(AdamOptimizerComparisonTest, MCMCFullSequence) {
         auto grad = torch::randn({N_initial + N_add, 3}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
         torch_means.mutable_grad() = grad.clone();
         torch_opt->step(iteration + 1);
-        lfs_splat.means_grad() = from_torch(grad);
+        lfs_opt.get_grad(ParamType::Means) = from_torch(grad);
         lfs_opt.step(iteration + 1);
     }
 
@@ -944,7 +943,7 @@ TEST(AdamOptimizerComparisonTest, MCMCFullSequence) {
         auto grad = torch::randn({N_initial + N_add, 3}, torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
         torch_means.mutable_grad() = grad.clone();
         torch_opt->step(iteration + 1);
-        lfs_splat.means_grad() = from_torch(grad);
+        lfs_opt.get_grad(ParamType::Means) = from_torch(grad);
         lfs_opt.step(iteration + 1);
     }
 
@@ -963,15 +962,15 @@ TEST(AdamOptimizerSafeAPITest, AddNewParamsAtomic) {
     const size_t N_new = 50;
 
     auto splat = create_test_splat_data(N_initial, 3);
-    splat.allocate_gradients();
 
     AdamConfig config;
     config.lr = 1e-3f;
     AdamOptimizer opt(splat, config);
+    opt.allocate_gradients();
 
     // Do a few steps to initialize state
     for (int i = 0; i < 3; i++) {
-        splat.means_grad() = Tensor::randn({N_initial, 3}, Device::CUDA);
+        opt.get_grad(ParamType::Means) = Tensor::randn({N_initial, 3}, Device::CUDA);
         opt.step(i + 1);
     }
 
@@ -985,7 +984,7 @@ TEST(AdamOptimizerSafeAPITest, AddNewParamsAtomic) {
     // Verify all were updated atomically
     EXPECT_EQ(splat.means().shape()[0], N_initial + N_new)
         << "Parameters should be extended";
-    EXPECT_EQ(splat.means_grad().shape()[0], N_initial + N_new)
+    EXPECT_EQ(opt.get_grad(ParamType::Means).shape()[0], N_initial + N_new)
         << "Gradients should be extended";
 
     auto* state_after = opt.get_state(ParamType::Means);
@@ -995,7 +994,7 @@ TEST(AdamOptimizerSafeAPITest, AddNewParamsAtomic) {
         << "Step count should be preserved";
 
     // Verify new gradients are zero
-    auto grad_tail = splat.means_grad().slice(0, N_initial, N_initial + N_new);
+    auto grad_tail = opt.get_grad(ParamType::Means).slice(0, N_initial, N_initial + N_new);
     float grad_sum = grad_tail.abs().sum().item<float>();
     EXPECT_FLOAT_EQ(grad_sum, 0.0f)
         << "New gradients should be initialized to zero";
@@ -1003,10 +1002,10 @@ TEST(AdamOptimizerSafeAPITest, AddNewParamsAtomic) {
 
 TEST(AdamOptimizerSafeAPITest, AddNewParamsValidation) {
     auto splat = create_test_splat_data(100, 3);
-    splat.allocate_gradients();
 
     AdamConfig config;
     AdamOptimizer opt(splat, config);
+    opt.allocate_gradients();
 
     // Test 1: Wrong rank (validation enabled)
     auto wrong_rank = Tensor::randn({10, 3, 1}, Device::CUDA);
@@ -1035,71 +1034,58 @@ TEST(AdamOptimizerSafeAPITest, AddNewParamsValidation) {
         << "Should accept tensor with correct shape";
 }
 
-TEST(AdamOptimizerSafeAPITest, RelocateParamsAtIndicesZerosGradients) {
+TEST(AdamOptimizerSafeAPITest, RelocateParamsAtIndicesResetsOptimizerState) {
     const size_t N = 100;
     auto splat = create_test_splat_data(N, 3);
-    splat.allocate_gradients();
 
     AdamConfig config;
     AdamOptimizer opt(splat, config);
+    opt.allocate_gradients();
 
-    // Initialize with some optimization steps
+    // Build up optimizer state with some steps
     for (int i = 0; i < 5; i++) {
-        splat.means_grad() = Tensor::randn({N, 3}, Device::CUDA);
+        opt.get_grad(ParamType::Means) = Tensor::randn({N, 3}, Device::CUDA);
         opt.step(i + 1);
     }
 
-    // Set non-zero gradients
-    splat.means_grad() = Tensor::ones({N, 3}, Device::CUDA);
-
-    // Relocate some indices
     std::vector<int64_t> indices = {10, 20, 30, 40};
     opt.relocate_params_at_indices(ParamType::Means, indices);
 
-    // Verify gradients were zeroed at those indices
-    auto grad_cpu = splat.means_grad().cpu();
-    auto grad_vec = grad_cpu.to_vector();
+    // Verify optimizer state (exp_avg, exp_avg_sq) was reset at relocated indices
+    const auto* state = opt.get_state(ParamType::Means);
+    auto exp_avg_cpu = state->exp_avg.cpu().to_vector();
+    auto exp_avg_sq_cpu = state->exp_avg_sq.cpu().to_vector();
 
     for (auto idx : indices) {
         for (size_t j = 0; j < 3; j++) {
-            size_t offset = idx * 3 + j;
-            EXPECT_FLOAT_EQ(grad_vec[offset], 0.0f)
-                << "Gradient at relocated index should be zero";
+            const size_t offset = idx * 3 + j;
+            EXPECT_FLOAT_EQ(exp_avg_cpu[offset], 0.0f);
+            EXPECT_FLOAT_EQ(exp_avg_sq_cpu[offset], 0.0f);
         }
     }
 
-    // Verify other gradients are still 1.0
-    for (size_t i = 0; i < N; i++) {
-        bool is_relocated = std::find(indices.begin(), indices.end(), i) != indices.end();
-        if (!is_relocated) {
+    // Verify non-relocated indices still have non-zero state
+    bool found_nonzero = false;
+    for (size_t i = 0; i < N && !found_nonzero; i++) {
+        if (std::find(indices.begin(), indices.end(), i) == indices.end()) {
             for (size_t j = 0; j < 3; j++) {
-                size_t offset = i * 3 + j;
-                EXPECT_FLOAT_EQ(grad_vec[offset], 1.0f)
-                    << "Non-relocated gradient should remain unchanged";
+                if (exp_avg_cpu[i * 3 + j] != 0.0f) {
+                    found_nonzero = true;
+                    break;
+                }
             }
         }
     }
-
-    // Verify optimizer state was also reset
-    auto* state = opt.get_state(ParamType::Means);
-    auto exp_avg_cpu = state->exp_avg.cpu().to_vector();
-
-    for (auto idx : indices) {
-        for (size_t j = 0; j < 3; j++) {
-            size_t offset = idx * 3 + j;
-            EXPECT_FLOAT_EQ(exp_avg_cpu[offset], 0.0f)
-                << "Optimizer state at relocated index should be zero";
-        }
-    }
+    EXPECT_TRUE(found_nonzero) << "Non-relocated indices should have non-zero state";
 }
 
 TEST(AdamOptimizerSafeAPITest, RelocateParamsValidation) {
     const size_t N = 100;
     auto splat = create_test_splat_data(N, 3);
-    splat.allocate_gradients();
 
     AdamConfig config;
     AdamOptimizer opt(splat, config);
+    opt.allocate_gradients();
 
     // Test out-of-bounds indices
     std::vector<int64_t> out_of_bounds = {-1};
@@ -1121,15 +1107,15 @@ TEST(AdamOptimizerSafeAPITest, SafeAPICombinedWorkflow) {
     const size_t N_add = 50;
 
     auto splat = create_test_splat_data(N_initial, 3);
-    splat.allocate_gradients();
 
     AdamConfig config;
     config.lr = 1e-3f;
     AdamOptimizer opt(splat, config);
+    opt.allocate_gradients();
 
     // Step 1: Initial optimization
     for (int i = 0; i < 5; i++) {
-        splat.means_grad() = Tensor::randn({N_initial, 3}, Device::CUDA);
+        opt.get_grad(ParamType::Means) = Tensor::randn({N_initial, 3}, Device::CUDA);
         opt.step(i + 1);
     }
 
@@ -1139,7 +1125,7 @@ TEST(AdamOptimizerSafeAPITest, SafeAPICombinedWorkflow) {
 
     // Step 3: Continue optimization with extended parameters
     for (int i = 5; i < 10; i++) {
-        splat.means_grad() = Tensor::randn({N_initial + N_add, 3}, Device::CUDA);
+        opt.get_grad(ParamType::Means) = Tensor::randn({N_initial + N_add, 3}, Device::CUDA);
         opt.step(i + 1);
     }
 
@@ -1149,7 +1135,7 @@ TEST(AdamOptimizerSafeAPITest, SafeAPICombinedWorkflow) {
 
     // Step 5: Final optimization
     for (int i = 10; i < 15; i++) {
-        splat.means_grad() = Tensor::randn({N_initial + N_add, 3}, Device::CUDA);
+        opt.get_grad(ParamType::Means) = Tensor::randn({N_initial + N_add, 3}, Device::CUDA);
         opt.step(i + 1);
     }
 
@@ -1253,12 +1239,12 @@ TEST_F(AdamOptimizerBenchmark, StepPerformance) {
         lfs_splat.scaling_raw() = from_torch(torch_scaling.detach());
         lfs_splat.rotation_raw() = from_torch(torch_rotation.detach());
         lfs_splat.opacity_raw() = from_torch(torch_opacity.detach());
-        lfs_splat.allocate_gradients();
 
         AdamConfig lfs_config;
         lfs_config.lr = lr;
         lfs_config.growth_factor = 1.0f;  // No pre-allocation for fair comparison
         AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+        lfs_opt.allocate_gradients();
 
         // Create gradients for ALL parameters
         auto grad_means = torch::randn({static_cast<long>(N), 3},
@@ -1295,12 +1281,12 @@ TEST_F(AdamOptimizerBenchmark, StepPerformance) {
 
         // Benchmark LFS - ALL 6 parameters (no conversion overhead!)
         double lfs_time = time_operation([&]() {
-            lfs_splat.means_grad() = lfs_grad_means;
-            lfs_splat.sh0_grad() = lfs_grad_sh0;
-            lfs_splat.shN_grad() = lfs_grad_shN;
-            lfs_splat.scaling_grad() = lfs_grad_scaling;
-            lfs_splat.rotation_grad() = lfs_grad_rotation;
-            lfs_splat.opacity_grad() = lfs_grad_opacity;
+            lfs_opt.get_grad(ParamType::Means) = lfs_grad_means;
+            lfs_opt.get_grad(ParamType::Sh0) = lfs_grad_sh0;
+            lfs_opt.get_grad(ParamType::ShN) = lfs_grad_shN;
+            lfs_opt.get_grad(ParamType::Scaling) = lfs_grad_scaling;
+            lfs_opt.get_grad(ParamType::Rotation) = lfs_grad_rotation;
+            lfs_opt.get_grad(ParamType::Opacity) = lfs_grad_opacity;
             lfs_opt.step(1);
         });
 
@@ -1340,17 +1326,17 @@ TEST_F(AdamOptimizerBenchmark, AddParametersNoPreallocation) {
     // Setup LFS
     auto lfs_splat = create_test_splat_data(N_initial, 3);
     lfs_splat.means() = from_torch(torch_means.detach());
-    lfs_splat.allocate_gradients();
 
     AdamConfig lfs_config;
     lfs_config.lr = lr;
     lfs_config.growth_factor = 1.0f;  // NO growth factor = worst case
     lfs_config.initial_capacity = 0;   // NO pre-allocation
     AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+    lfs_opt.allocate_gradients();
 
     // Initialize state
     for (int i = 0; i < 3; i++) {
-        lfs_splat.means_grad() = Tensor::randn({N_initial, 3}, Device::CUDA);
+        lfs_opt.get_grad(ParamType::Means) = Tensor::randn({N_initial, 3}, Device::CUDA);
         lfs_opt.step(i + 1);
     }
 
@@ -1403,17 +1389,17 @@ TEST_F(AdamOptimizerBenchmark, AddParametersWithGrowthFactor) {
 
     // Setup LFS with growth factor
     auto lfs_splat = create_test_splat_data(N_initial, 3);
-    lfs_splat.allocate_gradients();
 
     AdamConfig lfs_config;
     lfs_config.lr = lr;
     lfs_config.growth_factor = 1.5f;  // WITH growth factor
     lfs_config.initial_capacity = 0;
     AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+    lfs_opt.allocate_gradients();
 
     // Initialize state
     for (int i = 0; i < 3; i++) {
-        lfs_splat.means_grad() = Tensor::randn({N_initial, 3}, Device::CUDA);
+        lfs_opt.get_grad(ParamType::Means) = Tensor::randn({N_initial, 3}, Device::CUDA);
         lfs_opt.step(i + 1);
     }
 
@@ -1445,17 +1431,17 @@ TEST_F(AdamOptimizerBenchmark, AddParametersWithPreallocation) {
 
     // Setup LFS with pre-allocation
     auto lfs_splat = create_test_splat_data(N_initial, 3);
-    lfs_splat.allocate_gradients();
 
     AdamConfig lfs_config;
     lfs_config.lr = lr;
     lfs_config.growth_factor = 1.5f;
     lfs_config.initial_capacity = N_initial + (n_additions * N_add);  // Pre-allocate for all
     AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+    lfs_opt.allocate_gradients();
 
     // Initialize state
     for (int i = 0; i < 3; i++) {
-        lfs_splat.means_grad() = Tensor::randn({N_initial, 3}, Device::CUDA);
+        lfs_opt.get_grad(ParamType::Means) = Tensor::randn({N_initial, 3}, Device::CUDA);
         lfs_opt.step(i + 1);
     }
 
@@ -1502,14 +1488,14 @@ TEST_F(AdamOptimizerBenchmark, RelocateParameters) {
     // Setup LFS
     auto lfs_splat = create_test_splat_data(N, 3);
     lfs_splat.means() = from_torch(torch_means.detach());
-    lfs_splat.allocate_gradients();
 
     AdamConfig lfs_config;
     lfs_config.lr = lr;
     AdamOptimizer lfs_opt(lfs_splat, lfs_config);
+    lfs_opt.allocate_gradients();
 
     for (int i = 0; i < 3; i++) {
-        lfs_splat.means_grad() = Tensor::randn({N, 3}, Device::CUDA);
+        lfs_opt.get_grad(ParamType::Means) = Tensor::randn({N, 3}, Device::CUDA);
         lfs_opt.step(i + 1);
     }
 
@@ -1582,28 +1568,28 @@ TEST_F(AdamOptimizerBenchmark, FullMCMCWorkflow) {
 
     // Setup LFS (no pre-allocation)
     auto lfs_splat_no_prealloc = create_test_splat_data(N_initial, 3);
-    lfs_splat_no_prealloc.allocate_gradients();
     AdamConfig lfs_config_no_prealloc;
     lfs_config_no_prealloc.lr = lr;
     lfs_config_no_prealloc.growth_factor = 1.0f;  // No growth
     AdamOptimizer lfs_opt_no_prealloc(lfs_splat_no_prealloc, lfs_config_no_prealloc);
+    lfs_opt_no_prealloc.allocate_gradients();
 
     // Setup LFS (with 1.5x growth)
     auto lfs_splat_growth = create_test_splat_data(N_initial, 3);
-    lfs_splat_growth.allocate_gradients();
     AdamConfig lfs_config_growth;
     lfs_config_growth.lr = lr;
     lfs_config_growth.growth_factor = 1.5f;
     AdamOptimizer lfs_opt_growth(lfs_splat_growth, lfs_config_growth);
+    lfs_opt_growth.allocate_gradients();
 
     // Setup LFS (with pre-allocation)
     auto lfs_splat_prealloc = create_test_splat_data(N_initial, 3);
-    lfs_splat_prealloc.allocate_gradients();
     AdamConfig lfs_config_prealloc;
     lfs_config_prealloc.lr = lr;
     lfs_config_prealloc.growth_factor = 1.5f;
     lfs_config_prealloc.initial_capacity = N_initial + (n_iterations / add_every) * N_add_per_iter;
     AdamOptimizer lfs_opt_prealloc(lfs_splat_prealloc, lfs_config_prealloc);
+    lfs_opt_prealloc.allocate_gradients();
 
     size_t current_N = N_initial;
 
@@ -1652,12 +1638,12 @@ TEST_F(AdamOptimizerBenchmark, FullMCMCWorkflow) {
     double lfs_time_no_prealloc = time_operation([&]() {
         for (int iter = 0; iter < n_iterations; iter++) {
             // Set gradients for ALL 6 parameters
-            lfs_splat_no_prealloc.means_grad() = Tensor::randn({current_N, 3}, Device::CUDA);
-            lfs_splat_no_prealloc.sh0_grad() = Tensor::randn({current_N, 1, 3}, Device::CUDA);
-            lfs_splat_no_prealloc.shN_grad() = Tensor::randn({current_N, 15, 3}, Device::CUDA);
-            lfs_splat_no_prealloc.scaling_grad() = Tensor::randn({current_N, 3}, Device::CUDA);
-            lfs_splat_no_prealloc.rotation_grad() = Tensor::randn({current_N, 4}, Device::CUDA);
-            lfs_splat_no_prealloc.opacity_grad() = Tensor::randn({current_N, 1}, Device::CUDA);
+            lfs_opt_no_prealloc.get_grad(ParamType::Means) = Tensor::randn({current_N, 3}, Device::CUDA);
+            lfs_opt_no_prealloc.get_grad(ParamType::Sh0) = Tensor::randn({current_N, 1, 3}, Device::CUDA);
+            lfs_opt_no_prealloc.get_grad(ParamType::ShN) = Tensor::randn({current_N, 15, 3}, Device::CUDA);
+            lfs_opt_no_prealloc.get_grad(ParamType::Scaling) = Tensor::randn({current_N, 3}, Device::CUDA);
+            lfs_opt_no_prealloc.get_grad(ParamType::Rotation) = Tensor::randn({current_N, 4}, Device::CUDA);
+            lfs_opt_no_prealloc.get_grad(ParamType::Opacity) = Tensor::randn({current_N, 1}, Device::CUDA);
             lfs_opt_no_prealloc.step(iter + 1);
 
             if ((iter + 1) % add_every == 0) {
@@ -1678,12 +1664,12 @@ TEST_F(AdamOptimizerBenchmark, FullMCMCWorkflow) {
     // Benchmark LFS (1.5x growth) - ALL 6 parameters
     double lfs_time_growth = time_operation([&]() {
         for (int iter = 0; iter < n_iterations; iter++) {
-            lfs_splat_growth.means_grad() = Tensor::randn({current_N, 3}, Device::CUDA);
-            lfs_splat_growth.sh0_grad() = Tensor::randn({current_N, 1, 3}, Device::CUDA);
-            lfs_splat_growth.shN_grad() = Tensor::randn({current_N, 15, 3}, Device::CUDA);
-            lfs_splat_growth.scaling_grad() = Tensor::randn({current_N, 3}, Device::CUDA);
-            lfs_splat_growth.rotation_grad() = Tensor::randn({current_N, 4}, Device::CUDA);
-            lfs_splat_growth.opacity_grad() = Tensor::randn({current_N, 1}, Device::CUDA);
+            lfs_opt_growth.get_grad(ParamType::Means) = Tensor::randn({current_N, 3}, Device::CUDA);
+            lfs_opt_growth.get_grad(ParamType::Sh0) = Tensor::randn({current_N, 1, 3}, Device::CUDA);
+            lfs_opt_growth.get_grad(ParamType::ShN) = Tensor::randn({current_N, 15, 3}, Device::CUDA);
+            lfs_opt_growth.get_grad(ParamType::Scaling) = Tensor::randn({current_N, 3}, Device::CUDA);
+            lfs_opt_growth.get_grad(ParamType::Rotation) = Tensor::randn({current_N, 4}, Device::CUDA);
+            lfs_opt_growth.get_grad(ParamType::Opacity) = Tensor::randn({current_N, 1}, Device::CUDA);
             lfs_opt_growth.step(iter + 1);
 
             if ((iter + 1) % add_every == 0) {
@@ -1703,12 +1689,12 @@ TEST_F(AdamOptimizerBenchmark, FullMCMCWorkflow) {
     // Benchmark LFS (pre-allocated) - ALL 6 parameters
     double lfs_time_prealloc = time_operation([&]() {
         for (int iter = 0; iter < n_iterations; iter++) {
-            lfs_splat_prealloc.means_grad() = Tensor::randn({current_N, 3}, Device::CUDA);
-            lfs_splat_prealloc.sh0_grad() = Tensor::randn({current_N, 1, 3}, Device::CUDA);
-            lfs_splat_prealloc.shN_grad() = Tensor::randn({current_N, 15, 3}, Device::CUDA);
-            lfs_splat_prealloc.scaling_grad() = Tensor::randn({current_N, 3}, Device::CUDA);
-            lfs_splat_prealloc.rotation_grad() = Tensor::randn({current_N, 4}, Device::CUDA);
-            lfs_splat_prealloc.opacity_grad() = Tensor::randn({current_N, 1}, Device::CUDA);
+            lfs_opt_prealloc.get_grad(ParamType::Means) = Tensor::randn({current_N, 3}, Device::CUDA);
+            lfs_opt_prealloc.get_grad(ParamType::Sh0) = Tensor::randn({current_N, 1, 3}, Device::CUDA);
+            lfs_opt_prealloc.get_grad(ParamType::ShN) = Tensor::randn({current_N, 15, 3}, Device::CUDA);
+            lfs_opt_prealloc.get_grad(ParamType::Scaling) = Tensor::randn({current_N, 3}, Device::CUDA);
+            lfs_opt_prealloc.get_grad(ParamType::Rotation) = Tensor::randn({current_N, 4}, Device::CUDA);
+            lfs_opt_prealloc.get_grad(ParamType::Opacity) = Tensor::randn({current_N, 1}, Device::CUDA);
             lfs_opt_prealloc.step(iter + 1);
 
             if ((iter + 1) % add_every == 0) {

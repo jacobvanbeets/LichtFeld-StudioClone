@@ -33,7 +33,7 @@ namespace lfs::core {
      * - Rotation quaternions
      * - Opacity values
      *
-     * Also manages gradients for optimization.
+     * Note: Gradients are managed by AdamOptimizer, not SplatData.
      */
     class SplatData {
     public:
@@ -91,20 +91,6 @@ namespace lfs::core {
         inline Tensor& shN_raw() { return _shN; }
         inline const Tensor& shN_raw() const { return _shN; }
 
-        // ========== Gradient accessors ==========
-        inline Tensor& means_grad() { return _means_grad; }
-        inline const Tensor& means_grad() const { return _means_grad; }
-        inline Tensor& sh0_grad() { return _sh0_grad; }
-        inline const Tensor& sh0_grad() const { return _sh0_grad; }
-        inline Tensor& shN_grad() { return _shN_grad; }
-        inline const Tensor& shN_grad() const { return _shN_grad; }
-        inline Tensor& scaling_grad() { return _scaling_grad; }
-        inline const Tensor& scaling_grad() const { return _scaling_grad; }
-        inline Tensor& rotation_grad() { return _rotation_grad; }
-        inline const Tensor& rotation_grad() const { return _rotation_grad; }
-        inline Tensor& opacity_grad() { return _opacity_grad; }
-        inline const Tensor& opacity_grad() const { return _opacity_grad; }
-
         // ========== Soft deletion (for undo/redo crop support) ==========
         Tensor& deleted() { return _deleted; }
         [[nodiscard]] const Tensor& deleted() const { return _deleted; }
@@ -120,11 +106,9 @@ namespace lfs::core {
         // Returns number of gaussians removed
         size_t apply_deleted();
 
-        // ========== Gradient management ==========
-        void allocate_gradients();
+        // ========== Capacity management ==========
+        // Reserve capacity for parameter tensors (for MCMC densification)
         void reserve_capacity(size_t capacity);
-        void zero_gradients();
-        bool has_gradients() const;
 
         // ========== SH degree management ==========
         void increment_sh_degree();
@@ -150,14 +134,6 @@ namespace lfs::core {
         Tensor _scaling;
         Tensor _rotation;
         Tensor _opacity;
-
-        // Gradients (for LibTorch-free optimization)
-        Tensor _means_grad;
-        Tensor _sh0_grad;
-        Tensor _shN_grad;
-        Tensor _scaling_grad;
-        Tensor _rotation_grad;
-        Tensor _opacity_grad;
 
         // Soft deletion mask: bool tensor [N], true = hidden from rendering
         Tensor _deleted;

@@ -47,7 +47,7 @@ TEST(DefaultStrategyTest, Initialization) {
     strategy.initialize(opt_params);
 
     EXPECT_EQ(strategy.get_model().size(), 50);
-    EXPECT_TRUE(strategy.get_model().has_gradients());
+    EXPECT_TRUE(strategy.get_optimizer().get_grad(lfs::training::ParamType::Means).is_valid());
 }
 
 TEST(DefaultStrategyTest, IsRefining) {
@@ -241,8 +241,8 @@ TEST(DefaultStrategyTest, FullTrainingLoop_ShortRun) {
 
     for (int iter = 0; iter < 50; ++iter) {
         // Simulate gradients
-        if (strategy.get_model().has_gradients()) {
-            auto& grad = strategy.get_model().means_grad();
+        auto& grad = strategy.get_optimizer().get_grad(lfs::training::ParamType::Means);
+        if (grad.is_valid()) {
             grad = Tensor::rand_like(grad) * 0.001f;
         }
 
@@ -338,8 +338,8 @@ TEST(DefaultStrategyStressTest, LongTrainingLoop_200Iterations) {
     RenderOutput render_output;
 
     for (int iter = 0; iter < 200; ++iter) {
-        if (strategy.get_model().has_gradients()) {
-            auto& grad = strategy.get_model().means_grad();
+        auto& grad = strategy.get_optimizer().get_grad(lfs::training::ParamType::Means);
+        if (grad.is_valid()) {
             grad = Tensor::rand_like(grad) * 0.001f;
         }
 
@@ -389,8 +389,9 @@ TEST(DefaultStrategyStressTest, ZeroGradients_NoCorruption) {
 
     for (int iter = 0; iter < 100; ++iter) {
         // Always zero gradients
-        if (strategy.get_model().has_gradients()) {
-            strategy.get_model().means_grad() = Tensor::zeros_like(strategy.get_model().means_grad());
+        auto& grad = strategy.get_optimizer().get_grad(lfs::training::ParamType::Means);
+        if (grad.is_valid()) {
+            grad = Tensor::zeros_like(grad);
         }
 
         strategy.post_backward(iter, render_output);

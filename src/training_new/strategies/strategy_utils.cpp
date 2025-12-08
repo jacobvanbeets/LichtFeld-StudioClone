@@ -9,16 +9,13 @@ namespace lfs::training {
 
     void initialize_gaussians(lfs::core::SplatData& splat_data, int max_cap) {
         // Tensors are already on GPU in the new framework (created with Device::CUDA by default)
-        // Just need to ensure gradients are allocated
-        if (!splat_data.has_gradients()) {
-            splat_data.allocate_gradients();
-        }
+        // Gradients are now owned by AdamOptimizer, not SplatData
 
         // Pre-allocate tensor capacity to avoid reallocations during MCMC operations
         // This eliminates memory fragmentation from varying tensor sizes
         if (max_cap > 0) {
             const size_t capacity = static_cast<size_t>(max_cap);
-            LOG_INFO("Pre-allocating tensor capacity for {} Gaussians (parameters + gradients)", capacity);
+            LOG_INFO("Pre-allocating tensor capacity for {} Gaussians (parameters)", capacity);
 
             // Reserve capacity for all parameters
             splat_data.means().reserve(capacity);
@@ -27,14 +24,6 @@ namespace lfs::training {
             splat_data.scaling_raw().reserve(capacity);
             splat_data.rotation_raw().reserve(capacity);
             splat_data.opacity_raw().reserve(capacity);
-
-            // Reserve capacity for all gradients
-            splat_data.means_grad().reserve(capacity);
-            splat_data.sh0_grad().reserve(capacity);
-            splat_data.shN_grad().reserve(capacity);
-            splat_data.scaling_grad().reserve(capacity);
-            splat_data.rotation_grad().reserve(capacity);
-            splat_data.opacity_grad().reserve(capacity);
         }
     }
 
@@ -117,6 +106,7 @@ namespace lfs::training {
         };
 
         // Get references to all parameters
+        // (Gradients are now owned by AdamOptimizer, not SplatData)
         std::array<lfs::core::Tensor*, 6> params = {
             &splat_data.means(),
             &splat_data.sh0(),
@@ -124,14 +114,6 @@ namespace lfs::training {
             &splat_data.scaling_raw(),
             &splat_data.rotation_raw(),
             &splat_data.opacity_raw()};
-
-        std::array<lfs::core::Tensor*, 6> grads = {
-            &splat_data.means_grad(),
-            &splat_data.sh0_grad(),
-            &splat_data.shN_grad(),
-            &splat_data.scaling_grad(),
-            &splat_data.rotation_grad(),
-            &splat_data.opacity_grad()};
 
         std::array<lfs::core::Tensor, 6> new_params;
 
@@ -167,45 +149,21 @@ namespace lfs::training {
             }
         }
 
-        // Second pass: Update parameters and gradients in SplatData
+        // Second pass: Update parameters in SplatData
+        // (Gradient updates are handled by the optimizer_fn callback which updates optimizer state)
         for (auto i : param_idxs) {
             if (i == 0) {
                 splat_data.means() = new_params[i];
-                // Update gradient tensor to match new size
-                if (splat_data.has_gradients()) {
-                    splat_data.means_grad() = lfs::core::Tensor::zeros(
-                        new_params[i].shape(), new_params[i].device(), new_params[i].dtype());
-                }
             } else if (i == 1) {
                 splat_data.sh0() = new_params[i];
-                if (splat_data.has_gradients()) {
-                    splat_data.sh0_grad() = lfs::core::Tensor::zeros(
-                        new_params[i].shape(), new_params[i].device(), new_params[i].dtype());
-                }
             } else if (i == 2) {
                 splat_data.shN() = new_params[i];
-                if (splat_data.has_gradients()) {
-                    splat_data.shN_grad() = lfs::core::Tensor::zeros(
-                        new_params[i].shape(), new_params[i].device(), new_params[i].dtype());
-                }
             } else if (i == 3) {
                 splat_data.scaling_raw() = new_params[i];
-                if (splat_data.has_gradients()) {
-                    splat_data.scaling_grad() = lfs::core::Tensor::zeros(
-                        new_params[i].shape(), new_params[i].device(), new_params[i].dtype());
-                }
             } else if (i == 4) {
                 splat_data.rotation_raw() = new_params[i];
-                if (splat_data.has_gradients()) {
-                    splat_data.rotation_grad() = lfs::core::Tensor::zeros(
-                        new_params[i].shape(), new_params[i].device(), new_params[i].dtype());
-                }
             } else if (i == 5) {
                 splat_data.opacity_raw() = new_params[i];
-                if (splat_data.has_gradients()) {
-                    splat_data.opacity_grad() = lfs::core::Tensor::zeros(
-                        new_params[i].shape(), new_params[i].device(), new_params[i].dtype());
-                }
             }
         }
     }

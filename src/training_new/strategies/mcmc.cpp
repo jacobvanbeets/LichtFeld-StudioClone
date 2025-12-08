@@ -622,20 +622,6 @@ namespace lfs::training {
                 replace_with_direct(_splat_data->opacity_raw());
                 LOG_DEBUG("    opacity: replaced pool allocation with direct cudaMalloc (capacity={})", capacity);
 
-                // Create gradients with direct cudaMalloc
-                LOG_DEBUG("  Allocating gradients with direct cudaMalloc:");
-
-                if (!_splat_data->has_gradients()) {
-                    _splat_data->means_grad() = Tensor::zeros_direct(_splat_data->means().shape(), capacity);
-                    _splat_data->sh0_grad() = Tensor::zeros_direct(_splat_data->sh0().shape(), capacity);
-                    _splat_data->shN_grad() = Tensor::zeros_direct(_splat_data->shN().shape(), capacity);
-                    _splat_data->scaling_grad() = Tensor::zeros_direct(_splat_data->scaling_raw().shape(), capacity);
-                    _splat_data->rotation_grad() = Tensor::zeros_direct(_splat_data->rotation_raw().shape(), capacity);
-                    _splat_data->opacity_grad() = Tensor::zeros_direct(_splat_data->opacity_raw().shape(), capacity);
-
-                    LOG_DEBUG("  Gradients allocated with direct cudaMalloc");
-                }
-
                 // Pre-allocate noise buffer with full capacity [max_cap, 3]
                 _noise_buffer = Tensor::zeros_direct(TensorShape({capacity, 3}), capacity);
                 LOG_DEBUG("  Noise buffer allocated with direct cudaMalloc: [{}, 3]", capacity);
@@ -661,10 +647,8 @@ namespace lfs::training {
         }
         _binoms = Tensor::from_vector(binoms_data, TensorShape({static_cast<size_t>(n_max), static_cast<size_t>(n_max)}), Device::CUDA);
 
-        // Initialize optimizer using strategy_utils helper
         _optimizer = create_optimizer(*_splat_data, *_params);
-
-        // Initialize scheduler
+        _optimizer->allocate_gradients(_params->max_cap > 0 ? static_cast<size_t>(_params->max_cap) : 0);
         _scheduler = create_scheduler(*_params, *_optimizer);
 
         LOG_INFO("MCMC strategy initialized with {} Gaussians", _splat_data->size());

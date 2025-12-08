@@ -100,12 +100,13 @@ float mean_diff(const lfs::core::Tensor& lfs_tensor, const torch::Tensor& torch_
 void warm_up_optimizers(lfs::training::DefaultStrategy& lfs_default, gs::training::DefaultStrategy& gs_default, int num_steps = 5) {
     for (int i = 0; i < num_steps; i++) {
         // Set fake gradients (same for both)
-        lfs_default.get_model().means_grad().fill_(0.001f);
-        lfs_default.get_model().sh0_grad().fill_(0.001f);
-        lfs_default.get_model().shN_grad().fill_(0.0005f);
-        lfs_default.get_model().scaling_grad().fill_(0.001f);
-        lfs_default.get_model().rotation_grad().fill_(0.001f);
-        lfs_default.get_model().opacity_grad().fill_(0.001f);
+        auto& lfs_optimizer = lfs_default.get_optimizer();
+        lfs_optimizer.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        lfs_optimizer.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        lfs_optimizer.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        lfs_optimizer.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        lfs_optimizer.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        lfs_optimizer.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         // For reference impl, allocate gradients using mutable_grad()
         auto& gs_model = gs_default.get_model();
@@ -213,7 +214,6 @@ gs::SplatData create_gs_splat_data(const lfs::core::SplatData& lfs_splat) {
 TEST(DefaultStrategyTest, Initialization) {
     // Test that default strategy initializes correctly
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::DefaultStrategy lfs_default(std::move(lfs_splat));
 
@@ -228,7 +228,6 @@ TEST(DefaultStrategyTest, Initialization) {
 
 TEST(DefaultStrategyTest, IsRefining) {
     auto lfs_splat = create_lfs_splat_data(100, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::DefaultStrategy lfs_default(std::move(lfs_splat));
 
@@ -258,7 +257,6 @@ TEST(DefaultStrategyTest, DuplicateGaussians_WithOptimizerState) {
     // Test duplicate operation with warm optimizer state
     std::cout << "Creating splat data..." << std::endl;
     auto lfs_splat = create_lfs_splat_data(500, 3);
-    lfs_splat.allocate_gradients();
 
     auto gs_splat = create_gs_splat_data(lfs_splat);
 
@@ -280,7 +278,7 @@ TEST(DefaultStrategyTest, DuplicateGaussians_WithOptimizerState) {
     auto& lfs_model = lfs_default.get_model();
     auto& gs_model = gs_default.get_model();
 
-    lfs_model.means_grad().fill_(0.01f);  // High gradients
+    lfs_default.get_optimizer().get_grad(lfs::training::ParamType::Means).fill_(0.01f);  // High gradients
     gs_model.means().mutable_grad().fill_(0.01f);
 
     // Trigger densification via post_backward
@@ -322,7 +320,6 @@ TEST(DefaultStrategyTest, SplitGaussians_WithOptimizerState) {
     // Test split operation with warm optimizer state
     std::cout << "Creating splat data..." << std::endl;
     auto lfs_splat = create_lfs_splat_data(500, 3);
-    lfs_splat.allocate_gradients();
 
     auto gs_splat = create_gs_splat_data(lfs_splat);
 
@@ -344,7 +341,7 @@ TEST(DefaultStrategyTest, SplitGaussians_WithOptimizerState) {
     auto& lfs_model = lfs_default.get_model();
     auto& gs_model = gs_default.get_model();
 
-    lfs_model.means_grad().fill_(0.01f);  // High gradients
+    lfs_default.get_optimizer().get_grad(lfs::training::ParamType::Means).fill_(0.01f);  // High gradients
     lfs_model.scaling_raw().fill_(10.0f);  // Large scales
     gs_model.means().mutable_grad().fill_(0.01f);
     gs_model.scaling_raw().fill_(10.0f);
@@ -387,7 +384,6 @@ TEST(DefaultStrategyStressTest, FullTrainingLoop_100Iterations) {
     // Simulate 100 iterations of training with densification
     std::cout << "Creating splat data for stress test..." << std::endl;
     auto lfs_splat = create_lfs_splat_data(200, 3);
-    lfs_splat.allocate_gradients();
 
     lfs::training::DefaultStrategy lfs_default(std::move(lfs_splat));
 
@@ -411,12 +407,13 @@ TEST(DefaultStrategyStressTest, FullTrainingLoop_100Iterations) {
     std::cout << "Running 100 iteration training loop..." << std::endl;
     for (int iter = 0; iter < 100; iter++) {
         // Simulate gradients
-        model.means_grad().fill_(0.001f);
-        model.sh0_grad().fill_(0.001f);
-        model.shN_grad().fill_(0.0005f);
-        model.scaling_grad().fill_(0.001f);
-        model.rotation_grad().fill_(0.001f);
-        model.opacity_grad().fill_(0.001f);
+        auto& opt = lfs_default.get_optimizer();
+        opt.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        opt.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        opt.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        opt.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        opt.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        opt.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         // Step optimizer
         lfs_default.step(iter);

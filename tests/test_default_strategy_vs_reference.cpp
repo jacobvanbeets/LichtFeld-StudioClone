@@ -221,7 +221,7 @@ TEST(DefaultStrategyVsReference, TrainingStepWithGradients) {
     auto lfs_grad = from_torch(torch_grad);
 
     // Set gradients
-    lfs_strategy.get_model().means_grad() = lfs_grad;
+    lfs_strategy.get_optimizer().get_grad(lfs::training::ParamType::Means) = lfs_grad;
     gs_strategy.get_model().means().grad() = torch_grad;
 
     // Take one step
@@ -283,7 +283,7 @@ TEST(DefaultStrategyVsReference, FullTrainingLoopWithRefinement) {
             auto torch_grad = torch::randn({current_size, 3}, torch::kCUDA) * 0.001f;
             auto lfs_grad = from_torch(torch_grad);
 
-            lfs_strategy.get_model().means_grad() = lfs_grad;
+            lfs_strategy.get_optimizer().get_grad(lfs::training::ParamType::Means) = lfs_grad;
             gs_strategy.get_model().means().grad() = torch_grad;
 
             // Update densification info with identical values

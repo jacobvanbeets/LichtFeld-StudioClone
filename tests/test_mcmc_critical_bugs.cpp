@@ -59,14 +59,14 @@ TEST(MCMCCriticalBugs_Adam, ParameterDivergenceAfterAddNewParams) {
     Tensor opacity = Tensor::zeros({100, 1}, Device::CUDA);
 
     SplatData splat_data(0, initial_means, sh0, shN, scaling, rotation, opacity, 1.0f);
-    splat_data.allocate_gradients();
 
-    // Create Adam optimizer
+    // Create Adam optimizer (allocates gradients)
     AdamConfig config;
     config.lr = 1e-3f;
     config.initial_capacity = 1000;  // Pre-allocate
 
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     // Track original values to detect corruption
     auto track_cpu = splat_data.means().cpu();
@@ -76,7 +76,7 @@ TEST(MCMCCriticalBugs_Adam, ParameterDivergenceAfterAddNewParams) {
     // Simulate training loop
     for (int iter = 0; iter < 10; iter++) {
         // Set some fake gradients
-        auto means_grad = splat_data.means_grad();
+        auto& means_grad = optimizer.get_grad(ParamType::Means);
         means_grad.fill_(0.001f);
 
         // Run Adam step
@@ -119,19 +119,19 @@ TEST(MCMCCriticalBugs_Adam, ExponentialDivergenceDetection) {
     Tensor opacity = Tensor::zeros({100, 1}, Device::CUDA);
 
     SplatData splat_data(0, initial_means, sh0, shN, scaling, rotation, opacity, 1.0f);
-    splat_data.allocate_gradients();
 
     AdamConfig config;
     config.lr = 1e-2f;  // Higher LR to amplify any bugs
     config.initial_capacity = 1000;
 
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     std::vector<float> max_abs_values;
 
     for (int iter = 0; iter < 20; iter++) {
         // Small constant gradients
-        auto means_grad = splat_data.means_grad();
+        auto& means_grad = optimizer.get_grad(ParamType::Means);
         means_grad.fill_(0.01f);
 
         optimizer.step(iter);
@@ -179,17 +179,17 @@ TEST(MCMCCriticalBugs_Adam, StateCapacityCorruption) {
     Tensor opacity = Tensor::zeros({50, 1}, Device::CUDA);
 
     SplatData splat_data(0, initial_means, sh0, shN, scaling, rotation, opacity, 1.0f);
-    splat_data.allocate_gradients();
 
     AdamConfig config;
     config.lr = 1e-3f;
     config.initial_capacity = 200;  // Pre-allocate for 200 Gaussians
 
     AdamOptimizer optimizer(splat_data, config);
+    optimizer.allocate_gradients();
 
     // Run several iterations with add_new_params within capacity
     for (int iter = 0; iter < 5; iter++) {
-        auto means_grad = splat_data.means_grad();
+        auto& means_grad = optimizer.get_grad(ParamType::Means);
         means_grad.fill_(0.001f);
 
         optimizer.step(iter);

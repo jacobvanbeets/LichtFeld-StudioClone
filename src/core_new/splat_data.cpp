@@ -216,71 +216,13 @@ namespace lfs::core {
         }
     }
 
-    // ========== GRADIENT MANAGEMENT ==========
-
-    void SplatData::allocate_gradients() {
-        // Use empty() instead of zeros() - will be zeroed before first use
-        if (_means.is_valid()) {
-            _means_grad = Tensor::empty(_means.shape(), _means.device());
-        }
-        if (_sh0.is_valid()) {
-            _sh0_grad = Tensor::empty(_sh0.shape(), _sh0.device());
-        }
-        if (_shN.is_valid()) {
-            _shN_grad = Tensor::empty(_shN.shape(), _shN.device());
-        }
-        if (_scaling.is_valid()) {
-            _scaling_grad = Tensor::empty(_scaling.shape(), _scaling.device());
-        }
-        if (_rotation.is_valid()) {
-            _rotation_grad = Tensor::empty(_rotation.shape(), _rotation.device());
-        }
-        if (_opacity.is_valid()) {
-            _opacity_grad = Tensor::empty(_opacity.shape(), _opacity.device());
-        }
-    }
-
-    void SplatData::reserve_capacity(size_t capacity) {
-        // Reserve capacity for parameters
+    void SplatData::reserve_capacity(const size_t capacity) {
         if (_means.is_valid()) _means.reserve(capacity);
         if (_sh0.is_valid()) _sh0.reserve(capacity);
         if (_shN.is_valid()) _shN.reserve(capacity);
         if (_scaling.is_valid()) _scaling.reserve(capacity);
         if (_rotation.is_valid()) _rotation.reserve(capacity);
         if (_opacity.is_valid()) _opacity.reserve(capacity);
-
-        // Reserve capacity for gradients (must be same as parameters!)
-        if (_means_grad.is_valid()) _means_grad.reserve(capacity);
-        if (_sh0_grad.is_valid()) _sh0_grad.reserve(capacity);
-        if (_shN_grad.is_valid()) _shN_grad.reserve(capacity);
-        if (_scaling_grad.is_valid()) _scaling_grad.reserve(capacity);
-        if (_rotation_grad.is_valid()) _rotation_grad.reserve(capacity);
-        if (_opacity_grad.is_valid()) _opacity_grad.reserve(capacity);
-    }
-
-    void SplatData::zero_gradients() {
-        if (_means_grad.is_valid()) {
-            _means_grad.zero_();
-        }
-        if (_sh0_grad.is_valid()) {
-            _sh0_grad.zero_();
-        }
-        if (_shN_grad.is_valid()) {
-            _shN_grad.zero_();
-        }
-        if (_scaling_grad.is_valid()) {
-            _scaling_grad.zero_();
-        }
-        if (_rotation_grad.is_valid()) {
-            _rotation_grad.zero_();
-        }
-        if (_opacity_grad.is_valid()) {
-            _opacity_grad.zero_();
-        }
-    }
-
-    bool SplatData::has_gradients() const {
-        return _means_grad.is_valid();
     }
 
     // ========== SOFT DELETION ==========
@@ -408,14 +350,6 @@ namespace lfs::core {
             _shN = _shN.index_select(0, keep_mask);
         }
 
-        // Clear gradients (they're now invalid)
-        _means_grad = Tensor();
-        _sh0_grad = Tensor();
-        _shN_grad = Tensor();
-        _scaling_grad = Tensor();
-        _rotation_grad = Tensor();
-        _opacity_grad = Tensor();
-
         // Clear densification info
         _densification_info = Tensor();
 
@@ -513,7 +447,6 @@ namespace lfs::core {
             _densification_info = std::move(densification).cuda();
         }
 
-        allocate_gradients();
         LOG_DEBUG("Deserialized SplatData: {} Gaussians, SH {}/{}", size(), active_sh, max_sh);
     }
 

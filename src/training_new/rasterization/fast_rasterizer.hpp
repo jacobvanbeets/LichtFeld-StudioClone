@@ -6,8 +6,9 @@
 
 #include "core_new/camera.hpp"
 #include "core_new/splat_data.hpp"
+#include "optimizer/adam_optimizer.hpp"
 #include "optimizer/render_output.hpp"
-#include <rasterization_api.h>  // Use angle brackets to search include paths, not relative
+#include <rasterization_api.h>
 #include <expected>
 #include <string>
 
@@ -59,11 +60,12 @@ namespace lfs::training {
         int tile_width = 0,
         int tile_height = 0);
 
-    // Explicit backward pass - computes gradients and accumulates them manually
+    // Explicit backward pass - computes gradients and accumulates into optimizer
     void fast_rasterize_backward(
         const FastRasterizeContext& ctx,
         const lfs::core::Tensor& grad_image,
-        lfs::core::SplatData& gaussian_model);
+        lfs::core::SplatData& gaussian_model,
+        AdamOptimizer& optimizer);
 
     // Convenience wrapper for inference (no backward needed)
     inline RenderOutput fast_rasterize(

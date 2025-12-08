@@ -24,7 +24,7 @@ SplatData create_test_splat_data(size_t n_points = 10) {
     auto opacity = Tensor::randn({n_points, 1}, Device::CUDA);
 
     SplatData splat_data(3, means, sh0, shN, scaling, rotation, opacity, 1.0f);
-    splat_data.allocate_gradients();
+    // Note: gradients are allocated by AdamOptimizer, not SplatData
     return splat_data;
 }
 
@@ -335,7 +335,7 @@ TEST(LfsSchedulerTest, Integration_ExponentialLR_WithOptimization) {
     // Simulate training loop
     for (int iter = 0; iter < 10; iter++) {
         // Simulate gradients
-        splat_data.means_grad() = Tensor::ones(splat_data.means().shape(), Device::CUDA);
+        optimizer.get_grad(lfs::training::ParamType::Means) = Tensor::ones(splat_data.means().shape(), Device::CUDA);
 
         // Optimize
         optimizer.step(iter);
@@ -366,7 +366,7 @@ TEST(LfsSchedulerTest, Integration_WarmupExponentialLR_WithOptimization) {
     // Simulate training loop
     for (int iter = 0; iter < 20; iter++) {
         // Simulate gradients
-        splat_data.means_grad() = Tensor::randn(splat_data.means().shape(), Device::CUDA);
+        optimizer.get_grad(lfs::training::ParamType::Means) = Tensor::randn(splat_data.means().shape(), Device::CUDA);
 
         // Optimize
         optimizer.step(iter);

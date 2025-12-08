@@ -145,7 +145,6 @@ protected:
                                         std::move(shN_new), std::move(scaling_new),
                                         std::move(rotation_new), std::move(opacity_new), 1.0f);
 
-        new_splat.allocate_gradients();
 
         return {std::move(legacy_splat), std::move(new_splat)};
     }
@@ -212,12 +211,13 @@ protected:
             legacy_model.rotation_raw().mutable_grad().fill_(0.001f);
             legacy_model.opacity_raw().mutable_grad().fill_(0.001f);
 
-            new_model.means_grad().fill_(0.001f);
-            new_model.sh0_grad().fill_(0.001f);
-            new_model.shN_grad().fill_(0.0005f);
-            new_model.scaling_grad().fill_(0.001f);
-            new_model.rotation_grad().fill_(0.001f);
-            new_model.opacity_grad().fill_(0.001f);
+            auto& new_opt = new_strategy.get_optimizer();
+            new_opt.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+            new_opt.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+            new_opt.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+            new_opt.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+            new_opt.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+            new_opt.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
             // Step both optimizers
             legacy_strategy.step(i);
@@ -418,12 +418,13 @@ TEST_F(AddNewGsDeterministicTest, MultipleIterations_ConsistentBehavior) {
         legacy_model.rotation_raw().mutable_grad().fill_(0.001f);
         legacy_model.opacity_raw().mutable_grad().fill_(0.001f);
 
-        new_model.means_grad().fill_(0.001f);
-        new_model.sh0_grad().fill_(0.001f);
-        new_model.shN_grad().fill_(0.0005f);
-        new_model.scaling_grad().fill_(0.001f);
-        new_model.rotation_grad().fill_(0.001f);
-        new_model.opacity_grad().fill_(0.001f);
+        auto& new_opt = new_strategy.get_optimizer();
+        new_opt.get_grad(lfs::training::ParamType::Means).fill_(0.001f);
+        new_opt.get_grad(lfs::training::ParamType::Sh0).fill_(0.001f);
+        new_opt.get_grad(lfs::training::ParamType::ShN).fill_(0.0005f);
+        new_opt.get_grad(lfs::training::ParamType::Scaling).fill_(0.001f);
+        new_opt.get_grad(lfs::training::ParamType::Rotation).fill_(0.001f);
+        new_opt.get_grad(lfs::training::ParamType::Opacity).fill_(0.001f);
 
         legacy_strategy.step(iter + 100);
         new_strategy.step(iter + 100);
@@ -492,12 +493,13 @@ TEST_F(AddNewGsDeterministicTest, OptimizerState_ConsistentAfterGrowth) {
         legacy_model.rotation_raw().mutable_grad().fill_(0.002f);
         legacy_model.opacity_raw().mutable_grad().fill_(0.002f);
 
-        new_model.means_grad().fill_(0.002f);
-        new_model.sh0_grad().fill_(0.002f);
-        new_model.shN_grad().fill_(0.001f);
-        new_model.scaling_grad().fill_(0.002f);
-        new_model.rotation_grad().fill_(0.002f);
-        new_model.opacity_grad().fill_(0.002f);
+        auto& new_opt = new_strategy.get_optimizer();
+        new_opt.get_grad(lfs::training::ParamType::Means).fill_(0.002f);
+        new_opt.get_grad(lfs::training::ParamType::Sh0).fill_(0.002f);
+        new_opt.get_grad(lfs::training::ParamType::ShN).fill_(0.001f);
+        new_opt.get_grad(lfs::training::ParamType::Scaling).fill_(0.002f);
+        new_opt.get_grad(lfs::training::ParamType::Rotation).fill_(0.002f);
+        new_opt.get_grad(lfs::training::ParamType::Opacity).fill_(0.002f);
 
         legacy_strategy.step(100 + i);
         new_strategy.step(100 + i);

@@ -885,12 +885,12 @@ std::expected<void, std::string> run_training_loop_comparison(
         spdlog::info("[{}] === Backward Pass ===", iter);
 
         // Allocate gradients if needed (first iteration)
-        if (!new_init.strategy->get_model().has_gradients()) {
-            new_init.strategy->get_model().allocate_gradients();
+        if (!new_init.strategy->get_optimizer().has_gradients()) {
+            new_init.strategy->get_optimizer().allocate_gradients();
             spdlog::info("[{}] Allocated gradients for new model", iter);
         } else {
             // Zero gradients before backward
-            new_init.strategy->get_model().zero_gradients();
+            new_init.strategy->get_optimizer().zero_grad(iter);
         }
         // Note: Legacy (LibTorch) manages gradients automatically
 
@@ -898,7 +898,7 @@ std::expected<void, std::string> run_training_loop_comparison(
         legacy_loss_tensor.backward();
 
         // New backward
-        lfs::training::fast_rasterize_backward(new_ctx, new_loss_ctx.grad_image, new_init.strategy->get_model());
+        lfs::training::fast_rasterize_backward(new_ctx, new_loss_ctx.grad_image, new_init.strategy->get_model(), new_init.strategy->get_optimizer());
 
         spdlog::info("[{}] Backward complete", iter);
 
@@ -909,7 +909,7 @@ std::expected<void, std::string> run_training_loop_comparison(
 
         // Compare means gradients
         auto legacy_means_grad = legacy_init.strategy->get_model().means().grad();
-        auto new_means_grad = new_init.strategy->get_model().means_grad();
+        auto new_means_grad = new_init.strategy->get_optimizer().get_grad(lfs::training::ParamType::Means);
 
         // Log shapes with proper formatting
         if (legacy_means_grad.defined()) {
@@ -955,7 +955,7 @@ std::expected<void, std::string> run_training_loop_comparison(
 
             // Opacity gradients
             auto legacy_opacity_grad = legacy_init.strategy->get_model().opacity_raw().grad();
-            auto new_opacity_grad = new_init.strategy->get_model().opacity_grad();
+            auto new_opacity_grad = new_init.strategy->get_optimizer().get_grad(lfs::training::ParamType::Opacity);
 
             if (legacy_opacity_grad.defined() && legacy_opacity_grad.numel() > 0) {
                 auto legacy_opacity_grad_cpu = legacy_opacity_grad.cpu();
@@ -984,7 +984,7 @@ std::expected<void, std::string> run_training_loop_comparison(
 
             // Scaling gradients
             auto legacy_scaling_grad = legacy_init.strategy->get_model().scaling_raw().grad();
-            auto new_scaling_grad = new_init.strategy->get_model().scaling_grad();
+            auto new_scaling_grad = new_init.strategy->get_optimizer().get_grad(lfs::training::ParamType::Scaling);
 
             if (legacy_scaling_grad.defined() && legacy_scaling_grad.numel() > 0) {
                 auto legacy_scaling_grad_cpu = legacy_scaling_grad.cpu();
@@ -1324,7 +1324,7 @@ std::expected<void, std::string> run_training_loop_comparison(
         // ============================================================
         spdlog::info("[{}] === SH0 Gradient Detailed Comparison ===", iter);
         auto legacy_sh0_grad = legacy_model.sh0().grad();
-        auto& new_sh0_grad = new_model.sh0_grad();
+        auto& new_sh0_grad = new_init.strategy->get_optimizer().get_grad(lfs::training::ParamType::Sh0);
 
         if (legacy_sh0_grad.defined() && new_sh0_grad.ndim() > 0) {
             // Legacy SH0 grad is [N, 1, 3], new is [N, 1, 3]

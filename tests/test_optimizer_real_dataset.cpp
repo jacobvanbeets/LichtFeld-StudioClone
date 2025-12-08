@@ -237,17 +237,18 @@ TEST(OptimizerComparison, RealBicycleDataset) {
         legacy_model.opacity_raw().mutable_grad() = grad_opacity.clone();
 
         // Apply gradients to new (convert from torch)
-        cudaMemcpy(new_model.means_grad().ptr<float>(), grad_means.data_ptr<float>(),
+        auto& new_opt = new_strategy.get_optimizer();
+        cudaMemcpy(new_opt.get_grad(lfs::training::ParamType::Means).ptr<float>(), grad_means.data_ptr<float>(),
                    grad_means.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.sh0_grad().ptr<float>(), grad_sh0.data_ptr<float>(),
+        cudaMemcpy(new_opt.get_grad(lfs::training::ParamType::Sh0).ptr<float>(), grad_sh0.data_ptr<float>(),
                    grad_sh0.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.shN_grad().ptr<float>(), grad_shN.data_ptr<float>(),
+        cudaMemcpy(new_opt.get_grad(lfs::training::ParamType::ShN).ptr<float>(), grad_shN.data_ptr<float>(),
                    grad_shN.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.scaling_grad().ptr<float>(), grad_scaling.data_ptr<float>(),
+        cudaMemcpy(new_opt.get_grad(lfs::training::ParamType::Scaling).ptr<float>(), grad_scaling.data_ptr<float>(),
                    grad_scaling.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.rotation_grad().ptr<float>(), grad_rotation.data_ptr<float>(),
+        cudaMemcpy(new_opt.get_grad(lfs::training::ParamType::Rotation).ptr<float>(), grad_rotation.data_ptr<float>(),
                    grad_rotation.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaMemcpy(new_model.opacity_grad().ptr<float>(), grad_opacity.data_ptr<float>(),
+        cudaMemcpy(new_opt.get_grad(lfs::training::ParamType::Opacity).ptr<float>(), grad_opacity.data_ptr<float>(),
                    grad_opacity.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
 
         // Create minimal render outputs for post_backward
@@ -272,7 +273,7 @@ TEST(OptimizerComparison, RealBicycleDataset) {
         if ((iter + 1) % 100 == 0) {
             auto legacy_grad_means = legacy_model.means().grad();
             auto new_grad_means_torch = torch::from_blob(
-                const_cast<float*>(new_model.means_grad().ptr<float>()),
+                const_cast<float*>(new_opt.get_grad(lfs::training::ParamType::Means).ptr<float>()),
                 {static_cast<long>(new_model.size()), 3},
                 torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA)
             );
