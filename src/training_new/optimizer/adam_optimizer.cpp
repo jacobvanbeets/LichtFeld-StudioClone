@@ -377,7 +377,7 @@ namespace lfs::training {
 
                 // Create new tensor with correct shape [new_size, 0, 3]
                 auto new_tensor = lfs::core::Tensor::empty(
-                    {static_cast<int64_t>(new_size), 0, 3},
+                    {static_cast<int64_t>(new_size), int64_t{0}, int64_t{3}},
                     lfs::core::Device::CUDA, lfs::core::DataType::Float32);
 
                 // Assign to the reference (this updates splat_data_._shN)
