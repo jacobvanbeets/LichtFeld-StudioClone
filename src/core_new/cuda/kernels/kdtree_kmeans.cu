@@ -25,7 +25,6 @@ namespace {
 
 // Chunk size for shared memory - 128 centroids at a time (like splat-transform)
 constexpr int CHUNK_SIZE = 128;
-constexpr int CHUNK_SIZE_LARGE = 256;  // Larger chunk for high-dim kernels
 constexpr int BLOCK_SIZE = 256;
 
 // GPU-based centroid initialization - gather k random points directly on GPU
@@ -52,23 +51,6 @@ void init_random_indices_gpu(int* d_indices, const int n, const unsigned int see
     thrust::sequence(indices_ptr, indices_ptr + n);
     thrust::default_random_engine rng(seed);
     thrust::shuffle(indices_ptr, indices_ptr + n, rng);
-}
-
-// Generic gather kernel for arbitrary dimensions
-__global__ void gather_centroids_generic_kernel(
-    const float* __restrict__ data,
-    const int* __restrict__ indices,
-    float* __restrict__ centroids,
-    const int k,
-    const int n_dims)
-{
-    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid >= k) return;
-
-    const int src_idx = indices[tid];
-    for (int d = 0; d < n_dims; ++d) {
-        centroids[tid * n_dims + d] = data[src_idx * n_dims + d];
-    }
 }
 
 // Build CSR offsets from membership counts using thrust
@@ -121,45 +103,6 @@ void build_csr_offsets_gpu(
     }
 
     cudaMemcpy(d_offsets, counts_vec.data(), (num_clusters + 1) * sizeof(int), cudaMemcpyHostToDevice);
-}
-
-// Warp-level argmin reduction using shuffle instructions
-__device__ __forceinline__ void warp_reduce_argmin(float& val, int& idx) {
-    #pragma unroll
-    for (int offset = 16; offset > 0; offset /= 2) {
-        float other_val = __shfl_xor_sync(0xffffffff, val, offset);
-        int other_idx = __shfl_xor_sync(0xffffffff, idx, offset);
-        if (other_val < val) {
-            val = other_val;
-            idx = other_idx;
-        }
-    }
-}
-
-__device__ __forceinline__ void block_reduce_argmin(float& val, int& idx) {
-    __shared__ float shared_vals[32];
-    __shared__ int shared_idxs[32];
-
-    int lane = threadIdx.x % 32;
-    int warp_id = threadIdx.x / 32;
-
-    // Warp-level reduction first
-    warp_reduce_argmin(val, idx);
-
-    // First thread in each warp writes to shared memory
-    if (lane == 0) {
-        shared_vals[warp_id] = val;
-        shared_idxs[warp_id] = idx;
-    }
-    __syncthreads();
-
-    // First warp reduces across warps
-    if (warp_id == 0) {
-        int num_warps = (blockDim.x + 31) / 32;
-        val = (lane < num_warps) ? shared_vals[lane] : 1e30f;
-        idx = (lane < num_warps) ? shared_idxs[lane] : 0;
-        warp_reduce_argmin(val, idx);
-    }
 }
 
 // Brute force nearest centroid with shared memory caching
@@ -276,78 +219,6 @@ __global__ void assign_nearest_bruteforce_3d_kernel(
                 float dy = py - shared_centroids[c * 3 + 1];
                 float dz = pz - shared_centroids[c * 3 + 2];
                 float dist = dx * dx + dy * dy + dz * dz;
-
-                if (dist < min_dist) {
-                    min_dist = dist;
-                    min_idx = chunk_start + c;
-                }
-            }
-        }
-
-        __syncthreads();
-    }
-
-    if (tid < n_points) {
-        labels[tid] = min_idx;
-    }
-}
-
-// Optimized 45D kernel with larger chunk size
-__global__ void assign_nearest_bruteforce_45d_optimized_kernel(
-    const float* __restrict__ data,
-    const float* __restrict__ centroids,
-    int* __restrict__ labels,
-    const int n_points,
-    const int k)
-{
-    // Shared memory: 256 centroids × 45 floats = 46080 bytes (~45KB, fits in 48KB limit)
-    __shared__ float shared_centroids[CHUNK_SIZE_LARGE * 45];
-
-    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
-    // Load point into registers
-    float point[45];
-    if (tid < n_points) {
-        #pragma unroll
-        for (int d = 0; d < 45; ++d) {
-            point[d] = data[tid * 45 + d];
-        }
-    }
-
-    float min_dist = 1e30f;
-    int min_idx = 0;
-
-    const int num_chunks = (k + CHUNK_SIZE_LARGE - 1) / CHUNK_SIZE_LARGE;
-
-    for (int chunk = 0; chunk < num_chunks; ++chunk) {
-        const int chunk_start = chunk * CHUNK_SIZE_LARGE;
-        const int chunk_end = min(chunk_start + CHUNK_SIZE_LARGE, k);
-        const int chunk_size = chunk_end - chunk_start;
-
-        // Collaboratively load centroid chunk into shared memory
-        for (int i = threadIdx.x; i < chunk_size * 45; i += blockDim.x) {
-            int centroid_idx = chunk_start + i / 45;
-            int dim = i % 45;
-            if (centroid_idx < k) {
-                shared_centroids[i] = centroids[centroid_idx * 45 + dim];
-            }
-        }
-
-        __syncthreads();
-
-        // Find nearest centroid in this chunk
-        if (tid < n_points) {
-            for (int c = 0; c < chunk_size; ++c) {
-                float dist = 0.0f;
-                #pragma unroll
-                for (int d = 0; d < 45; d += 5) {
-                    float d0 = point[d + 0] - shared_centroids[c * 45 + d + 0];
-                    float d1 = point[d + 1] - shared_centroids[c * 45 + d + 1];
-                    float d2 = point[d + 2] - shared_centroids[c * 45 + d + 2];
-                    float d3 = point[d + 3] - shared_centroids[c * 45 + d + 3];
-                    float d4 = point[d + 4] - shared_centroids[c * 45 + d + 4];
-                    dist += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3 + d4 * d4;
-                }
 
                 if (dist < min_dist) {
                     min_dist = dist;
@@ -659,9 +530,6 @@ __global__ void hierarchical_search_kernel(
     const int n_points,
     const int k)
 {
-    // Shared memory for centroid chunk
-    __shared__ float shared_centroids[CHUNK_SIZE * N_DIMS];
-
     const int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     // Load point into registers
@@ -791,225 +659,6 @@ __global__ void hierarchical_search_optimized_kernel(
     if (tid < n_points) {
         labels[tid] = min_idx;
     }
-}
-
-// cuBLAS-based distance: ||x - c||² = ||x||² + ||c||² - 2(x·c)
-__global__ void compute_row_norms_kernel(
-    const float* __restrict__ data,
-    float* __restrict__ norms,
-    const int n_rows,
-    const int n_dims)
-{
-    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid >= n_rows) return;
-
-    float sum = 0.0f;
-    for (int d = 0; d < n_dims; ++d) {
-        float val = data[tid * n_dims + d];
-        sum += val * val;
-    }
-    norms[tid] = sum;
-}
-
-// Find argmin from dot products
-__global__ void find_argmin_from_dots_kernel(
-    const float* __restrict__ dot_products,  // [n_points, k] - result of gemm
-    const float* __restrict__ x_norms,       // [n_points]
-    const float* __restrict__ c_norms,       // [k]
-    int* __restrict__ labels,                // [n_points]
-    const int n_points,
-    const int k)
-{
-    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid >= n_points) return;
-
-    const float x_norm = x_norms[tid];
-    float min_dist = 1e30f;
-    int min_idx = 0;
-
-    for (int c = 0; c < k; ++c) {
-        // distance = x_norm + c_norm - 2 * dot_product
-        float dist = x_norm + c_norms[c] - 2.0f * dot_products[tid * k + c];
-        if (dist < min_dist) {
-            min_dist = dist;
-            min_idx = c;
-        }
-    }
-
-    labels[tid] = min_idx;
-}
-
-cublasHandle_t get_cublas_handle() {
-    static cublasHandle_t handle = nullptr;
-    if (handle == nullptr) {
-        cublasCreate(&handle);
-    }
-    return handle;
-}
-
-// Generic accumulation for arbitrary dimensions
-__global__ void accumulate_centroids_generic_kernel(
-    const float* __restrict__ data,
-    const int* __restrict__ labels,
-    float* __restrict__ centroid_sums,
-    int* __restrict__ counts,
-    const int n_points,
-    const int n_dims)
-{
-    const int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid >= n_points) return;
-
-    const int label = labels[tid];
-    for (int d = 0; d < n_dims; ++d) {
-        atomicAdd(&centroid_sums[label * n_dims + d], data[tid * n_dims + d]);
-    }
-    atomicAdd(&counts[label], 1);
-}
-
-// Generic centroid finalization
-__global__ void finalize_centroids_generic_kernel(
-    float* __restrict__ centroids,
-    const float* __restrict__ centroid_sums,
-    const int* __restrict__ counts,
-    const float* __restrict__ data,
-    const int k,
-    const int n_points,
-    const int n_dims,
-    unsigned int seed)
-{
-    const int cid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (cid >= k) return;
-
-    const int count = counts[cid];
-
-    if (count > 0) {
-        for (int d = 0; d < n_dims; ++d) {
-            centroids[cid * n_dims + d] = centroid_sums[cid * n_dims + d] / count;
-        }
-    } else {
-        unsigned int rng = seed ^ (cid * 1664525u + 1013904223u);
-        rng = rng * 1664525u + 1013904223u;
-        int rand_idx = rng % n_points;
-        for (int d = 0; d < n_dims; ++d) {
-            centroids[cid * n_dims + d] = data[rand_idx * n_dims + d];
-        }
-    }
-}
-
-// cuBLAS k-means with batched processing
-std::tuple<Tensor, Tensor> kmeans_cublas(
-    const Tensor& data,
-    int k,
-    int iterations)
-{
-    const int n = static_cast<int>(data.shape()[0]);
-    const int d = static_cast<int>(data.shape()[1]);
-
-    // Determine batch size based on available memory
-    // dot_products needs batch_size × k × 4 bytes
-    // Target: 16GB for dot_products buffer (larger = fewer batches = faster)
-    constexpr size_t MAX_DOT_PRODUCT_BYTES = 16ULL * 1024 * 1024 * 1024;
-    const int batch_size = std::min(n, static_cast<int>(MAX_DOT_PRODUCT_BYTES / (static_cast<size_t>(k) * sizeof(float))));
-    const int num_batches = (n + batch_size - 1) / batch_size;
-
-    LOG_INFO("kmeans_cublas: n={}, k={}, dims={}, iters={}, batches={} ({}pts/batch)",
-             n, k, d, iterations, num_batches, batch_size);
-
-    if (n <= k) {
-        auto centroids = data.clone();
-        auto labels = Tensor::arange(n).to(DataType::Int32).cuda();
-        return {centroids, labels};
-    }
-
-    auto handle = get_cublas_handle();
-
-    // Ensure data is on GPU and contiguous
-    auto data_gpu = data.cuda().contiguous();
-    const float* d_data = data_gpu.ptr<float>();
-
-    // Allocate centroids [k, d]
-    auto centroids = Tensor::zeros({static_cast<size_t>(k), static_cast<size_t>(d)},
-                                   Device::CUDA, DataType::Float32);
-    float* d_centroids = centroids.ptr<float>();
-
-    // Initialize centroids by sampling k random points (GPU-based, no CPU transfer)
-    {
-        auto perm = Tensor::zeros({static_cast<size_t>(n)}, Device::CUDA, DataType::Int32);
-        std::random_device rd;
-        init_random_indices_gpu(perm.ptr<int>(), n, rd());
-
-        const int grid_k = (k + BLOCK_SIZE - 1) / BLOCK_SIZE;
-        gather_centroids_generic_kernel<<<grid_k, BLOCK_SIZE>>>(
-            d_data, perm.ptr<int>(), d_centroids, k, d);
-    }
-
-    // Allocate buffers
-    auto labels = Tensor::zeros({static_cast<size_t>(n)}, Device::CUDA, DataType::Int32);
-    auto x_norms = Tensor::zeros({static_cast<size_t>(n)}, Device::CUDA, DataType::Float32);
-    auto c_norms = Tensor::zeros({static_cast<size_t>(k)}, Device::CUDA, DataType::Float32);
-    // Batch-sized dot products buffer
-    auto dot_products = Tensor::zeros({static_cast<size_t>(batch_size), static_cast<size_t>(k)},
-                                      Device::CUDA, DataType::Float32);
-    auto centroid_sums = Tensor::zeros({static_cast<size_t>(k), static_cast<size_t>(d)},
-                                       Device::CUDA, DataType::Float32);
-    auto counts = Tensor::zeros({static_cast<size_t>(k)}, Device::CUDA, DataType::Int32);
-
-    const int grid_n = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    const int grid_k = (k + BLOCK_SIZE - 1) / BLOCK_SIZE;
-
-    // Compute x_norms once (data doesn't change)
-    compute_row_norms_kernel<<<grid_n, BLOCK_SIZE>>>(d_data, x_norms.ptr<float>(), n, d);
-
-    for (int iter = 0; iter < iterations; ++iter) {
-        // Step 1: Compute centroid norms
-        compute_row_norms_kernel<<<grid_k, BLOCK_SIZE>>>(d_centroids, c_norms.ptr<float>(), k, d);
-
-        // Step 2 & 3: Process points in batches for assignment
-        for (int batch = 0; batch < num_batches; ++batch) {
-            const int batch_start = batch * batch_size;
-            const int batch_end = std::min(batch_start + batch_size, n);
-            const int curr_batch_size = batch_end - batch_start;
-            const int grid_batch = (curr_batch_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
-
-            // Compute dot products for this batch using cuBLAS gemm
-            // dot_products[curr_batch_size, k] = data[batch_start:batch_end, d] @ centroids^T[d, k]
-            const float alpha = 1.0f;
-            const float beta = 0.0f;
-            cublasSgemm(handle,
-                        CUBLAS_OP_T,
-                        CUBLAS_OP_N,
-                        k, curr_batch_size, d,
-                        &alpha,
-                        d_centroids, d,
-                        d_data + batch_start * d, d,
-                        &beta,
-                        dot_products.ptr<float>(), k);
-
-            // Find argmin for this batch
-            find_argmin_from_dots_kernel<<<grid_batch, BLOCK_SIZE>>>(
-                dot_products.ptr<float>(),
-                x_norms.ptr<float>() + batch_start,
-                c_norms.ptr<float>(),
-                labels.ptr<int>() + batch_start,
-                curr_batch_size, k);
-        }
-
-        // Step 4: Reset and accumulate (full data)
-        centroid_sums.zero_();
-        counts.zero_();
-
-        accumulate_centroids_generic_kernel<<<grid_n, BLOCK_SIZE>>>(
-            d_data, labels.ptr<int>(), centroid_sums.ptr<float>(), counts.ptr<int>(), n, d);
-
-        // Step 5: Finalize centroids
-        unsigned int seed = static_cast<unsigned int>(iter * 12345 + 67890);
-        finalize_centroids_generic_kernel<<<grid_k, BLOCK_SIZE>>>(
-            d_centroids, centroid_sums.ptr<float>(), counts.ptr<int>(),
-            d_data, k, n, d, seed);
-    }
-
-    cudaDeviceSynchronize();
-    return {centroids, labels};
 }
 
 // Hierarchical k-means with super-cluster structure
