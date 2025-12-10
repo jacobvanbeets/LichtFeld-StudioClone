@@ -616,6 +616,47 @@ namespace lfs::vis::gui::panels {
                     ImGui::EndDisabled();
                 }
 
+                // Mask mode
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                if (!can_edit) {
+                    ImGui::BeginDisabled();
+                }
+
+                const char* mask_mode_items[] = {"None", "Segment", "Ignore", "Alpha Consistent"};
+                int current_mask_mode = static_cast<int>(opt_params.mask_mode);
+                if (ImGui::Combo("Mask Mode", &current_mask_mode, mask_mode_items, IM_ARRAYSIZE(mask_mode_items))) {
+                    opt_params.mask_mode = static_cast<lfs::core::param::MaskMode>(current_mask_mode);
+                    opt_params_changed = true;
+                }
+                if (!can_edit) {
+                    ImGui::EndDisabled();
+                }
+
+                ImGui::TableNextColumn();
+                if (opt_params.mask_mode != lfs::core::param::MaskMode::None) {
+                    ImGui::Text("Invert: %s", opt_params.invert_masks ? "Yes" : "No");
+                }
+
+                // Invert masks checkbox (only show when mask mode is enabled)
+                if (opt_params.mask_mode != lfs::core::param::MaskMode::None) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    if (!can_edit) {
+                        ImGui::BeginDisabled();
+                    }
+                    bool invert_masks = opt_params.invert_masks;
+                    if (ImGui::Checkbox("Invert Masks", &invert_masks)) {
+                        opt_params.invert_masks = invert_masks;
+                        opt_params_changed = true;
+                    }
+                    if (!can_edit) {
+                        ImGui::EndDisabled();
+                    }
+                    ImGui::TableNextColumn();
+                    ImGui::TextColored(darken(theme().palette.text_dim, 0.15f), "Swap object/background");
+                }
+
                 if (opt_params.pose_optimization != "none") {
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();

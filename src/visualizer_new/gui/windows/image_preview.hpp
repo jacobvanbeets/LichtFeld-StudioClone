@@ -153,7 +153,12 @@ namespace lfs::vis::gui {
 
         void open(const std::vector<std::filesystem::path>& image_paths, size_t initial_index);
         void open(const std::filesystem::path& image_path);
+        // Open with mask overlay support - overlay_paths are optional corresponding masks or images
+        void openWithOverlay(const std::vector<std::filesystem::path>& image_paths,
+                             const std::vector<std::filesystem::path>& overlay_paths,
+                             size_t initial_index);
         void render(bool* p_open);
+        void setShowOverlay(bool show) { show_overlay_ = show; }
         bool isOpen() const { return is_open_; }
         void close();
         void nextImage();
@@ -199,10 +204,13 @@ namespace lfs::vis::gui {
         // State
         bool is_open_ = false;
         std::vector<std::filesystem::path> image_paths_;
+        std::vector<std::filesystem::path> overlay_paths_;  // Optional overlay images (masks)
         size_t current_index_ = 0;
+        bool show_overlay_ = false;  // Whether to show overlay on top of current image
 
         std::unique_ptr<ImageTexture> current_texture_;
         std::unique_ptr<ImageTexture> previous_texture_;
+        std::unique_ptr<ImageTexture> overlay_texture_;  // Overlay texture (mask)
 
         // Thread-safe preload results
         mutable std::mutex preload_mutex_;
@@ -217,6 +225,10 @@ namespace lfs::vis::gui {
         std::atomic<bool> is_loading_{false};
         std::string load_error_;
         std::atomic<bool> preload_in_progress_{false};
+
+        // Overlay helpers
+        void loadCurrentOverlay();
+        [[nodiscard]] bool hasValidOverlay() const;
 
         // UI state
         float zoom_ = 1.0f;

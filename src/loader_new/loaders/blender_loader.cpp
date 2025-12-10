@@ -22,6 +22,33 @@ namespace lfs::loader {
     using lfs::core::PointCloud;
     using lfs::core::Tensor;
 
+    namespace {
+        constexpr std::array MASK_FOLDERS = {"masks", "mask", "segmentation"};
+        constexpr std::array MASK_EXTENSIONS = {".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"};
+    }
+
+    static std::filesystem::path find_mask_path(const std::filesystem::path& base_path,
+                                                const std::string& image_name) {
+        const std::filesystem::path img_path(image_name);
+        const std::string stem = img_path.stem().string();
+
+        for (const auto& folder : MASK_FOLDERS) {
+            const std::filesystem::path mask_dir = base_path / folder;
+            if (!std::filesystem::exists(mask_dir)) continue;
+
+            if (const auto exact = mask_dir / image_name; std::filesystem::exists(exact)) {
+                return exact;
+            }
+
+            for (const auto& ext : MASK_EXTENSIONS) {
+                if (const auto path = mask_dir / (stem + ext); std::filesystem::exists(path)) {
+                    return path;
+                }
+            }
+        }
+        return {};
+    }
+
     std::expected<LoadResult, std::string> BlenderLoader::load(
         const std::filesystem::path& path,
         const LoadOptions& options) {
@@ -132,10 +159,16 @@ namespace lfs::loader {
             std::vector<std::shared_ptr<lfs::core::Camera>> cameras;
             cameras.reserve(camera_infos.size());
 
+            // Get base path for mask lookup
+            std::filesystem::path base_path = transforms_file.parent_path();
+
             for (size_t i = 0; i < camera_infos.size(); ++i) {
                 const auto& info = camera_infos[i];
 
                 try {
+                    // Find mask path if available
+                    std::filesystem::path mask_path = find_mask_path(base_path, info._image_name);
+
                     auto cam = std::make_shared<lfs::core::Camera>(
                         info._R,
                         info._T,
@@ -148,6 +181,7 @@ namespace lfs::loader {
                         info._camera_model_type,
                         info._image_name,
                         info._image_path,
+                        mask_path,
                         info._width,
                         info._height,
                         static_cast<int>(i));

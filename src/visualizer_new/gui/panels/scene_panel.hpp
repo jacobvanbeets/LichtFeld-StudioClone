@@ -46,6 +46,10 @@ namespace lfs::vis {
             std::filesystem::path m_currentDatasetPath;
             bool m_needsScrollToSelection = false;
 
+            // Camera highlighting in scene graph (synced with GoToCamView)
+            int m_highlightedCamUid = -1;
+            bool m_needsScrollToCam = false;
+
             // Drag-drop state
             std::string m_dragPayload;
 
@@ -87,6 +91,7 @@ namespace lfs::vis {
                 unsigned int splat = 0;
                 unsigned int cropbox = 0;
                 unsigned int pointcloud = 0;
+                unsigned int mask = 0;
                 bool initialized = false;
             } m_icons;
 

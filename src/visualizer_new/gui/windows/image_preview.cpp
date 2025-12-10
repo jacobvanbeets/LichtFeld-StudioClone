@@ -75,23 +75,50 @@ namespace lfs::vis::gui {
         open(std::vector{image_path}, 0);
     }
 
+    void ImagePreview::openWithOverlay(const std::vector<std::filesystem::path>& image_paths,
+                                       const std::vector<std::filesystem::path>& overlay_paths,
+                                       const size_t initial_index) {
+        open(image_paths, initial_index);
+        overlay_paths_ = overlay_paths;
+        loadCurrentOverlay();
+    }
+
+    void ImagePreview::loadCurrentOverlay() {
+        overlay_texture_.reset();
+        if (current_index_ < overlay_paths_.size() && !overlay_paths_[current_index_].empty()) {
+            try {
+                auto data = loadImageData(overlay_paths_[current_index_]);
+                overlay_texture_ = createTexture(std::move(*data), overlay_paths_[current_index_]);
+            } catch (const std::exception& e) {
+                LOG_WARN("Failed to load overlay: {}", e.what());
+            }
+        }
+    }
+
+    bool ImagePreview::hasValidOverlay() const {
+        return current_index_ < overlay_paths_.size() &&
+               !overlay_paths_[current_index_].empty() &&
+               overlay_texture_ && overlay_texture_->texture.valid();
+    }
+
     void ImagePreview::close() {
         is_open_ = false;
         image_paths_.clear();
+        overlay_paths_.clear();
         current_texture_.reset();
         previous_texture_.reset();
+        overlay_texture_.reset();
         prev_texture_.reset();
         next_texture_.reset();
 
-        // Clear preload results
         {
-            std::lock_guard<std::mutex> lock(preload_mutex_);
+            std::lock_guard lock(preload_mutex_);
             prev_result_.reset();
             next_result_.reset();
         }
 
         load_error_.clear();
-        LOG_DEBUG("Image preview closed");
+        show_overlay_ = false;
     }
 
     std::unique_ptr<ImageData> ImagePreview::loadImageData(const std::filesystem::path& path) {
@@ -452,40 +479,40 @@ namespace lfs::vis::gui {
         } else {
             loadImage(image_paths_[current_index_]);
         }
+
+        loadCurrentOverlay();
         preloadAdjacentImages();
     }
 
     void ImagePreview::previousImage() {
-        if (image_paths_.empty() || current_index_ == 0) {
-            return;
-        }
-        if (!prev_texture_ && is_loading_) {
-            return;  // Skip if no preload and currently loading
-        }
+        if (image_paths_.empty() || current_index_ == 0) return;
+        if (!prev_texture_ && is_loading_) return;
 
-        current_index_--;
-        previous_texture_ = std::move(current_texture_);  // Keep old texture in GPU memory
+        --current_index_;
+        previous_texture_ = std::move(current_texture_);
 
         if (prev_texture_) {
             current_texture_ = std::move(prev_texture_);
         } else {
             loadImage(image_paths_[current_index_]);
         }
+
+        loadCurrentOverlay();
         preloadAdjacentImages();
     }
 
-    void ImagePreview::goToImage(size_t index) {
-        if (index >= image_paths_.size()) {
-            return;
-        }
+    void ImagePreview::goToImage(const size_t index) {
+        if (index >= image_paths_.size()) return;
 
         current_index_ = index;
         zoom_ = 1.0f;
         pan_x_ = 0.0f;
         pan_y_ = 0.0f;
 
-        previous_texture_ = std::move(current_texture_);  // Keep old texture in GPU memory
+        previous_texture_ = std::move(current_texture_);
         loadImage(image_paths_[current_index_]);
+        loadCurrentOverlay();
+
         preloadAdjacentImages();
     }
 
@@ -540,10 +567,12 @@ namespace lfs::vis::gui {
             return;
         }
 
-        // Menu bar
         if (ImGui::BeginMenuBar()) {
             if (ImGui::BeginMenu("View")) {
                 ImGui::MenuItem("Fit to Window", "F", &fit_to_window_);
+                if (hasValidOverlay()) {
+                    ImGui::MenuItem("Show Mask Overlay", "M", &show_overlay_);
+                }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Reset View", "R") || ImGui::MenuItem("Actual Size", "1")) {
                     zoom_ = 1.0f;
@@ -602,9 +631,19 @@ namespace lfs::vis::gui {
         const float x_offset = (content_size.x - display_width) * 0.5f + pan_x_;
         const float y_offset = (content_size.y - display_height) * 0.5f + pan_y_;
 
-        ImGui::SetCursorPos(ImVec2(x_offset, y_offset + ImGui::GetCursorPosY()));
+        const float base_cursor_y = ImGui::GetCursorPosY();
+        ImGui::SetCursorPos(ImVec2(x_offset, y_offset + base_cursor_y));
         ImGui::Image(static_cast<ImTextureID>(current_texture_->texture.id()),
                      ImVec2(display_width, display_height));
+
+        // Draw mask overlay
+        if (show_overlay_ && hasValidOverlay()) {
+            constexpr ImVec4 OVERLAY_TINT{1.0f, 0.2f, 0.2f, 0.5f};
+            ImGui::SetCursorPos(ImVec2(x_offset, y_offset + base_cursor_y));
+            ImGui::Image(static_cast<ImTextureID>(overlay_texture_->texture.id()),
+                         ImVec2(display_width, display_height),
+                         ImVec2(0, 0), ImVec2(1, 1), OVERLAY_TINT, ImVec4(0, 0, 0, 0));
+        }
 
         if (ImGui::IsItemHovered()) {
             float wheel = ImGui::GetIO().MouseWheel;
@@ -645,11 +684,13 @@ namespace lfs::vis::gui {
             if (ImGui::IsKeyPressed(ImGuiKey_F)) {
                 fit_to_window_ = !fit_to_window_;
             }
+            if (ImGui::IsKeyPressed(ImGuiKey_M) && hasValidOverlay()) {
+                show_overlay_ = !show_overlay_;
+            }
             if (ImGui::IsKeyPressed(ImGuiKey_R) || ImGui::IsKeyPressed(ImGuiKey_1)) {
                 zoom_ = 1.0f;
                 pan_x_ = 0.0f;
                 pan_y_ = 0.0f;
-                LOG_TRACE("View reset via keyboard");
             }
 
             if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) {

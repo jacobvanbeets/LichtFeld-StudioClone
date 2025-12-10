@@ -54,6 +54,7 @@ protected:
             gsplat::CameraModelType::PINHOLE,
             "test_image",
             "",
+            std::filesystem::path{},  // mask_path
             640, 480,        // camera_width, camera_height (constructor sets image_width/height too)
             0                // uid
         );

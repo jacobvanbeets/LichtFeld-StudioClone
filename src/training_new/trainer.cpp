@@ -119,6 +119,89 @@ namespace lfs::training {
         return std::make_pair(loss_tensor, ctx.grad_image);
     }
 
+    std::expected<void, std::string> Trainer::validate_masks() {
+        const auto& opt = params_.optimization;
+        if (opt.mask_mode == lfs::core::param::MaskMode::None) {
+            return {};
+        }
+
+        size_t masks_found = 0;
+        for (const auto& cam : train_dataset_->get_cameras()) {
+            if (cam && cam->has_mask()) {
+                ++masks_found;
+            }
+        }
+
+        if (masks_found == 0) {
+            return std::unexpected(std::format(
+                "Mask mode enabled but no masks found in {}/masks/",
+                params_.dataset.data_path.string()));
+        }
+
+        LOG_INFO("Found {} masks{}", masks_found, opt.invert_masks ? " (inverted)" : "");
+        return {};
+    }
+
+    std::expected<std::pair<lfs::core::Tensor, lfs::core::Tensor>, std::string> Trainer::compute_photometric_loss_with_mask(
+        const lfs::core::Tensor& rendered,
+        const lfs::core::Tensor& gt_image,
+        const lfs::core::Tensor& mask,
+        const lfs::core::Tensor& alpha,
+        const lfs::core::param::OptimizationParameters& opt_params) {
+
+        using namespace lfs::core;
+        constexpr float EPSILON = 1e-8f;
+        const auto mode = opt_params.mask_mode;
+
+        Tensor mask_2d = mask.ndim() == 3 ? mask.squeeze(0) : mask;
+        Tensor mask_expanded = mask_2d.unsqueeze(0).expand({
+            static_cast<int>(rendered.shape()[0]),
+            static_cast<int>(mask_2d.shape()[0]),
+            static_cast<int>(mask_2d.shape()[1])});
+
+        Tensor loss;
+        Tensor grad;
+
+        if (mode == param::MaskMode::Segment || mode == param::MaskMode::Ignore) {
+            const Tensor l1_diff = (rendered - gt_image).abs();
+            const Tensor mask_sum = mask_expanded.sum() + EPSILON;
+            loss = (l1_diff * mask_expanded).sum() / mask_sum;
+
+            const Tensor sign_diff = (rendered - gt_image).sign();
+            grad = sign_diff * mask_expanded / mask_sum;
+
+            if (mode == param::MaskMode::Segment && alpha.is_valid()) {
+                const Tensor alpha_2d = alpha.ndim() == 3 ? alpha.squeeze(0) : alpha;
+                const Tensor bg_mask = Tensor::full(mask_2d.shape(), 1.0f, mask_2d.device()) - mask_2d;
+                const Tensor penalty = (alpha_2d.pow(opt_params.mask_opacity_penalty_power) * bg_mask).mean()
+                                       * opt_params.mask_opacity_penalty_weight;
+                loss = loss + penalty;
+            }
+
+        } else if (mode == param::MaskMode::AlphaConsistent) {
+            lfs::training::losses::PhotometricLoss photometric_loss;
+            const lfs::training::losses::PhotometricLoss::Params params{.lambda_dssim = opt_params.lambda_dssim};
+            auto result = photometric_loss.forward(rendered, gt_image, params);
+            if (!result) {
+                return std::unexpected(result.error());
+            }
+            auto [photo_loss, ctx] = *result;
+            loss = photo_loss;
+            grad = ctx.grad_image;
+
+            if (alpha.is_valid()) {
+                const Tensor alpha_2d = alpha.ndim() == 3 ? alpha.squeeze(0) : alpha;
+                const Tensor alpha_loss = (alpha_2d - mask_2d).pow(2).mean();
+                loss = loss + alpha_loss * opt_params.mask_opacity_penalty_weight;
+            }
+        } else {
+            // Fallback to standard loss
+            return compute_photometric_loss_with_gradient(rendered, gt_image, opt_params);
+        }
+
+        return std::make_pair(loss, grad);
+    }
+
     // Returns GPU tensor for loss - NO SYNC!
     std::expected<lfs::core::Tensor, std::string> Trainer::compute_scale_reg_loss(
         lfs::core::SplatData& splatData,
@@ -317,6 +400,11 @@ namespace lfs::training {
 
             // Initialize bilateral grid if enabled
             if (auto result = initialize_bilateral_grid(); !result) {
+                return std::unexpected(result.error());
+            }
+
+            // Validate masks if mask mode is enabled
+            if (auto result = validate_masks(); !result) {
                 return std::unexpected(result.error());
             }
 

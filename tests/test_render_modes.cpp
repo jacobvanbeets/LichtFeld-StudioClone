@@ -64,6 +64,7 @@ protected:
             radial_dist, tangential_dist,
             gsplat::CameraModelType::PINHOLE,
             "test_camera", "",
+            std::filesystem::path{},  // No mask path
             image_width_, image_height_, 0
         );
     }

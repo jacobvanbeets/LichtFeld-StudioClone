@@ -109,6 +109,7 @@ protected:
             torch::Tensor(), torch::Tensor(),
             gsplat::CameraModelType::PINHOLE,
             "test_image", "",
+            std::filesystem::path{},  // No mask path
             640, 480, 0
         );
 
@@ -124,6 +125,7 @@ protected:
             lfs::core::Tensor(), lfs::core::Tensor(),
             gsplat::CameraModelType::PINHOLE,
             "test_image", "",
+            std::filesystem::path{},  // No mask path
             640, 480, 0
         );
 

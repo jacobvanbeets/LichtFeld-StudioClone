@@ -13,6 +13,14 @@
 
 namespace lfs::core {
     namespace param {
+        // Mask mode for attention mask behavior during training
+        enum class MaskMode {
+            None,           // No masking applied
+            Segment,        // Soft penalty to enforce alpha→0 in masked areas
+            Ignore,         // Completely ignore masked regions in loss
+            AlphaConsistent // Enforce exact alpha values from mask
+        };
+
         struct OptimizationParameters {
             size_t iterations = 30'000;
             size_t sh_degree_interval = 1'000;
@@ -45,6 +53,13 @@ namespace lfs::core {
             std::string render_mode = "RGB";                  // Render mode: RGB, D, ED, RGB_D, RGB_ED
             std::string strategy = "mcmc";                    // Optimization strategy: mcmc, default.
             bool preload_to_ram = false;                      // If true, the entire dataset will be loaded into RAM at startup
+
+            // Mask parameters
+            MaskMode mask_mode = MaskMode::None;              // Attention mask mode
+            bool invert_masks = false;                        // Invert mask values (swap object/background)
+            float mask_threshold = 0.5f;                      // Threshold: >= threshold → 1.0, < threshold → keep original
+            float mask_opacity_penalty_weight = 1.0f;         // Opacity penalty weight for segment mode
+            float mask_opacity_penalty_power = 2.0f;          // Penalty falloff (1=linear, 2=quadratic)
             std::string pose_optimization = "none";           // Pose optimization type: none, direct, mlp
 
             // Bilateral grid parameters
@@ -115,6 +130,10 @@ namespace lfs::core {
             int timelapse_every = 50;
             int max_width = 3840;
             LoadingParams loading_params;
+
+            // Mask loading parameters (copied from optimization params)
+            bool invert_masks = false;
+            float mask_threshold = 0.5f;
 
             nlohmann::json to_json() const;
             static DatasetConfig from_json(const nlohmann::json& j);

@@ -235,13 +235,12 @@ namespace lfs::vis::gui {
         // Apply theme first to get font settings
         applyDefaultStyle();
 
-        // Load fonts using theme configuration
+        // Load Inter font (OFL licensed)
         try {
-            const auto& t = theme();
-            auto font_path = lfs::vis::getAssetPath(t.fonts.regular_path);
-            io.Fonts->AddFontFromFileTTF(font_path.string().c_str(), t.fonts.base_size * xscale);
+            const auto font_path = lfs::vis::getAssetPath("fonts/Inter-Regular.ttf");
+            io.Fonts->AddFontFromFileTTF(font_path.string().c_str(), theme().fonts.base_size * xscale);
         } catch (const std::exception& e) {
-            LOG_WARN("Could not load custom font: {}", e.what());
+            LOG_WARN("Could not load Inter font: {}", e.what());
         }
 
         // Configure file browser callback

@@ -703,6 +703,7 @@ namespace lfs::rendering {
                 ::gsplat::CameraModelType::PINHOLE,  // Use global gsplat namespace
                 "render_camera",
                 "none",
+                std::filesystem::path{},  // No mask path for render camera
                 request.viewport_size.x,
                 request.viewport_size.y,
                 -1);

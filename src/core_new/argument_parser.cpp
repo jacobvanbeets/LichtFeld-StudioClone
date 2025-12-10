@@ -166,6 +166,17 @@ namespace {
             ::args::Flag enable_sparsity(parser, "enable_sparsity", "Enable sparsity optimization", {"enable-sparsity"});
             ::args::Flag save_sog(parser, "sog", "Save in SOG format alongside PLY", {"sog"});
 
+            // Mask-related arguments
+            ::args::MapFlag<std::string, lfs::core::param::MaskMode> mask_mode(parser, "mask_mode",
+                "Mask mode: none, segment, ignore, alpha_consistent (default: none)",
+                {"mask-mode"},
+                std::unordered_map<std::string, lfs::core::param::MaskMode>{
+                    {"none", lfs::core::param::MaskMode::None},
+                    {"segment", lfs::core::param::MaskMode::Segment},
+                    {"ignore", lfs::core::param::MaskMode::Ignore},
+                    {"alpha_consistent", lfs::core::param::MaskMode::AlphaConsistent}});
+            ::args::Flag invert_masks(parser, "invert_masks", "Invert mask values (swap object/background)", {"invert-masks"});
+
             ::args::MapFlag<std::string, int> resize_factor(parser, "resize_factor",
                                                             "resize resolution by this factor. Options: auto, 1, 2, 4, 8 (default: auto)",
                                                             {'r', "resize_factor"},
@@ -407,6 +418,8 @@ namespace {
                                         sparsify_steps_val = sparsify_steps ? std::optional<int>(::args::get(sparsify_steps)) : std::optional<int>(),
                                         init_rho_val = init_rho ? std::optional<float>(::args::get(init_rho)) : std::optional<float>(),
                                         prune_ratio_val = prune_ratio ? std::optional<float>(::args::get(prune_ratio)) : std::optional<float>(),
+                                        // Mask parameters
+                                        mask_mode_val = mask_mode ? std::optional<lfs::core::param::MaskMode>(::args::get(mask_mode)) : std::optional<lfs::core::param::MaskMode>(),
                                         // Capture flag states
                                         use_bilateral_grid_flag = bool(use_bilateral_grid),
                                         enable_eval_flag = bool(enable_eval),
@@ -418,7 +431,8 @@ namespace {
                                         random_flag = bool(random),
                                         gut_flag = bool(gut),
                                         save_sog_flag = bool(save_sog),
-                                        enable_sparsity_flag = bool(enable_sparsity)]() {
+                                        enable_sparsity_flag = bool(enable_sparsity),
+                                        invert_masks_flag = bool(invert_masks)]() {
                 auto& opt = params.optimization;
                 auto& ds = params.dataset;
 
@@ -474,6 +488,13 @@ namespace {
                 setFlag(gut_flag, opt.gut);
                 setFlag(save_sog_flag, opt.save_sog);
                 setFlag(enable_sparsity_flag, opt.enable_sparsity);
+
+                // Mask parameters
+                setVal(mask_mode_val, opt.mask_mode);
+                setFlag(invert_masks_flag, opt.invert_masks);
+                // Also propagate to dataset config for loading
+                ds.invert_masks = opt.invert_masks;
+                ds.mask_threshold = opt.mask_threshold;
             };
 
             return std::make_tuple(ParseResult::Success, apply_cmd_overrides);

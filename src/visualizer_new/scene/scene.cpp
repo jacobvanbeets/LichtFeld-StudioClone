@@ -1033,7 +1033,8 @@ namespace lfs::vis {
         return id;
     }
 
-    NodeId Scene::addCamera(const std::string& name, const NodeId parent, const int camera_index, const int camera_uid, const std::string& image_path) {
+    NodeId Scene::addCamera(const std::string& name, const NodeId parent, const int camera_index, const int camera_uid,
+                             const std::string& image_path, const std::string& mask_path) {
         const NodeId id = next_node_id_++;
         auto node = std::make_unique<Node>();
         node->id = id;
@@ -1043,6 +1044,7 @@ namespace lfs::vis {
         node->camera_index = camera_index;
         node->camera_uid = camera_uid;
         node->image_path = image_path;
+        node->mask_path = mask_path;
 
         // Add to parent's children
         if (parent != NULL_NODE) {

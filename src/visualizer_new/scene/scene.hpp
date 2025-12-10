@@ -38,7 +38,7 @@ namespace lfs::vis {
         CROPBOX,      // Crop box visualization (child of SPLAT or POINTCLOUD)
         DATASET,      // Root node for training dataset (contains cameras + model)
         CAMERA_GROUP, // Container for camera nodes (e.g., "Training", "Validation")
-        CAMERA,       // Individual camera from dataset
+        CAMERA,       // Individual camera from dataset (may have mask_path)
         IMAGE_GROUP,  // Container for image nodes
         IMAGE         // Individual image file reference (not loaded, just path)
     };
@@ -93,8 +93,11 @@ namespace lfs::vis {
         int camera_index = -1;  // Index into CameraDataset
         int camera_uid = -1;    // Camera unique identifier (for GoToCamView)
 
-        // Image data (for IMAGE nodes) - just the filename, not loaded
+        // Image data (for IMAGE and CAMERA nodes) - just the filename, not loaded
         std::string image_path;  // Path to image file
+
+        // Mask data (for MASK and CAMERA nodes) - path to attention mask file
+        std::string mask_path;   // Path to mask file
 
         // Cached world transform (mutable for lazy evaluation)
         mutable glm::mat4 world_transform{1.0f};
@@ -146,7 +149,8 @@ namespace lfs::vis {
         NodeId addCropBox(const std::string& name, NodeId parent_node);  // Parent can be SPLAT or POINTCLOUD
         NodeId addDataset(const std::string& name);  // Root node for training dataset
         NodeId addCameraGroup(const std::string& name, NodeId parent, size_t camera_count);
-        NodeId addCamera(const std::string& name, NodeId parent, int camera_index, int camera_uid, const std::string& image_path = "");
+        NodeId addCamera(const std::string& name, NodeId parent, int camera_index, int camera_uid,
+                         const std::string& image_path = "", const std::string& mask_path = "");
         void reparent(NodeId node, NodeId new_parent);
         // Duplicate a node (and all children recursively for groups)
         // Returns new node name (original name with "_copy" or "_copy_N" suffix)

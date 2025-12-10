@@ -595,6 +595,33 @@ namespace lfs::loader {
     // -----------------------------------------------------------------------------
     //  Assemble cameras with dimension verification
     // -----------------------------------------------------------------------------
+    namespace {
+        constexpr std::array MASK_FOLDERS = {"masks", "mask", "segmentation"};
+        constexpr std::array MASK_EXTENSIONS = {".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"};
+    }
+
+    static std::filesystem::path find_mask_path(const std::filesystem::path& base_path,
+                                                const std::string& image_name) {
+        const std::filesystem::path img_path(image_name);
+        const std::string stem = img_path.stem().string();
+
+        for (const auto& folder : MASK_FOLDERS) {
+            const std::filesystem::path mask_dir = base_path / folder;
+            if (!std::filesystem::exists(mask_dir)) continue;
+
+            if (const auto exact = mask_dir / image_name; std::filesystem::exists(exact)) {
+                return exact;
+            }
+
+            for (const auto& ext : MASK_EXTENSIONS) {
+                if (const auto path = mask_dir / (stem + ext); std::filesystem::exists(path)) {
+                    return path;
+                }
+            }
+        }
+        return {};
+    }
+
     std::tuple<std::vector<std::shared_ptr<Camera>>, Tensor>
     assemble_colmap_cameras(const std::filesystem::path& base_path,
                             const std::unordered_map<uint32_t, CameraDataIntermediate>& cam_map,
@@ -809,6 +836,9 @@ namespace lfs::loader {
             int cam_width = (actual_w > 0) ? actual_w : cam_data.width;
             int cam_height = (actual_h > 0) ? actual_h : cam_data.height;
 
+            // Find mask path if available
+            std::filesystem::path mask_path = find_mask_path(base_path, img.name);
+
             // Create Camera
             auto camera = std::make_shared<Camera>(
                 R,
@@ -820,6 +850,7 @@ namespace lfs::loader {
                 camera_model_type,
                 img.name,
                 images_path / img.name,
+                mask_path,
                 cam_width,
                 cam_height,
                 static_cast<int>(i));

@@ -80,6 +80,7 @@ namespace lfs::vis::gui {
         m_icons.splat = loadSceneIcon("splat.png");
         m_icons.cropbox = loadSceneIcon("cropbox.png");
         m_icons.pointcloud = loadSceneIcon("pointcloud.png");
+        m_icons.mask = loadSceneIcon("mask.png");
         m_icons.initialized = true;
         LOG_DEBUG("Scene panel icons loaded");
     }
@@ -95,6 +96,7 @@ namespace lfs::vis::gui {
         deleteTexture(m_icons.splat);
         deleteTexture(m_icons.cropbox);
         deleteTexture(m_icons.pointcloud);
+        deleteTexture(m_icons.mask);
         m_icons.initialized = false;
     }
 
@@ -106,6 +108,8 @@ namespace lfs::vis::gui {
             m_pathToCamId.clear();
             m_currentDatasetPath.clear();
             m_selectedImageIndex = -1;
+            m_highlightedCamUid = -1;
+            m_needsScrollToCam = false;
         });
 
         state::DatasetLoadCompleted::when([this](const auto& e) {
@@ -114,6 +118,7 @@ namespace lfs::vis::gui {
     }
 
     void ScenePanel::handleGoToCamView(const cmd::GoToCamView& event) {
+        // Sync image selection
         for (const auto& [path, cam_id] : m_pathToCamId) {
             if (cam_id == event.cam_id) {
                 if (auto it = std::find(m_imagePaths.begin(), m_imagePaths.end(), path); it != m_imagePaths.end()) {
@@ -124,6 +129,10 @@ namespace lfs::vis::gui {
                 break;
             }
         }
+
+        // Sync camera highlighting in scene graph
+        m_highlightedCamUid = event.cam_id;
+        m_needsScrollToCam = true;
     }
 
     bool ScenePanel::hasImages() const {
@@ -298,26 +307,36 @@ namespace lfs::vis::gui {
         const bool is_camera = (node.type == NodeType::CAMERA);
         const bool is_pointcloud = (node.type == NodeType::POINTCLOUD);
         const bool has_children = !node.children.empty();
+        const bool has_mask = is_camera && !node.mask_path.empty();
+        const bool is_highlighted_cam = is_camera && node.camera_uid == m_highlightedCamUid;
 
         const auto* parent_node = scene.getNodeById(node.parent_id);
         [[maybe_unused]] const bool parent_is_dataset = parent_node && parent_node->type == NodeType::DATASET;
 
         const auto& t = theme();
-        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        ImDrawList* const draw_list = ImGui::GetWindowDrawList();
 
-        // Alternating row background
+        constexpr float ROW_PADDING = 2.0f;
+        constexpr ImU32 HIGHLIGHT_COLOR = IM_COL32(80, 120, 180, 180);
+
         const ImVec2 row_min = ImGui::GetCursorScreenPos();
         const float window_left = ImGui::GetWindowPos().x;
         const float window_right = window_left + ImGui::GetWindowWidth();
-        const float row_height = ImGui::GetTextLineHeight() + 2.0f;
-        const ImU32 row_color = (m_rowIndex++ % 2 == 0) ? t.row_even_u32() : t.row_odd_u32();
+        const float row_height = ImGui::GetTextLineHeight() + ROW_PADDING;
+        const ImU32 row_color = is_highlighted_cam ? HIGHLIGHT_COLOR
+                              : (m_rowIndex++ % 2 == 0) ? t.row_even_u32() : t.row_odd_u32();
+
         draw_list->AddRectFilled(
             ImVec2(window_left, row_min.y),
             ImVec2(window_right, row_min.y + row_height),
             row_color);
 
-        // Visibility icon
-        constexpr float ICON_SIZE = 12.0f;
+        if (is_highlighted_cam && m_needsScrollToCam) {
+            ImGui::SetScrollHereY(0.5f);
+            m_needsScrollToCam = false;
+        }
+
+        constexpr float ICON_SIZE = 18.0f;
         const float line_h = ImGui::GetTextLineHeight();
 
         const unsigned int vis_tex = is_visible ? m_icons.visible : m_icons.hidden;
@@ -390,7 +409,7 @@ namespace lfs::vis::gui {
                 type_tint = ImVec4(0.8f, 0.5f, 1.0f, 0.8f);
             }
 
-            constexpr float TYPE_ICON_SIZE = 12.0f;
+            constexpr float TYPE_ICON_SIZE = 18.0f;
             if (type_tex) {
                 ImGui::Image(static_cast<ImTextureID>(type_tex),
                              ImVec2(TYPE_ICON_SIZE, TYPE_ICON_SIZE),
@@ -398,6 +417,18 @@ namespace lfs::vis::gui {
             } else {
                 ImGui::Dummy(ImVec2(TYPE_ICON_SIZE, TYPE_ICON_SIZE));
             }
+
+            // Show mask indicator for cameras with masks
+            if (has_mask && m_icons.mask) {
+                ImGui::SameLine(0.0f, 2.0f);
+                constexpr float MASK_ICON_SIZE = 14.0f;
+                ImGui::Image(static_cast<ImTextureID>(m_icons.mask),
+                             ImVec2(MASK_ICON_SIZE, MASK_ICON_SIZE),
+                             ImVec2(0, 0), ImVec2(1, 1),
+                             ImVec4(0.9f, 0.5f, 0.6f, 0.8f),  // Pink tint for mask
+                             ImVec4(0, 0, 0, 0));
+            }
+
             ImGui::SameLine(0.0f, 4.0f);
 
             static constexpr ImGuiTreeNodeFlags BASE_FLAGS = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
@@ -456,7 +487,7 @@ namespace lfs::vis::gui {
                 }
             }
 
-            // Double-click opens image preview
+            // Double-click opens image preview for cameras
             if (is_camera && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 const ImVec2 item_min = ImGui::GetItemRectMin();
                 const ImVec2 item_max = ImGui::GetItemRectMax();
@@ -464,18 +495,36 @@ namespace lfs::vis::gui {
                 const bool in_item = mouse.x >= item_min.x && mouse.x <= item_max.x &&
                                      mouse.y >= item_min.y && mouse.y <= item_max.y;
                 if (in_item && !node.image_path.empty() && m_imagePreview) {
-                    std::vector<std::filesystem::path> camera_paths;
-                    size_t current_idx = 0;
+                    // Collect camera paths with names for sorting
+                    struct CameraEntry {
+                        std::string name;
+                        std::filesystem::path image_path;
+                        std::filesystem::path mask_path;
+                    };
+                    std::vector<CameraEntry> entries;
 
                     for (const auto* n : scene.getNodes()) {
                         if (n->type == NodeType::CAMERA && !n->image_path.empty()) {
-                            if (n->name == node.name) current_idx = camera_paths.size();
-                            camera_paths.push_back(n->image_path);
+                            entries.push_back({n->name, n->image_path, n->mask_path});
                         }
                     }
 
+                    // Sort by name (which is typically the image filename)
+                    std::ranges::sort(entries, {}, &CameraEntry::name);
+
+                    // Build sorted path vectors and find current index
+                    std::vector<std::filesystem::path> camera_paths;
+                    std::vector<std::filesystem::path> mask_paths;
+                    size_t current_idx = 0;
+
+                    for (size_t i = 0; i < entries.size(); ++i) {
+                        if (entries[i].name == node.name) current_idx = i;
+                        camera_paths.push_back(entries[i].image_path);
+                        mask_paths.push_back(entries[i].mask_path);
+                    }
+
                     if (!camera_paths.empty()) {
-                        m_imagePreview->open(camera_paths, current_idx);
+                        m_imagePreview->openWithOverlay(camera_paths, mask_paths, current_idx);
                         m_showImagePreview = true;
                     }
                 }

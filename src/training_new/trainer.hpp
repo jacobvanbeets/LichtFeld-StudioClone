@@ -139,6 +139,17 @@ namespace lfs::training {
             const lfs::core::Tensor& gt_image,
             const lfs::core::param::OptimizationParameters& opt_params);
 
+        // Masked version of photometric loss for attention masks
+        std::expected<std::pair<lfs::core::Tensor, lfs::core::Tensor>, std::string> compute_photometric_loss_with_mask(
+            const lfs::core::Tensor& rendered,
+            const lfs::core::Tensor& gt_image,
+            const lfs::core::Tensor& mask,
+            const lfs::core::Tensor& alpha,
+            const lfs::core::param::OptimizationParameters& opt_params);
+
+        // Validate masks exist for all cameras when mask mode is enabled
+        std::expected<void, std::string> validate_masks();
+
         // Returns GPU tensor for loss (avoid sync!)
         std::expected<lfs::core::Tensor, std::string> compute_scale_reg_loss(
             lfs::core::SplatData& splatData,

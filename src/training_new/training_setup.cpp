@@ -312,14 +312,18 @@ namespace lfs::training {
                 const bool enable_eval = params.optimization.enable_eval;
                 const int test_every = params.dataset.test_every;
 
-                // Count train/val cameras
+                // Count train/val cameras and masks
                 size_t train_count = 0;
                 size_t val_count = 0;
+                size_t mask_count = 0;
                 for (size_t i = 0; i < cameras.size(); ++i) {
                     if (enable_eval && (i % test_every) == 0) {
                         val_count++;
                     } else {
                         train_count++;
+                    }
+                    if (cameras[i]->has_mask()) {
+                        mask_count++;
                     }
                 }
 
@@ -332,11 +336,13 @@ namespace lfs::training {
                     cameras_group_id,
                     train_count);
 
-                // Add individual training camera nodes
+                // Add individual training camera nodes (with mask_path if available)
                 for (size_t i = 0; i < cameras.size(); ++i) {
                     if (!enable_eval || (i % test_every) != 0) {  // Training camera (all if no eval)
                         scene.addCamera(cameras[i]->image_name(), train_cameras_id,
-                                       static_cast<int>(i), cameras[i]->uid(), cameras[i]->image_path().string());
+                                       static_cast<int>(i), cameras[i]->uid(),
+                                       cameras[i]->image_path().string(),
+                                       cameras[i]->mask_path().string());
                     }
                 }
 
@@ -347,18 +353,21 @@ namespace lfs::training {
                         cameras_group_id,
                         val_count);
 
-                    // Add individual validation camera nodes
+                    // Add individual validation camera nodes (with mask_path if available)
                     for (size_t i = 0; i < cameras.size(); ++i) {
                         if ((i % test_every) == 0) {  // Validation camera
                             scene.addCamera(cameras[i]->image_name(), val_cameras_id,
-                                           static_cast<int>(i), cameras[i]->uid(), cameras[i]->image_path().string());
+                                           static_cast<int>(i), cameras[i]->uid(),
+                                           cameras[i]->image_path().string(),
+                                           cameras[i]->mask_path().string());
                         }
                     }
                 }
 
-                LOG_INFO("Loaded dataset '{}' into scene: {} train{} cameras",
+                LOG_INFO("Loaded dataset '{}' into scene: {} train{} cameras{}",
                          dataset_name, train_count,
-                         enable_eval ? std::format(" + {} val", val_count) : "");
+                         enable_eval ? std::format(" + {} val", val_count) : "",
+                         mask_count > 0 ? std::format(" ({} with masks)", mask_count) : "");
                 return {};
 
             } else {

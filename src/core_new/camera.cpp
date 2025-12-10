@@ -47,6 +47,7 @@ namespace lfs::core {
                    gsplat::CameraModelType camera_model_type,
                    const std::string& image_name,
                    const std::filesystem::path& image_path,
+                   const std::filesystem::path& mask_path,
                    int camera_width, int camera_height,
                    int uid)
         : _uid(uid),
@@ -61,6 +62,7 @@ namespace lfs::core {
           _camera_model_type(camera_model_type),
           _image_name(image_name),
           _image_path(image_path),
+          _mask_path(mask_path),
           _camera_width(camera_width),
           _camera_height(camera_height),
           _image_width(camera_width),
@@ -132,15 +134,19 @@ namespace lfs::core {
           _tangential_distortion(std::move(other._tangential_distortion)),
           _image_path(std::move(other._image_path)),
           _image_name(std::move(other._image_name)),
+          _mask_path(std::move(other._mask_path)),
           _camera_width(other._camera_width),
           _camera_height(other._camera_height),
           _image_width(other._image_width),
           _image_height(other._image_height),
           _world_view_transform(std::move(other._world_view_transform)),
           _cam_position(std::move(other._cam_position)),
+          _cached_mask(std::move(other._cached_mask)),
+          _mask_loaded(other._mask_loaded),
           _stream(other._stream) {
         // Take ownership of the stream
         other._stream = nullptr;
+        other._mask_loaded = false;
     }
 
     Camera& Camera::operator=(Camera&& other) noexcept {
@@ -164,16 +170,20 @@ namespace lfs::core {
             _tangential_distortion = std::move(other._tangential_distortion);
             _image_path = std::move(other._image_path);
             _image_name = std::move(other._image_name);
+            _mask_path = std::move(other._mask_path);
             _camera_width = other._camera_width;
             _camera_height = other._camera_height;
             _image_width = other._image_width;
             _image_height = other._image_height;
             _world_view_transform = std::move(other._world_view_transform);
             _cam_position = std::move(other._cam_position);
+            _cached_mask = std::move(other._cached_mask);
+            _mask_loaded = other._mask_loaded;
 
             // Take ownership of the stream
             _stream = other._stream;
             other._stream = nullptr;
+            other._mask_loaded = false;
         }
         return *this;
     }
@@ -191,6 +201,7 @@ namespace lfs::core {
           _camera_model_type(other._camera_model_type),
           _image_name(other._image_name),
           _image_path(other._image_path),
+          _mask_path(other._mask_path),
           _camera_width(other._camera_width),
           _camera_height(other._camera_height),
           _image_width(other._image_width),
@@ -335,5 +346,57 @@ namespace lfs::core {
         auto [w, h, c] = get_image_info(_image_path);
         size_t num_bytes = w * h * c * sizeof(float);
         return num_bytes;
+    }
+
+    Tensor Camera::load_and_get_mask(const int resize_factor, const int max_width,
+                                     const bool invert_mask, const float mask_threshold) {
+        if (_mask_loaded && _cached_mask.is_valid()) {
+            return _cached_mask;
+        }
+
+        if (_mask_path.empty() || !std::filesystem::exists(_mask_path)) {
+            return Tensor();
+        }
+
+        auto& loader = lfs::loader::CacheLoader::getInstance();
+        const lfs::loader::LoadParams params{
+            .resize_factor = resize_factor,
+            .max_width = max_width,
+            .cuda_stream = _stream
+        };
+
+        auto mask = loader.load_cached_image(_mask_path, params);
+
+        if (mask.device() != Device::CUDA) {
+            mask = mask.to(Device::CUDA, _stream);
+            if (_stream) {
+                cudaStreamSynchronize(_stream);
+            }
+        }
+
+        // Convert RGB [C,H,W] to grayscale [H,W]
+        if (mask.ndim() == 3 && mask.shape()[0] >= 3) {
+            const auto r = mask.slice(0, 0, 1).squeeze(0);
+            const auto g = mask.slice(0, 1, 2).squeeze(0);
+            const auto b = mask.slice(0, 2, 3).squeeze(0);
+            mask = (r + g + b) / 3.0f;
+        } else if (mask.ndim() == 3 && mask.shape()[0] == 1) {
+            mask = mask.squeeze(0);
+        }
+
+        if (invert_mask) {
+            mask = Tensor::full(mask.shape(), 1.0f, mask.device()) - mask;
+        }
+
+        // Apply threshold: >= threshold becomes 1.0
+        const auto threshold_mask = mask.ge(mask_threshold);
+        mask = mask.where(threshold_mask, Tensor::full(mask.shape(), 1.0f, mask.device()));
+
+        _cached_mask = mask;
+        _mask_loaded = true;
+
+        LOG_DEBUG("Loaded mask for {}: [{},{}]", _image_name, mask.shape()[0], mask.shape()[1]);
+
+        return _cached_mask;
     }
 } // namespace lfs::core
