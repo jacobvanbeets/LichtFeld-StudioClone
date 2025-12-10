@@ -164,6 +164,41 @@ namespace lfs::rendering {
         }
         sphere_vertex_count_ = (vertices.size() / 6) - sphere_vertex_start_;
 
+        // Generate ring (flat washer for negative axis indicators)
+        ring_vertex_start_ = vertices.size() / 6;
+        constexpr int RING_SEGMENTS = 32;
+        constexpr float OUTER_RADIUS = 1.0f;
+        constexpr float INNER_RADIUS = 0.55f;
+
+        for (const auto i : std::views::iota(0, RING_SEGMENTS)) {
+            const float theta1 = static_cast<float>(i) * two_pi / RING_SEGMENTS;
+            const float theta2 = static_cast<float>(i + 1) * two_pi / RING_SEGMENTS;
+            const float cos_t1 = cos(theta1), sin_t1 = sin(theta1);
+            const float cos_t2 = cos(theta2), sin_t2 = sin(theta2);
+
+            const glm::vec3 outer1(OUTER_RADIUS * cos_t1, OUTER_RADIUS * sin_t1, 0.0f);
+            const glm::vec3 outer2(OUTER_RADIUS * cos_t2, OUTER_RADIUS * sin_t2, 0.0f);
+            const glm::vec3 inner1(INNER_RADIUS * cos_t1, INNER_RADIUS * sin_t1, 0.0f);
+            const glm::vec3 inner2(INNER_RADIUS * cos_t2, INNER_RADIUS * sin_t2, 0.0f);
+
+            // Front face
+            addVertex(outer1.x, outer1.y, outer1.z, 0, 0, 1);
+            addVertex(outer2.x, outer2.y, outer2.z, 0, 0, 1);
+            addVertex(inner1.x, inner1.y, inner1.z, 0, 0, 1);
+            addVertex(inner1.x, inner1.y, inner1.z, 0, 0, 1);
+            addVertex(outer2.x, outer2.y, outer2.z, 0, 0, 1);
+            addVertex(inner2.x, inner2.y, inner2.z, 0, 0, 1);
+
+            // Back face
+            addVertex(outer1.x, outer1.y, outer1.z, 0, 0, -1);
+            addVertex(inner1.x, inner1.y, inner1.z, 0, 0, -1);
+            addVertex(outer2.x, outer2.y, outer2.z, 0, 0, -1);
+            addVertex(inner1.x, inner1.y, inner1.z, 0, 0, -1);
+            addVertex(inner2.x, inner2.y, inner2.z, 0, 0, -1);
+            addVertex(outer2.x, outer2.y, outer2.z, 0, 0, -1);
+        }
+        ring_vertex_count_ = (vertices.size() / 6) - ring_vertex_start_;
+
         upload_buffer(GL_ARRAY_BUFFER, std::span(vertices), GL_STATIC_DRAW);
 
         // Position attribute
@@ -186,8 +221,8 @@ namespace lfs::rendering {
             .offset = (void*)(3 * sizeof(float))};
         normal_attr.apply();
 
-        LOG_DEBUG("Generated {} cylinder vertices and {} sphere vertices",
-                  cylinder_vertex_count_, sphere_vertex_count_);
+        LOG_DEBUG("Generated {} cylinder, {} sphere, {} ring vertices",
+                  cylinder_vertex_count_, sphere_vertex_count_, ring_vertex_count_);
         return {};
     }
 
@@ -341,6 +376,42 @@ namespace lfs::rendering {
                 sphereInfo[i].visible = false;
                 sphere_hits_[i].visible = false;
             }
+        }
+
+        // Draw rings for negative axis directions
+        constexpr glm::vec3 DEFAULT_NORMAL(0.0f, 0.0f, 1.0f);
+        const glm::vec3 camWorldPos = -glm::transpose(view_rotation) * glm::vec3(view[3]);
+
+        for (int i = 0; i < 3; i++) {
+            glm::vec3 pos(0.0f);
+            pos[i] = -labelDistance;
+
+            const glm::vec3 camSpacePos = glm::vec3(view * glm::vec4(pos, 1.0f));
+            const float scaleFactor = glm::length(camSpacePos) / refDist;
+            const glm::vec3 toCam = glm::normalize(camWorldPos - pos);
+
+            // Rotate ring to face camera
+            glm::mat4 faceRotation(1.0f);
+            const float dot = glm::dot(DEFAULT_NORMAL, toCam);
+            if (dot < 0.999f && dot > -0.999f) {
+                const glm::vec3 axis = glm::normalize(glm::cross(DEFAULT_NORMAL, toCam));
+                faceRotation = glm::rotate(glm::mat4(1.0f), std::acosf(dot), axis);
+            } else if (dot <= -0.999f) {
+                faceRotation = glm::rotate(glm::mat4(1.0f), std::numbers::pi_v<float>, glm::vec3(0, 1, 0));
+            }
+
+            const glm::mat4 model = glm::translate(glm::mat4(1), pos) *
+                                    faceRotation *
+                                    glm::scale(glm::mat4(1), glm::vec3(sphereRadius * scaleFactor));
+            const glm::mat4 mvp = proj * view * model;
+
+            if (auto r = s->set("uMVP", mvp); !r) return r;
+            if (auto r = s->set("uModel", model); !r) return r;
+            if (auto r = s->set("uColor", AXIS_COLORS[i]); !r) return r;
+            if (auto r = s->set("uAlpha", 1.0f); !r) return r;
+            if (auto r = s->set("uUseLighting", 0); !r) return r;
+
+            glDrawArrays(GL_TRIANGLES, ring_vertex_start_, ring_vertex_count_);
         }
 
         // Sort spheres by depth

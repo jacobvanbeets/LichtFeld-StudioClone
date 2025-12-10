@@ -226,8 +226,16 @@ namespace lfs::vis::gui::panels {
 
         // Camera Frustums
         ImGui::Separator();
-        if (widgets::SliderWithReset("Camera Scale", &settings.camera_frustum_scale, 0.01f, 10.0f, 0.25f)) {
+        if (ImGui::Checkbox("Show Camera Frustums", &settings.show_camera_frustums)) {
             settings_changed = true;
+        }
+
+        if (settings.show_camera_frustums) {
+            ImGui::Indent();
+            if (widgets::SliderWithReset("Scale##camera", &settings.camera_frustum_scale, 0.01f, 10.0f, 0.25f)) {
+                settings_changed = true;
+            }
+            ImGui::Unindent();
         }
 
         // Selection Colors

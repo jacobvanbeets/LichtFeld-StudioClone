@@ -41,6 +41,7 @@
 #include <chrono>
 #include <cstdarg>
 #include <format>
+#include <GLFW/glfw3.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
@@ -738,7 +739,7 @@ namespace lfs::vis::gui {
                     const int hovered_axis = engine->hitTestViewportGizmo(glm::vec2(mouse.x, mouse.y), vp_pos, vp_size);
                     engine->setViewportGizmoHover(hovered_axis);
 
-                    // Handle drag-to-orbit
+                    // Drag-to-orbit
                     if (!ImGui::GetIO().WantCaptureMouse) {
                         const glm::vec2 mouse_pos(mouse.x, mouse.y);
                         const float time = static_cast<float>(ImGui::GetTime());
@@ -746,6 +747,12 @@ namespace lfs::vis::gui {
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && mouse_in_gizmo) {
                             viewport_gizmo_dragging_ = true;
                             viewport.camera.startRotateAroundCenter(mouse_pos, time);
+
+                            // Capture cursor for infinite drag
+                            if (GLFWwindow* const window = glfwGetCurrentContext()) {
+                                glfwGetCursorPos(window, &gizmo_drag_start_cursor_.x, &gizmo_drag_start_cursor_.y);
+                                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                            }
                         }
 
                         if (viewport_gizmo_dragging_) {
@@ -755,6 +762,12 @@ namespace lfs::vis::gui {
                             } else {
                                 viewport.camera.endRotateAroundCenter();
                                 viewport_gizmo_dragging_ = false;
+
+                                // Release cursor, restore position
+                                if (GLFWwindow* const window = glfwGetCurrentContext()) {
+                                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                                    glfwSetCursorPos(window, gizmo_drag_start_cursor_.x, gizmo_drag_start_cursor_.y);
+                                }
                             }
                         }
                     }

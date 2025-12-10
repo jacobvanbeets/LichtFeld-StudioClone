@@ -193,6 +193,7 @@ namespace lfs::vis {
 
             // Viewport gizmo drag-to-orbit state
             bool viewport_gizmo_dragging_ = false;
+            glm::dvec2 gizmo_drag_start_cursor_{0.0, 0.0};
 
             // Async export state
             struct ExportState {

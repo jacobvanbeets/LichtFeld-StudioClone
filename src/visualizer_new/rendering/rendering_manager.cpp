@@ -1256,9 +1256,8 @@ namespace lfs::vis {
             }
         }
 
-        // Camera frustums - controlled entirely by scene graph visibility
-        // (no checkbox needed, visibility is set per-camera node in scene panel)
-        if (engine_ && context.scene_manager) {
+        // Camera frustums - requires both master toggle AND scene graph visibility
+        if (settings_.show_camera_frustums && engine_ && context.scene_manager) {
             // Check which cameras are visible in the scene graph
             auto visible_indices = context.scene_manager->getScene().getVisibleCameraIndices();
 

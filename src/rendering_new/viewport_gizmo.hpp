@@ -66,6 +66,8 @@ namespace lfs::rendering {
         int cylinder_vertex_count_ = 0;
         int sphere_vertex_start_ = 0;
         int sphere_vertex_count_ = 0;
+        int ring_vertex_start_ = 0;
+        int ring_vertex_count_ = 0;
 
         int size_ = 95;
         int margin_x_ = 10;
