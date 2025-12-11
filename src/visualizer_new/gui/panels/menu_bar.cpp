@@ -23,6 +23,9 @@ namespace lfs::vis::gui {
     void MenuBar::render() {
         const auto& t = theme();
 
+        // Use regular font for entire menu bar
+        if (fonts_.regular) ImGui::PushFont(fonts_.regular);
+
         ImGui::PushStyleColor(ImGuiCol_MenuBarBg, t.menu_background());
         ImGui::PushStyleColor(ImGuiCol_Header, t.menu_active());
         ImGui::PushStyleColor(ImGuiCol_HeaderHovered, t.menu_hover());
@@ -108,6 +111,7 @@ namespace lfs::vis::gui {
 
         ImGui::PopStyleVar(5);
         ImGui::PopStyleColor(6);
+        if (fonts_.regular) ImGui::PopFont();
 
         renderGettingStartedWindow();
         renderAboutWindow();
@@ -142,9 +146,9 @@ namespace lfs::vis::gui {
         ImGui::PushStyleColor(ImGuiCol_Border, withAlpha(t.palette.info, 0.3f));
 
         if (ImGui::Begin("Getting Started", &show_getting_started_, WINDOW_FLAGS)) {
-            ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+            if (fonts_.heading) ImGui::PushFont(fonts_.heading);
             ImGui::TextColored(t.palette.info, "QUICK START GUIDE");
-            ImGui::PopFont();
+            if (fonts_.heading) ImGui::PopFont();
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
@@ -212,7 +216,9 @@ namespace lfs::vis::gui {
             ImGui::Spacing();
 
             // FAQ link
-            ImGui::TextColored(t.palette.info, "FREQUENTLY ASKED QUESTIONS");
+            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            ImGui::TextColored(t.palette.text_dim, "FREQUENTLY ASKED QUESTIONS");
+            if (fonts_.section) ImGui::PopFont();
             ImGui::Spacing();
 
             const char* faq_url = "https://github.com/MrNeRF/LichtFeld-Studio/blob/master/docs/docs/faq.md";
@@ -260,7 +266,9 @@ namespace lfs::vis::gui {
         static constexpr const char* WEBSITE_URL = "https://lichtfeld.io";
 
         if (ImGui::Begin("About LichtFeld Studio", &show_about_window_, WINDOW_FLAGS)) {
+            if (fonts_.heading) ImGui::PushFont(fonts_.heading);
             ImGui::TextColored(t.palette.info, "LICHTFELD STUDIO");
+            if (fonts_.heading) ImGui::PopFont();
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
@@ -272,7 +280,9 @@ namespace lfs::vis::gui {
             ImGui::Spacing();
             ImGui::Spacing();
 
-            ImGui::TextColored(t.palette.info, "BUILD INFORMATION");
+            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            ImGui::TextColored(t.palette.text_dim, "BUILD INFORMATION");
+            if (fonts_.section) ImGui::PopFont();
             ImGui::Spacing();
 
             constexpr ImGuiTableFlags TABLE_FLAGS = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
@@ -344,7 +354,9 @@ namespace lfs::vis::gui {
             ImGui::Spacing();
             ImGui::Spacing();
 
-            ImGui::TextColored(t.palette.info, "LINKS");
+            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            ImGui::TextColored(t.palette.text_dim, "LINKS");
+            if (fonts_.section) ImGui::PopFont();
             ImGui::Spacing();
 
             const ImVec4 LINK_COLOR = lighten(t.palette.info, 0.3f);
@@ -602,7 +614,9 @@ namespace lfs::vis::gui {
         ImGui::PushStyleColor(ImGuiCol_TableBorderStrong, lighten(t.palette.surface_bright, 0.15f));
 
         if (ImGui::Begin("Input Settings", &show_input_settings_, WINDOW_FLAGS)) {
-            ImGui::TextColored(t.palette.info, "INPUT PROFILE");
+            if (fonts_.heading) ImGui::PushFont(fonts_.heading);
+            ImGui::TextColored(t.palette.info, "INPUT SETTINGS");
+            if (fonts_.heading) ImGui::PopFont();
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
@@ -639,8 +653,12 @@ namespace lfs::vis::gui {
                 ImGui::Spacing();
                 ImGui::Spacing();
 
-                ImGui::TextColored(t.palette.info, "TOOL MODE");
+                if (fonts_.section) ImGui::PushFont(fonts_.section);
+                ImGui::TextColored(t.palette.text_dim, "TOOL MODE");
+                if (fonts_.section) ImGui::PopFont();
+                if (fonts_.small) ImGui::PushFont(fonts_.small);
                 ImGui::TextColored(t.palette.text_dim, "Select tool mode to view/edit bindings");
+                if (fonts_.small) ImGui::PopFont();
                 ImGui::Spacing();
 
                 // Tool mode selector
@@ -676,12 +694,16 @@ namespace lfs::vis::gui {
                 ImGui::Spacing();
                 ImGui::Spacing();
 
-                ImGui::TextColored(t.palette.info, "CURRENT BINDINGS");
+                if (fonts_.section) ImGui::PushFont(fonts_.section);
+                ImGui::TextColored(t.palette.text_dim, "CURRENT BINDINGS");
+                if (fonts_.section) ImGui::PopFont();
+                if (fonts_.small) ImGui::PushFont(fonts_.small);
                 if (selected_tool_mode_ == input::ToolMode::GLOBAL) {
                     ImGui::TextColored(t.palette.text_dim, "Global bindings apply everywhere unless overridden");
                 } else {
                     ImGui::TextColored(t.palette.text_dim, "Tool-specific bindings override global bindings");
                 }
+                if (fonts_.small) ImGui::PopFont();
                 ImGui::Spacing();
 
                 constexpr ImGuiTableFlags TABLE_FLAGS = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY;

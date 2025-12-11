@@ -52,11 +52,13 @@ struct ThemeSizes {
 
 // Font configuration
 struct ThemeFonts {
-    std::string regular_path = "JetBrainsMono-Regular.ttf";
+    std::string regular_path = "Inter-Regular.ttf";
+    std::string bold_path = "Inter-SemiBold.ttf";
     float base_size = 14.0f;
     float small_size = 12.0f;
     float large_size = 16.0f;
-    float heading_size = 22.0f;
+    float heading_size = 18.0f;
+    float section_size = 13.0f;
 };
 
 struct ThemeMenu {

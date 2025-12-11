@@ -237,12 +237,43 @@ namespace lfs::vis::gui {
         // Apply theme first to get font settings
         applyDefaultStyle();
 
-        // Load Inter font (OFL licensed)
+        // Load fonts
+        const auto& t = theme();
         try {
-            const auto font_path = lfs::vis::getAssetPath("fonts/Inter-Regular.ttf");
-            io.Fonts->AddFontFromFileTTF(font_path.string().c_str(), theme().fonts.base_size * xscale);
+            const auto regular_path = lfs::vis::getAssetPath("fonts/" + t.fonts.regular_path);
+            const auto bold_path = lfs::vis::getAssetPath("fonts/" + t.fonts.bold_path);
+
+            constexpr size_t MIN_FONT_FILE_SIZE = 100;
+            const auto load_font = [&](const std::filesystem::path& path, const float size) -> ImFont* {
+                if (!std::filesystem::exists(path) || std::filesystem::file_size(path) < MIN_FONT_FILE_SIZE) {
+                    LOG_WARN("Font file invalid: {}", path.string());
+                    return nullptr;
+                }
+                return io.Fonts->AddFontFromFileTTF(path.string().c_str(), size);
+            };
+
+            font_regular_ = load_font(regular_path, t.fonts.base_size * xscale);
+            font_bold_ = load_font(bold_path, t.fonts.base_size * xscale);
+            font_heading_ = load_font(bold_path, t.fonts.heading_size * xscale);
+            font_small_ = load_font(regular_path, t.fonts.small_size * xscale);
+            font_section_ = load_font(bold_path, t.fonts.section_size * xscale);
+
+            const bool all_loaded = font_regular_ && font_bold_ && font_heading_ && font_small_ && font_section_;
+            if (!all_loaded) {
+                LOG_WARN("Some fonts failed to load, using fallback");
+                ImFont* const fallback = font_regular_ ? font_regular_ : io.Fonts->AddFontDefault();
+                if (!font_regular_) font_regular_ = fallback;
+                if (!font_bold_) font_bold_ = fallback;
+                if (!font_heading_) font_heading_ = fallback;
+                if (!font_small_) font_small_ = fallback;
+                if (!font_section_) font_section_ = fallback;
+            } else {
+                LOG_INFO("Loaded fonts: {} and {}", t.fonts.regular_path, t.fonts.bold_path);
+            }
         } catch (const std::exception& e) {
-            LOG_WARN("Could not load Inter font: {}", e.what());
+            LOG_ERROR("Font loading failed: {}", e.what());
+            ImFont* const fallback = io.Fonts->AddFontDefault();
+            font_regular_ = font_bold_ = font_heading_ = font_small_ = font_section_ = fallback;
         }
 
         // Configure file browser callback
@@ -276,6 +307,7 @@ namespace lfs::vis::gui {
         });
 
         initMenuBar();
+        menu_bar_->setFonts({font_regular_, font_bold_, font_heading_, font_small_, font_section_});
     }
 
     void GuiManager::shutdown() {
@@ -391,7 +423,8 @@ namespace lfs::vis::gui {
             .viewer = viewer_,
             .file_browser = file_browser_.get(),
             .window_states = &window_states_,
-            .editor = &editor_ctx};
+            .editor = &editor_ctx,
+            .fonts = {font_regular_, font_bold_, font_heading_, font_small_, font_section_}};
 
         // Right panel
         if (show_main_panel_ && !ui_hidden_) {
@@ -441,8 +474,7 @@ namespace lfs::vis::gui {
                 const float scene_h = std::max(MIN_H, avail_h * scene_panel_ratio_ - SPLITTER_H * 0.5f);
                 ImGui::PushStyleColor(ImGuiCol_ChildBg, {0, 0, 0, 0});
                 if (ImGui::BeginChild("##ScenePanel", {0, scene_h}, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground)) {
-                    ImGui::TextColored(t.palette.text_dim, "Scene");
-                    ImGui::Separator();
+                    widgets::SectionHeader("SCENE", ctx.fonts);
                     scene_panel_->renderContent(&ctx);
                 }
                 ImGui::EndChild();
@@ -487,8 +519,7 @@ namespace lfs::vis::gui {
                             ImGui::EndTabBar();
                         }
                     } else {
-                        ImGui::TextColored(t.palette.text_dim, "Rendering");
-                        ImGui::Separator();
+                        widgets::SectionHeader("RENDERING", ctx.fonts);
                         draw_rendering();
                     }
                 }
@@ -979,10 +1010,13 @@ namespace lfs::vis::gui {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
 
         if (ImGui::Begin("##StatusBar", nullptr, FLAGS)) {
+            // Use regular font as base for status bar
+            if (ctx.fonts.regular) ImGui::PushFont(ctx.fonts.regular);
+
             ImGui::GetWindowDrawList()->AddLine(pos, {pos.x + size.x, pos.y},
                 toU32(withAlpha(t.palette.surface_bright, 0.4f)), 1.0f);
 
-            // Mode
+            // Mode (bold)
             const char* mode = "Empty";
             ImVec4 color = t.palette.text_dim;
             if (sm) {
@@ -1004,7 +1038,9 @@ namespace lfs::vis::gui {
                 default: break;
                 }
             }
+            if (ctx.fonts.bold) ImGui::PushFont(ctx.fonts.bold);
             ImGui::TextColored(color, "%s", mode);
+            if (ctx.fonts.bold) ImGui::PopFont();
 
             // Splat count (visible / total)
             if (sm) {
@@ -1024,9 +1060,12 @@ namespace lfs::vis::gui {
                         if (n >= 1'000) return std::format("{:.1f}K", n / 1e3);
                         return std::to_string(n);
                     };
-                    const auto total_s = fmt(total);
-                    if (visible == total) ImGui::Text("%s splats", total_s.c_str());
-                    else ImGui::Text("%s / %s splats", fmt(visible).c_str(), total_s.c_str());
+                    if (ctx.fonts.bold) ImGui::PushFont(ctx.fonts.bold);
+                    if (visible == total)
+                        ImGui::Text("%s Gaussians", fmt(total).c_str());
+                    else
+                        ImGui::Text("%s / %s Gaussians", fmt(visible).c_str(), fmt(total).c_str());
+                    if (ctx.fonts.bold) ImGui::PopFont();
                 }
             }
 
@@ -1064,14 +1103,24 @@ namespace lfs::vis::gui {
                 ImGui::TextColored(withAlpha(t.palette.info, a), "Zoom: %.0f", zoom_speed_ * 10.0f);
             }
 
-            // FPS (right-aligned)
+            // FPS (right-aligned): "60 FPS" with colored number
             const float fps = rm->getAverageFPS();
-            char buf[16];
-            snprintf(buf, sizeof(buf), "%.0f FPS", fps);
-            ImGui::SameLine(size.x - ImGui::CalcTextSize(buf).x - PADDING * 2);
-            ImGui::TextColored(fps >= 30.0f ? t.palette.success
-                             : fps >= 15.0f ? t.palette.warning
-                             : t.palette.error, "%s", buf);
+            const ImVec4 fps_color = fps >= 30.0f ? t.palette.success
+                                   : fps >= 15.0f ? t.palette.warning
+                                   : t.palette.error;
+            char fps_buf[16];
+            snprintf(fps_buf, sizeof(fps_buf), "%.0f", fps);
+            ImFont* const font = ctx.fonts.bold ? ctx.fonts.bold : ImGui::GetFont();
+            const float fps_w = font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, fps_buf).x;
+            const float label_w = font->CalcTextSizeA(font->FontSize, FLT_MAX, 0.0f, " FPS").x;
+            ImGui::SameLine(size.x - fps_w - label_w - PADDING * 2);
+            if (ctx.fonts.bold) ImGui::PushFont(ctx.fonts.bold);
+            ImGui::TextColored(fps_color, "%s", fps_buf);
+            ImGui::SameLine(0.0f, 0.0f);
+            ImGui::TextColored(t.palette.text_dim, " FPS");
+            if (ctx.fonts.bold) ImGui::PopFont();
+
+            if (ctx.fonts.regular) ImGui::PopFont();
         }
         ImGui::End();
 

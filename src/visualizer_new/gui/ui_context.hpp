@@ -8,6 +8,8 @@
 #include <string>
 #include <unordered_map>
 
+struct ImFont;
+
 namespace lfs::vis {
     // Forward declarations
     class VisualizerImpl;
@@ -16,12 +18,22 @@ namespace lfs::vis {
     namespace gui {
         class FileBrowser;
 
-        // Shared context passed to all UI functions
-        struct UIContext {
-            VisualizerImpl* viewer;
-            FileBrowser* file_browser;
-            std::unordered_map<std::string, bool>* window_states;
-            EditorContext* editor;  // Centralized editor state
+        // Font set for typography hierarchy
+        struct FontSet {
+            ImFont* regular = nullptr;
+            ImFont* bold = nullptr;
+            ImFont* heading = nullptr;
+            ImFont* small = nullptr;
+            ImFont* section = nullptr;
         };
+
+        struct UIContext {
+            VisualizerImpl* viewer = nullptr;
+            FileBrowser* file_browser = nullptr;
+            std::unordered_map<std::string, bool>* window_states = nullptr;
+            EditorContext* editor = nullptr;
+            FontSet fonts;
+        };
+
     } // namespace gui
 } // namespace lfs::vis

@@ -261,4 +261,12 @@ namespace lfs::vis::gui::widgets {
         return clicked;
     }
 
+    void SectionHeader(const char* text, const FontSet& fonts) {
+        const auto& t = theme();
+        if (fonts.section) ImGui::PushFont(fonts.section);
+        ImGui::TextColored(t.palette.text_dim, "%s", text);
+        if (fonts.section) ImGui::PopFont();
+        ImGui::Separator();
+    }
+
 } // namespace lfs::vis::gui::widgets

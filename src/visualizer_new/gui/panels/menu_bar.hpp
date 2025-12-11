@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "gui/ui_context.hpp"
 #include "input/input_bindings.hpp"
 #include <chrono>
 #include <functional>
@@ -17,6 +18,7 @@ namespace lfs::vis::gui {
         ~MenuBar();
 
         void render();
+        void setFonts(const FontSet& fonts) { fonts_ = fonts; }
 
         void setOnNewProject(std::function<void()> callback);
         void setOnImportDataset(std::function<void()> callback);
@@ -73,6 +75,8 @@ namespace lfs::vis::gui {
         int pending_button_ = -1;
         int pending_mods_ = 0;
         std::chrono::steady_clock::time_point first_click_time_;
+
+        FontSet fonts_;
     };
 
 } // namespace lfs::vis::gui

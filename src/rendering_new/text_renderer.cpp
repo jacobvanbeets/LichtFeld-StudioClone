@@ -269,4 +269,16 @@ namespace lfs::rendering {
         return {};
     }
 
+    glm::vec2 TextRenderer::getCharacterSize(const char c, const float scale) const {
+        if (const auto it = characters.find(c); it != characters.end())
+            return glm::vec2(it->second.size) * scale;
+        return glm::vec2(0.0f);
+    }
+
+    glm::vec2 TextRenderer::getCharacterBearing(const char c, const float scale) const {
+        if (const auto it = characters.find(c); it != characters.end())
+            return glm::vec2(it->second.bearing) * scale;
+        return glm::vec2(0.0f);
+    }
+
 } // namespace lfs::rendering

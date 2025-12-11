@@ -31,6 +31,10 @@ namespace lfs::rendering {
                                 const glm::vec3& color = glm::vec3(1.0f));
         void updateScreenSize(unsigned int width, unsigned int height);
 
+        // Get character dimensions for centering calculations
+        [[nodiscard]] glm::vec2 getCharacterSize(char c, float scale) const;
+        [[nodiscard]] glm::vec2 getCharacterBearing(char c, float scale) const;
+
     private:
         unsigned int screenWidth, screenHeight;
         VAO vao_;

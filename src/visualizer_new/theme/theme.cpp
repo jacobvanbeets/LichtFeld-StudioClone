@@ -440,10 +440,12 @@ bool saveTheme(const Theme& t, const std::string& path) {
 
         auto& fonts = j["fonts"];
         fonts["regular_path"] = t.fonts.regular_path;
+        fonts["bold_path"] = t.fonts.bold_path;
         fonts["base_size"] = t.fonts.base_size;
         fonts["small_size"] = t.fonts.small_size;
         fonts["large_size"] = t.fonts.large_size;
         fonts["heading_size"] = t.fonts.heading_size;
+        fonts["section_size"] = t.fonts.section_size;
 
         auto& menu = j["menu"];
         menu["bg_lighten"] = t.menu.bg_lighten;
@@ -540,10 +542,12 @@ bool loadTheme(Theme& t, const std::string& path) {
         if (j.contains("fonts")) {
             const auto& f = j["fonts"];
             t.fonts.regular_path = f.value("regular_path", t.fonts.regular_path);
+            t.fonts.bold_path = f.value("bold_path", t.fonts.bold_path);
             t.fonts.base_size = f.value("base_size", t.fonts.base_size);
             t.fonts.small_size = f.value("small_size", t.fonts.small_size);
             t.fonts.large_size = f.value("large_size", t.fonts.large_size);
             t.fonts.heading_size = f.value("heading_size", t.fonts.heading_size);
+            t.fonts.section_size = f.value("section_size", t.fonts.section_size);
         }
 
         if (j.contains("menu")) {

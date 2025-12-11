@@ -34,4 +34,7 @@ namespace lfs::vis::gui::widgets {
     bool IconButton(const char* id, unsigned int texture, const ImVec2& size, bool selected = false,
                     const char* fallback_label = "?");
 
+    // Typography
+    void SectionHeader(const char* text, const FontSet& fonts);
+
 } // namespace lfs::vis::gui::widgets

@@ -489,28 +489,23 @@ namespace lfs::rendering {
                     glStencilFunc(GL_EQUAL, 0, 0xFF);
                     glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
-                    // Render text
+                    // Render axis label centered in sphere
                     glViewport(vp[0], vp[1], vp[2], vp[3]);
 
-                    float scale = 0.28f;
-                    float textWidth = 28.8f * scale;
-                    float textHeight = 48.0f * scale;
-                    float baselineOffset = textHeight * 0.75f;
+                    constexpr float TEXT_SCALE = 0.28f;
+                    const char label = axisLabels[idx][0];
+                    const glm::vec2 size = text_renderer_->getCharacterSize(label, TEXT_SCALE);
+                    const glm::vec2 bearing = text_renderer_->getCharacterBearing(label, TEXT_SCALE);
+                    const float x = sphereInfo[i].screenPos.x - bearing.x - size.x * 0.5f;
+                    const float y = sphereInfo[i].screenPos.y - bearing.y + size.y * 0.5f;
 
                     glDisable(GL_DEPTH_TEST);
                     glDepthMask(GL_FALSE);
-
-                    // Ensure proper texture unit
                     glActiveTexture(GL_TEXTURE0);
 
                     if (auto result = text_renderer_->RenderText(
-                            axisLabels[idx],
-                            sphereInfo[i].screenPos.x - textWidth * 0.5f,
-                            sphereInfo[i].screenPos.y - baselineOffset + textHeight * 0.5f,
-                            scale,
-                            glm::vec3(1.0f, 1.0f, 1.0f));
+                            axisLabels[idx], x, y, TEXT_SCALE, glm::vec3(1.0f));
                         !result) {
-                        // Continue rendering even if text fails
                         LOG_WARN("Failed to render text: {}", result.error());
                     }
 

@@ -197,6 +197,13 @@ namespace lfs::vis {
             bool focus_training_panel_ = false;
             bool ui_hidden_ = false;
 
+            // Font storage
+            ImFont* font_regular_ = nullptr;
+            ImFont* font_bold_ = nullptr;
+            ImFont* font_heading_ = nullptr;
+            ImFont* font_small_ = nullptr;
+            ImFont* font_section_ = nullptr;
+
             // Viewport gizmo drag-to-orbit state
             bool viewport_gizmo_dragging_ = false;
             glm::dvec2 gizmo_drag_start_cursor_{0.0, 0.0};
