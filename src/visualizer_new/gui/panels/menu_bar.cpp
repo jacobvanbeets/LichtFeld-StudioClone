@@ -4,21 +4,137 @@
 
 #include "gui/panels/menu_bar.hpp"
 #include "config.h"
+#include "core_new/image_io.hpp"
 #include "core_new/logger.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "theme/theme.hpp"
+
+#include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 
-#include <cstdlib> // for system()
+#include <cstdlib>
+
 #ifdef _WIN32
-#include <windows.h> // for ShellExecuteA
+#include <windows.h>
 #endif
+
+#define CPPHTTPLIB_OPENSSL_SUPPORT
+#include <httplib.h>
 
 namespace lfs::vis::gui {
 
     MenuBar::MenuBar() = default;
-    MenuBar::~MenuBar() = default;
+
+    MenuBar::~MenuBar() {
+        for (const auto& [id, thumb] : thumbnails_) {
+            if (thumb.texture)
+                glDeleteTextures(1, &thumb.texture);
+        }
+    }
+
+    void MenuBar::startThumbnailDownload(const std::string& video_id) {
+        if (video_id.empty() || thumbnails_.contains(video_id)) return;
+
+        auto& thumb = thumbnails_[video_id];
+        thumb.state = Thumbnail::State::LOADING;
+
+        thumb.download_future = std::async(std::launch::async, [video_id]() -> std::vector<uint8_t> {
+            httplib::Client cli("https://img.youtube.com");
+            cli.set_connection_timeout(5);
+            cli.set_read_timeout(5);
+
+            if (const auto res = cli.Get("/vi/" + video_id + "/mqdefault.jpg"))
+                if (res->status == 200)
+                    return {res->body.begin(), res->body.end()};
+            return {};
+        });
+    }
+
+    void MenuBar::updateThumbnails() {
+        for (auto& [id, thumb] : thumbnails_) {
+            if (thumb.state != Thumbnail::State::LOADING || !thumb.download_future.valid())
+                continue;
+            if (thumb.download_future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+                continue;
+
+            const auto data = thumb.download_future.get();
+            if (data.empty()) {
+                thumb.state = Thumbnail::State::FAILED;
+                continue;
+            }
+
+            try {
+                auto [pixels, w, h, c] = lfs::core::load_image_from_memory(data.data(), data.size());
+                if (!pixels) {
+                    thumb.state = Thumbnail::State::FAILED;
+                    continue;
+                }
+
+                GLuint tex = 0;
+                glGenTextures(1, &tex);
+                glBindTexture(GL_TEXTURE_2D, tex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+                glBindTexture(GL_TEXTURE_2D, 0);
+
+                lfs::core::free_image(pixels);
+                thumb.texture = tex;
+                thumb.state = Thumbnail::State::READY;
+            } catch (...) {
+                thumb.state = Thumbnail::State::FAILED;
+            }
+        }
+    }
+
+    void MenuBar::renderVideoCard(const char* title, const char* video_id, const char* url) {
+        constexpr float CARD_WIDTH = 160.0f;
+        constexpr float CARD_HEIGHT = 90.0f;
+        constexpr float CARD_ROUNDING = 4.0f;
+        constexpr float PLAY_ICON_RADIUS = 15.0f;
+
+        if (!thumbnails_.contains(video_id))
+            startThumbnailDownload(video_id);
+
+        auto& thumb = thumbnails_[video_id];
+        const auto& t = theme();
+        const ImVec2 card_size(CARD_WIDTH, CARD_HEIGHT + 30.0f);
+        const ImVec2 cursor = ImGui::GetCursorScreenPos();
+
+        if (ImGui::InvisibleButton(video_id, card_size))
+            openURL(url);
+
+        const bool hovered = ImGui::IsItemHovered();
+        if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+
+        auto* const dl = ImGui::GetWindowDrawList();
+        const ImU32 bg = hovered ? toU32(lighten(t.palette.surface_bright, 0.1f)) : toU32(t.palette.surface_bright);
+        dl->AddRectFilled(cursor, {cursor.x + card_size.x, cursor.y + card_size.y}, bg, CARD_ROUNDING);
+
+        if (thumb.state == Thumbnail::State::READY && thumb.texture) {
+            dl->AddImage(static_cast<ImTextureID>(thumb.texture),
+                         cursor, {cursor.x + CARD_WIDTH, cursor.y + CARD_HEIGHT});
+        } else {
+            dl->AddRectFilled(cursor, {cursor.x + CARD_WIDTH, cursor.y + CARD_HEIGHT},
+                              toU32(darken(t.palette.surface_bright, 0.1f)), CARD_ROUNDING);
+
+            const float cx = cursor.x + CARD_WIDTH * 0.5f;
+            const float cy = cursor.y + CARD_HEIGHT * 0.5f;
+            dl->AddTriangleFilled(
+                {cx - PLAY_ICON_RADIUS * 0.4f, cy - PLAY_ICON_RADIUS * 0.6f},
+                {cx - PLAY_ICON_RADIUS * 0.4f, cy + PLAY_ICON_RADIUS * 0.6f},
+                {cx + PLAY_ICON_RADIUS * 0.6f, cy},
+                toU32(withAlpha(t.palette.text, 0.6f)));
+
+            if (thumb.state == Thumbnail::State::LOADING)
+                dl->AddText({cursor.x + 4, cursor.y + CARD_HEIGHT - 16}, toU32(t.palette.text_dim), "Loading...");
+        }
+
+        dl->AddText({cursor.x + 4, cursor.y + CARD_HEIGHT + 4.0f}, toU32(t.palette.text), title);
+    }
 
     void MenuBar::render() {
         const auto& t = theme();
@@ -128,17 +244,21 @@ namespace lfs::vis::gui {
     }
 
     void MenuBar::renderGettingStartedWindow() {
-        if (!show_getting_started_) {
-            return;
-        }
+        if (!show_getting_started_) return;
 
         constexpr ImGuiWindowFlags WINDOW_FLAGS = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize;
-        ImGui::SetNextWindowSize(ImVec2(700, 0), ImGuiCond_Once);
+        constexpr float WINDOW_ROUNDING = 8.0f;
+        constexpr float WINDOW_PADDING = 20.0f;
+        constexpr float ITEM_SPACING_Y = 12.0f;
+        constexpr float VIDEO_SPACING = 16.0f;
+        constexpr float INDENT = 25.0f;
 
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f, 20.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 12.0f));
         const auto& t = theme();
+
+        ImGui::SetNextWindowSize(ImVec2(560, 0), ImGuiCond_Once);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, WINDOW_ROUNDING);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {WINDOW_PADDING, WINDOW_PADDING});
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {8.0f, ITEM_SPACING_Y});
         ImGui::PushStyleColor(ImGuiCol_WindowBg, withAlpha(t.palette.surface, 0.98f));
         ImGui::PushStyleColor(ImGuiCol_Text, t.palette.text);
         ImGui::PushStyleColor(ImGuiCol_TitleBg, t.palette.surface);
@@ -146,6 +266,8 @@ namespace lfs::vis::gui {
         ImGui::PushStyleColor(ImGuiCol_Border, withAlpha(t.palette.info, 0.3f));
 
         if (ImGui::Begin("Getting Started", &show_getting_started_, WINDOW_FLAGS)) {
+            updateThumbnails();
+
             if (fonts_.heading) ImGui::PushFont(fonts_.heading);
             ImGui::TextColored(t.palette.info, "QUICK START GUIDE");
             if (fonts_.heading) ImGui::PopFont();
@@ -157,84 +279,34 @@ namespace lfs::vis::gui {
             ImGui::Spacing();
             ImGui::Spacing();
 
-            // Reality Scan video with modern styling
-            const char* reality_scan_url = "http://www.youtube.com/watch?v=JWmkhTlbDvg";
-            ImGui::PushStyleColor(ImGuiCol_Button, t.palette.surface_bright);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, lighten(t.palette.surface_bright, 0.1f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, lighten(t.palette.surface_bright, 0.2f));
-
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextColored(t.palette.info, "*");
-            ImGui::SameLine();
-            ImGui::TextWrapped("Using Reality Scan to create a dataset");
-
-            ImGui::Indent(25.0f);
-            ImGui::PushStyleColor(ImGuiCol_Text, lighten(t.palette.info, 0.3f));
-            ImGui::TextWrapped("%s", reality_scan_url);
-            ImGui::PopStyleColor();
-
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-                if (ImGui::IsItemClicked()) {
-                    openURL(reality_scan_url);
-                }
-            }
-            ImGui::Unindent(25.0f);
-            ImGui::PopStyleColor(3);
-
-            ImGui::Spacing();
-
-            // Colmap tutorial video
-            const char* colmap_tutorial_url = "https://www.youtube.com/watch?v=-3TBbukYN00";
-            ImGui::PushStyleColor(ImGuiCol_Button, t.palette.surface_bright);
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, lighten(t.palette.surface_bright, 0.1f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, lighten(t.palette.surface_bright, 0.2f));
-
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextColored(t.palette.info, "*");
-            ImGui::SameLine();
-            ImGui::TextWrapped("Beginner Tutorial - Using COLMAP to create a dataset");
-
-            ImGui::Indent(25.0f);
-            ImGui::PushStyleColor(ImGuiCol_Text, lighten(t.palette.info, 0.3f));
-            ImGui::TextWrapped("%s", colmap_tutorial_url);
-            ImGui::PopStyleColor();
-
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-            }
-            if (ImGui::IsItemClicked()) {
-                openURL(colmap_tutorial_url);
-            }
-
-            ImGui::Unindent(25.0f);
-            ImGui::PopStyleColor(3);
+            renderVideoCard("Reality Scan Dataset", "JWmkhTlbDvg", "https://www.youtube.com/watch?v=JWmkhTlbDvg");
+            ImGui::SameLine(0.0f, VIDEO_SPACING);
+            renderVideoCard("COLMAP Tutorial", "-3TBbukYN00", "https://www.youtube.com/watch?v=-3TBbukYN00");
+            ImGui::SameLine(0.0f, VIDEO_SPACING);
+            renderVideoCard("LichtFeld Tutorial", "aX8MTlr9Ypc", "https://www.youtube.com/watch?v=aX8MTlr9Ypc");
 
             ImGui::Spacing();
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
 
-            // FAQ link
             if (fonts_.section) ImGui::PushFont(fonts_.section);
-            ImGui::TextColored(t.palette.text_dim, "FREQUENTLY ASKED QUESTIONS");
+            ImGui::TextColored(t.palette.text_dim, "WIKI & FAQ");
             if (fonts_.section) ImGui::PopFont();
             ImGui::Spacing();
 
-            const char* faq_url = "https://github.com/MrNeRF/LichtFeld-Studio/blob/master/docs/docs/faq.md";
-            ImGui::Indent(25.0f);
+            static constexpr const char* WIKI_URL = "https://github.com/MrNeRF/LichtFeld-Studio/wiki";
+            ImGui::Indent(INDENT);
             ImGui::PushStyleColor(ImGuiCol_Text, lighten(t.palette.info, 0.3f));
-            ImGui::TextWrapped("%s", faq_url);
+            ImGui::TextWrapped("%s", WIKI_URL);
             ImGui::PopStyleColor();
 
-            if (ImGui::IsItemHovered()) {
+            if (ImGui::IsItemHovered())
                 ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-            }
-            if (ImGui::IsItemClicked()) {
-                openURL(faq_url);
-            }
+            if (ImGui::IsItemClicked())
+                openURL(WIKI_URL);
 
-            ImGui::Unindent(25.0f);
+            ImGui::Unindent(INDENT);
         }
         ImGui::End();
 

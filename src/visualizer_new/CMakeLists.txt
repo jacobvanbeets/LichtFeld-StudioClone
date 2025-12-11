@@ -73,6 +73,7 @@ target_include_directories(lfs_visualizer
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/external/httplib
         ${OPENGL_INCLUDE_DIRS}
 )
 
@@ -94,6 +95,8 @@ target_link_libraries(lfs_visualizer
         TBB::tbb
         spdlog::spdlog
         nlohmann_json::nlohmann_json
+        OpenSSL::SSL
+        OpenSSL::Crypto
         CUDA::cudart
         ${OPENGL_LIBRARIES}
 )

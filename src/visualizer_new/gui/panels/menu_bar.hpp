@@ -6,9 +6,14 @@
 
 #include "gui/ui_context.hpp"
 #include "input/input_bindings.hpp"
+
 #include <chrono>
 #include <functional>
+#include <future>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace lfs::vis::gui {
 
@@ -51,6 +56,16 @@ namespace lfs::vis::gui {
         void renderBindingRow(input::Action action, input::ToolMode mode);
         void updateCapture();
 
+        struct Thumbnail {
+            unsigned int texture = 0;
+            enum class State { PENDING, LOADING, READY, FAILED } state = State::PENDING;
+            std::future<std::vector<uint8_t>> download_future;
+        };
+
+        void startThumbnailDownload(const std::string& video_id);
+        void updateThumbnails();
+        void renderVideoCard(const char* title, const char* video_id, const char* url);
+
         std::function<void()> on_new_project_;
         std::function<void()> on_import_dataset_;
         std::function<void()> on_open_project_;
@@ -77,6 +92,7 @@ namespace lfs::vis::gui {
         std::chrono::steady_clock::time_point first_click_time_;
 
         FontSet fonts_;
+        std::unordered_map<std::string, Thumbnail> thumbnails_;
     };
 
 } // namespace lfs::vis::gui

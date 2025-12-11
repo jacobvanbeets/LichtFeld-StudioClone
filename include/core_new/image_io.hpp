@@ -20,6 +20,8 @@ std::tuple<int, int, int>
 get_image_info(std::filesystem::path p);
 std::tuple<unsigned char*, int, int, int>
 load_image_with_alpha(std::filesystem::path p);
+std::tuple<unsigned char*, int, int, int>
+load_image_from_memory(const uint8_t* data, size_t size);
 
 // Existing functions
 std::tuple<unsigned char*, int, int, int>

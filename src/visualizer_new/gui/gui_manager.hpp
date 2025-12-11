@@ -15,6 +15,7 @@
 #include "gui/windows/save_project_browser.hpp"
 #include "windows/export_dialog.hpp"
 #include "windows/project_changed_dialog_box.hpp"
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <atomic>
 #include <filesystem>

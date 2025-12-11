@@ -3,6 +3,7 @@
 
 #include "core_new/image_io.hpp"
 
+#include <OpenImageIO/filesystem.h>
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/imagebufalgo.h>
 #include <OpenImageIO/imageio.h>
@@ -112,6 +113,34 @@ load_image_with_alpha(std::filesystem::path p) {
         in->close();
         return std::make_tuple(nullptr, 0, 0, 0);
     }
+}
+
+std::tuple<unsigned char*, int, int, int>
+load_image_from_memory(const uint8_t* const data, const size_t size) {
+    init_oiio();
+
+    OIIO::Filesystem::IOMemReader mem_reader(data, size);
+    auto in = OIIO::ImageInput::open("memory.jpg", nullptr, &mem_reader);
+    if (!in)
+        throw std::runtime_error("Load from memory failed: " + OIIO::geterror());
+
+    const auto& spec = in->spec();
+    const int w = spec.width, h = spec.height, channels = spec.nchannels;
+
+    auto* out = static_cast<unsigned char*>(std::malloc(static_cast<size_t>(w) * h * 3));
+    if (!out) {
+        in->close();
+        throw std::bad_alloc();
+    }
+
+    if (!in->read_image(0, 0, 0, std::min(channels, 3), OIIO::TypeDesc::UINT8, out)) {
+        std::free(out);
+        in->close();
+        throw std::runtime_error("Read from memory failed: " + in->geterror());
+    }
+
+    in->close();
+    return {out, w, h, 3};
 }
 
 std::tuple<unsigned char*, int, int, int>
