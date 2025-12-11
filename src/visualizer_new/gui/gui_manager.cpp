@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdarg>
 #include <format>
 #include <GLFW/glfw3.h>
@@ -308,10 +309,11 @@ namespace lfs::vis::gui {
 
         initMenuBar();
         menu_bar_->setFonts({font_regular_, font_bold_, font_heading_, font_small_, font_section_});
+        drag_drop_.init(viewer_->getWindow());
     }
 
     void GuiManager::shutdown() {
-        // Cleanup toolbar textures
+        drag_drop_.shutdown();
         panels::ShutdownGizmoToolbar(gizmo_toolbar_state_);
 
         if (ImGui::GetCurrentContext()) {
@@ -322,6 +324,9 @@ namespace lfs::vis::gui {
     }
 
     void GuiManager::render() {
+        drag_drop_.pollEvents();
+        drag_drop_hovering_ = drag_drop_.isDragHovering();
+
         // Start frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -882,6 +887,12 @@ namespace lfs::vis::gui {
 
         // Render export progress overlay (blocking overlay on top of everything)
         renderExportOverlay();
+
+        // Render empty state welcome screen when no content loaded
+        renderEmptyStateOverlay();
+
+        // Render drag-drop overlay when files are being dragged over the window
+        renderDragDropOverlay();
 
         // End frame
         ImGui::Render();
@@ -1978,6 +1989,161 @@ namespace lfs::vis::gui {
                    viewport->WorkPos.y + viewport->WorkSize.y),
             IM_COL32(0, 0, 0, 100)
         );
+    }
+
+    void GuiManager::renderEmptyStateOverlay() {
+        const auto* const scene_manager = viewer_->getSceneManager();
+        if (!scene_manager || !scene_manager->isEmpty() || drag_drop_hovering_) return;
+        if (viewport_size_.x < 200.0f || viewport_size_.y < 200.0f) return;
+
+        constexpr float ZONE_PADDING = 40.0f;
+        constexpr float DASH_LENGTH = 12.0f;
+        constexpr float GAP_LENGTH = 8.0f;
+        constexpr float BORDER_THICKNESS = 2.0f;
+        constexpr float ICON_SIZE = 48.0f;
+        constexpr float ANIM_SPEED = 30.0f;
+        constexpr ImU32 BORDER_COLOR = IM_COL32(100, 140, 180, 80);
+        constexpr ImU32 ICON_COLOR = IM_COL32(120, 160, 200, 120);
+        constexpr ImU32 TITLE_COLOR = IM_COL32(180, 200, 220, 200);
+        constexpr ImU32 SUBTITLE_COLOR = IM_COL32(140, 160, 180, 150);
+        constexpr ImU32 HINT_COLOR = IM_COL32(100, 120, 140, 120);
+
+        ImDrawList* const draw_list = ImGui::GetBackgroundDrawList();
+        const float center_x = viewport_pos_.x + viewport_size_.x * 0.5f;
+        const float center_y = viewport_pos_.y + viewport_size_.y * 0.5f;
+        const ImVec2 zone_min(viewport_pos_.x + ZONE_PADDING, viewport_pos_.y + ZONE_PADDING);
+        const ImVec2 zone_max(viewport_pos_.x + viewport_size_.x - ZONE_PADDING,
+                              viewport_pos_.y + viewport_size_.y - ZONE_PADDING);
+
+        const float time = static_cast<float>(ImGui::GetTime());
+        const float dash_offset = std::fmod(time * ANIM_SPEED, DASH_LENGTH + GAP_LENGTH);
+
+        // Dashed border
+        const auto drawDashedLine = [&](const ImVec2& start, const ImVec2& end) {
+            const float dx = end.x - start.x;
+            const float dy = end.y - start.y;
+            const float length = std::sqrt(dx * dx + dy * dy);
+            const float nx = dx / length;
+            const float ny = dy / length;
+            for (float pos = -dash_offset; pos < length; pos += DASH_LENGTH + GAP_LENGTH) {
+                const float d0 = std::max(0.0f, pos);
+                const float d1 = std::min(length, pos + DASH_LENGTH);
+                if (d1 > d0) {
+                    draw_list->AddLine(ImVec2(start.x + nx * d0, start.y + ny * d0),
+                                       ImVec2(start.x + nx * d1, start.y + ny * d1),
+                                       BORDER_COLOR, BORDER_THICKNESS);
+                }
+            }
+        };
+        drawDashedLine(zone_min, {zone_max.x, zone_min.y});
+        drawDashedLine({zone_max.x, zone_min.y}, zone_max);
+        drawDashedLine(zone_max, {zone_min.x, zone_max.y});
+        drawDashedLine({zone_min.x, zone_max.y}, zone_min);
+
+        // Folder icon
+        const float icon_y = center_y - 50.0f;
+        draw_list->AddRect({center_x - ICON_SIZE * 0.5f, icon_y - ICON_SIZE * 0.3f},
+                           {center_x + ICON_SIZE * 0.5f, icon_y + ICON_SIZE * 0.4f},
+                           ICON_COLOR, 4.0f, 0, 2.0f);
+        draw_list->AddLine({center_x - ICON_SIZE * 0.5f, icon_y - ICON_SIZE * 0.3f},
+                           {center_x - ICON_SIZE * 0.2f, icon_y - ICON_SIZE * 0.5f}, ICON_COLOR, 2.0f);
+        draw_list->AddLine({center_x - ICON_SIZE * 0.2f, icon_y - ICON_SIZE * 0.5f},
+                           {center_x + ICON_SIZE * 0.1f, icon_y - ICON_SIZE * 0.5f}, ICON_COLOR, 2.0f);
+        draw_list->AddLine({center_x + ICON_SIZE * 0.1f, icon_y - ICON_SIZE * 0.5f},
+                           {center_x + ICON_SIZE * 0.2f, icon_y - ICON_SIZE * 0.3f}, ICON_COLOR, 2.0f);
+
+        // Text
+        const auto calcTextSize = [this](const char* text, ImFont* font) {
+            if (font) ImGui::PushFont(font);
+            const ImVec2 size = ImGui::CalcTextSize(text);
+            if (font) ImGui::PopFont();
+            return size;
+        };
+
+        static constexpr const char* TITLE = "Drop files here to get started";
+        static constexpr const char* SUBTITLE = "PLY, SOG, COLMAP dataset, or Project file";
+        static constexpr const char* HINT = "Or use File > Open to browse";
+
+        const ImVec2 title_size = calcTextSize(TITLE, font_heading_);
+        const ImVec2 subtitle_size = calcTextSize(SUBTITLE, font_small_);
+        const ImVec2 hint_size = calcTextSize(HINT, font_small_);
+
+        if (font_heading_) ImGui::PushFont(font_heading_);
+        draw_list->AddText({center_x - title_size.x * 0.5f, center_y + 10.0f}, TITLE_COLOR, TITLE);
+        if (font_heading_) ImGui::PopFont();
+
+        if (font_small_) ImGui::PushFont(font_small_);
+        draw_list->AddText({center_x - subtitle_size.x * 0.5f, center_y + 35.0f}, SUBTITLE_COLOR, SUBTITLE);
+        draw_list->AddText({center_x - hint_size.x * 0.5f, center_y + 60.0f}, HINT_COLOR, HINT);
+        if (font_small_) ImGui::PopFont();
+    }
+
+    void GuiManager::renderDragDropOverlay() {
+        if (!drag_drop_hovering_) return;
+
+        constexpr float INSET = 30.0f;
+        constexpr float CORNER_RADIUS = 16.0f;
+        constexpr float GLOW_MAX = 8.0f;
+        constexpr float PULSE_SPEED = 3.0f;
+        constexpr float BOUNCE_SPEED = 4.0f;
+        constexpr float BOUNCE_AMOUNT = 5.0f;
+        constexpr ImU32 OVERLAY_COLOR = IM_COL32(20, 60, 100, 180);
+        constexpr ImU32 FILL_COLOR = IM_COL32(30, 80, 140, 60);
+        constexpr ImU32 ICON_COLOR = IM_COL32(255, 255, 255, 230);
+        constexpr ImU32 TITLE_COLOR = IM_COL32(255, 255, 255, 255);
+        constexpr ImU32 SUBTITLE_COLOR = IM_COL32(200, 220, 240, 200);
+
+        const ImGuiViewport* const vp = ImGui::GetMainViewport();
+        ImDrawList* const draw_list = ImGui::GetForegroundDrawList();
+        const ImVec2 win_max(vp->WorkPos.x + vp->WorkSize.x, vp->WorkPos.y + vp->WorkSize.y);
+        const ImVec2 zone_min(vp->WorkPos.x + INSET, vp->WorkPos.y + INSET);
+        const ImVec2 zone_max(win_max.x - INSET, win_max.y - INSET);
+        const float center_x = vp->WorkPos.x + vp->WorkSize.x * 0.5f;
+        const float center_y = vp->WorkPos.y + vp->WorkSize.y * 0.5f;
+
+        const float time = static_cast<float>(ImGui::GetTime());
+        const float pulse = 0.5f + 0.5f * std::sin(time * PULSE_SPEED);
+
+        draw_list->AddRectFilled(vp->WorkPos, win_max, OVERLAY_COLOR);
+
+        // Glow effect
+        const ImU32 glow_color = IM_COL32(80, 160, 255, static_cast<uint8_t>(40.0f * pulse));
+        for (float i = GLOW_MAX; i > 0.0f; i -= 2.0f) {
+            draw_list->AddRect({zone_min.x - i, zone_min.y - i}, {zone_max.x + i, zone_max.y + i},
+                               glow_color, CORNER_RADIUS + i, 0, 2.0f);
+        }
+
+        const uint8_t border_alpha = static_cast<uint8_t>(180.0f + 75.0f * pulse);
+        draw_list->AddRect(zone_min, zone_max, IM_COL32(100, 180, 255, border_alpha), CORNER_RADIUS, 0, 3.0f);
+        draw_list->AddRectFilled(zone_min, zone_max, FILL_COLOR, CORNER_RADIUS);
+
+        // Animated arrow
+        const float arrow_y = center_y - 60.0f + BOUNCE_AMOUNT * std::sin(time * BOUNCE_SPEED);
+        draw_list->AddTriangleFilled({center_x, arrow_y + 25.0f}, {center_x - 20.0f, arrow_y},
+                                     {center_x + 20.0f, arrow_y}, ICON_COLOR);
+        draw_list->AddRectFilled({center_x - 8.0f, arrow_y - 25.0f}, {center_x + 8.0f, arrow_y}, ICON_COLOR, 2.0f);
+
+        // Text
+        const auto calcTextSize = [this](const char* text, ImFont* font) {
+            if (font) ImGui::PushFont(font);
+            const ImVec2 size = ImGui::CalcTextSize(text);
+            if (font) ImGui::PopFont();
+            return size;
+        };
+
+        static constexpr const char* TITLE = "Drop to Import";
+        static constexpr const char* SUBTITLE = "PLY, SOG, COLMAP dataset, or Project";
+
+        const ImVec2 title_size = calcTextSize(TITLE, font_heading_);
+        const ImVec2 subtitle_size = calcTextSize(SUBTITLE, font_small_);
+
+        if (font_heading_) ImGui::PushFont(font_heading_);
+        draw_list->AddText({center_x - title_size.x * 0.5f, center_y + 5.0f}, TITLE_COLOR, TITLE);
+        if (font_heading_) ImGui::PopFont();
+
+        if (font_small_) ImGui::PushFont(font_small_);
+        draw_list->AddText({center_x - subtitle_size.x * 0.5f, center_y + 35.0f}, SUBTITLE_COLOR, SUBTITLE);
+        if (font_small_) ImGui::PopFont();
     }
 
 } // namespace lfs::vis::gui

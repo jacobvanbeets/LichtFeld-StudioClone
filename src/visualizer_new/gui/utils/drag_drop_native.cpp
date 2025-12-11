@@ -226,71 +226,24 @@ namespace lfs::vis::gui {
     void NativeDragDrop::pollEvents() {
         if (!initialized_ || !platform_data_) return;
 
-        Display* dpy = platform_data_->display;
-        Window xwin = platform_data_->xwindow;
+        Display* const dpy = platform_data_->display;
+        if (XPending(dpy) <= 0) return;
 
-        // Check for pending XDnD events
-        while (XPending(dpy) > 0) {
-            XEvent event;
-            XPeekEvent(dpy, &event);
+        // Peek only - GLFW handles full XDnD protocol
+        XEvent event;
+        XPeekEvent(dpy, &event);
+        if (event.type != ClientMessage) return;
 
-            // Only handle ClientMessage events for XDnD
-            if (event.type != ClientMessage) {
-                break; // Let GLFW handle other events
-            }
+        const XClientMessageEvent& cm = event.xclient;
+        const Atom msg_type = cm.message_type;
 
-            XNextEvent(dpy, &event);
-            const XClientMessageEvent& cm = event.xclient;
-
-            if (cm.message_type == platform_data_->xdnd_enter) {
-                // Drag entered our window
-                platform_data_->source_window = static_cast<Window>(cm.data.l[0]);
-                setDragHovering(true);
-
-            } else if (cm.message_type == platform_data_->xdnd_position) {
-                // Drag is moving over our window - send status back
-                XClientMessageEvent reply{};
-                reply.type = ClientMessage;
-                reply.display = dpy;
-                reply.window = platform_data_->source_window;
-                reply.message_type = platform_data_->xdnd_status;
-                reply.format = 32;
-                reply.data.l[0] = static_cast<long>(xwin);
-                reply.data.l[1] = 1; // Accept drop
-                reply.data.l[2] = 0; // Empty rectangle
-                reply.data.l[3] = 0;
-                reply.data.l[4] = XInternAtom(dpy, "XdndActionCopy", False);
-
-                XSendEvent(dpy, platform_data_->source_window, False, NoEventMask,
-                          reinterpret_cast<XEvent*>(&reply));
-                XFlush(dpy);
-
-            } else if (cm.message_type == platform_data_->xdnd_leave) {
-                // Drag left our window
-                setDragHovering(false);
-                platform_data_->source_window = 0;
-
-            } else if (cm.message_type == platform_data_->xdnd_drop) {
-                // Drop occurred - GLFW will handle the actual data
-                setDragHovering(false);
-
-                // Send finished message
-                XClientMessageEvent reply{};
-                reply.type = ClientMessage;
-                reply.display = dpy;
-                reply.window = platform_data_->source_window;
-                reply.message_type = platform_data_->xdnd_finished;
-                reply.format = 32;
-                reply.data.l[0] = static_cast<long>(xwin);
-                reply.data.l[1] = 1; // Drop accepted
-                reply.data.l[2] = XInternAtom(dpy, "XdndActionCopy", False);
-
-                XSendEvent(dpy, platform_data_->source_window, False, NoEventMask,
-                          reinterpret_cast<XEvent*>(&reply));
-                XFlush(dpy);
-
-                platform_data_->source_window = 0;
-            }
+        if (msg_type == platform_data_->xdnd_enter && !drag_hovering_) {
+            platform_data_->source_window = static_cast<Window>(cm.data.l[0]);
+            setDragHovering(true);
+        } else if ((msg_type == platform_data_->xdnd_leave || msg_type == platform_data_->xdnd_drop)
+                   && drag_hovering_) {
+            setDragHovering(false);
+            platform_data_->source_window = 0;
         }
     }
 

@@ -63,6 +63,7 @@ add_library(lfs_visualizer STATIC
         gui/panels/menu_bar.cpp
         gui/panels/menu_bar.hpp
         gui/utils/windows_utils.cpp
+        gui/utils/drag_drop_native.cpp
 )
 
 # Set include directories
@@ -171,6 +172,9 @@ if (WIN32)
     target_compile_definitions(lfs_visualizer PRIVATE
             NOMINMAX
             _USE_MATH_DEFINES
+    )
+    target_link_libraries(lfs_visualizer PRIVATE
+            Ole32       # OLE drag-drop (IDropTarget)
     )
 elseif (UNIX AND NOT APPLE)
     target_link_libraries(lfs_visualizer PRIVATE

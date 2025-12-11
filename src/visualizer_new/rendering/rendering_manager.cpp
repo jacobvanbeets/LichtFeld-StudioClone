@@ -803,6 +803,10 @@ namespace lfs::vis {
                 static_cast<int>(context.viewport_region->height));
         }
 
+        glClearColor(settings_.background_color.r, settings_.background_color.g,
+                     settings_.background_color.b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         // Check for split view
         if (auto split_request = createSplitViewRequest(context, scene_manager)) {
             // Update split info

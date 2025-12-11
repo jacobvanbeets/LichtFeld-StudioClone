@@ -12,6 +12,7 @@
 #include "gui/panels/menu_bar.hpp"
 #include "gui/panels/transform_panel.hpp"
 #include "gui/ui_context.hpp"
+#include "gui/utils/drag_drop_native.hpp"
 #include "gui/windows/save_project_browser.hpp"
 #include "windows/export_dialog.hpp"
 #include "windows/project_changed_dialog_box.hpp"
@@ -223,11 +224,17 @@ namespace lfs::vis {
             ExportState export_state_;
 
             void renderExportOverlay();
+            void renderEmptyStateOverlay();
+            void renderDragDropOverlay();
             void startAsyncExport(lfs::core::ExportFormat format,
                                   const std::filesystem::path& path,
                                   std::unique_ptr<lfs::core::SplatData> data);
             void cancelExport();
             bool isExporting() const { return export_state_.active.load(); }
+
+            // Native drag-drop handler for visual feedback
+            NativeDragDrop drag_drop_;
+            bool drag_drop_hovering_ = false;
         };
     } // namespace gui
 } // namespace lfs::vis
