@@ -7,8 +7,10 @@
 #include <string>
 
 #ifdef WIN32
-#include <Shobjidl.h>
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
 #include <Windows.h>
+#include <Shobjidl.h>
 #endif
 
 namespace lfs::vis::gui {

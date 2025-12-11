@@ -15,16 +15,8 @@
 
 #include <cstdlib>
 
-// clang-format off
-// Order matters: httplib uses winsock2.h, windows.h uses winsock.h - incompatible
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include <httplib.h>
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
-// clang-format on
 
 namespace lfs::vis::gui {
 

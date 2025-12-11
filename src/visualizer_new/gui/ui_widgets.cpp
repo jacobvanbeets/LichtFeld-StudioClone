@@ -214,7 +214,7 @@ namespace lfs::vis::gui::widgets {
         if (!t.vignette.enabled) return;
 
         constexpr float EDGE_SCALE = 0.5f;
-        constexpr ImU32 TRANSPARENT = IM_COL32(0, 0, 0, 0);
+        constexpr ImU32 CLEAR_COLOR = IM_COL32(0, 0, 0, 0);
 
         auto* const draw_list = ImGui::GetForegroundDrawList();
         const float edge_mult = (1.0f - t.vignette.radius) * EDGE_SCALE * (1.0f + t.vignette.softness);
@@ -225,10 +225,10 @@ namespace lfs::vis::gui::widgets {
         const float x1 = pos.x, y1 = pos.y;
         const float x2 = pos.x + size.x, y2 = pos.y + size.y;
 
-        draw_list->AddRectFilledMultiColor({x1, y1}, {x1 + edge_w, y2}, dark, TRANSPARENT, TRANSPARENT, dark);
-        draw_list->AddRectFilledMultiColor({x2 - edge_w, y1}, {x2, y2}, TRANSPARENT, dark, dark, TRANSPARENT);
-        draw_list->AddRectFilledMultiColor({x1, y1}, {x2, y1 + edge_h}, dark, dark, TRANSPARENT, TRANSPARENT);
-        draw_list->AddRectFilledMultiColor({x1, y2 - edge_h}, {x2, y2}, TRANSPARENT, TRANSPARENT, dark, dark);
+        draw_list->AddRectFilledMultiColor({x1, y1}, {x1 + edge_w, y2}, dark, CLEAR_COLOR, CLEAR_COLOR, dark);
+        draw_list->AddRectFilledMultiColor({x2 - edge_w, y1}, {x2, y2}, CLEAR_COLOR, dark, dark, CLEAR_COLOR);
+        draw_list->AddRectFilledMultiColor({x1, y1}, {x2, y1 + edge_h}, dark, dark, CLEAR_COLOR, CLEAR_COLOR);
+        draw_list->AddRectFilledMultiColor({x1, y2 - edge_h}, {x2, y2}, CLEAR_COLOR, CLEAR_COLOR, dark, dark);
     }
 
     bool IconButton(const char* id, const unsigned int texture, const ImVec2& size,
