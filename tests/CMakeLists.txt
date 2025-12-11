@@ -131,6 +131,8 @@ set(OPTIONAL_TEST_FILES
     test_compressed_ply.cpp  # Tests for compressed PLY format support
     test_sog_format.cpp  # Tests for SOG (SuperSplat Optimized Gaussian) format support
     test_sog_html_export.cpp  # Consolidated SOG/HTML export regression tests
+    test_rasterizer_crash_dump.cpp  # Reproduce rasterizer crash from crash dump
+    test_gsplat_rasterizer.cpp  # GSplat rasterizer tests
 )
 
 foreach(TEST_FILE ${OPTIONAL_TEST_FILES})
