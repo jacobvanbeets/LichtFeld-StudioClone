@@ -15,12 +15,16 @@
 
 #include <cstdlib>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
+// clang-format off
+// Order matters: httplib uses winsock2.h, windows.h uses winsock.h - incompatible
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include <httplib.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+// clang-format on
 
 namespace lfs::vis::gui {
 
@@ -728,9 +732,9 @@ namespace lfs::vis::gui {
                 if (fonts_.section) ImGui::PushFont(fonts_.section);
                 ImGui::TextColored(t.palette.text_dim, "TOOL MODE");
                 if (fonts_.section) ImGui::PopFont();
-                if (fonts_.small) ImGui::PushFont(fonts_.small);
+                if (fonts_.small_font) ImGui::PushFont(fonts_.small_font);
                 ImGui::TextColored(t.palette.text_dim, "Select tool mode to view/edit bindings");
-                if (fonts_.small) ImGui::PopFont();
+                if (fonts_.small_font) ImGui::PopFont();
                 ImGui::Spacing();
 
                 // Tool mode selector
@@ -769,13 +773,13 @@ namespace lfs::vis::gui {
                 if (fonts_.section) ImGui::PushFont(fonts_.section);
                 ImGui::TextColored(t.palette.text_dim, "CURRENT BINDINGS");
                 if (fonts_.section) ImGui::PopFont();
-                if (fonts_.small) ImGui::PushFont(fonts_.small);
+                if (fonts_.small_font) ImGui::PushFont(fonts_.small_font);
                 if (selected_tool_mode_ == input::ToolMode::GLOBAL) {
                     ImGui::TextColored(t.palette.text_dim, "Global bindings apply everywhere unless overridden");
                 } else {
                     ImGui::TextColored(t.palette.text_dim, "Tool-specific bindings override global bindings");
                 }
-                if (fonts_.small) ImGui::PopFont();
+                if (fonts_.small_font) ImGui::PopFont();
                 ImGui::Spacing();
 
                 constexpr ImGuiTableFlags TABLE_FLAGS = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY;
