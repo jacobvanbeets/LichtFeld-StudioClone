@@ -80,7 +80,9 @@ namespace lfs::rendering::kernels::forward {
         const int highlight_gaussian_id,
         unsigned long long* hovered_depth_id,
         const bool* selected_node_mask,
-        const int num_selected_nodes) {
+        const int num_selected_nodes,
+        const bool orthographic,
+        const float ortho_scale) {
         auto primitive_idx = cg::this_grid().thread_rank();
         bool active = true;
         if (primitive_idx >= n_primitives) {
@@ -237,43 +239,18 @@ namespace lfs::rendering::kernels::forward {
             };
         }
 
-        // compute 2d mean in normalized image coordinates
+        // Camera-space position
         const float4 w2c_r1 = w2c[0];
-        const float x = (w2c_r1.x * mean3d.x + w2c_r1.y * mean3d.y + w2c_r1.z * mean3d.z + w2c_r1.w) / depth;
         const float4 w2c_r2 = w2c[1];
-        const float y = (w2c_r2.x * mean3d.x + w2c_r2.y * mean3d.y + w2c_r2.z * mean3d.z + w2c_r2.w) / depth;
+        const float cam_x = w2c_r1.x * mean3d.x + w2c_r1.y * mean3d.y + w2c_r1.z * mean3d.z + w2c_r1.w;
+        const float cam_y = w2c_r2.x * mean3d.x + w2c_r2.y * mean3d.y + w2c_r2.z * mean3d.z + w2c_r2.w;
 
-        // ewa splatting
-        const float clip_left = (-0.15f * w - cx) / fx;
-        const float clip_right = (1.15f * w - cx) / fx;
-        const float clip_top = (-0.15f * h - cy) / fy;
-        const float clip_bottom = (1.15f * h - cy) / fy;
-        const float tx = clamp(x, clip_left, clip_right);
-        const float ty = clamp(y, clip_top, clip_bottom);
-        const float j11 = fx / depth;
-        const float j13 = -j11 * tx;
-        const float j22 = fy / depth;
-        const float j23 = -j22 * ty;
-        const float3 jw_r1 = make_float3(
-            j11 * w2c_r1.x + j13 * w2c_r3.x,
-            j11 * w2c_r1.y + j13 * w2c_r3.y,
-            j11 * w2c_r1.z + j13 * w2c_r3.z);
-        const float3 jw_r2 = make_float3(
-            j22 * w2c_r2.x + j23 * w2c_r3.x,
-            j22 * w2c_r2.y + j23 * w2c_r3.y,
-            j22 * w2c_r2.z + j23 * w2c_r3.z);
-        const float3 jwc_r1 = make_float3(
-            jw_r1.x * cov3d.m11 + jw_r1.y * cov3d.m12 + jw_r1.z * cov3d.m13,
-            jw_r1.x * cov3d.m12 + jw_r1.y * cov3d.m22 + jw_r1.z * cov3d.m23,
-            jw_r1.x * cov3d.m13 + jw_r1.y * cov3d.m23 + jw_r1.z * cov3d.m33);
-        const float3 jwc_r2 = make_float3(
-            jw_r2.x * cov3d.m11 + jw_r2.y * cov3d.m12 + jw_r2.z * cov3d.m13,
-            jw_r2.x * cov3d.m12 + jw_r2.y * cov3d.m22 + jw_r2.z * cov3d.m23,
-            jw_r2.x * cov3d.m13 + jw_r2.y * cov3d.m23 + jw_r2.z * cov3d.m33);
-        float3 cov2d = make_float3(
-            dot(jwc_r1, jw_r1),
-            dot(jwc_r1, jw_r2),
-            dot(jwc_r2, jw_r2));
+        // EWA splatting: project 3D Gaussian to 2D
+        const auto proj = orthographic
+            ? kernels::project_orthographic(cam_x, cam_y, cx, cy, ortho_scale, w2c_r1, w2c_r2)
+            : kernels::project_perspective(cam_x, cam_y, depth, fx, fy, cx, cy, w, h, w2c_r1, w2c_r2, w2c_r3);
+        const float2 mean2d = proj.mean2d;
+        float3 cov2d = kernels::project_cov3d(proj.jw_r1, proj.jw_r2, cov3d);
         cov2d.x += config::dilation;
         cov2d.z += config::dilation;
         const float determinant = cov2d.x * cov2d.z - cov2d.y * cov2d.y;
@@ -283,11 +260,6 @@ namespace lfs::rendering::kernels::forward {
             cov2d.z / determinant,
             -cov2d.y / determinant,
             cov2d.x / determinant);
-
-        // 2d mean in screen space
-        const float2 mean2d = make_float2(
-            x * fx + cx,
-            y * fy + cy);
 
         // compute bounds
         const float power_threshold = logf(opacity * config::min_alpha_threshold_rcp);

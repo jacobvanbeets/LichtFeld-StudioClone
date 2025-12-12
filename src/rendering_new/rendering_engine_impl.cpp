@@ -176,7 +176,9 @@ namespace lfs::rendering {
             .hovered_depth_id = request.hovered_depth_id,
             .highlight_gaussian_id = request.highlight_gaussian_id,
             .far_plane = request.far_plane,
-            .selected_node_mask = request.selected_node_mask};
+            .selected_node_mask = request.selected_node_mask,
+            .orthographic = request.orthographic,
+            .ortho_scale = request.ortho_scale};
 
         // Convert crop box if present
         std::unique_ptr<lfs::geometry::BoundingBox> temp_crop_box;

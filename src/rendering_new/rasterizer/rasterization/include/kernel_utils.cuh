@@ -143,4 +143,77 @@ namespace lfs::rendering::kernels {
         return n_touched_tiles;
     }
 
+    // Projection result: screen position and Jacobian rows for EWA splatting
+    struct ProjectionResult {
+        float2 mean2d;
+        float3 jw_r1;  // First row of J * W (Jacobian * world-to-camera rotation)
+        float3 jw_r2;  // Second row of J * W
+    };
+
+    // Project 3D covariance to 2D using Jacobian rows: cov2d = J * cov3d * J^T
+    __device__ inline float3 project_cov3d(
+        const float3& jw_r1,
+        const float3& jw_r2,
+        const mat3x3_triu& cov3d) {
+        const float3 jwc_r1 = make_float3(
+            jw_r1.x * cov3d.m11 + jw_r1.y * cov3d.m12 + jw_r1.z * cov3d.m13,
+            jw_r1.x * cov3d.m12 + jw_r1.y * cov3d.m22 + jw_r1.z * cov3d.m23,
+            jw_r1.x * cov3d.m13 + jw_r1.y * cov3d.m23 + jw_r1.z * cov3d.m33);
+        const float3 jwc_r2 = make_float3(
+            jw_r2.x * cov3d.m11 + jw_r2.y * cov3d.m12 + jw_r2.z * cov3d.m13,
+            jw_r2.x * cov3d.m12 + jw_r2.y * cov3d.m22 + jw_r2.z * cov3d.m23,
+            jw_r2.x * cov3d.m13 + jw_r2.y * cov3d.m23 + jw_r2.z * cov3d.m33);
+        return make_float3(dot(jwc_r1, jw_r1), dot(jwc_r1, jw_r2), dot(jwc_r2, jw_r2));
+    }
+
+    // Orthographic projection: linear mapping from camera space to screen
+    __device__ inline ProjectionResult project_orthographic(
+        const float cam_x,
+        const float cam_y,
+        const float cx,
+        const float cy,
+        const float ortho_scale,
+        const float4& w2c_r1,
+        const float4& w2c_r2) {
+        return {
+            .mean2d = make_float2(cam_x * ortho_scale + cx, cam_y * ortho_scale + cy),
+            .jw_r1 = make_float3(ortho_scale * w2c_r1.x, ortho_scale * w2c_r1.y, ortho_scale * w2c_r1.z),
+            .jw_r2 = make_float3(ortho_scale * w2c_r2.x, ortho_scale * w2c_r2.y, ortho_scale * w2c_r2.z)
+        };
+    }
+
+    // Perspective projection: divide by depth with clamped Jacobian
+    __device__ inline ProjectionResult project_perspective(
+        const float cam_x,
+        const float cam_y,
+        const float depth,
+        const float fx,
+        const float fy,
+        const float cx,
+        const float cy,
+        const float w,
+        const float h,
+        const float4& w2c_r1,
+        const float4& w2c_r2,
+        const float4& w2c_r3) {
+        const float x = cam_x / depth;
+        const float y = cam_y / depth;
+        // Clamp to 15% beyond viewport to stabilize Jacobian
+        const float tx = clamp(x, (-0.15f * w - cx) / fx, (1.15f * w - cx) / fx);
+        const float ty = clamp(y, (-0.15f * h - cy) / fy, (1.15f * h - cy) / fy);
+        const float j11 = fx / depth;
+        const float j22 = fy / depth;
+        return {
+            .mean2d = make_float2(x * fx + cx, y * fy + cy),
+            .jw_r1 = make_float3(
+                j11 * w2c_r1.x - j11 * tx * w2c_r3.x,
+                j11 * w2c_r1.y - j11 * tx * w2c_r3.y,
+                j11 * w2c_r1.z - j11 * tx * w2c_r3.z),
+            .jw_r2 = make_float3(
+                j22 * w2c_r2.x - j22 * ty * w2c_r3.x,
+                j22 * w2c_r2.y - j22 * ty * w2c_r3.y,
+                j22 * w2c_r2.z - j22 * ty * w2c_r3.z)
+        };
+    }
+
 } // namespace lfs::rendering::kernels

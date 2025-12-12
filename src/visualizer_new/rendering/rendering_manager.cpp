@@ -591,7 +591,9 @@ namespace lfs::vis {
             .selected_node_mask = settings_.desaturate_unselected ? std::move(scene_state.selected_node_mask) : std::vector<bool>{},
             .hovered_depth_id = nullptr,
             .highlight_gaussian_id = (selection_mode_ == lfs::rendering::SelectionMode::Rings) ? hovered_gaussian_id_ : -1,
-            .far_plane = settings_.depth_clip_enabled ? settings_.depth_clip_far : 1e10f};
+            .far_plane = settings_.depth_clip_enabled ? settings_.depth_clip_far : 1e10f,
+            .orthographic = settings_.orthographic,
+            .ortho_scale = settings_.ortho_scale};
 
         // Ring mode hover preview: allocate device buffer if needed
         const bool need_hovered_output = (selection_mode_ == lfs::rendering::SelectionMode::Rings) && brush_active_;

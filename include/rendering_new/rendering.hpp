@@ -93,6 +93,8 @@ namespace lfs::rendering {
         unsigned long long* hovered_depth_id = nullptr;
         int highlight_gaussian_id = -1;
         float far_plane = 1e10f;
+        bool orthographic = false;  // Use orthographic projection instead of perspective
+        float ortho_scale = 100.0f; // Pixels per world unit for orthographic projection
     };
 
     struct RenderResult {

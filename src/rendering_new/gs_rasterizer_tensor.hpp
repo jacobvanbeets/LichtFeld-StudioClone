@@ -45,7 +45,9 @@ namespace lfs::rendering {
         unsigned long long* hovered_depth_id = nullptr,
         int highlight_gaussian_id = -1,
         float far_plane = 1e10f,
-        const std::vector<bool>& selected_node_mask = {});
+        const std::vector<bool>& selected_node_mask = {},
+        bool orthographic = false,
+        float ortho_scale = 1.0f);
 
     // GUT rasterization for viewer (forward-only, no training dependency)
     struct GutRenderOutput {

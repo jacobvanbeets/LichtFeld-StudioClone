@@ -77,6 +77,8 @@ namespace lfs::vis {
 
         bool gut = false;
         bool equirectangular = false;
+        bool orthographic = false;
+        float ortho_scale = 100.0f;  // Pixels per world unit (larger = more zoomed in)
 
         // Selection colors (RGB: committed=219,83,83 preview=0,222,76 center=0,154,187)
         glm::vec3 selection_color_committed{0.859f, 0.325f, 0.325f};

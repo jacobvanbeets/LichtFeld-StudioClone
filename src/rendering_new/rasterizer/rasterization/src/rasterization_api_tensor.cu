@@ -80,7 +80,9 @@ namespace lfs::rendering {
         const Tensor* deleted_mask,
         unsigned long long* hovered_depth_id,
         int highlight_gaussian_id,
-        const std::vector<bool>& selected_node_mask) {
+        const std::vector<bool>& selected_node_mask,
+        bool orthographic,
+        float ortho_scale) {
 
         check_tensor_input(config::debug, means, "means");
         check_tensor_input(config::debug, scales_raw, "scales_raw");
@@ -262,7 +264,9 @@ namespace lfs::rendering {
             hovered_depth_id,
             highlight_gaussian_id,
             selected_node_mask_ptr,
-            num_selected_nodes);
+            num_selected_nodes,
+            orthographic,
+            ortho_scale);
 
         arena.end_frame(frame_id, true);  // true = from_rendering
         arena.set_rendering_active(false);

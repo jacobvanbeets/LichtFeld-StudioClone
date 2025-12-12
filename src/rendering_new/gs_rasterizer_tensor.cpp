@@ -41,7 +41,9 @@ namespace lfs::rendering {
         unsigned long long* hovered_depth_id,
         int highlight_gaussian_id,
         float far_plane,
-        const std::vector<bool>& selected_node_mask) {
+        const std::vector<bool>& selected_node_mask,
+        bool orthographic,
+        float ortho_scale) {
 
         // Get camera parameters
         const float fx = viewpoint_camera.focal_x();
@@ -150,7 +152,9 @@ namespace lfs::rendering {
             actual_deleted_mask,
             hovered_depth_id,
             highlight_gaussian_id,
-            selected_node_mask);
+            selected_node_mask,
+            orthographic,
+            ortho_scale);
 
         // Manually blend the background since the forward pass does not support it
         // bg_color is [3], need to make it [3, 1, 1]

@@ -108,6 +108,8 @@ namespace lfs::rendering {
         unsigned long long* hovered_depth_id = nullptr,
         int highlight_gaussian_id = -1,
         const bool* selected_node_mask = nullptr,
-        int num_selected_nodes = 0);
+        int num_selected_nodes = 0,
+        bool orthographic = false,
+        float ortho_scale = 1.0f);
 
 }

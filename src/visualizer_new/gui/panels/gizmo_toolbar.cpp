@@ -140,6 +140,8 @@ namespace lfs::vis::gui::panels {
         state.rings_texture = LoadIconTexture("ring.png");
         state.centers_texture = LoadIconTexture("circle-dot.png");
         state.home_texture = LoadIconTexture("home.png");
+        state.perspective_texture = LoadIconTexture("perspective.png");
+        state.orthographic_texture = LoadIconTexture("box.png");
         state.initialized = true;
     }
 
@@ -169,6 +171,8 @@ namespace lfs::vis::gui::panels {
         if (state.rings_texture) glDeleteTextures(1, &state.rings_texture);
         if (state.centers_texture) glDeleteTextures(1, &state.centers_texture);
         if (state.home_texture) glDeleteTextures(1, &state.home_texture);
+        if (state.perspective_texture) glDeleteTextures(1, &state.perspective_texture);
+        if (state.orthographic_texture) glDeleteTextures(1, &state.orthographic_texture);
 
         state.selection_texture = 0;
         state.rectangle_texture = 0;
@@ -425,7 +429,7 @@ namespace lfs::vis::gui::panels {
 
         constexpr float MARGIN_RIGHT = 10.0f;
         constexpr float MARGIN_TOP = 5.0f;
-        const int num_buttons = render_manager ? 8 : 3;
+        const int num_buttons = render_manager ? 9 : 3;  // +1 for projection toggle
         const ImVec2 size = ComputeVerticalToolbarSize(num_buttons);
         const ImVec2 pos = {
             viewport_pos.x + viewport_size.x - size.x - MARGIN_RIGHT,
@@ -480,6 +484,23 @@ namespace lfs::vis::gui::panels {
                 vizButton("##pointcloud", state.pointcloud_texture, "P", RenderVisualization::PointCloud, "Point Cloud");
                 vizButton("##rings", state.rings_texture, "R", RenderVisualization::Rings, "Gaussian Rings");
                 vizButton("##centers", state.centers_texture, "C", RenderVisualization::Centers, "Center Markers");
+
+                // Projection mode toggle
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Spacing();
+
+                const auto settings = render_manager->getSettings();
+                const bool is_ortho = settings.orthographic;
+                const auto proj_tex = is_ortho ? state.orthographic_texture : state.perspective_texture;
+                const char* proj_tooltip = is_ortho ? "Orthographic (O)" : "Perspective (O)";
+
+                if (widgets::IconButton("##projection", proj_tex, btn_size, is_ortho, "O")) {
+                    auto new_settings = settings;
+                    new_settings.orthographic = !is_ortho;
+                    render_manager->updateSettings(new_settings);
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", proj_tooltip);
             }
         }
         ImGui::End();

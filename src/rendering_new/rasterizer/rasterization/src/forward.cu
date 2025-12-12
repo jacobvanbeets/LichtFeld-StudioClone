@@ -318,7 +318,9 @@ void lfs::rendering::forward(
     unsigned long long* hovered_depth_id,
     int highlight_gaussian_id,
     const bool* selected_node_mask,
-    int num_selected_nodes) {
+    int num_selected_nodes,
+    bool orthographic,
+    float ortho_scale) {
 
     const dim3 grid(div_round_up(width, config::tile_width), div_round_up(height, config::tile_height), 1);
     const dim3 block(config::tile_width, config::tile_height, 1);
@@ -411,7 +413,9 @@ void lfs::rendering::forward(
         highlight_gaussian_id,
         hovered_depth_id,
         selected_node_mask,
-        num_selected_nodes);
+        num_selected_nodes,
+        orthographic,
+        ortho_scale);
     CHECK_CUDA(config::debug, "preprocess")
 
 

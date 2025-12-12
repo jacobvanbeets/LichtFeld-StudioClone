@@ -650,7 +650,22 @@ namespace lfs::vis {
         if (key_r_pressed_) {
             viewport_.camera.rotate_roll(delta);
         } else {
-            viewport_.camera.zoom(delta);
+            // In orthographic mode, adjust ortho_scale instead of camera position
+            if (rendering_manager_) {
+                auto settings = rendering_manager_->getSettings();
+                if (settings.orthographic) {
+                    // Zoom factor: positive delta = zoom in (increase scale)
+                    constexpr float ORTHO_ZOOM_FACTOR = 0.1f;
+                    const float scale_factor = 1.0f + delta * ORTHO_ZOOM_FACTOR;
+                    settings.ortho_scale = std::clamp(settings.ortho_scale * scale_factor, 1.0f, 10000.0f);
+                    rendering_manager_->updateSettings(settings);
+                    rendering_manager_->markDirty();
+                } else {
+                    viewport_.camera.zoom(delta);
+                }
+            } else {
+                viewport_.camera.zoom(delta);
+            }
         }
 
         onCameraMovementStart();

@@ -79,6 +79,10 @@ namespace lfs::vis::gui::panels {
         unsigned int rings_texture = 0;
         unsigned int centers_texture = 0;
         unsigned int home_texture = 0;
+
+        // Projection mode icons
+        unsigned int perspective_texture = 0;
+        unsigned int orthographic_texture = 0;
     };
 
     void InitGizmoToolbar(GizmoToolbarState& state);

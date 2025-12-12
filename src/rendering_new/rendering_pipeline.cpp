@@ -159,7 +159,9 @@ namespace lfs::rendering {
                                                     request.hovered_depth_id,
                                                     request.highlight_gaussian_id,
                                                     request.far_plane,
-                                                    request.selected_node_mask);
+                                                    request.selected_node_mask,
+                                                    request.orthographic,
+                                                    request.ortho_scale);
                     result.image = std::move(image);
                     result.depth = std::move(depth);
                     if (request.output_screen_positions) {
@@ -212,7 +214,9 @@ namespace lfs::rendering {
                                             request.hovered_depth_id,
                                             request.highlight_gaussian_id,
                                             request.far_plane,
-                                            request.selected_node_mask);
+                                            request.selected_node_mask,
+                                            request.orthographic,
+                                            request.ortho_scale);
             result.image = std::move(image);
             result.depth = std::move(depth);
             if (request.output_screen_positions) {

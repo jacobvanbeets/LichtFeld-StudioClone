@@ -77,6 +77,8 @@ namespace lfs::rendering {
             // Desaturate unselected nodes (when multiple PLYs visible)
             // Mask: true = selected (don't desaturate), false = desaturate. Empty = no desaturation.
             std::vector<bool> selected_node_mask;
+            bool orthographic = false;  // Use orthographic projection instead of perspective
+            float ortho_scale = 1.0f;   // Pixels per world unit for orthographic projection
         };
 
         struct RenderResult {
