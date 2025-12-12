@@ -352,49 +352,30 @@ std::expected<NewInitializationResult, std::string> initialize_new() {
                     std::format("[NEW] Failed to initialize model: {}", splat_result.error()));
             }
 
-            size_t num_gaussians = splat_result->size();
-            spdlog::info("[NEW] Model initialized with {} Gaussians", num_gaussians);
+            const size_t num_gaussians = splat_result->size();
+            spdlog::info("[NEW] Model: {} Gaussians", num_gaussians);
 
-            // Create MCMC strategy with the model (strategy takes ownership)
-            auto strategy = std::make_shared<lfs::training::MCMC>(std::move(*splat_result));
-            spdlog::info("[NEW] MCMC strategy created with model");
-
-            // Set active SH degree to max (3) for testing
+            // SplatData must outlive strategy (Scene owns in production)
+            auto splat_data = std::make_shared<lfs::core::SplatData>(std::move(*splat_result));
+            auto strategy = std::make_shared<lfs::training::MCMC>(*splat_data);
             strategy->get_model().set_active_sh_degree(params.optimization.sh_degree);
-            spdlog::info("[NEW] Set active SH degree to {}", strategy->get_model().get_active_sh_degree());
-
-            // Initialize the strategy's optimizer
             strategy->initialize(params.optimization);
-            spdlog::info("[NEW] Optimizer initialized");
-
-            // Create background tensor (black background)
-            lfs::core::Tensor background = lfs::core::Tensor::zeros({3}, lfs::core::Device::CUDA, lfs::core::DataType::Float32);
 
             // Build camera cache
             std::unordered_map<size_t, std::shared_ptr<lfs::core::Camera>> cam_id_to_cam;
+            cam_id_to_cam.reserve(data.cameras->get_cameras().size());
             for (const auto& cam : data.cameras->get_cameras()) {
                 cam_id_to_cam[cam->uid()] = cam;
             }
-            spdlog::debug("[NEW] Camera cache initialized with {} cameras", cam_id_to_cam.size());
 
-            // CacheLoader is already initialized with the right params
-            spdlog::debug("[NEW] CacheLoader initialized for {} cameras", data.cameras->size());
+            spdlog::info("[NEW] Initialized: {} cameras, {} Gaussians", data.cameras->size(), num_gaussians);
 
-            // Report success
-            spdlog::info("[NEW] ✓ Initialization complete");
-            spdlog::info("[NEW]   - Dataset: {} cameras", data.cameras->size());
-            spdlog::info("[NEW]   - Point cloud: {} points", point_cloud_to_use.size());
-            spdlog::info("[NEW]   - Gaussians: {}", num_gaussians);
-            spdlog::info("[NEW]   - Strategy: MCMC (initialized)");
-
-            // Return all initialization data
-            // Note: model pointer is nullptr since strategy owns the model now
             return NewInitializationResult{
                 .dataset = data.cameras,
-                .model = nullptr,  // Strategy owns the model
+                .model = splat_data,
                 .strategy = strategy,
                 .params = params,
-                .background = std::move(background),
+                .background = lfs::core::Tensor::zeros({3}, lfs::core::Device::CUDA, lfs::core::DataType::Float32),
                 .scene_center = load_result->scene_center,
                 .cam_id_to_cam = std::move(cam_id_to_cam),
                 .num_gaussians = num_gaussians

@@ -203,7 +203,7 @@ TEST(OptimizerComparison, RealBicycleDataset) {
     gs::training::MCMC legacy_strategy(std::move(legacy_splat_data));
     legacy_strategy.initialize(legacy_params.optimization);
 
-    lfs::training::MCMC new_strategy(std::move(new_splat_data));
+    lfs::training::MCMC new_strategy(new_splat_data);
     new_strategy.initialize(new_params.optimization);
 
     // ====================

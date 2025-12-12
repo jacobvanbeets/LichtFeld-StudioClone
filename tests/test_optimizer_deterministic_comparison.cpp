@@ -214,7 +214,7 @@ TEST(OptimizerComparison, DeterministicMCMC100Steps) {
     legacy_strategy.initialize(params_legacy);
 
     std::cout << "Initializing new MCMC strategy..." << std::endl;
-    lfs::training::MCMC new_strategy(std::move(new_data));
+    lfs::training::MCMC new_strategy(new_data);
     new_strategy.initialize(params_new);
 
 

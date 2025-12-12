@@ -12,16 +12,7 @@
 
 namespace lfs::training {
 
-    // Legacy constructor - takes ownership
-    MCMC::MCMC(lfs::core::SplatData&& splat_data)
-        : _owned_splat_data(std::make_unique<lfs::core::SplatData>(std::move(splat_data))),
-          _splat_data(_owned_splat_data.get()) {
-    }
-
-    // New constructor - uses external reference (Scene-owned)
-    MCMC::MCMC(lfs::core::SplatData& splat_data)
-        : _splat_data(&splat_data) {
-    }
+    MCMC::MCMC(lfs::core::SplatData& splat_data) : _splat_data(&splat_data) {}
 
     lfs::core::Tensor MCMC::multinomial_sample(const lfs::core::Tensor& weights, int n, bool replacement) {
         // Use the tensor library's built-in multinomial sampling

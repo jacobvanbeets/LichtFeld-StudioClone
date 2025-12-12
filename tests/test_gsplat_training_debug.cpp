@@ -82,6 +82,7 @@ struct LegacyInit {
 
 struct NewInit {
     std::shared_ptr<lfs::training::CameraDataset> dataset;
+    std::unique_ptr<lfs::core::SplatData> splat_data;  // Must outlive strategy
     std::shared_ptr<lfs::training::MCMC> strategy;
     lfs::core::param::TrainingParameters params;
     lfs::core::Tensor background;
@@ -203,7 +204,8 @@ std::pair<LegacyInit, NewInit> initialize_both_gsplat() {
             EXPECT_TRUE(splat_result.has_value());
 
             new_impl.num_gaussians = splat_result->size();
-            new_impl.strategy = std::make_shared<lfs::training::MCMC>(std::move(*splat_result));
+            new_impl.splat_data = std::make_unique<lfs::core::SplatData>(std::move(*splat_result));
+            new_impl.strategy = std::make_shared<lfs::training::MCMC>(*new_impl.splat_data);
             new_impl.strategy->get_model().set_active_sh_degree(new_impl.params.optimization.sh_degree);
             new_impl.strategy->initialize(new_impl.params.optimization);
             new_impl.background = lfs::core::Tensor::zeros({3}, lfs::core::Device::CUDA, lfs::core::DataType::Float32);

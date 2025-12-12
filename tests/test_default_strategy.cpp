@@ -38,7 +38,7 @@ static SplatData create_test_splat_data(int n_gaussians = 100) {
 
 TEST(DefaultStrategyTest, Initialization) {
     auto splat_data = create_test_splat_data(50);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -52,7 +52,7 @@ TEST(DefaultStrategyTest, Initialization) {
 
 TEST(DefaultStrategyTest, IsRefining) {
     auto splat_data = create_test_splat_data(50);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.start_refine = 500;
@@ -81,7 +81,7 @@ TEST(DefaultStrategyTest, IsRefining) {
 
 TEST(DefaultStrategyTest, DuplicateGaussians_AddsCorrectly) {
     auto splat_data = create_test_splat_data(10);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -106,7 +106,7 @@ TEST(DefaultStrategyTest, DuplicateGaussians_AddsCorrectly) {
 
 TEST(DefaultStrategyTest, SplitGaussians_WithQuaternions) {
     auto splat_data = create_test_splat_data(5);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -124,7 +124,7 @@ TEST(DefaultStrategyTest, SplitGaussians_WithQuaternions) {
 
 TEST(DefaultStrategyTest, GrowGaussians_HighGradientSmall) {
     auto splat_data = create_test_splat_data(20);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 10000;
@@ -163,7 +163,7 @@ TEST(DefaultStrategyTest, PruneGaussians_LowOpacity) {
     }
     splat_data.opacity_raw() = Tensor::from_vector(opacity_data, TensorShape({30, 1}), Device::CUDA);
 
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -182,7 +182,7 @@ TEST(DefaultStrategyTest, ResetOpacity_ClampsValues) {
     std::vector<float> opacity_data(20, 3.0f);  // High opacity (logit space)
     splat_data.opacity_raw() = Tensor::from_vector(opacity_data, TensorShape({20, 1}), Device::CUDA);
 
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -198,7 +198,7 @@ TEST(DefaultStrategyTest, ResetOpacity_ClampsValues) {
 
 TEST(DefaultStrategyTest, RemoveGaussians) {
     auto splat_data = create_test_splat_data(50);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -222,7 +222,7 @@ TEST(DefaultStrategyTest, RemoveGaussians) {
 
 TEST(DefaultStrategyTest, FullTrainingLoop_ShortRun) {
     auto splat_data = create_test_splat_data(30);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 50;
@@ -257,7 +257,7 @@ TEST(DefaultStrategyTest, FullTrainingLoop_ShortRun) {
 
 TEST(DefaultStrategyTest, EdgeCase_NoRefinement) {
     auto splat_data = create_test_splat_data(25);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -286,7 +286,7 @@ TEST(DefaultStrategyTest, EdgeCase_AllGaussiansLowOpacity) {
     std::vector<float> opacity_data(20, -10.0f);
     splat_data.opacity_raw() = Tensor::from_vector(opacity_data, TensorShape({20, 1}), Device::CUDA);
 
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -300,7 +300,7 @@ TEST(DefaultStrategyTest, EdgeCase_HighSHDegree) {
     auto splat_data = create_test_splat_data(15);
     // SH degree is already 3, which is max in the test setup
 
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -320,7 +320,7 @@ TEST(DefaultStrategyTest, EdgeCase_HighSHDegree) {
 
 TEST(DefaultStrategyStressTest, LongTrainingLoop_200Iterations) {
     auto splat_data = create_test_splat_data(50);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 200;
@@ -373,7 +373,7 @@ TEST(DefaultStrategyStressTest, LongTrainingLoop_200Iterations) {
 
 TEST(DefaultStrategyStressTest, ZeroGradients_NoCorruption) {
     auto splat_data = create_test_splat_data(30);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -405,7 +405,7 @@ TEST(DefaultStrategyStressTest, ZeroGradients_NoCorruption) {
 
 TEST(DefaultStrategyStressTest, VeryLargeModel_1kGaussians) {
     auto splat_data = create_test_splat_data(1000);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 50;

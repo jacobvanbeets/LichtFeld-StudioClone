@@ -13,19 +13,11 @@ namespace lfs::training {
     // Forward declarations
     struct RenderOutput;
 
-    /**
-     * @brief Default densification-based optimization strategy.
-     *
-     * Can take ownership of SplatData (legacy) or operate on externally-owned data.
-     */
+    /// Default densification-based optimization strategy. SplatData owned by Scene.
     class DefaultStrategy : public IStrategy {
     public:
         DefaultStrategy() = delete;
-
-        /// Construct with ownership of SplatData (legacy mode)
-        explicit DefaultStrategy(lfs::core::SplatData&& splat_data);
-
-        /// Construct with reference to externally-owned SplatData (from Scene)
+        /// SplatData must be owned by Scene
         explicit DefaultStrategy(lfs::core::SplatData& splat_data);
 
         // Prevent copy/move
@@ -79,8 +71,7 @@ namespace lfs::training {
         // Member variables
         std::unique_ptr<AdamOptimizer> _optimizer;
         std::unique_ptr<ExponentialLR> _scheduler;
-        std::unique_ptr<lfs::core::SplatData> _owned_splat_data;  // Owned data (legacy mode)
-        lfs::core::SplatData* _splat_data = nullptr;  // Pointer to active model (owned or external)
+        lfs::core::SplatData* _splat_data = nullptr;  // Scene-owned
         std::unique_ptr<const lfs::core::param::OptimizationParameters> _params;
     };
 } // namespace lfs::training

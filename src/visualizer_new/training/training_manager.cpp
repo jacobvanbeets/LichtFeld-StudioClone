@@ -336,16 +336,14 @@ namespace lfs::vis {
 
             LOG_DEBUG("GPU memory released");
 
-            // Recreate trainer
-            auto setup_result = lfs::training::setupTraining(params);
-            if (setup_result) {
-                trainer_ = std::move(setup_result->trainer);
-                trainer_->setProject(project_);
-            } else {
-                LOG_ERROR("Failed to recreate trainer after reset: {}", setup_result.error());
+            // Recreate trainer from Scene
+            if (!scene_) {
+                LOG_ERROR("Cannot reset training: no scene set");
                 setState(State::Error);
                 return false;
             }
+            trainer_ = std::make_unique<lfs::training::Trainer>(*scene_);
+            trainer_->setProject(project_);
         }
 
         // Clear loss buffer

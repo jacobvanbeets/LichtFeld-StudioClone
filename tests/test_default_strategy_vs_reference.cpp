@@ -140,7 +140,7 @@ std::pair<lfs::core::SplatData, gs::SplatData> create_matching_splat_data(int n_
 TEST(DefaultStrategyVsReference, Initialization) {
     auto [lfs_splat, gs_splat] = create_matching_splat_data(100);
 
-    lfs::training::DefaultStrategy lfs_strategy(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_strategy(lfs_splat);
     gs::training::DefaultStrategy gs_strategy(std::move(gs_splat));
 
     lfs::core::param::OptimizationParameters lfs_params;
@@ -168,7 +168,7 @@ TEST(DefaultStrategyVsReference, Initialization) {
 TEST(DefaultStrategyVsReference, RemoveGaussians) {
     auto [lfs_splat, gs_splat] = create_matching_splat_data(50);
 
-    lfs::training::DefaultStrategy lfs_strategy(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_strategy(lfs_splat);
     gs::training::DefaultStrategy gs_strategy(std::move(gs_splat));
 
     lfs::core::param::OptimizationParameters lfs_params;
@@ -202,7 +202,7 @@ TEST(DefaultStrategyVsReference, RemoveGaussians) {
 TEST(DefaultStrategyVsReference, TrainingStepWithGradients) {
     auto [lfs_splat, gs_splat] = create_matching_splat_data(30);
 
-    lfs::training::DefaultStrategy lfs_strategy(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_strategy(lfs_splat);
     gs::training::DefaultStrategy gs_strategy(std::move(gs_splat));
 
     lfs::core::param::OptimizationParameters lfs_params;
@@ -239,7 +239,7 @@ TEST(DefaultStrategyVsReference, FullTrainingLoopWithRefinement) {
 
     auto [lfs_splat, gs_splat] = create_matching_splat_data(n_gaussians);
 
-    lfs::training::DefaultStrategy lfs_strategy(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_strategy(lfs_splat);
     gs::training::DefaultStrategy gs_strategy(std::move(gs_splat));
 
     lfs::core::param::OptimizationParameters lfs_params;
@@ -344,7 +344,7 @@ TEST(DefaultStrategyVsReference, BenchmarkComparison) {
 
     auto [lfs_splat, gs_splat] = create_matching_splat_data(n_gaussians);
 
-    lfs::training::DefaultStrategy lfs_strategy(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_strategy(lfs_splat);
     gs::training::DefaultStrategy gs_strategy(std::move(gs_splat));
 
     lfs::core::param::OptimizationParameters lfs_params;
@@ -355,7 +355,7 @@ TEST(DefaultStrategyVsReference, BenchmarkComparison) {
     // Benchmark initialization
     auto bench_init_lfs = [&]() {
         auto [splat, _] = create_matching_splat_data(n_gaussians);
-        lfs::training::DefaultStrategy strategy(std::move(splat));
+        lfs::training::DefaultStrategy strategy(splat);
         lfs::core::param::OptimizationParameters params;
         params.iterations = 100;
         strategy.initialize(params);

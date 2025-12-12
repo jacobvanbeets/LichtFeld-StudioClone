@@ -136,7 +136,7 @@ TEST(LFSOnlyDensification, WorksAt100K) {
         std::cout << "Before: " << size_before << std::endl;
 
         // Create strategy
-        lfs::training::DefaultStrategy strat(std::move(splat));
+        lfs::training::DefaultStrategy strat(splat);
         lfs::core::param::OptimizationParameters params;
         params.iterations = 30000;
         params.start_refine = 500;
@@ -279,7 +279,7 @@ TEST(DensificationBenchmark, CompareImplementations) {
         // Create matching data
         auto [lfs_splat, gs_splat] = create_matching_data(n_gaussians, 999);
 
-        lfs::training::DefaultStrategy lfs_strat(std::move(lfs_splat));
+        lfs::training::DefaultStrategy lfs_strat(lfs_splat);
         gs::training::DefaultStrategy gs_strat(std::move(gs_splat));
 
         lfs::core::param::OptimizationParameters lfs_params;
@@ -413,7 +413,7 @@ TEST(ProfileOps, DuplicateOnly) {
     auto numer = Tensor::ones({static_cast<size_t>(n)}, Device::CUDA) * 10.0f;
     splat._densification_info[1] = numer;
 
-    lfs::training::DefaultStrategy strat(std::move(splat));
+    lfs::training::DefaultStrategy strat(splat);
     lfs::core::param::OptimizationParameters params;
     params.grad_threshold = 0.0002f;
     params.grow_scale3d = 100.0f;  // Make everything "small" so all duplicate
@@ -471,7 +471,7 @@ TEST(ProfileOps, SplitOnly) {
     auto numer = Tensor::ones({static_cast<size_t>(n)}, Device::CUDA) * 10.0f;
     splat._densification_info[1] = numer;
 
-    lfs::training::DefaultStrategy strat(std::move(splat));
+    lfs::training::DefaultStrategy strat(splat);
     lfs::core::param::OptimizationParameters params;
     params.grad_threshold = 0.0002f;
     params.grow_scale3d = 0.0f;  // Make everything "large" so all split

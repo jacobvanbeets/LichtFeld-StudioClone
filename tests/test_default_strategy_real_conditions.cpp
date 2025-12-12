@@ -215,7 +215,7 @@ TEST(DefaultStrategyTest, Initialization) {
     // Test that default strategy initializes correctly
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::DefaultStrategy lfs_default(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_default(lfs_splat);
 
     auto params = create_test_params();
     lfs_default.initialize(params);
@@ -229,7 +229,7 @@ TEST(DefaultStrategyTest, Initialization) {
 TEST(DefaultStrategyTest, IsRefining) {
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::DefaultStrategy lfs_default(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_default(lfs_splat);
 
     auto params = create_test_params();
     params.start_refine = 500;
@@ -260,7 +260,7 @@ TEST(DefaultStrategyTest, DuplicateGaussians_WithOptimizerState) {
 
     auto gs_splat = create_gs_splat_data(lfs_splat);
 
-    lfs::training::DefaultStrategy lfs_default(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_default(lfs_splat);
     gs::training::DefaultStrategy gs_default(std::move(gs_splat));
 
     auto lfs_params = create_test_params();
@@ -323,7 +323,7 @@ TEST(DefaultStrategyTest, SplitGaussians_WithOptimizerState) {
 
     auto gs_splat = create_gs_splat_data(lfs_splat);
 
-    lfs::training::DefaultStrategy lfs_default(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_default(lfs_splat);
     gs::training::DefaultStrategy gs_default(std::move(gs_splat));
 
     auto lfs_params = create_test_params();
@@ -385,7 +385,7 @@ TEST(DefaultStrategyStressTest, FullTrainingLoop_100Iterations) {
     std::cout << "Creating splat data for stress test..." << std::endl;
     auto lfs_splat = create_lfs_splat_data(200, 3);
 
-    lfs::training::DefaultStrategy lfs_default(std::move(lfs_splat));
+    lfs::training::DefaultStrategy lfs_default(lfs_splat);
 
     auto params = create_test_params();
     params.start_refine = 50;

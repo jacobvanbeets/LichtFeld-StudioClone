@@ -272,7 +272,7 @@ TEST_F(AddNewGsDeterministicTest, SingleIteration_IdenticalInitialState) {
 
     // Create strategies
     gs::training::MCMC legacy_strategy(std::move(legacy_splat));
-    lfs::training::MCMC new_strategy(std::move(new_splat));
+    lfs::training::MCMC new_strategy(new_splat);
 
     legacy_strategy.initialize(legacy_params);
     new_strategy.initialize(new_params);
@@ -355,7 +355,7 @@ TEST_F(AddNewGsDeterministicTest, MultipleIterations_ConsistentBehavior) {
     auto [legacy_params, new_params] = createMatchingParams();
 
     gs::training::MCMC legacy_strategy(std::move(legacy_splat));
-    lfs::training::MCMC new_strategy(std::move(new_splat));
+    lfs::training::MCMC new_strategy(new_splat);
 
     legacy_strategy.initialize(legacy_params);
     new_strategy.initialize(new_params);
@@ -448,7 +448,7 @@ TEST_F(AddNewGsDeterministicTest, OptimizerState_ConsistentAfterGrowth) {
     auto [legacy_params, new_params] = createMatchingParams();
 
     gs::training::MCMC legacy_strategy(std::move(legacy_splat));
-    lfs::training::MCMC new_strategy(std::move(new_splat));
+    lfs::training::MCMC new_strategy(new_splat);
 
     legacy_strategy.initialize(legacy_params);
     new_strategy.initialize(new_params);
@@ -529,7 +529,7 @@ TEST_F(AddNewGsDeterministicTest, EdgeCase_SampleAllGaussians) {
     auto [legacy_params, new_params] = createMatchingParams();
 
     gs::training::MCMC legacy_strategy(std::move(legacy_splat));
-    lfs::training::MCMC new_strategy(std::move(new_splat));
+    lfs::training::MCMC new_strategy(new_splat);
 
     legacy_strategy.initialize(legacy_params);
     new_strategy.initialize(new_params);
@@ -564,7 +564,7 @@ TEST_F(AddNewGsDeterministicTest, EdgeCase_SampleSingleGaussian) {
     auto [legacy_params, new_params] = createMatchingParams();
 
     gs::training::MCMC legacy_strategy(std::move(legacy_splat));
-    lfs::training::MCMC new_strategy(std::move(new_splat));
+    lfs::training::MCMC new_strategy(new_splat);
 
     legacy_strategy.initialize(legacy_params);
     new_strategy.initialize(new_params);
@@ -606,7 +606,7 @@ TEST_F(AddNewGsDeterministicTest, EdgeCase_RepeatedIndices) {
     auto [legacy_params, new_params] = createMatchingParams();
 
     gs::training::MCMC legacy_strategy(std::move(legacy_splat));
-    lfs::training::MCMC new_strategy(std::move(new_splat));
+    lfs::training::MCMC new_strategy(new_splat);
 
     legacy_strategy.initialize(legacy_params);
     new_strategy.initialize(new_params);

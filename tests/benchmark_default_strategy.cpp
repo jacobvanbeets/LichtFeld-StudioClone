@@ -83,7 +83,7 @@ TEST(DefaultStrategyBenchmark, Initialization) {
 
     double avg_time = time_operation([n_gaussians]() {
         auto splat_data = create_benchmark_splat_data(n_gaussians);
-        DefaultStrategy strategy(std::move(splat_data));
+        DefaultStrategy strategy(splat_data);
 
         param::OptimizationParameters opt_params;
         opt_params.iterations = 30000;
@@ -103,7 +103,7 @@ TEST(DefaultStrategyBenchmark, RemoveGaussians) {
     const int n_to_remove = 10000;
 
     auto splat_data = create_benchmark_splat_data(n_gaussians);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 30000;
@@ -136,7 +136,7 @@ TEST(DefaultStrategyBenchmark, TrainingStep) {
     const int n_gaussians = 100000;
 
     auto splat_data = create_benchmark_splat_data(n_gaussians);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 30000;
@@ -171,7 +171,7 @@ TEST(DefaultStrategyBenchmark, FullTrainingLoop_100Iterations) {
     const int n_iterations = 100;
 
     auto splat_data = create_benchmark_splat_data(n_gaussians);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = n_iterations;
@@ -233,7 +233,7 @@ TEST(DefaultStrategyBenchmark, ScalingTest) {
         // Initialization time
         double init_time = time_operation([n_gaussians]() {
             auto splat_data = create_benchmark_splat_data(n_gaussians);
-            DefaultStrategy strategy(std::move(splat_data));
+            DefaultStrategy strategy(splat_data);
 
             param::OptimizationParameters opt_params;
             opt_params.iterations = 30000;
@@ -242,7 +242,7 @@ TEST(DefaultStrategyBenchmark, ScalingTest) {
 
         // Single step time
         auto splat_data = create_benchmark_splat_data(n_gaussians);
-        DefaultStrategy strategy(std::move(splat_data));
+        DefaultStrategy strategy(splat_data);
 
         param::OptimizationParameters opt_params;
         opt_params.iterations = 30000;
@@ -276,7 +276,7 @@ TEST(DefaultStrategyBenchmark, MemoryEfficiency) {
     const int n_gaussians = 100000;
 
     auto splat_data = create_benchmark_splat_data(n_gaussians);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 30000;

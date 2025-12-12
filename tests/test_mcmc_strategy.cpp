@@ -213,7 +213,7 @@ TEST(MCMCStrategyTest, Initialization) {
     // Test that MCMC strategy initializes correctly
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     lfs_mcmc.initialize(params);
@@ -227,7 +227,7 @@ TEST(MCMCStrategyTest, Initialization) {
 TEST(MCMCStrategyTest, IsRefining) {
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     params.start_refine = 500;
@@ -266,7 +266,7 @@ TEST(MCMCStrategyTest, RelocateDeadGaussians_WithOptimizerState) {
     auto lfs_splat = create_lfs_splat_data(500, 3);
     std::cout << "Created splat data" << std::endl;
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto lfs_params = create_test_params();
     lfs_params.min_opacity = 0.01f;
@@ -320,7 +320,7 @@ TEST(MCMCStrategyTest, AddNewGaussians_GrowthBehavior) {
 
     auto gs_splat = create_gs_splat_data(lfs_splat);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
     gs::training::MCMC gs_mcmc(std::move(gs_splat));
 
     auto lfs_params = create_test_params();
@@ -389,7 +389,7 @@ TEST(MCMCStrategyTest, AddNewGaussians_GrowthBehavior) {
 TEST(MCMCStrategyTest, AddNewGaussians_RespectsMaxCap) {
     auto lfs_splat = create_lfs_splat_data(150, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     params.max_cap = 155;  // Very low cap
@@ -407,7 +407,7 @@ TEST(MCMCStrategyTest, NoiseInjection_EveryIteration) {
     // Test that noise is injected every iteration (not just during refinement)
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
     auto params = create_test_params();
     lfs_mcmc.initialize(params);
 
@@ -435,7 +435,7 @@ TEST(MCMCStrategyTest, SHDegreeIncrement) {
 
     auto gs_splat = create_gs_splat_data(lfs_splat);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
     gs::training::MCMC gs_mcmc(std::move(gs_splat));
 
     auto lfs_params = create_test_params();
@@ -477,7 +477,7 @@ TEST(MCMCStrategyTest, OptimizationStep_GradientsCorrect) {
     // Test that optimization step updates parameters correctly and zeroes gradients
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
     auto params = create_test_params();
     lfs_mcmc.initialize(params);
 
@@ -505,7 +505,7 @@ TEST(MCMCStrategyTest, OptimizationStep_GradientsCorrect) {
 TEST(MCMCStrategyTest, RemoveGaussians) {
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
     auto params = create_test_params();
     params.min_opacity = 0.01f;
     lfs_mcmc.initialize(params);
@@ -530,7 +530,7 @@ TEST(MCMCStrategyTest, FullTrainingLoop_ShortRun) {
     // Test LFS only - full training loop with growth and refinement
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto lfs_params = create_test_params();
     lfs_params.start_refine = 50;
@@ -578,7 +578,7 @@ TEST(MCMCStrategyTest, EdgeCase_AllGaussiansDead) {
     lfs_splat.opacity_raw().fill_(-20.0f);  // Very low opacity
     lfs_splat.rotation_raw().fill_(0.0f);    // Zero rotation
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
     auto params = create_test_params();
     params.min_opacity = 0.01f;
     lfs_mcmc.initialize(params);
@@ -601,7 +601,7 @@ TEST(MCMCStrategyTest, EdgeCase_NoDeadGaussians) {
     auto rotation = lfs_splat.rotation_raw();
     rotation.fill_(0.5f);  // Non-zero rotation
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
     auto params = create_test_params();
     lfs_mcmc.initialize(params);
 
@@ -618,7 +618,7 @@ TEST(MCMCStrategyTest, EdgeCase_NoDeadGaussians) {
 TEST(MCMCStrategyTest, EdgeCase_MaxCapReachedExactly) {
     auto lfs_splat = create_lfs_splat_data(95, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
     auto params = create_test_params();
     params.max_cap = 100;  // Exact cap
     lfs_mcmc.initialize(params);
@@ -638,7 +638,7 @@ TEST(MCMCStrategyTest, EdgeCase_HighSHDegree) {
     // Test with maximum SH degree (3) - LFS only (reference crashes)
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto lfs_params = create_test_params();
     lfs_params.sh_degree_interval = 100;
@@ -663,7 +663,7 @@ TEST(MCMCStrategyStressTest, LongTrainingLoop_100Iterations) {
     // Simulate 100 iterations of training with multiple refinements and SH degree increments
     auto lfs_splat = create_lfs_splat_data(200, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     params.start_refine = 50;
@@ -732,7 +732,7 @@ TEST(MCMCStrategyStressTest, MultiplePostBackward_ConsecutiveCalls) {
     // Test calling post_backward multiple times in a row at refinement iterations
     auto lfs_splat = create_lfs_splat_data(150, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     params.max_cap = 300;
@@ -779,7 +779,7 @@ TEST(MCMCStrategyStressTest, SHDegreeIncrement_DuringGrowth) {
     // Test SH degree increments happening simultaneously with Gaussian growth
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     params.start_refine = 0;
@@ -833,7 +833,7 @@ TEST(MCMCStrategyStressTest, RapidRefinements_EveryIteration) {
     // Extreme case: refinement every single iteration
     auto lfs_splat = create_lfs_splat_data(50, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     params.start_refine = 0;
@@ -876,7 +876,7 @@ TEST(MCMCStrategyStressTest, GrowthToMaxCap_ThenContinue) {
     // Test growing to max cap, then continuing training
     auto lfs_splat = create_lfs_splat_data(90, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     params.max_cap = 100;  // Low cap, will reach quickly
@@ -937,7 +937,7 @@ TEST(MCMCStrategyStressTest, AlternatingRefinementAndNormal) {
     // Test alternating between refinement and non-refinement iterations
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     params.start_refine = 0;
@@ -983,7 +983,7 @@ TEST(MCMCStrategyStressTest, ZeroGradients_NoCorruption) {
     // Test that zero gradients don't cause issues
     auto lfs_splat = create_lfs_splat_data(100, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     lfs_mcmc.initialize(params);
@@ -1028,7 +1028,7 @@ TEST(MCMCStrategyStressTest, VeryLargeModel_10kGaussians) {
     // Test with a large model (10k Gaussians)
     auto lfs_splat = create_lfs_splat_data(10000, 3);
 
-    lfs::training::MCMC lfs_mcmc(std::move(lfs_splat));
+    lfs::training::MCMC lfs_mcmc(lfs_splat);
 
     auto params = create_test_params();
     params.max_cap = 15000;

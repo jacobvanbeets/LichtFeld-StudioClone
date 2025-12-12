@@ -65,7 +65,7 @@ TEST(BinarySearchBug, Step2_CreateStrategy) {
 
         std::cout << "[TEST] SplatData created" << std::endl;
 
-        lfs::training::DefaultStrategy strat(std::move(splat));
+        lfs::training::DefaultStrategy strat(splat);
         std::cout << "[TEST] DefaultStrategy created" << std::endl;
 
         // Now try tensor operation
@@ -100,7 +100,7 @@ TEST(BinarySearchBug, Step3_InitializeStrategy) {
             Tensor::randn({n, 1}, Device::CUDA),
             1.0f);
 
-        lfs::training::DefaultStrategy strat(std::move(splat));
+        lfs::training::DefaultStrategy strat(splat);
 
         lfs::core::param::OptimizationParameters params;
         params.iterations = 30000;
@@ -154,7 +154,7 @@ TEST(BinarySearchBug, Step4_CallPostBackward) {
         auto numer = Tensor::ones({static_cast<size_t>(n)}, Device::CUDA) * 10.0f;
         splat._densification_info[1] = numer;
 
-        lfs::training::DefaultStrategy strat(std::move(splat));
+        lfs::training::DefaultStrategy strat(splat);
 
         lfs::core::param::OptimizationParameters params;
         params.iterations = 30000;

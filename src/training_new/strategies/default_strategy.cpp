@@ -10,16 +10,8 @@
 #include "kernels/densification_kernels.hpp"
 
 namespace lfs::training {
-    // Legacy constructor - takes ownership
-    DefaultStrategy::DefaultStrategy(lfs::core::SplatData&& splat_data)
-        : _owned_splat_data(std::make_unique<lfs::core::SplatData>(std::move(splat_data))),
-          _splat_data(_owned_splat_data.get()) {
-    }
 
-    // New constructor - uses external reference (Scene-owned)
-    DefaultStrategy::DefaultStrategy(lfs::core::SplatData& splat_data)
-        : _splat_data(&splat_data) {
-    }
+    DefaultStrategy::DefaultStrategy(lfs::core::SplatData& splat_data) : _splat_data(&splat_data) {}
 
     void DefaultStrategy::initialize(const lfs::core::param::OptimizationParameters& optimParams) {
         _params = std::make_unique<const lfs::core::param::OptimizationParameters>(optimParams);

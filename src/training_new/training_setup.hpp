@@ -4,27 +4,15 @@
 
 #pragma once
 
-#include "dataset.hpp"
-#include "trainer.hpp"
-#include "core_new/tensor.hpp"
+#include "core_new/parameters.hpp"
 #include <expected>
-#include <memory>
+#include <string>
 
-// Forward declaration
 namespace lfs::vis {
     class Scene;
 }
 
 namespace lfs::training {
-    struct TrainingSetup {
-        std::unique_ptr<Trainer> trainer;
-        std::shared_ptr<CameraDataset> dataset;
-        lfs::core::Tensor scene_center;
-    };
-
-    // Legacy: Set up training from parameters (creates Trainer internally)
-    std::expected<TrainingSetup, std::string> setupTraining(const lfs::core::param::TrainingParameters& params);
-
     /**
      * @brief Load training data into Scene
      *

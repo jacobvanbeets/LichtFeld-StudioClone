@@ -54,7 +54,7 @@ TEST(DefaultStrategyComparisonTest, SplitOpacityFormula_RevisedMode) {
             Tensor::from_vector(single_val, TensorShape({1, 1}), Device::CUDA);
     }
 
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -134,7 +134,7 @@ TEST(DefaultStrategyComparisonTest, ResetOpacityFormula) {
 // Test grow_gs gradient threshold logic
 TEST(DefaultStrategyComparisonTest, GrowGaussians_GradientThreshold) {
     auto splat_data = create_test_splat_data(20);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 1000;
@@ -166,7 +166,7 @@ TEST(DefaultStrategyComparisonTest, GrowGaussians_ScaleThreshold) {
         splat_data.scaling_raw().slice(0, i, i+1) = scale_tensor.log();
     }
 
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 1000;
@@ -200,7 +200,7 @@ TEST(DefaultStrategyComparisonTest, PruneGaussians_OpacityThreshold) {
             Tensor::from_vector(single_val, TensorShape({1, 1}), Device::CUDA);
     }
 
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
@@ -221,7 +221,7 @@ TEST(DefaultStrategyComparisonTest, PruneGaussians_OpacityThreshold) {
 // Test is_refining logic matches reference
 TEST(DefaultStrategyComparisonTest, IsRefiningLogic) {
     auto splat_data = create_test_splat_data(10);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.start_refine = 500;
@@ -244,7 +244,7 @@ TEST(DefaultStrategyComparisonTest, IsRefiningLogic) {
 // Test parameter count preservation through duplicate
 TEST(DefaultStrategyComparisonTest, DuplicatePreservesOtherParams) {
     auto splat_data = create_test_splat_data(10);
-    DefaultStrategy strategy(std::move(splat_data));
+    DefaultStrategy strategy(splat_data);
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;

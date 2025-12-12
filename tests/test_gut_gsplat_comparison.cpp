@@ -327,6 +327,7 @@ TEST_F(GutGsplatComparisonTest, RealTrainerComparison) {
     ASSERT_TRUE(new_load_result.has_value());
 
     std::shared_ptr<lfs::training::CameraDataset> new_dataset;
+    std::unique_ptr<lfs::core::SplatData> new_splat_data;  // Must outlive strategy
     std::unique_ptr<lfs::training::MCMC> new_strategy;
 
     std::visit([&](auto&& data) {
@@ -341,7 +342,8 @@ TEST_F(GutGsplatComparisonTest, RealTrainerComparison) {
                 new_params, new_load_result->scene_center, point_cloud_to_use);
             ASSERT_TRUE(splat_result.has_value());
 
-            new_strategy = std::make_unique<lfs::training::MCMC>(std::move(*splat_result));
+            new_splat_data = std::make_unique<lfs::core::SplatData>(std::move(*splat_result));
+            new_strategy = std::make_unique<lfs::training::MCMC>(*new_splat_data);
             new_dataset = data.cameras;
         }
     }, new_load_result->data);
