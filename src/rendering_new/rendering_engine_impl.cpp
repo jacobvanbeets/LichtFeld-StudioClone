@@ -401,7 +401,7 @@ namespace lfs::rendering {
         grid_renderer_.setPlane(static_cast<RenderInfiniteGrid::GridPlane>(plane));
         grid_renderer_.setOpacity(opacity);
 
-        return grid_renderer_.render(view, proj, viewport.orthographic, viewport.ortho_scale);
+        return grid_renderer_.render(view, proj, viewport.orthographic);
     }
 
     Result<void> RenderingEngineImpl::renderBoundingBox(
@@ -641,17 +641,7 @@ namespace lfs::rendering {
     }
 
     glm::mat4 RenderingEngineImpl::createProjectionMatrix(const ViewportData& viewport) const {
-        const float aspect = static_cast<float>(viewport.size.x) / viewport.size.y;
-
-        if (viewport.orthographic) {
-            const float half_width = viewport.size.x / (2.0f * viewport.ortho_scale);
-            const float half_height = viewport.size.y / (2.0f * viewport.ortho_scale);
-            return glm::ortho(-half_width, half_width, -half_height, half_height,
-                              DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE);
-        }
-
-        const float fov_rad = glm::radians(viewport.fov);
-        return glm::perspective(fov_rad, aspect, DEFAULT_NEAR_PLANE, DEFAULT_FAR_PLANE);
+        return viewport.getProjectionMatrix();
     }
 
     Result<std::shared_ptr<IBoundingBox>> RenderingEngineImpl::createBoundingBox() {

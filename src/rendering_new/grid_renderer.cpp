@@ -111,7 +111,7 @@ namespace lfs::rendering {
     }
 
     Result<void> RenderInfiniteGrid::render(const glm::mat4& view, const glm::mat4& projection,
-                                            bool orthographic, float ortho_scale) {
+                                            const bool orthographic) {
         if (!initialized_ || !shader_.valid())
             return std::unexpected("Grid renderer not initialized");
 

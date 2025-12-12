@@ -24,8 +24,7 @@ namespace lfs::rendering {
         Result<void> init();
         [[nodiscard]] bool isInitialized() const { return initialized_; }
 
-        Result<void> render(const glm::mat4& view, const glm::mat4& projection,
-                           bool orthographic = false, float ortho_scale = 100.0f);
+        Result<void> render(const glm::mat4& view, const glm::mat4& projection, bool orthographic = false);
 
         void setOpacity(float opacity) { opacity_ = glm::clamp(opacity, 0.0f, 1.0f); }
         void setPlane(GridPlane plane) { plane_ = plane; }

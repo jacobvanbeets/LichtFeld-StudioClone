@@ -10,6 +10,7 @@
 #include "core_new/tensor.hpp"
 #include "geometry_new/bounding_box.hpp"
 #include "point_cloud_renderer.hpp"
+#include "rendering_new/render_constants.hpp"
 #include "rendering_new/rendering.hpp"  // For SelectionMode
 #include "screen_renderer.hpp"
 #include <glm/glm.hpp>
@@ -77,8 +78,13 @@ namespace lfs::rendering {
             // Desaturate unselected nodes (when multiple PLYs visible)
             // Mask: true = selected (don't desaturate), false = desaturate. Empty = no desaturation.
             std::vector<bool> selected_node_mask;
-            bool orthographic = false;  // Use orthographic projection instead of perspective
-            float ortho_scale = 1.0f;   // Pixels per world unit for orthographic projection
+            bool orthographic = false;
+            float ortho_scale = DEFAULT_ORTHO_SCALE;
+
+            [[nodiscard]] glm::mat4 getProjectionMatrix(const float near_plane = DEFAULT_NEAR_PLANE,
+                                                        const float far = DEFAULT_FAR_PLANE) const {
+                return createProjectionMatrix(viewport_size, fov, orthographic, ortho_scale, near_plane, far);
+            }
         };
 
         struct RenderResult {

@@ -6,6 +6,7 @@
 
 #include "core_new/tensor.hpp"
 #include "geometry_new/euclidean_transform.hpp"
+#include "render_constants.hpp"
 #include <array>
 #include <expected>
 #include <glm/glm.hpp>
@@ -43,9 +44,14 @@ namespace lfs::rendering {
         glm::mat3 rotation;
         glm::vec3 translation;
         glm::ivec2 size;
-        float fov = 60.0f;
+        float fov = DEFAULT_FOV;
         bool orthographic = false;
-        float ortho_scale = 100.0f;  // pixels per world unit
+        float ortho_scale = DEFAULT_ORTHO_SCALE;
+
+        [[nodiscard]] glm::mat4 getProjectionMatrix(const float near_plane = DEFAULT_NEAR_PLANE,
+                                                    const float far_plane = DEFAULT_FAR_PLANE) const {
+            return createProjectionMatrix(size, fov, orthographic, ortho_scale, near_plane, far_plane);
+        }
     };
 
     struct BoundingBox {

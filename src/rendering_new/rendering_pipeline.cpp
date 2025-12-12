@@ -295,24 +295,8 @@ namespace lfs::rendering {
         view[3][2] = t_inv.z;
         view[3][3] = 1.0f;
 
-        // Create projection matrix
-        constexpr float NEAR_PLANE = 0.1f;
-        constexpr float FAR_PLANE = 100000.0f;
-        const float aspect = static_cast<float>(request.viewport_size.x) / request.viewport_size.y;
-        glm::mat4 projection;
-        if (request.orthographic) {
-            const float half_width = request.viewport_size.x / (2.0f * request.ortho_scale);
-            const float half_height = request.viewport_size.y / (2.0f * request.ortho_scale);
-            projection = glm::ortho(-half_width, half_width, -half_height, half_height,
-                                    NEAR_PLANE, FAR_PLANE);
-        } else {
-            const float fov_rad = glm::radians(request.fov);
-            projection = glm::perspective(fov_rad, aspect, NEAR_PLANE, FAR_PLANE);
-        }
-
-        // OPTIMIZATION: Flip Y-axis in projection to render image pre-flipped
-        // This eliminates the need for CPU-side vertical flip after glReadPixels
-        // OpenGL has origin at bottom-left, we want top-left (saves ~1ms CPU time)
+        // Create projection matrix (Y-flipped for OpenGL bottom-left origin)
+        glm::mat4 projection = request.getProjectionMatrix();
         projection[1][1] *= -1.0f;
 
         // OPTIMIZATION: Use persistent FBO (avoids expensive glGenFramebuffers/glDeleteFramebuffers)
@@ -516,22 +500,8 @@ namespace lfs::rendering {
             view = view * request.model_transforms[0];
         }
 
-        // Create projection matrix
-        constexpr float NEAR_PLANE = 0.1f;
-        constexpr float FAR_PLANE = 100000.0f;
-        const float aspect = static_cast<float>(request.viewport_size.x) / request.viewport_size.y;
-        glm::mat4 projection;
-        if (request.orthographic) {
-            const float half_width = request.viewport_size.x / (2.0f * request.ortho_scale);
-            const float half_height = request.viewport_size.y / (2.0f * request.ortho_scale);
-            projection = glm::ortho(-half_width, half_width, -half_height, half_height,
-                                    NEAR_PLANE, FAR_PLANE);
-        } else {
-            const float fov_rad = glm::radians(request.fov);
-            projection = glm::perspective(fov_rad, aspect, NEAR_PLANE, FAR_PLANE);
-        }
-
-        // OPTIMIZATION: Flip Y-axis in projection to render image pre-flipped
+        // Create projection matrix (Y-flipped for OpenGL bottom-left origin)
+        glm::mat4 projection = request.getProjectionMatrix();
         projection[1][1] *= -1.0f;
 
         // OPTIMIZATION: Use persistent FBO
