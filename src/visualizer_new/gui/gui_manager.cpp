@@ -310,6 +310,9 @@ namespace lfs::vis::gui {
         initMenuBar();
         menu_bar_->setFonts({font_regular_, font_bold_, font_heading_, font_small_, font_section_});
         drag_drop_.init(viewer_->getWindow());
+        drag_drop_.setFileDropCallback([this](const std::vector<std::string>& paths) {
+            if (auto* const ic = viewer_->getInputController()) ic->handleFileDrop(paths);
+        });
     }
 
     void GuiManager::shutdown() {

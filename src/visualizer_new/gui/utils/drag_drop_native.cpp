@@ -74,12 +74,38 @@ namespace lfs::vis::gui {
             return S_OK;
         }
 
-        HRESULT STDMETHODCALLTYPE Drop(IDataObject* pDataObj, DWORD grfKeyState,
-                                       POINTL pt, DWORD* pdwEffect) override {
-            (void)pDataObj; (void)grfKeyState; (void)pt;
+        HRESULT STDMETHODCALLTYPE Drop(IDataObject* const pDataObj, DWORD /*grfKeyState*/,
+                                       POINTL /*pt*/, DWORD* const pdwEffect) override {
             *pdwEffect = DROPEFFECT_COPY;
-            // Let GLFW handle the actual drop - we just handle visual feedback
-            if (owner_) owner_->setDragHovering(false);
+
+            std::vector<std::string> paths;
+            constexpr FORMATETC FMT = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+            STGMEDIUM stg = { TYMED_HGLOBAL };
+
+            if (SUCCEEDED(pDataObj->GetData(const_cast<FORMATETC*>(&FMT), &stg))) {
+                if (const HDROP hdrop = static_cast<HDROP>(GlobalLock(stg.hGlobal))) {
+                    const UINT count = DragQueryFileW(hdrop, 0xFFFFFFFF, nullptr, 0);
+                    paths.reserve(count);
+                    for (UINT i = 0; i < count; ++i) {
+                        const UINT len = DragQueryFileW(hdrop, i, nullptr, 0);
+                        if (len == 0) continue;
+                        std::wstring wpath(len + 1, L'\0');
+                        DragQueryFileW(hdrop, i, wpath.data(), len + 1);
+                        const int utf8_len = WideCharToMultiByte(CP_UTF8, 0, wpath.c_str(), -1, nullptr, 0, nullptr, nullptr);
+                        if (utf8_len <= 0) continue;
+                        std::string utf8_path(utf8_len - 1, '\0');
+                        WideCharToMultiByte(CP_UTF8, 0, wpath.c_str(), -1, utf8_path.data(), utf8_len, nullptr, nullptr);
+                        paths.push_back(std::move(utf8_path));
+                    }
+                    GlobalUnlock(stg.hGlobal);
+                }
+                ReleaseStgMedium(&stg);
+            }
+
+            if (owner_) {
+                owner_->setDragHovering(false);
+                if (!paths.empty()) owner_->handleFileDrop(paths);
+            }
             return S_OK;
         }
 
@@ -285,6 +311,12 @@ namespace lfs::vis::gui {
             on_drag_enter_({});
         } else if (!hovering && on_drag_leave_) {
             on_drag_leave_();
+        }
+    }
+
+    void NativeDragDrop::handleFileDrop(const std::vector<std::string>& paths) {
+        if (on_file_drop_) {
+            on_file_drop_(paths);
         }
     }
 

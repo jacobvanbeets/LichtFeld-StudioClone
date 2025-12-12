@@ -26,6 +26,7 @@ namespace lfs::vis::gui {
     public:
         using DragEnterCallback = std::function<void(const std::vector<std::string>& mime_types)>;
         using DragLeaveCallback = std::function<void()>;
+        using FileDropCallback = std::function<void(const std::vector<std::string>& paths)>;
 
         ~NativeDragDrop();
 
@@ -42,6 +43,7 @@ namespace lfs::vis::gui {
         // Set callbacks
         void setDragEnterCallback(DragEnterCallback cb) { on_drag_enter_ = std::move(cb); }
         void setDragLeaveCallback(DragLeaveCallback cb) { on_drag_leave_ = std::move(cb); }
+        void setFileDropCallback(FileDropCallback cb) { on_file_drop_ = std::move(cb); }
 
         // Poll for X11 events (call each frame on Linux)
         void pollEvents();
@@ -53,12 +55,14 @@ namespace lfs::vis::gui {
 
         DragEnterCallback on_drag_enter_;
         DragLeaveCallback on_drag_leave_;
+        FileDropCallback on_file_drop_;
 
         // Platform-specific implementation data
         struct PlatformData;
         PlatformData* platform_data_ = nullptr;
 
         void setDragHovering(bool hovering);
+        void handleFileDrop(const std::vector<std::string>& paths);
     };
 
 } // namespace lfs::vis::gui

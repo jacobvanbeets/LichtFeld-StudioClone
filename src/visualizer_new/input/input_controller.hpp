@@ -104,6 +104,8 @@ namespace lfs::vis {
         [[nodiscard]] glm::vec2 getNodeRectStart() const { return node_rect_start_; }
         [[nodiscard]] glm::vec2 getNodeRectEnd() const { return node_rect_end_; }
 
+        void handleFileDrop(const std::vector<std::string>& paths);
+
     private:
         // Store original ImGui callbacks so we can chain
         struct {
@@ -128,7 +130,6 @@ namespace lfs::vis {
         void handleMouseMove(double x, double y);
         void handleScroll(double xoff, double yoff);
         void handleKey(int key, int action, int mods);
-        void handleFileDrop(const std::vector<std::string>& paths);
         void handleGoToCamView(const lfs::core::events::cmd::GoToCamView& event);
         void handleFocusSelection();
 
