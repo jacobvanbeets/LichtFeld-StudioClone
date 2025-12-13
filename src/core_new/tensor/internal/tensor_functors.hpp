@@ -397,7 +397,7 @@ namespace lfs::core {
                 // Use unqualified name in device code - resolves to CUDA math function
                 return isnan(static_cast<float>(x)) ? 1 : 0;
 #else
-                return std::isnan(static_cast<double>(x)) ? 1 : 0;
+                return std::isnan(static_cast<float>(x)) ? 1 : 0;
 #endif
             }
         };
@@ -409,7 +409,7 @@ namespace lfs::core {
                 // Use unqualified name in device code - resolves to CUDA math function
                 return isinf(static_cast<float>(x)) ? 1 : 0;
 #else
-                return std::isinf(static_cast<double>(x)) ? 1 : 0;
+                return std::isinf(static_cast<float>(x)) ? 1 : 0;
 #endif
             }
         };
@@ -421,7 +421,7 @@ namespace lfs::core {
                 // Use unqualified name in device code - resolves to CUDA math function
                 return isfinite(static_cast<float>(x)) ? 1 : 0;
 #else
-                return std::isfinite(static_cast<double>(x)) ? 1 : 0;
+                return std::isfinite(static_cast<float>(x)) ? 1 : 0;
 #endif
             }
         };
