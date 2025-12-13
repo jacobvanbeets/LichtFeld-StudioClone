@@ -59,6 +59,21 @@ endif()
 # Build fat binaries for all modern SMs (>= minimum). When OFF (default), build for the native GPU only.
 option(BUILD_CUDA_ALL_SM "Build CUDA fat binaries targeting all modern SMs (>= minimum SM)" OFF)
 
+# Compiler cache: sccache (recommended, caches CUDA) or ccache
+find_program(SCCACHE_PROGRAM sccache)
+find_program(CCACHE_PROGRAM ccache)
+if(SCCACHE_PROGRAM)
+    set(CMAKE_C_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
+    set(CMAKE_CUDA_COMPILER_LAUNCHER "${SCCACHE_PROGRAM}")
+    message(STATUS "Compiler cache: sccache")
+elseif(CCACHE_PROGRAM)
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CUDA_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    message(STATUS "Compiler cache: ccache")
+endif()
+
 # Minimum SM (compute capability) to include when BUILD_CUDA_ALL_SM=ON.
 # Examples: 75, 80, 86, 89, 90, 100...
 # Only has effect if BUILD_CUDA_ALL_SM is ON.

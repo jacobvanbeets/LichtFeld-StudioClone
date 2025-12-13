@@ -187,6 +187,12 @@ set_target_properties(lfs_tensor PROPERTIES
         EXPORT_COMPILE_COMMANDS ON
 )
 
+# Precompiled header
+target_precompile_headers(lfs_tensor
+        PUBLIC
+        ${CMAKE_SOURCE_DIR}/include/core_new/tensor.hpp
+)
+
 # Configure build type
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(lfs_tensor PRIVATE DEBUG_BUILD)
@@ -210,4 +216,5 @@ message(STATUS "  • Core library: C++23 (lfs_tensor)")
 message(STATUS "  • Public API: include/core_new/tensor.hpp")
 message(STATUS "  • Implementation: src/core_new/tensor/internal/")
 message(STATUS "  • Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  • Precompiled headers: ENABLED (tensor.hpp)")
 message(STATUS "  • Using Thrust (bundled with CUDA) - no libtorch dependency")
