@@ -188,12 +188,12 @@ target_link_libraries(lichtfeld_tests PRIVATE
     lfs_visualizer
     lfs_rendering
     lfs_training
-    lfs_project   # Before lfs_loader (lfs_loader uses lfs_project functions)
+    lfs_project   # Before lfs_io (lfs_io uses lfs_project functions)
     lfs_core      # Before lfs_geometry (lfs_core depends on lfs_geometry)
     lfs_geometry  # After lfs_core - provides EuclideanTransform
-    lfs_loader  # After lfs_project and lfs_core
+    lfs_io      # After lfs_project and lfs_core
     lfs_tensor
-    lfs_project   # Second pass - lfs_loader depends on lfs_project
+    lfs_project   # Second pass - lfs_io depends on lfs_project
 
     # Backend libraries
     gsplat_backend

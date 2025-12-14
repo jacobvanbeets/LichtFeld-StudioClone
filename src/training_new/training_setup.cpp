@@ -7,7 +7,7 @@
 #include "core_new/point_cloud.hpp"
 #include "core_new/splat_data_transform.hpp"
 #include "dataset.hpp"
-#include "loader_new/loader.hpp"
+#include "io/loader.hpp"
 #include "visualizer_new/scene/scene.hpp"
 #include <format>
 
@@ -18,10 +18,10 @@ namespace lfs::training {
         lfs::vis::Scene& scene) {
 
         // 1. Create loader
-        auto data_loader = lfs::loader::Loader::create();
+        auto data_loader = lfs::io::Loader::create();
 
         // 2. Set up load options
-        lfs::loader::LoadOptions load_options{
+        lfs::io::LoadOptions load_options{
             .resize_factor = params.dataset.resize_factor,
             .max_width = params.dataset.max_width,
             .images_folder = params.dataset.images,
@@ -51,7 +51,7 @@ namespace lfs::training {
                 LOG_INFO("Loaded PLY directly into scene");
                 return {};
 
-            } else if constexpr (std::is_same_v<T, lfs::loader::LoadedScene>) {
+            } else if constexpr (std::is_same_v<T, lfs::io::LoadedScene>) {
                 // Full scene data - store cameras and point cloud (defer SplatData creation)
 
                 // Store cameras in Scene
@@ -86,7 +86,7 @@ namespace lfs::training {
 
                 // Handle init_ply case: load SplatData directly
                 if (params.init_ply.has_value()) {
-                    auto ply_loader = lfs::loader::Loader::create();
+                    auto ply_loader = lfs::io::Loader::create();
                     auto ply_load_result = ply_loader->load(params.init_ply.value());
 
                     if (!ply_load_result) {

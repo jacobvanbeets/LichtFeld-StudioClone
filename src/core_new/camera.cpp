@@ -5,7 +5,7 @@
 #include "core_new/camera.hpp"
 #include "core_new/image_io.hpp"
 #include "core_new/logger.hpp"
-#include "loader_new/cache_image_loader.hpp"
+#include "io/cache_image_loader.hpp"
 #include <cuda_runtime.h>
 
 namespace lfs::core {
@@ -242,9 +242,9 @@ namespace lfs::core {
     }
 
     Tensor Camera::load_and_get_image(int resize_factor, int max_width) {
-        auto& loader = lfs::loader::CacheLoader::getInstance();
+        auto& loader = lfs::io::CacheLoader::getInstance();
         // Load image synchronously - returns preprocessed tensor [C,H,W] float32
-        lfs::loader::LoadParams params{
+        lfs::io::LoadParams params{
             .resize_factor = resize_factor,
             .max_width = max_width,
             .cuda_stream = _stream  // Use camera's CUDA stream
@@ -358,8 +358,8 @@ namespace lfs::core {
             return Tensor();
         }
 
-        auto& loader = lfs::loader::CacheLoader::getInstance();
-        const lfs::loader::LoadParams params{
+        auto& loader = lfs::io::CacheLoader::getInstance();
+        const lfs::io::LoadParams params{
             .resize_factor = resize_factor,
             .max_width = max_width,
             .cuda_stream = _stream

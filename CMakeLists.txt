@@ -492,7 +492,7 @@ endif(BUILD_LEGACY)
 # =============================================================================
 add_subdirectory(src/core_new)     # New core module (lfs::core namespace)
 add_subdirectory(src/training_new) # New training module (lfs::training namespace)
-add_subdirectory(src/loader_new)   # New loader module (lfs::loader namespace)
+add_subdirectory(src/io)           # I/O module (lfs::io namespace)
 add_subdirectory(src/project_new)  # New project management module (lfs::project namespace)
 add_subdirectory(src/rendering_new) # New rendering module (lfs::rendering namespace)
 add_subdirectory(src/visualizer_new) # New visualizer module (lfs::vis namespace)
@@ -548,7 +548,7 @@ target_link_libraries(${PROJECT_NAME}
         lfs_project        # For Project management
         lfs_geometry       # For EuclideanTransform
         lfs_core           # LibTorch-free core library (new implementation)
-        lfs_loader         # For CacheLoader
+        lfs_io             # For CacheLoader
         fastlfs_backend    # LibTorch-free rasterizer and optimizer
 
         ${OPENGL_LIBRARIES}

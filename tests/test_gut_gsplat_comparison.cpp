@@ -31,8 +31,8 @@
 #include "core/camera.hpp"
 
 // New modules (LibTorch-free)
-#include "loader_new/loader.hpp"
-#include "loader_new/cache_image_loader.hpp"
+#include "io/loader.hpp"
+#include "io/cache_image_loader.hpp"
 #include "core_new/splat_data.hpp"
 #include "core_new/point_cloud.hpp"
 #include "core_new/parameters.hpp"
@@ -313,10 +313,10 @@ TEST_F(GutGsplatComparisonTest, RealTrainerComparison) {
     // USE SAME CAMERA (by uid) for all iterations - set same uid as legacy
     new_params.optimization.test_fixed_camera_uid = fixed_camera_uid;
 
-    auto new_loader = lfs::loader::Loader::create();
+    auto new_loader = lfs::io::Loader::create();
     ASSERT_TRUE(new_loader != nullptr);
 
-    lfs::loader::LoadOptions new_load_options{
+    lfs::io::LoadOptions new_load_options{
         .resize_factor = new_params.dataset.resize_factor,
         .max_width = new_params.dataset.max_width,
         .images_folder = new_params.dataset.images,
@@ -332,7 +332,7 @@ TEST_F(GutGsplatComparisonTest, RealTrainerComparison) {
 
     std::visit([&](auto&& data) {
         using T = std::decay_t<decltype(data)>;
-        if constexpr (std::is_same_v<T, lfs::loader::LoadedScene>) {
+        if constexpr (std::is_same_v<T, lfs::io::LoadedScene>) {
             lfs::core::PointCloud point_cloud_to_use;
             if (data.point_cloud && data.point_cloud->size() > 0) {
                 point_cloud_to_use = *data.point_cloud;

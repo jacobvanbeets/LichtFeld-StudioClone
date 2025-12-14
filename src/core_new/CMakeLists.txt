@@ -76,7 +76,7 @@ target_link_libraries(lfs_core
         spdlog::spdlog
         ${WEBP_LIB}     # WebP for SOG compression
         ${ARCHIVE_LIB}  # LibArchive for SOG bundle support
-        lfs_loader      # For CacheLoader used in camera.cpp
+        lfs_io          # For CacheLoader used in camera.cpp
     PRIVATE
         taywee::args    # Only used in argument_parser.cpp
         # NOTE: lfs_training, lfs_visualizer, lfs_project removed - all create circular dependencies

@@ -7,7 +7,7 @@
 #include "loader/formats/ply.hpp"
 
 // New loader
-#include "loader_new/formats/ply.hpp"
+#include "io/formats/ply.hpp"
 
 TEST(PLYLoadingTest, CompareLoadersOnSplat30k) {
     const char* ply_path = "/home/paja/projects/gaussian-splatting-cuda/output/splat_30000.ply";
@@ -38,7 +38,7 @@ TEST(PLYLoadingTest, CompareLoadersOnSplat30k) {
     spdlog::info("  shN: [{}, {}, {}]", legacy_shN.size(0), legacy_shN.size(1), legacy_shN.size(2));
 
     spdlog::info("=== Loading PLY with NEW loader ===");
-    auto new_result = lfs::loader::load_ply(ply_path);
+    auto new_result = lfs::io::load_ply(ply_path);
     ASSERT_TRUE(new_result.has_value()) << "New loader failed: " << new_result.error();
     auto& new_splat = new_result.value();
 

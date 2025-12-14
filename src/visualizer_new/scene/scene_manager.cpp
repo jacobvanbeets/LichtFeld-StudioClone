@@ -11,7 +11,7 @@
 #include "geometry_new/bounding_box.hpp"
 #include "geometry_new/euclidean_transform.hpp"
 #include "gui/panels/gizmo_toolbar.hpp"
-#include "loader_new/loader.hpp"
+#include "io/loader.hpp"
 #include "rendering/rendering_manager.hpp"
 #include "training/training_manager.hpp"
 #include "training_new/checkpoint.hpp"
@@ -171,8 +171,8 @@ namespace lfs::vis {
 
             // Load the file
             LOG_DEBUG("Creating loader for splat file");
-            auto loader = lfs::loader::Loader::create();
-            lfs::loader::LoadOptions options{
+            auto loader = lfs::io::Loader::create();
+            lfs::io::LoadOptions options{
                 .resize_factor = -1,
                 .max_width = 3840,
                 .images_folder = "images",
@@ -282,8 +282,8 @@ namespace lfs::vis {
                 return path.stem().string();
             }
 
-            auto loader = lfs::loader::Loader::create();
-            const lfs::loader::LoadOptions options{
+            auto loader = lfs::io::Loader::create();
+            const lfs::io::LoadOptions options{
                 .resize_factor = -1,
                 .max_width = 3840,
                 .images_folder = "images",

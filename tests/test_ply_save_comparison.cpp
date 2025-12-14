@@ -11,7 +11,7 @@
 // New
 #include "core_new/splat_data.hpp"
 #include "core_new/splat_data_export.hpp"
-#include "loader_new/formats/ply.hpp"
+#include "io/formats/ply.hpp"
 
 TEST(PLYSaveTest, CompareSaveImplementations) {
     const char* input_ply = "/home/paja/projects/gaussian-splatting-cuda/output/splat_30000.ply";
@@ -24,7 +24,7 @@ TEST(PLYSaveTest, CompareSaveImplementations) {
     spdlog::info("Legacy loaded: {} Gaussians", legacy_splat.size());
 
     spdlog::info("=== Loading with NEW ===");
-    auto new_load_result = lfs::loader::load_ply(input_ply);
+    auto new_load_result = lfs::io::load_ply(input_ply);
     ASSERT_TRUE(new_load_result.has_value()) << "New load failed: " << new_load_result.error();
     auto& new_splat = new_load_result.value();
 

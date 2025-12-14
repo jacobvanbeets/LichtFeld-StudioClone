@@ -14,7 +14,7 @@
 #include "core_new/sogs.hpp"
 #include "core_new/splat_data_export.hpp"
 #include "gui/html_viewer_export.hpp"
-#include "loader_new/formats/compressed_ply.hpp"
+#include "io/formats/compressed_ply.hpp"
 #include "project_new/project.hpp"
 #include "gui/panels/main_panel.hpp"
 #include "gui/panels/scene_panel.hpp"
@@ -1862,11 +1862,11 @@ namespace lfs::vis::gui {
                 }
                 case ExportFormat::COMPRESSED_PLY: {
                     update_progress(0.1f, "Compressing PLY");
-                    const lfs::loader::CompressedPlyWriteOptions options{
+                    const lfs::io::CompressedPlyWriteOptions options{
                         .output_path = path,
                         .include_sh = true
                     };
-                    if (auto result = lfs::loader::write_compressed_ply(*splat_data, options); result) {
+                    if (auto result = lfs::io::write_compressed_ply(*splat_data, options); result) {
                         success = true;
                         update_progress(1.0f, "Complete");
                     } else {

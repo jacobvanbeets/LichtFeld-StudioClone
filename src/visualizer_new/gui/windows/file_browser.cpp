@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gui/windows/file_browser.hpp"
-#include "loader_new/loader.hpp"
+#include "io/loader.hpp"
 #include "project_new/project.hpp"
 #include <algorithm>
 #include <imgui.h>
@@ -97,13 +97,13 @@ namespace lfs::vis::gui {
             });
 
             // Create a Loader instance to check if paths can be loaded
-            auto loader = lfs::loader::Loader::create();
+            auto loader = lfs::io::Loader::create();
 
             for (const auto& dir : dirs) {
                 std::string dirname = "[DIR] " + dir.path().filename().string();
                 bool is_selected = (selected_file_ == dir.path().string());
 
-                bool is_dataset = lfs::loader::Loader::isDatasetPath(dir.path());
+                bool is_dataset = lfs::io::Loader::isDatasetPath(dir.path());
                 bool is_sog_dir = false;
 
                 // Check if it's a SOG directory (has meta.json and WebP files)
@@ -202,7 +202,7 @@ namespace lfs::vis::gui {
             std::filesystem::path selected_path(selected_file_);
 
             if (std::filesystem::is_directory(selected_path)) {
-                bool is_dataset = lfs::loader::Loader::isDatasetPath(selected_path);
+                bool is_dataset = lfs::io::Loader::isDatasetPath(selected_path);
 
                 // Check if it's a SOG directory
                 bool is_sog_dir = false;
@@ -228,8 +228,8 @@ namespace lfs::vis::gui {
 
                     ImGui::SameLine();
 
-                    auto dataset_type = lfs::loader::Loader::getDatasetType(selected_path);
-                    const char* type_str = (dataset_type == lfs::loader::DatasetType::COLMAP) ? "(COLMAP)" : (dataset_type == lfs::loader::DatasetType::Transforms) ? "(Transforms)"
+                    auto dataset_type = lfs::io::Loader::getDatasetType(selected_path);
+                    const char* type_str = (dataset_type == lfs::io::DatasetType::COLMAP) ? "(COLMAP)" : (dataset_type == lfs::io::DatasetType::Transforms) ? "(Transforms)"
                                                                                                                                                                     : "(Dataset)";
                     ImGui::TextDisabled(type_str);
                 } else if (is_sog_dir) {

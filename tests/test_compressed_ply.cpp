@@ -13,8 +13,8 @@
 #include <filesystem>
 #include <cmath>
 
-#include "loader_new/formats/compressed_ply.hpp"
-#include "loader_new/formats/ply.hpp"
+#include "io/formats/compressed_ply.hpp"
+#include "io/formats/ply.hpp"
 #include "core_new/splat_data.hpp"
 #include "core_new/tensor.hpp"
 
@@ -132,12 +132,12 @@ TEST_F(CompressedPlyTest, DetectCompressedFormat) {
             << "\nRun: node splat-transform/bin/cli.mjs output/splat_30000.ply test_formats/test.compressed.ply";
     }
 
-    EXPECT_TRUE(lfs::loader::is_compressed_ply(compressed_ply))
+    EXPECT_TRUE(lfs::io::is_compressed_ply(compressed_ply))
         << "Failed to detect compressed PLY format";
 
     // Standard PLY should not be detected as compressed
     if (fs::exists(decompressed_ply)) {
-        EXPECT_FALSE(lfs::loader::is_compressed_ply(decompressed_ply))
+        EXPECT_FALSE(lfs::io::is_compressed_ply(decompressed_ply))
             << "Standard PLY incorrectly detected as compressed";
     }
 }
@@ -148,7 +148,7 @@ TEST_F(CompressedPlyTest, LoadCompressedPly) {
         GTEST_SKIP() << "Test file not found: " << compressed_ply;
     }
 
-    auto result = lfs::loader::load_compressed_ply(compressed_ply);
+    auto result = lfs::io::load_compressed_ply(compressed_ply);
     ASSERT_TRUE(result.has_value()) << "Failed to load: " << result.error();
 
     const auto& splat = *result;
@@ -173,11 +173,11 @@ TEST_F(CompressedPlyTest, CompareWithReference) {
     }
 
     std::cout << "Loading compressed PLY with our loader..." << std::endl;
-    auto comp_result = lfs::loader::load_compressed_ply(compressed_ply);
+    auto comp_result = lfs::io::load_compressed_ply(compressed_ply);
     ASSERT_TRUE(comp_result.has_value()) << "Failed to load compressed: " << comp_result.error();
 
     std::cout << "Loading reference PLY from splat-transform..." << std::endl;
-    auto ref_result = lfs::loader::load_ply(decompressed_ply);
+    auto ref_result = lfs::io::load_ply(decompressed_ply);
     ASSERT_TRUE(ref_result.has_value()) << "Failed to load reference: " << ref_result.error();
 
     std::cout << "Comparing " << comp_result->size() << " splats..." << std::endl;
@@ -188,7 +188,7 @@ TEST_F(CompressedPlyTest, CompareWithReference) {
 
 // Test: File not found handling
 TEST_F(CompressedPlyTest, FileNotFound) {
-    auto result = lfs::loader::load_compressed_ply("/nonexistent/path/file.ply");
+    auto result = lfs::io::load_compressed_ply("/nonexistent/path/file.ply");
     EXPECT_FALSE(result.has_value()) << "Should fail for nonexistent file";
 }
 
@@ -196,7 +196,7 @@ TEST_F(CompressedPlyTest, FileNotFound) {
 TEST_F(CompressedPlyTest, InvalidFormat) {
     // Try to load a regular PLY as compressed
     if (fs::exists(decompressed_ply)) {
-        auto result = lfs::loader::load_compressed_ply(decompressed_ply);
+        auto result = lfs::io::load_compressed_ply(decompressed_ply);
         EXPECT_FALSE(result.has_value()) << "Should fail for non-compressed PLY";
     }
 }
@@ -209,22 +209,22 @@ TEST_F(CompressedPlyTest, ExportRoundtrip) {
         GTEST_SKIP() << "Original PLY not found: " << original;
     }
 
-    auto orig_result = lfs::loader::load_ply(original);
+    auto orig_result = lfs::io::load_ply(original);
     ASSERT_TRUE(orig_result.has_value()) << "Failed to load original: " << orig_result.error();
 
     // Export as compressed PLY
     fs::path export_path = test_dir / "roundtrip_test.compressed.ply";
-    lfs::loader::CompressedPlyWriteOptions options{
+    lfs::io::CompressedPlyWriteOptions options{
         .output_path = export_path,
         .include_sh = false  // SH0 only for this test
     };
 
-    auto write_result = lfs::loader::write_compressed_ply(*orig_result, options);
+    auto write_result = lfs::io::write_compressed_ply(*orig_result, options);
     ASSERT_TRUE(write_result.has_value()) << "Failed to write: " << write_result.error();
     ASSERT_TRUE(fs::exists(export_path)) << "Export file not created";
 
     // Reimport the exported file
-    auto reimport_result = lfs::loader::load_compressed_ply(export_path);
+    auto reimport_result = lfs::io::load_compressed_ply(export_path);
     ASSERT_TRUE(reimport_result.has_value()) << "Failed to reimport: " << reimport_result.error();
 
     ASSERT_EQ(reimport_result->size(), orig_result->size()) << "Splat count mismatch after roundtrip";
@@ -287,13 +287,13 @@ TEST_F(CompressedPlyTest, DebugColorValues) {
     }
 
     // Load all three: compressed, reference decompressed, and original
-    auto comp_result = lfs::loader::load_compressed_ply(compressed_ply);
-    auto ref_result = lfs::loader::load_ply(decompressed_ply);
+    auto comp_result = lfs::io::load_compressed_ply(compressed_ply);
+    auto ref_result = lfs::io::load_ply(decompressed_ply);
 
     fs::path original = "/home/paja/projects/gaussian-splatting-cuda/output/splat_30000.ply";
     std::optional<lfs::core::SplatData> orig_result;
     if (fs::exists(original)) {
-        auto r = lfs::loader::load_ply(original);
+        auto r = lfs::io::load_ply(original);
         if (r) orig_result = std::move(*r);
     }
 

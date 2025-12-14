@@ -3,7 +3,7 @@
 
 /**
  * @file test_loader_comparison.cpp
- * @brief Comprehensive comparison test between old (gs::loader) and new (lfs::loader) loader implementations
+ * @brief Comprehensive comparison test between old (gs::loader) and new (lfs::io) loader implementations
  *
  * This test suite validates that the new torch-free loader implementation produces
  * identical or equivalent results compared to the original torch-based loader.
@@ -29,7 +29,7 @@
 #include "loader/loader.hpp"
 
 // New loader (torch-free)
-#include "loader_new/loader.hpp"
+#include "io/loader.hpp"
 
 // Point cloud structures
 #include "core/point_cloud.hpp"
@@ -63,7 +63,7 @@ protected:
 
         // Create loader instances
         old_loader = gs::loader::Loader::create();
-        new_loader = lfs::loader::Loader::create();
+        new_loader = lfs::io::Loader::create();
 
         ASSERT_NE(old_loader, nullptr) << "Failed to create old loader";
         ASSERT_NE(new_loader, nullptr) << "Failed to create new loader";
@@ -249,18 +249,18 @@ protected:
 
     // Loader instances
     std::unique_ptr<gs::loader::Loader> old_loader;
-    std::unique_ptr<lfs::loader::Loader> new_loader;
+    std::unique_ptr<lfs::io::Loader> new_loader;
 };
 
 // Test 1: API compatibility - verify both loaders have same interface
 TEST_F(LoaderComparisonTest, APICompatibility) {
     // Test static methods exist and return same results
     bool old_is_dataset = gs::loader::Loader::isDatasetPath(stump_path);
-    bool new_is_dataset = lfs::loader::Loader::isDatasetPath(stump_path);
+    bool new_is_dataset = lfs::io::Loader::isDatasetPath(stump_path);
     EXPECT_EQ(old_is_dataset, new_is_dataset) << "isDatasetPath results differ";
 
     auto old_type = gs::loader::Loader::getDatasetType(stump_path);
-    auto new_type = lfs::loader::Loader::getDatasetType(stump_path);
+    auto new_type = lfs::io::Loader::getDatasetType(stump_path);
 
     // Compare enum values (both should be COLMAP)
     EXPECT_EQ(static_cast<int>(old_type), static_cast<int>(new_type))
@@ -292,7 +292,7 @@ TEST_F(LoaderComparisonTest, LoadCOLMAPDataset) {
     old_options.images_folder = "images";
     old_options.validate_only = false;
 
-    lfs::loader::LoadOptions new_options;
+    lfs::io::LoadOptions new_options;
     new_options.resize_factor = -1;
     new_options.max_width = 3840;
     new_options.images_folder = "images";
@@ -313,12 +313,12 @@ TEST_F(LoaderComparisonTest, LoadCOLMAPDataset) {
     // Both should contain LoadedScene for COLMAP
     EXPECT_TRUE(std::holds_alternative<gs::loader::LoadedScene>(old_result->data))
         << "Old loader didn't return LoadedScene";
-    EXPECT_TRUE(std::holds_alternative<lfs::loader::LoadedScene>(new_result->data))
+    EXPECT_TRUE(std::holds_alternative<lfs::io::LoadedScene>(new_result->data))
         << "New loader didn't return LoadedScene";
 
     // Extract scenes
     auto& old_scene = std::get<gs::loader::LoadedScene>(old_result->data);
-    auto& new_scene = std::get<lfs::loader::LoadedScene>(new_result->data);
+    auto& new_scene = std::get<lfs::io::LoadedScene>(new_result->data);
 
     // Verify both have valid data
     ASSERT_NE(old_scene.cameras, nullptr) << "Old loader: cameras is null";
@@ -377,7 +377,7 @@ TEST_F(LoaderComparisonTest, PointCloudDataComparison) {
     gs::loader::LoadOptions old_options;
     old_options.validate_only = false;
 
-    lfs::loader::LoadOptions new_options;
+    lfs::io::LoadOptions new_options;
     new_options.validate_only = false;
 
     auto old_result = old_loader->load(stump_path, old_options);
@@ -387,7 +387,7 @@ TEST_F(LoaderComparisonTest, PointCloudDataComparison) {
     ASSERT_TRUE(new_result.has_value());
 
     auto& old_scene = std::get<gs::loader::LoadedScene>(old_result->data);
-    auto& new_scene = std::get<lfs::loader::LoadedScene>(new_result->data);
+    auto& new_scene = std::get<lfs::io::LoadedScene>(new_result->data);
 
     // Deep comparison of point clouds
     EXPECT_TRUE(pointCloudsEqual(*old_scene.point_cloud, *new_scene.point_cloud, 1e-4f))
@@ -399,7 +399,7 @@ TEST_F(LoaderComparisonTest, SplatDataInitialization) {
     gs::loader::LoadOptions old_options;
     old_options.validate_only = false;
 
-    lfs::loader::LoadOptions new_options;
+    lfs::io::LoadOptions new_options;
     new_options.validate_only = false;
 
     auto old_result = old_loader->load(stump_path, old_options);
@@ -409,7 +409,7 @@ TEST_F(LoaderComparisonTest, SplatDataInitialization) {
     ASSERT_TRUE(new_result.has_value()) << "New loader failed";
 
     auto& old_scene = std::get<gs::loader::LoadedScene>(old_result->data);
-    auto& new_scene = std::get<lfs::loader::LoadedScene>(new_result->data);
+    auto& new_scene = std::get<lfs::io::LoadedScene>(new_result->data);
 
     // Create training parameters for initialization
     // Use only fields that both implementations support
@@ -498,7 +498,7 @@ TEST_F(LoaderComparisonTest, GaussianAttributesComparison) {
     gs::loader::LoadOptions old_options;
     old_options.validate_only = false;
 
-    lfs::loader::LoadOptions new_options;
+    lfs::io::LoadOptions new_options;
     new_options.validate_only = false;
 
     auto old_result = old_loader->load(stump_path, old_options);
@@ -508,7 +508,7 @@ TEST_F(LoaderComparisonTest, GaussianAttributesComparison) {
     ASSERT_TRUE(new_result.has_value());
 
     auto& old_scene = std::get<gs::loader::LoadedScene>(old_result->data);
-    auto& new_scene = std::get<lfs::loader::LoadedScene>(new_result->data);
+    auto& new_scene = std::get<lfs::io::LoadedScene>(new_result->data);
 
     auto& old_pc = *old_scene.point_cloud;
     auto& new_pc = *new_scene.point_cloud;
@@ -589,7 +589,7 @@ TEST_F(LoaderComparisonTest, ValidationOnlyMode) {
     gs::loader::LoadOptions old_options;
     old_options.validate_only = true;
 
-    lfs::loader::LoadOptions new_options;
+    lfs::io::LoadOptions new_options;
     new_options.validate_only = true;
 
     auto old_result = old_loader->load(stump_path, old_options);
@@ -619,7 +619,7 @@ TEST_F(LoaderComparisonTest, InvalidPathHandling) {
     }
 
     // New loader might throw or return error
-    std::optional<std::expected<lfs::loader::LoadResult, std::string>> new_result;
+    std::optional<std::expected<lfs::io::LoadResult, std::string>> new_result;
     try {
         new_result = new_loader->load(invalid_path);
     } catch (const std::exception& e) {
@@ -651,7 +651,7 @@ TEST_F(LoaderComparisonTest, ResizeFactorHandling) {
         gs::loader::LoadOptions old_options;
         old_options.resize_factor = resize_factor;
 
-        lfs::loader::LoadOptions new_options;
+        lfs::io::LoadOptions new_options;
         new_options.resize_factor = resize_factor;
 
         auto old_result = old_loader->load(stump_path, old_options);
@@ -662,7 +662,7 @@ TEST_F(LoaderComparisonTest, ResizeFactorHandling) {
 
         if (old_result.has_value() && new_result.has_value()) {
             auto& old_scene = std::get<gs::loader::LoadedScene>(old_result->data);
-            auto& new_scene = std::get<lfs::loader::LoadedScene>(new_result->data);
+            auto& new_scene = std::get<lfs::io::LoadedScene>(new_result->data);
 
             // Just verify both loaded successfully
             EXPECT_NE(old_scene.cameras, nullptr);
@@ -681,7 +681,7 @@ TEST_F(LoaderComparisonTest, PerformanceComparison) {
     std::vector<int64_t> new_times;
 
     gs::loader::LoadOptions old_options;
-    lfs::loader::LoadOptions new_options;
+    lfs::io::LoadOptions new_options;
 
     std::cout << "\nPerformance comparison (" << NUM_ITERATIONS << " iterations):" << std::endl;
 
@@ -773,7 +773,7 @@ TEST_F(LoaderComparisonTest, BlenderDatasetComparison) {
     gs::loader::LoadOptions old_options;
     old_options.validate_only = false;
 
-    lfs::loader::LoadOptions new_options;
+    lfs::io::LoadOptions new_options;
     new_options.validate_only = false;
 
     // Load with both loaders
@@ -784,7 +784,7 @@ TEST_F(LoaderComparisonTest, BlenderDatasetComparison) {
     ASSERT_TRUE(new_result.has_value()) << "New loader failed: " << new_result.error();
 
     auto& old_scene = std::get<gs::loader::LoadedScene>(old_result->data);
-    auto& new_scene = std::get<lfs::loader::LoadedScene>(new_result->data);
+    auto& new_scene = std::get<lfs::io::LoadedScene>(new_result->data);
 
     std::cout << "\n[1/5] Camera Dataset Comparison" << std::endl;
 
@@ -932,7 +932,7 @@ TEST_F(LoaderComparisonTest, GardenLoadingBenchmark) {
     old_options.images_folder = "images";
     old_options.resize_factor = 1;
 
-    lfs::loader::LoadOptions new_options;
+    lfs::io::LoadOptions new_options;
     new_options.images_folder = "images";
     new_options.resize_factor = 1;
 
@@ -986,7 +986,7 @@ TEST_F(LoaderComparisonTest, GardenLoadingBenchmark) {
                 auto new_result = new_loader->load(garden_path, new_options);
                 ASSERT_TRUE(new_result.has_value()) << "New loader failed: " << new_result.error();
 
-                auto& new_scene = std::get<lfs::loader::LoadedScene>(new_result->data);
+                auto& new_scene = std::get<lfs::io::LoadedScene>(new_result->data);
                 auto& new_pc = *new_scene.point_cloud;
                 new_params.optimization.init_num_pts = new_pc.size();
                 new_params.optimization.init_extent = 3.0f;
@@ -1010,7 +1010,7 @@ TEST_F(LoaderComparisonTest, GardenLoadingBenchmark) {
                 auto new_result = new_loader->load(garden_path, new_options);
                 ASSERT_TRUE(new_result.has_value()) << "New loader failed: " << new_result.error();
 
-                auto& new_scene = std::get<lfs::loader::LoadedScene>(new_result->data);
+                auto& new_scene = std::get<lfs::io::LoadedScene>(new_result->data);
                 auto& new_pc = *new_scene.point_cloud;
                 new_params.optimization.init_num_pts = new_pc.size();
                 new_params.optimization.init_extent = 3.0f;

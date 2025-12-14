@@ -16,7 +16,7 @@
 // New implementation
 #include "training_new/strategies/mcmc.hpp"
 #include "training_new/optimizer/render_output.hpp"
-#include "loader_new/loader.hpp"
+#include "io/loader.hpp"
 #include "core_new/splat_data.hpp"
 #include "core_new/logger.hpp"
 
@@ -114,16 +114,16 @@ TEST(OptimizerComparison, RealBicycleDataset) {
     // Load dataset with NEW loader
     // ====================
     std::cout << "Loading point cloud with NEW loader..." << std::endl;
-    auto new_loader = lfs::loader::Loader::create();
+    auto new_loader = lfs::io::Loader::create();
 
-    lfs::loader::LoadOptions new_load_options;
+    lfs::io::LoadOptions new_load_options;
     new_load_options.images_folder = "images_4";
     new_load_options.validate_only = false;
 
     auto new_load_result = new_loader->load(dataset_path, new_load_options);
     ASSERT_TRUE(new_load_result.has_value()) << "Failed to load dataset with NEW loader";
 
-    auto new_scene = std::get<lfs::loader::LoadedScene>(new_load_result->data);
+    auto new_scene = std::get<lfs::io::LoadedScene>(new_load_result->data);
     auto new_scene_center = new_load_result->scene_center;
     std::cout << "NEW: Point cloud size: " << new_scene.point_cloud->size() << std::endl;
 

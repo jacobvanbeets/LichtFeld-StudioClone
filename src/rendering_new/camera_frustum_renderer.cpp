@@ -6,7 +6,7 @@
 #include "core_new/image_io.hpp"
 #include "core_new/logger.hpp"
 #include "gl_state_guard.hpp"
-#include "loader_new/nvcodec_image_loader.hpp"
+#include "io/nvcodec_image_loader.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace lfs::rendering {
@@ -616,17 +616,17 @@ void CameraFrustumRenderer::thumbnailLoaderWorker() {
     constexpr auto IDLE_TIMEOUT = std::chrono::seconds(5);
     constexpr auto POLL_INTERVAL = std::chrono::milliseconds(500);
 
-    std::unique_ptr<lfs::loader::NvCodecImageLoader> nvcodec;
-    const bool nvcodec_supported = lfs::loader::NvCodecImageLoader::is_available();
+    std::unique_ptr<lfs::io::NvCodecImageLoader> nvcodec;
+    const bool nvcodec_supported = lfs::io::NvCodecImageLoader::is_available();
     auto last_activity = std::chrono::steady_clock::now();
 
     const auto create_nvcodec = [&]() -> bool {
         if (nvcodec || !nvcodec_supported) return nvcodec != nullptr;
         try {
-            lfs::loader::NvCodecImageLoader::Options opts;
+            lfs::io::NvCodecImageLoader::Options opts;
             opts.device_id = 0;
             opts.decoder_pool_size = NVCODEC_DECODER_POOL_SIZE;
-            nvcodec = std::make_unique<lfs::loader::NvCodecImageLoader>(opts);
+            nvcodec = std::make_unique<lfs::io::NvCodecImageLoader>(opts);
             return true;
         } catch (const std::exception& e) {
             LOG_WARN("nvImageCodec init failed: {}", e.what());

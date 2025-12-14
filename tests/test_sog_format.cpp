@@ -13,8 +13,8 @@
 #include <filesystem>
 #include <cmath>
 
-#include "loader_new/formats/sogs.hpp"
-#include "loader_new/formats/ply.hpp"
+#include "io/formats/sogs.hpp"
+#include "io/formats/ply.hpp"
 #include "core_new/splat_data.hpp"
 #include "core_new/tensor.hpp"
 #include "core_new/sogs.hpp"  // for write_sog
@@ -136,7 +136,7 @@ TEST_F(SogFormatTest, LoadSogBundle) {
                      << "\nRun: node splat-transform/bin/cli.mjs -w output/splat_30000.ply test_formats/test.sog";
     }
 
-    auto result = lfs::loader::load_sog(sog_bundle);
+    auto result = lfs::io::load_sog(sog_bundle);
     ASSERT_TRUE(result.has_value()) << "Failed to load: " << result.error();
 
     const auto& splat = *result;
@@ -157,7 +157,7 @@ TEST_F(SogFormatTest, LoadSogDirectory) {
         GTEST_SKIP() << "SOG meta.json not found: " << meta_json;
     }
 
-    auto result = lfs::loader::load_sog(test_dir);
+    auto result = lfs::io::load_sog(test_dir);
     ASSERT_TRUE(result.has_value()) << "Failed to load: " << result.error();
 
     const auto& splat = *result;
@@ -176,11 +176,11 @@ TEST_F(SogFormatTest, CompareWithOriginalPly) {
     }
 
     std::cout << "Loading SOG bundle..." << std::endl;
-    auto sog_result = lfs::loader::load_sog(sog_bundle);
+    auto sog_result = lfs::io::load_sog(sog_bundle);
     ASSERT_TRUE(sog_result.has_value()) << "Failed to load SOG: " << sog_result.error();
 
     std::cout << "Loading original PLY..." << std::endl;
-    auto ply_result = lfs::loader::load_ply(original_ply);
+    auto ply_result = lfs::io::load_ply(original_ply);
     ASSERT_TRUE(ply_result.has_value()) << "Failed to load PLY: " << ply_result.error();
 
     ASSERT_EQ(sog_result->size(), ply_result->size()) << "Splat count mismatch";
@@ -254,7 +254,7 @@ TEST_F(SogFormatTest, CompareWithOriginalPly) {
 
 // Test: File not found handling
 TEST_F(SogFormatTest, FileNotFound) {
-    auto result = lfs::loader::load_sog("/nonexistent/path/file.sog");
+    auto result = lfs::io::load_sog("/nonexistent/path/file.sog");
     EXPECT_FALSE(result.has_value()) << "Should fail for nonexistent file";
 }
 
@@ -265,7 +265,7 @@ TEST_F(SogFormatTest, LoadMetaJsonDirectly) {
         GTEST_SKIP() << "meta.json not found: " << meta_json;
     }
 
-    auto result = lfs::loader::load_sog(meta_json);
+    auto result = lfs::io::load_sog(meta_json);
     ASSERT_TRUE(result.has_value()) << "Failed to load via meta.json: " << result.error();
 
     std::cout << "Loaded via meta.json: " << result->size() << " splats" << std::endl;
@@ -283,11 +283,11 @@ TEST_F(SogFormatTest, CompareWithSplatTransformDecompression) {
     }
 
     std::cout << "Loading SOG with our loader..." << std::endl;
-    auto our_result = lfs::loader::load_sog(sog_bundle);
+    auto our_result = lfs::io::load_sog(sog_bundle);
     ASSERT_TRUE(our_result.has_value()) << "Failed to load SOG: " << our_result.error();
 
     std::cout << "Loading splat-transform decompressed PLY..." << std::endl;
-    auto ref_result = lfs::loader::load_ply(sog_decompressed);
+    auto ref_result = lfs::io::load_ply(sog_decompressed);
     ASSERT_TRUE(ref_result.has_value()) << "Failed to load reference: " << ref_result.error();
 
     ASSERT_EQ(our_result->size(), ref_result->size()) << "Splat count mismatch";
@@ -323,7 +323,7 @@ TEST_F(SogFormatTest, ExportRoundtrip) {
 
     // Load original PLY
     std::cout << "Loading original PLY..." << std::endl;
-    auto orig_result = lfs::loader::load_ply(original_ply);
+    auto orig_result = lfs::io::load_ply(original_ply);
     ASSERT_TRUE(orig_result.has_value()) << "Failed to load PLY: " << orig_result.error();
     std::cout << "Loaded " << orig_result->size() << " splats" << std::endl;
 
@@ -342,7 +342,7 @@ TEST_F(SogFormatTest, ExportRoundtrip) {
 
     // Reimport the SOG
     std::cout << "Reimporting SOG..." << std::endl;
-    auto reimport_result = lfs::loader::load_sog(export_path);
+    auto reimport_result = lfs::io::load_sog(export_path);
     ASSERT_TRUE(reimport_result.has_value()) << "Failed to reimport SOG: " << reimport_result.error();
 
     EXPECT_EQ(reimport_result->size(), orig_result->size())

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "trainer.hpp"
-#include "loader_new/filesystem_utils.hpp"
+#include "io/filesystem_utils.hpp"
 #include "visualizer_new/scene/scene.hpp"
 #include "strategies/mcmc.hpp"
 #include "strategies/default_strategy.hpp"
@@ -16,7 +16,7 @@
 #include "core_new/splat_data_transform.hpp"
 #include "core_new/tensor/internal/memory_pool.hpp"
 #include "optimizer/adam_optimizer.hpp"
-#include "loader_new/cache_image_loader.hpp"
+#include "io/cache_image_loader.hpp"
 #include "rasterization/fast_rasterizer.hpp"
 #include "rasterization/gsplat_rasterizer.hpp"
 #include "core_new/cuda/memory_arena.hpp"
@@ -971,7 +971,7 @@ namespace lfs::training {
                             }
 
                             // Get folder name to save in by stripping file extension
-                            std::string folder_name = lfs::loader::strip_extension(img_name);
+                            std::string folder_name = lfs::io::strip_extension(img_name);
 
                             auto output_path = params_.dataset.output_path / "timelapse" / folder_name;
                             std::filesystem::create_directories(output_path);
@@ -1011,7 +1011,7 @@ namespace lfs::training {
         is_running_ = true; // Now we can start
         LOG_INFO("Starting training loop with {} workers", params_.optimization.num_workers);
         // initializing image loader
-        auto& cache_loader = lfs::loader::CacheLoader::getInstance(params_.dataset.loading_params.use_cpu_memory, params_.dataset.loading_params.use_fs_cache);
+        auto& cache_loader = lfs::io::CacheLoader::getInstance(params_.dataset.loading_params.use_cpu_memory, params_.dataset.loading_params.use_fs_cache);
         cache_loader.reset_cache();
         // in case we call getInstance multiple times and cache parameters/dataset were changed by user
         cache_loader.update_cache_params(params_.dataset.loading_params.use_cpu_memory,

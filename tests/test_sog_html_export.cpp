@@ -27,8 +27,8 @@
 #include "core_new/sogs.hpp"
 #include "core_new/tensor.hpp"
 #include "core_new/cuda/kernels/kdtree_kmeans.hpp"
-#include "loader_new/formats/ply.hpp"
-#include "loader_new/formats/sogs.hpp"
+#include "io/formats/ply.hpp"
+#include "io/formats/sogs.hpp"
 #include "visualizer_new/gui/html_viewer_export.hpp"
 
 namespace fs = std::filesystem;
@@ -164,7 +164,7 @@ TEST_F(SogExportTest, ProducesValidZip) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value()) << ply_result.error();
     ASSERT_TRUE(generate_sog(*ply_result));
 
@@ -184,7 +184,7 @@ TEST_F(SogExportTest, ContainsRequiredFiles) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value());
     ASSERT_TRUE(generate_sog(*ply_result));
 
@@ -206,7 +206,7 @@ TEST_F(SogExportTest, MetaJsonStructure) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value());
     ASSERT_TRUE(generate_sog(*ply_result));
 
@@ -246,7 +246,7 @@ TEST_F(SogExportTest, WebpImageDimensions) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value());
     ASSERT_TRUE(generate_sog(*ply_result));
 
@@ -280,12 +280,12 @@ TEST_F(SogExportTest, RoundtripLoad) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value());
     ASSERT_TRUE(generate_sog(*ply_result));
 
     // Load the exported SOG
-    auto sog_result = lfs::loader::load_sog(temp_sog_);
+    auto sog_result = lfs::io::load_sog(temp_sog_);
     ASSERT_TRUE(sog_result.has_value()) << sog_result.error();
 
     // Splat count should match
@@ -318,7 +318,7 @@ TEST_F(HtmlExportTest, ProducesValidHtml) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value());
 
     lfs::vis::gui::HtmlViewerExportOptions options{.output_path = temp_html_};
@@ -341,7 +341,7 @@ TEST_F(HtmlExportTest, CssInlined) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value());
 
     lfs::vis::gui::HtmlViewerExportOptions options{.output_path = temp_html_};
@@ -362,7 +362,7 @@ TEST_F(HtmlExportTest, JsInlined) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value());
 
     lfs::vis::gui::HtmlViewerExportOptions options{.output_path = temp_html_};
@@ -385,7 +385,7 @@ TEST_F(HtmlExportTest, EmbeddedSogValid) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value());
 
     lfs::vis::gui::HtmlViewerExportOptions options{.output_path = temp_html_};
@@ -412,7 +412,7 @@ TEST_F(HtmlExportTest, UsesSogExtension) {
         GTEST_SKIP() << "Test PLY not found: " << TEST_PLY;
     }
 
-    auto ply_result = lfs::loader::load_ply(TEST_PLY);
+    auto ply_result = lfs::io::load_ply(TEST_PLY);
     ASSERT_TRUE(ply_result.has_value());
 
     lfs::vis::gui::HtmlViewerExportOptions options{.output_path = temp_html_};

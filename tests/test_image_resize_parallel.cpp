@@ -1,7 +1,7 @@
 /* Test to isolate cudaErrorInvalidDevice with resized images in parallel operations */
 
 #include <gtest/gtest.h>
-#include "loader_new/cache_image_loader.hpp"
+#include "io/cache_image_loader.hpp"
 #include "core_new/tensor.hpp"
 #include "core_new/logger.hpp"
 #include <cuda_runtime.h>
@@ -9,7 +9,7 @@
 #include <thread>
 
 using namespace lfs::core;
-using namespace lfs::loader;
+using namespace lfs::io;
 
 TEST(ImageResizeParallelTest, LoadImagesWithResize) {
     // Test configuration

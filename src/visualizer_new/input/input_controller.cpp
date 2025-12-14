@@ -5,7 +5,7 @@
 #include "input/input_controller.hpp"
 #include "core_new/logger.hpp"
 #include "gui/gui_manager.hpp"
-#include "loader_new/loader.hpp"
+#include "io/loader.hpp"
 #include "rendering/rendering_manager.hpp"
 #include "scene/scene_manager.hpp"
 #include "tools/align_tool.hpp"
@@ -1004,7 +1004,7 @@ namespace lfs::vis {
             } else if (!dataset_path && std::filesystem::is_directory(filepath)) {
                 // Check for dataset markers
                 LOG_TRACE("Checking directory for dataset markers: {}", filepath.string());
-                if (lfs::loader::Loader::isDatasetPath(filepath)) {
+                if (lfs::io::Loader::isDatasetPath(filepath)) {
                     dataset_path = filepath;
                 }
             }
