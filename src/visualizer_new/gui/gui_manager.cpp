@@ -1234,15 +1234,65 @@ namespace lfs::vis::gui {
                 }
             }
 
-            // Split view
+            // Split view / GT comparison
             if (const auto info = rm->getSplitViewInfo(); info.enabled) {
                 ImGui::SameLine(0.0f, SPACING);
                 ImGui::TextColored(t.palette.text_dim, "|");
                 ImGui::SameLine();
                 if (rm->getSettings().split_view_mode == SplitViewMode::GTComparison) {
-                    ImGui::TextColored(t.palette.warning, "GT Compare");
-                    ImGui::SameLine(0.0f, 4.0f);
-                    ImGui::TextColored(t.palette.text_dim, "Cam %d", rm->getCurrentCameraId());
+                    const int cam_id = rm->getCurrentCameraId();
+                    auto* trainer_mgr = sm ? sm->getTrainerManager() : nullptr;
+                    auto cam = trainer_mgr ? trainer_mgr->getCamById(cam_id) : nullptr;
+
+                    if (cam) {
+                        // Image filename and extension
+                        const auto& path = cam->image_path();
+                        const std::string filename = path.filename().string();
+                        std::string ext = path.extension().string();
+                        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+                        for (auto& c : ext) c = static_cast<char>(std::toupper(c));
+
+                        // Infer channels from extension
+                        const char* channels = "RGB";
+                        if (ext == "PNG" || ext == "WEBP" || ext == "TIFF" || ext == "TIF" || ext == "EXR")
+                            channels = "RGBA";
+
+                        ImGui::TextColored(t.palette.info, "%s", filename.c_str());
+                        ImGui::SameLine(0.0f, SPACING);
+                        ImGui::TextColored(t.palette.text_dim, "|");
+                        ImGui::SameLine(0.0f, SPACING);
+
+                        // Dimensions and channels
+                        ImGui::TextColored(t.palette.text_dim, "%dx%d %s",
+                            cam->image_width(), cam->image_height(), channels);
+                        ImGui::SameLine(0.0f, SPACING);
+
+                        // Format
+                        ImGui::TextColored(t.palette.text_dim, "%s", ext.c_str());
+
+                        // Mask indicator
+                        if (cam->has_mask()) {
+                            ImGui::SameLine(0.0f, SPACING);
+                            ImGui::TextColored(t.palette.success, "MASK");
+                        }
+
+                        // Camera model (always show)
+                        ImGui::SameLine(0.0f, SPACING);
+                        const auto model_type = cam->camera_model_type();
+                        const char* model = "PINHOLE";
+                        switch (model_type) {
+                        case gsplat::CameraModelType::FISHEYE: model = "FISHEYE"; break;
+                        case gsplat::CameraModelType::ORTHO: model = "ORTHO"; break;
+                        case gsplat::CameraModelType::EQUIRECTANGULAR: model = "EQUIRECT"; break;
+                        default: break;
+                        }
+                        const bool is_pinhole = (model_type == gsplat::CameraModelType::PINHOLE);
+                        ImGui::TextColored(is_pinhole ? t.palette.text_dim : t.palette.warning, "%s", model);
+                    } else {
+                        ImGui::TextColored(t.palette.warning, "GT Compare");
+                        ImGui::SameLine(0.0f, 4.0f);
+                        ImGui::TextColored(t.palette.text_dim, "Cam %d", cam_id);
+                    }
                 } else {
                     ImGui::TextColored(t.palette.warning, "Split:");
                     ImGui::SameLine(0.0f, 4.0f);

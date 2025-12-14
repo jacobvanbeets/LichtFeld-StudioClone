@@ -19,6 +19,23 @@ struct GLFWwindow;
 
 namespace lfs::vis::gui {
 
+    struct ExifData {
+        std::string camera_make;
+        std::string camera_model;
+        std::string software;
+        std::string date_time;
+        std::string exposure_time;
+        std::string f_number;
+        std::string iso;
+        std::string focal_length;
+        std::string focal_length_35mm;
+        std::string lens_model;
+        int orientation = 1;
+        bool valid = false;
+    };
+
+    ExifData parseExifData(const std::filesystem::path& path);
+
     /**
      * @brief RAII wrapper for raw image data
      */
@@ -235,6 +252,12 @@ namespace lfs::vis::gui {
         float pan_x_ = 0.0f;
         float pan_y_ = 0.0f;
         bool fit_to_window_ = true;
+        bool show_info_panel_ = true;
+        bool focus_on_next_frame_ = false;
+
+        // EXIF data cache
+        ExifData current_exif_;
+        size_t exif_cache_index_ = SIZE_MAX;
 
         // OpenGL limits
         GLint max_texture_size_ = 4096;

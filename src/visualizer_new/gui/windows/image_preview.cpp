@@ -7,7 +7,9 @@
 #include "core_new/image_io.hpp"
 #include "core_new/logger.hpp"
 #include <algorithm>
+#include <cstring>
 #include <format>
+#include <fstream>
 #include <future>
 #include <glad/glad.h>
 #include <imgui.h>
@@ -15,6 +17,189 @@
 #include <thread>
 
 namespace lfs::vis::gui {
+
+    // EXIF tag IDs
+    namespace exif_tags {
+        constexpr uint16_t MAKE = 0x010F;
+        constexpr uint16_t MODEL = 0x0110;
+        constexpr uint16_t ORIENTATION = 0x0112;
+        constexpr uint16_t SOFTWARE = 0x0131;
+        constexpr uint16_t DATE_TIME = 0x0132;
+        constexpr uint16_t EXIF_IFD = 0x8769;
+        constexpr uint16_t EXPOSURE_TIME = 0x829A;
+        constexpr uint16_t F_NUMBER = 0x829D;
+        constexpr uint16_t ISO = 0x8827;
+        constexpr uint16_t DATE_TIME_ORIGINAL = 0x9003;
+        constexpr uint16_t FOCAL_LENGTH = 0xA404;
+        constexpr uint16_t FOCAL_LENGTH_35MM = 0xA405;
+        constexpr uint16_t LENS_MODEL = 0xA434;
+    }
+
+    ExifData parseExifData(const std::filesystem::path& path) {
+        ExifData result;
+
+        std::string ext = path.extension().string();
+        for (char& c : ext) c = static_cast<char>(std::tolower(c));
+        if (ext != ".jpg" && ext != ".jpeg") return result;
+
+        std::ifstream file(path, std::ios::binary);
+        if (!file) return result;
+
+        uint8_t buf[2];
+        file.read(reinterpret_cast<char*>(buf), 2);
+        if (buf[0] != 0xFF || buf[1] != 0xD8) return result;
+
+        while (file) {
+            file.read(reinterpret_cast<char*>(buf), 2);
+            if (buf[0] != 0xFF) break;
+
+            if (buf[1] == 0xE1) {
+                uint8_t len_buf[2];
+                file.read(reinterpret_cast<char*>(len_buf), 2);
+                const uint16_t segment_len = (len_buf[0] << 8) | len_buf[1];
+
+                std::vector<uint8_t> segment(segment_len - 2);
+                file.read(reinterpret_cast<char*>(segment.data()), segment.size());
+
+                if (segment.size() < 14 || std::memcmp(segment.data(), "Exif\0\0", 6) != 0) continue;
+
+                const uint8_t* const tiff = segment.data() + 6;
+                const size_t tiff_size = segment.size() - 6;
+                const bool big_endian = (tiff[0] == 'M' && tiff[1] == 'M');
+                if (!big_endian && !(tiff[0] == 'I' && tiff[1] == 'I')) continue;
+
+                const auto read16 = [big_endian, tiff, tiff_size](const size_t offset) -> uint16_t {
+                    if (offset + 2 > tiff_size) return 0;
+                    if (big_endian) return (tiff[offset] << 8) | tiff[offset + 1];
+                    return tiff[offset] | (tiff[offset + 1] << 8);
+                };
+
+                const auto read32 = [big_endian, tiff, tiff_size](const size_t offset) -> uint32_t {
+                    if (offset + 4 > tiff_size) return 0;
+                    if (big_endian)
+                        return (tiff[offset] << 24) | (tiff[offset + 1] << 16) |
+                               (tiff[offset + 2] << 8) | tiff[offset + 3];
+                    return tiff[offset] | (tiff[offset + 1] << 8) |
+                           (tiff[offset + 2] << 16) | (tiff[offset + 3] << 24);
+                };
+
+                const auto read_string = [tiff, tiff_size](const size_t offset, const size_t count) {
+                    if (offset + count > tiff_size) return std::string{};
+                    std::string s(reinterpret_cast<const char*>(tiff + offset), count);
+                    while (!s.empty() && (s.back() == '\0' || s.back() == ' ')) s.pop_back();
+                    return s;
+                };
+
+                const auto read_rational = [&read32](const size_t offset) {
+                    return std::pair{read32(offset), read32(offset + 4)};
+                };
+
+                const uint32_t ifd0_offset = read32(4);
+                if (ifd0_offset + 2 > tiff_size) continue;
+
+                uint32_t exif_ifd_offset = 0;
+
+                const auto parse_ifd = [&](const uint32_t ifd_offset, const bool is_exif_ifd) {
+                    if (ifd_offset + 2 > tiff_size) return;
+                    const uint16_t num_entries = read16(ifd_offset);
+                    size_t entry_offset = ifd_offset + 2;
+
+                    for (uint16_t i = 0; i < num_entries && entry_offset + 12 <= tiff_size; ++i, entry_offset += 12) {
+                        const uint16_t tag = read16(entry_offset);
+                        const uint16_t type = read16(entry_offset + 2);
+                        const uint32_t count = read32(entry_offset + 4);
+                        uint32_t value_offset = entry_offset + 8;
+
+                        size_t data_size = count;
+                        if (type == 3) data_size *= 2;
+                        else if (type == 4) data_size *= 4;
+                        else if (type == 5) data_size *= 8;
+
+                        if (data_size > 4) value_offset = read32(entry_offset + 8);
+
+                        switch (tag) {
+                        case exif_tags::MAKE:
+                            result.camera_make = read_string(value_offset, count);
+                            break;
+                        case exif_tags::MODEL:
+                            result.camera_model = read_string(value_offset, count);
+                            break;
+                        case exif_tags::SOFTWARE:
+                            result.software = read_string(value_offset, count);
+                            break;
+                        case exif_tags::DATE_TIME:
+                        case exif_tags::DATE_TIME_ORIGINAL:
+                            if (result.date_time.empty())
+                                result.date_time = read_string(value_offset, count);
+                            break;
+                        case exif_tags::ORIENTATION:
+                            result.orientation = read16(value_offset);
+                            break;
+                        case exif_tags::EXIF_IFD:
+                            exif_ifd_offset = read32(value_offset);
+                            break;
+                        case exif_tags::EXPOSURE_TIME:
+                            if (is_exif_ifd) {
+                                const auto [num, den] = read_rational(value_offset);
+                                if (den > 0) {
+                                    result.exposure_time = (num == 1)
+                                        ? std::format("1/{}s", den)
+                                        : std::format("{:.1f}s", static_cast<double>(num) / den);
+                                }
+                            }
+                            break;
+                        case exif_tags::F_NUMBER:
+                            if (is_exif_ifd) {
+                                const auto [num, den] = read_rational(value_offset);
+                                if (den > 0)
+                                    result.f_number = std::format("f/{:.1f}", static_cast<double>(num) / den);
+                            }
+                            break;
+                        case exif_tags::ISO:
+                            if (is_exif_ifd)
+                                result.iso = std::format("ISO {}", read16(value_offset));
+                            break;
+                        case exif_tags::FOCAL_LENGTH:
+                            if (is_exif_ifd) {
+                                const auto [num, den] = read_rational(value_offset);
+                                if (den > 0)
+                                    result.focal_length = std::format("{:.0f}mm", static_cast<double>(num) / den);
+                            }
+                            break;
+                        case exif_tags::FOCAL_LENGTH_35MM:
+                            if (is_exif_ifd)
+                                result.focal_length_35mm = std::format("{}mm (35mm eq.)", read16(value_offset));
+                            break;
+                        case exif_tags::LENS_MODEL:
+                            if (is_exif_ifd)
+                                result.lens_model = read_string(value_offset, count);
+                            break;
+                        default: break;
+                        }
+                    }
+                };
+
+                parse_ifd(ifd0_offset, false);
+                if (exif_ifd_offset > 0) parse_ifd(exif_ifd_offset, true);
+
+                result.valid = !result.camera_make.empty() || !result.camera_model.empty() ||
+                               !result.exposure_time.empty() || !result.f_number.empty();
+                break;
+            } else if (buf[1] >= 0xE0 && buf[1] <= 0xEF) {
+                uint8_t len_buf[2];
+                file.read(reinterpret_cast<char*>(len_buf), 2);
+                file.seekg((len_buf[0] << 8 | len_buf[1]) - 2, std::ios::cur);
+            } else if (buf[1] == 0xDA) {
+                break;
+            } else {
+                uint8_t len_buf[2];
+                file.read(reinterpret_cast<char*>(len_buf), 2);
+                file.seekg((len_buf[0] << 8 | len_buf[1]) - 2, std::ios::cur);
+            }
+        }
+
+        return result;
+    }
 
     ImagePreview::ImagePreview() = default;
 
@@ -46,6 +231,7 @@ namespace lfs::vis::gui {
         image_paths_ = image_paths;
         current_index_ = std::min(initial_index, image_paths.size() - 1);
         is_open_ = true;
+        focus_on_next_frame_ = true;
 
         // Reset view
         zoom_ = 1.0f;
@@ -560,6 +746,11 @@ namespace lfs::vis::gui {
                           current_index_ + 1, image_paths_.size(),
                           image_paths_[current_index_].filename().string());
 
+        if (focus_on_next_frame_) {
+            ImGui::SetNextWindowFocus();
+            focus_on_next_frame_ = false;
+        }
+
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15f, 0.15f, 0.17f, 1.0f));
         if (!ImGui::Begin(title.c_str(), p_open, WINDOW_FLAGS)) {
             ImGui::PopStyleColor();
@@ -570,6 +761,7 @@ namespace lfs::vis::gui {
         if (ImGui::BeginMenuBar()) {
             if (ImGui::BeginMenu("View")) {
                 ImGui::MenuItem("Fit to Window", "F", &fit_to_window_);
+                ImGui::MenuItem("Show Info Panel", "I", &show_info_panel_);
                 if (hasValidOverlay()) {
                     ImGui::MenuItem("Show Mask Overlay", "M", &show_overlay_);
                 }
@@ -624,14 +816,21 @@ namespace lfs::vis::gui {
             return;
         }
 
-        auto [display_width, display_height] = calculateDisplaySize(
-            static_cast<int>(content_size.x),
-            static_cast<int>(content_size.y));
+        constexpr float INFO_PANEL_WIDTH = 260.0f;
+
+        const auto [display_width, display_height] = calculateDisplaySize(
+            static_cast<int>(content_size.x), static_cast<int>(content_size.y));
 
         const float x_offset = (content_size.x - display_width) * 0.5f + pan_x_;
         const float y_offset = (content_size.y - display_height) * 0.5f + pan_y_;
-
         const float base_cursor_y = ImGui::GetCursorPosY();
+
+        // Invisible button for mouse interaction
+        ImGui::SetCursorPos(ImVec2(0, base_cursor_y));
+        ImGui::InvisibleButton("##ImageArea", content_size);
+        const bool image_hovered = ImGui::IsItemHovered();
+        const bool image_active = ImGui::IsItemActive();
+
         ImGui::SetCursorPos(ImVec2(x_offset, y_offset + base_cursor_y));
         ImGui::Image(static_cast<ImTextureID>(current_texture_->texture.id()),
                      ImVec2(display_width, display_height));
@@ -645,26 +844,158 @@ namespace lfs::vis::gui {
                          ImVec2(0, 0), ImVec2(1, 1), OVERLAY_TINT, ImVec4(0, 0, 0, 0));
         }
 
-        if (ImGui::IsItemHovered()) {
-            float wheel = ImGui::GetIO().MouseWheel;
-            if (wheel != 0.0f) {
-                float zoom_delta = wheel * 0.1f;
-                zoom_ = std::clamp(zoom_ + zoom_delta, 0.1f, 10.0f);
-                LOG_TRACE("Zoom changed to: {}", zoom_);
+        // Floating info panel
+        if (show_info_panel_ && current_texture_) {
+            constexpr float PANEL_MARGIN = 8.0f;
+            constexpr float MAX_PANEL_HEIGHT = 400.0f;
+            const float panel_height = std::min(content_size.y - 2.0f * PANEL_MARGIN, MAX_PANEL_HEIGHT);
+            ImGui::SetCursorPos(ImVec2(content_size.x - INFO_PANEL_WIDTH - PANEL_MARGIN, base_cursor_y + PANEL_MARGIN));
+
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.1f, 0.1f, 0.12f, 0.85f));
+            ImGui::BeginChild("##ImageInfoPanel", ImVec2(INFO_PANEL_WIDTH, panel_height), true);
+
+            const auto& path = image_paths_[current_index_];
+            const std::string filename = path.filename().string();
+            std::string ext = path.extension().string();
+            if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+            for (char& c : ext) c = static_cast<char>(std::toupper(c));
+
+            // File info section
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "FILE");
+            ImGui::Separator();
+            ImGui::Text("Name: %s", filename.c_str());
+            ImGui::Text("Format: %s", ext.c_str());
+            if (std::filesystem::exists(path)) {
+                const auto file_size = std::filesystem::file_size(path);
+                if (file_size >= 1024 * 1024)
+                    ImGui::Text("Size: %.2f MB", file_size / (1024.0 * 1024.0));
+                else if (file_size >= 1024)
+                    ImGui::Text("Size: %.1f KB", file_size / 1024.0);
+                else
+                    ImGui::Text("Size: %zu bytes", file_size);
+
+                const auto ftime = std::filesystem::last_write_time(path);
+                const auto sys_time = std::chrono::clock_cast<std::chrono::system_clock>(ftime);
+                const auto time_t = std::chrono::system_clock::to_time_t(sys_time);
+                char time_buf[64];
+                std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M", std::localtime(&time_t));
+                ImGui::Text("Modified: %s", time_buf);
+            }
+            ImGui::Text("Path: %s", path.parent_path().string().c_str());
+
+            ImGui::Spacing();
+            ImGui::Spacing();
+
+            // Image info section
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "IMAGE");
+            ImGui::Separator();
+            ImGui::Text("Dimensions: %dx%d", current_texture_->width, current_texture_->height);
+            ImGui::Text("Megapixels: %.1f MP",
+                (current_texture_->width * current_texture_->height) / 1e6);
+
+            // Infer channels from extension
+            const char* channels = "RGB (3)";
+            const char* color_space = "sRGB";
+            if (ext == "PNG" || ext == "WEBP" || ext == "TIFF" || ext == "TIF") {
+                channels = "RGBA (4)";
+            } else if (ext == "EXR" || ext == "HDR") {
+                channels = "RGBA (4)";
+                color_space = "Linear";
+            }
+            ImGui::Text("Channels: %s", channels);
+            ImGui::Text("Color Space: %s", color_space);
+
+            // Aspect ratio
+            const float aspect = static_cast<float>(current_texture_->width) /
+                                 static_cast<float>(current_texture_->height);
+            const char* aspect_name = "Custom";
+            if (std::abs(aspect - 16.0f/9.0f) < 0.01f) aspect_name = "16:9";
+            else if (std::abs(aspect - 4.0f/3.0f) < 0.01f) aspect_name = "4:3";
+            else if (std::abs(aspect - 3.0f/2.0f) < 0.01f) aspect_name = "3:2";
+            else if (std::abs(aspect - 1.0f) < 0.01f) aspect_name = "1:1";
+            else if (std::abs(aspect - 21.0f/9.0f) < 0.02f) aspect_name = "21:9";
+            ImGui::Text("Aspect Ratio: %s (%.2f)", aspect_name, aspect);
+
+            // EXIF section (only for JPEG files with valid EXIF)
+            if (exif_cache_index_ != current_index_) {
+                current_exif_ = parseExifData(path);
+                exif_cache_index_ = current_index_;
             }
 
-            if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-                ImVec2 delta = ImGui::GetIO().MouseDelta;
-                pan_x_ += delta.x;
-                pan_y_ += delta.y;
+            if (current_exif_.valid) {
+                ImGui::Spacing();
+                ImGui::Spacing();
+
+                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "EXIF");
+                ImGui::Separator();
+
+                if (!current_exif_.camera_make.empty() || !current_exif_.camera_model.empty()) {
+                    std::string camera;
+                    if (!current_exif_.camera_make.empty()) camera = current_exif_.camera_make;
+                    if (!current_exif_.camera_model.empty()) {
+                        if (!camera.empty()) camera += " ";
+                        camera += current_exif_.camera_model;
+                    }
+                    ImGui::Text("Camera: %s", camera.c_str());
+                }
+                if (!current_exif_.lens_model.empty())
+                    ImGui::Text("Lens: %s", current_exif_.lens_model.c_str());
+                if (!current_exif_.focal_length.empty())
+                    ImGui::Text("Focal Length: %s", current_exif_.focal_length.c_str());
+                if (!current_exif_.focal_length_35mm.empty())
+                    ImGui::Text("35mm Equiv: %s", current_exif_.focal_length_35mm.c_str());
+                if (!current_exif_.exposure_time.empty())
+                    ImGui::Text("Exposure: %s", current_exif_.exposure_time.c_str());
+                if (!current_exif_.f_number.empty())
+                    ImGui::Text("Aperture: %s", current_exif_.f_number.c_str());
+                if (!current_exif_.iso.empty())
+                    ImGui::Text("%s", current_exif_.iso.c_str());
+                if (!current_exif_.date_time.empty())
+                    ImGui::Text("Date: %s", current_exif_.date_time.c_str());
+                if (!current_exif_.software.empty())
+                    ImGui::Text("Software: %s", current_exif_.software.c_str());
             }
 
+            ImGui::Spacing();
+            ImGui::Spacing();
+
+            // View info section
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "VIEW");
+            ImGui::Separator();
+            ImGui::Text("Zoom: %.0f%%", zoom_ * 100.0f);
+            ImGui::Text("Pan: %.0f, %.0f", pan_x_, pan_y_);
+            ImGui::Text("Fit to Window: %s", fit_to_window_ ? "Yes" : "No");
+
+            if (hasValidOverlay()) {
+                ImGui::Spacing();
+                ImGui::Spacing();
+                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "MASK");
+                ImGui::Separator();
+                ImGui::Text("Overlay: %s", show_overlay_ ? "Visible" : "Hidden");
+                ImGui::Text("File: %s", overlay_paths_[current_index_].filename().string().c_str());
+            }
+
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+        }
+
+        // Mouse interaction
+        if (image_hovered) {
+            if (const float wheel = ImGui::GetIO().MouseWheel; wheel != 0.0f) {
+                constexpr float ZOOM_SPEED = 0.15f;
+                zoom_ = std::clamp(zoom_ + wheel * ZOOM_SPEED, 0.1f, 10.0f);
+            }
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 zoom_ = 1.0f;
                 pan_x_ = 0.0f;
                 pan_y_ = 0.0f;
-                LOG_TRACE("View reset via double-click");
             }
+        }
+
+        if (image_active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            const ImVec2 delta = ImGui::GetIO().MouseDelta;
+            pan_x_ += delta.x;
+            pan_y_ += delta.y;
         }
 
         if (ImGui::IsWindowFocused()) {
@@ -683,6 +1014,9 @@ namespace lfs::vis::gui {
             }
             if (ImGui::IsKeyPressed(ImGuiKey_F)) {
                 fit_to_window_ = !fit_to_window_;
+            }
+            if (ImGui::IsKeyPressed(ImGuiKey_I)) {
+                show_info_panel_ = !show_info_panel_;
             }
             if (ImGui::IsKeyPressed(ImGuiKey_M) && hasValidOverlay()) {
                 show_overlay_ = !show_overlay_;
