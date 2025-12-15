@@ -46,7 +46,7 @@ namespace lfs::training {
             const auto name = param_name(type);
             auto& state = states_[name];
 
-            if (!param.is_valid() || param.numel() == 0) {
+            if (!param.is_valid()) {
                 state = AdamParamState{};
                 continue;
             }
@@ -54,6 +54,8 @@ namespace lfs::training {
             const size_t param_size = param.shape()[0];
             const size_t alloc_cap = (capacity > param_size) ? capacity : param_size;
 
+            // Handle zero-size tensors (e.g., shN with sh-degree 0 has shape [N, 0, 3])
+            // Still allocate state tensors to maintain valid structure for densification
             if (alloc_cap > param_size) {
                 state.grad = lfs::core::Tensor::zeros_direct(param.shape(), alloc_cap);
                 state.exp_avg = lfs::core::Tensor::zeros_direct(param.shape(), alloc_cap);
@@ -66,6 +68,7 @@ namespace lfs::training {
             state.capacity = alloc_cap;
             state.size = param_size;
             state.step_count = 0;
+            LOG_DEBUG("allocate_gradients({}): cap={}", name, state.capacity);
         }
         LOG_DEBUG("Allocated gradients for {} parameter groups", states_.size());
     }
@@ -249,9 +252,95 @@ namespace lfs::training {
         CHECK_CUDA(cudaFree(d_indices));
     }
 
-    void AdamOptimizer::extend_state_for_new_params(ParamType type, const size_t n_new) {
+    void AdamOptimizer::extend_state_by_gather(ParamType type, const lfs::core::Tensor& indices) {
         const auto name = param_name(type);
         if (!states_.contains(name)) return;
+
+        const size_t n_new = indices.numel();
+        if (n_new == 0) return;
+
+        auto& param = get_param(type);
+        auto& state = states_[name];
+        const size_t new_size = state.size + n_new;
+
+        if (!param.is_valid() || param.shape().rank() == 0) {
+            LOG_WARN("extend_state_by_gather: {} param invalid", name);
+            return;
+        }
+        if (!state.exp_avg.is_valid() || state.exp_avg.ndim() == 0) {
+            LOG_WARN("extend_state_by_gather: {} state invalid", name);
+            return;
+        }
+
+        // Fast path: use reserved capacity
+        const bool all_have_capacity = state.grad.capacity() > 0 &&
+                                        state.exp_avg.capacity() > 0 &&
+                                        state.exp_avg_sq.capacity() > 0;
+        const bool fits_in_capacity = new_size <= state.grad.capacity() &&
+                                       new_size <= state.exp_avg.capacity() &&
+                                       new_size <= state.exp_avg_sq.capacity();
+        if (all_have_capacity && fits_in_capacity) {
+            // exp_avg and exp_avg_sq: gather from existing (copy optimizer momentum for duplicated Gaussians)
+            state.exp_avg.append_gather(indices);
+            state.exp_avg_sq.append_gather(indices);
+            // grad: append zeros (new Gaussians have no gradients yet)
+            state.grad.append_zeros(n_new);
+            state.size = new_size;
+            state.capacity = state.exp_avg.capacity();
+            LOG_DEBUG("extend_state_by_gather({}): fast path done", name);
+            return;
+        }
+        LOG_WARN("extend_state_by_gather({}): SLOW PATH triggered (all_have_cap={}, fits={})", name, all_have_capacity, fits_in_capacity);
+
+        // Slow path: reallocate without extra capacity
+        const auto& shape = param.shape();
+        std::vector<size_t> new_dims(shape.rank());
+        new_dims[0] = new_size;
+        for (size_t i = 1; i < shape.rank(); i++) {
+            new_dims[i] = shape[i];
+        }
+
+        const auto tensor_shape = lfs::core::TensorShape(new_dims);
+        state.grad = lfs::core::Tensor::zeros(tensor_shape, param.device());
+
+        auto new_exp_avg = lfs::core::Tensor::empty(tensor_shape, param.device());
+        auto new_exp_avg_sq = lfs::core::Tensor::empty(tensor_shape, param.device());
+
+        // Copy old data
+        const size_t row_size = param.numel() / shape[0];
+        if (state.size > 0 && state.exp_avg.numel() > 0) {
+            const size_t old_bytes = state.size * row_size * sizeof(float);
+            CHECK_CUDA(cudaMemcpyAsync(new_exp_avg.ptr<float>(), state.exp_avg.ptr<float>(), old_bytes, cudaMemcpyDeviceToDevice, nullptr));
+            CHECK_CUDA(cudaMemcpyAsync(new_exp_avg_sq.ptr<float>(), state.exp_avg_sq.ptr<float>(), old_bytes, cudaMemcpyDeviceToDevice, nullptr));
+        }
+
+        // Gather new rows using GPU-native index_select (single GPU operation)
+        const auto gathered_avg = state.exp_avg.index_select(0, indices);
+        const auto gathered_sq = state.exp_avg_sq.index_select(0, indices);
+
+        // Copy gathered rows to destination (GPU→GPU bulk copy)
+        const size_t gathered_bytes = n_new * row_size * sizeof(float);
+        const size_t dst_offset = state.size * row_size * sizeof(float);
+        CHECK_CUDA(cudaMemcpyAsync(
+            reinterpret_cast<char*>(new_exp_avg.ptr<float>()) + dst_offset,
+            gathered_avg.ptr<float>(), gathered_bytes, cudaMemcpyDeviceToDevice, nullptr));
+        CHECK_CUDA(cudaMemcpyAsync(
+            reinterpret_cast<char*>(new_exp_avg_sq.ptr<float>()) + dst_offset,
+            gathered_sq.ptr<float>(), gathered_bytes, cudaMemcpyDeviceToDevice, nullptr));
+
+        state.exp_avg = std::move(new_exp_avg);
+        state.exp_avg_sq = std::move(new_exp_avg_sq);
+        state.size = new_size;
+        state.capacity = 0;
+        LOG_DEBUG("extend_state_by_gather: {} slow path, new size = {}", name, new_size);
+    }
+
+    void AdamOptimizer::extend_state_for_new_params(ParamType type, const size_t n_new) {
+        const auto name = param_name(type);
+        if (!states_.contains(name)) {
+            LOG_DEBUG("extend_state_for_new_params({}): state not found, skipping", name);
+            return;
+        }
 
         auto& param = get_param(type);
         auto& state = states_[name];
@@ -265,14 +354,22 @@ namespace lfs::training {
         }
 
         // Fast path: use reserved capacity (all tensors must have capacity)
-        if (state.grad.capacity() > 0 && state.exp_avg.capacity() > 0 && new_size <= state.exp_avg.capacity()) {
+        const bool all_have_capacity = state.grad.capacity() > 0 &&
+                                        state.exp_avg.capacity() > 0 &&
+                                        state.exp_avg_sq.capacity() > 0;
+        const bool fits_in_capacity = new_size <= state.grad.capacity() &&
+                                       new_size <= state.exp_avg.capacity() &&
+                                       new_size <= state.exp_avg_sq.capacity();
+        if (all_have_capacity && fits_in_capacity) {
             state.grad.append_zeros(n_new);
             state.exp_avg.append_zeros(n_new);
             state.exp_avg_sq.append_zeros(n_new);
             state.size = new_size;
             state.capacity = state.exp_avg.capacity();
+            LOG_DEBUG("extend_state_for_new_params({}): fast path done, new size = {}", name, new_size);
             return;
         }
+        LOG_WARN("extend_state_for_new_params({}): SLOW PATH triggered (all_have_cap={}, fits={})", name, all_have_capacity, fits_in_capacity);
 
         // Slow path: reallocate without extra capacity (use reserve() for pre-allocation)
         const auto& shape = param.shape();
@@ -319,6 +416,12 @@ namespace lfs::training {
     const AdamParamState* AdamOptimizer::get_state(ParamType type) const {
         const auto name = param_name(type);
         const auto it = states_.find(name);
+        return (it != states_.end()) ? &it->second : nullptr;
+    }
+
+    AdamParamState* AdamOptimizer::get_state_mutable(ParamType type) {
+        const auto name = param_name(type);
+        auto it = states_.find(name);
         return (it != states_.end()) ? &it->second : nullptr;
     }
 

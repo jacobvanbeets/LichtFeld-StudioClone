@@ -5,6 +5,7 @@
 #include "default_strategy.hpp"
 #include "core_new/logger.hpp"
 #include "core_new/parameters.hpp"
+#include "core_new/tensor/internal/tensor_serialization.hpp"
 #include "optimizer/render_output.hpp"
 #include "strategy_utils.hpp"
 #include "kernels/densification_kernels.hpp"
@@ -26,10 +27,16 @@ namespace lfs::training {
         _splat_data->_densification_info = lfs::core::Tensor::zeros(
             {2, static_cast<size_t>(_splat_data->size())},
             _splat_data->means().device());
+
+        // Initialize free mask: all slots are active (not free)
+        const size_t capacity = _params->max_cap > 0 ? static_cast<size_t>(_params->max_cap)
+                                                     : static_cast<size_t>(_splat_data->size());
+        _free_mask = lfs::core::Tensor::zeros_bool({capacity}, _splat_data->means().device());
     }
 
     bool DefaultStrategy::is_refining(int iter) const {
-        return (iter > _params->start_refine &&
+        return (iter < _params->stop_refine &&
+                iter > _params->start_refine &&
                 iter % _params->refine_every == 0 &&
                 iter % _params->reset_every >= _params->pause_refine_after_reset);
     }
@@ -48,162 +55,282 @@ namespace lfs::training {
 
     void DefaultStrategy::duplicate(const lfs::core::Tensor& is_duplicated) {
         const lfs::core::Tensor sampled_idxs = is_duplicated.nonzero().squeeze(-1);
-        const int num_duplicated = sampled_idxs.shape()[0];
+        const int64_t num_duplicated = sampled_idxs.shape()[0];
 
         if (num_duplicated == 0) {
             return;  // Nothing to duplicate
         }
 
-        auto pos_selected = _splat_data->means().index_select(0, sampled_idxs).contiguous();
-        auto rot_selected = _splat_data->rotation_raw().index_select(0, sampled_idxs).contiguous();
-        auto scale_selected = _splat_data->scaling_raw().index_select(0, sampled_idxs).contiguous();
-        auto sh0_selected = _splat_data->sh0().index_select(0, sampled_idxs).contiguous();
-        auto op_selected = _splat_data->opacity_raw().index_select(0, sampled_idxs).contiguous();
+        // Try to fill free slots first (in-place with index_put_)
+        auto [filled_indices, remaining] = fill_free_slots(sampled_idxs, num_duplicated);
+        const int64_t num_filled = num_duplicated - remaining;
 
-        // Concatenate parameters directly in SplatData
-        _splat_data->means() = _splat_data->means().cat(pos_selected, 0);
-        _splat_data->rotation_raw() = _splat_data->rotation_raw().cat(rot_selected, 0);
-        _splat_data->scaling_raw() = _splat_data->scaling_raw().cat(scale_selected, 0);
-        _splat_data->sh0() = _splat_data->sh0().cat(sh0_selected, 0);
-        _splat_data->opacity_raw() = _splat_data->opacity_raw().cat(op_selected, 0);
+        LOG_DEBUG("duplicate(): {} total, {} filled free slots, {} to append", num_duplicated, num_filled, remaining);
 
-        // Handle higher-order SH (only if SH degree > 0)
-        if (_splat_data->shN().is_valid()) {
-            auto shN_selected = _splat_data->shN().index_select(0, sampled_idxs).contiguous();
-            _splat_data->shN() = _splat_data->shN().cat(shN_selected, 0);
-        }
+        // Append remaining Gaussians in-place
+        if (remaining > 0) {
+            const auto append_src_indices = sampled_idxs.slice(0, num_filled, num_duplicated);
 
-        // Update optimizer states for duplicated Gaussians
-        auto update_optimizer_state = [&](ParamType param_type, const char* name) {
-            const auto* state = _optimizer->get_state(param_type);
-            if (!state) return;
+            // In-place append
+            _splat_data->means().append_gather(append_src_indices);
+            _splat_data->rotation_raw().append_gather(append_src_indices);
+            _splat_data->scaling_raw().append_gather(append_src_indices);
+            _splat_data->sh0().append_gather(append_src_indices);
+            _splat_data->opacity_raw().append_gather(append_src_indices);
 
-            const auto& grad_shape = state->grad.shape();
-            std::vector<size_t> zero_dims = {static_cast<size_t>(num_duplicated)};
-            for (size_t i = 1; i < grad_shape.rank(); ++i) {
-                zero_dims.push_back(grad_shape[i]);
+            if (_splat_data->shN().is_valid()) {
+                _splat_data->shN().append_gather(append_src_indices);
             }
-            auto zero_grads = lfs::core::Tensor::zeros(lfs::core::TensorShape(zero_dims), state->grad.device());
 
-            AdamParamState new_state = *state;
-            new_state.exp_avg = state->exp_avg.cat(state->exp_avg.index_select(0, sampled_idxs), 0);
-            new_state.exp_avg_sq = state->exp_avg_sq.cat(state->exp_avg_sq.index_select(0, sampled_idxs), 0);
-            new_state.grad = state->grad.cat(zero_grads, 0);
-            new_state.size = state->size + num_duplicated;
-            _optimizer->set_state(param_type, new_state);
-            LOG_DEBUG("duplicate(): {} size {} -> {}", name, state->size, new_state.size);
-        };
-
-        update_optimizer_state(ParamType::Means, "means");
-        update_optimizer_state(ParamType::Rotation, "rotation");
-        update_optimizer_state(ParamType::Scaling, "scaling");
-        update_optimizer_state(ParamType::Sh0, "sh0");
-        update_optimizer_state(ParamType::ShN, "shN");
-        update_optimizer_state(ParamType::Opacity, "opacity");
+            // Update optimizer states (gathers exp_avg/exp_avg_sq for momentum)
+            _optimizer->extend_state_by_gather(ParamType::Means, append_src_indices);
+            _optimizer->extend_state_by_gather(ParamType::Rotation, append_src_indices);
+            _optimizer->extend_state_by_gather(ParamType::Scaling, append_src_indices);
+            _optimizer->extend_state_by_gather(ParamType::Sh0, append_src_indices);
+            _optimizer->extend_state_by_gather(ParamType::ShN, append_src_indices);
+            _optimizer->extend_state_by_gather(ParamType::Opacity, append_src_indices);
+        }
     }
 
     void DefaultStrategy::split(const lfs::core::Tensor& is_split) {
         const lfs::core::Tensor split_idxs = is_split.nonzero().squeeze(-1);
-        const lfs::core::Tensor keep_idxs = is_split.logical_not().nonzero().squeeze(-1);
-
-        const int N = _splat_data->size();
-        const int num_split = split_idxs.shape()[0];
-        const int num_keep = keep_idxs.shape()[0];
+        const int64_t num_split = split_idxs.shape()[0];
 
         if (num_split == 0) {
             return;  // Nothing to split
         }
 
-        constexpr int split_size = 2;
+        LOG_DEBUG("split(): {} Gaussians to split", num_split);
 
-        // Get SH dimensions - total elements per Gaussian (coeffs * channels)
-        // shN has shape [N, num_coeffs, 3], so total elements = num_coeffs * 3
-        const int shN_coeffs = _splat_data->shN().shape()[1];
-        const int shN_channels = _splat_data->shN().shape()[2];
-        const int shN_dim = shN_coeffs * shN_channels;  // Total elements per Gaussian
+        // Get SH dimensions
+        const bool has_shN = _splat_data->shN().is_valid();
+        int shN_dim = 0;
+        if (has_shN) {
+            const auto& shN_shape = _splat_data->shN().shape();
+            if (shN_shape.rank() == 2) {
+                shN_dim = shN_shape[1];
+            } else if (shN_shape.rank() == 3) {
+                shN_dim = shN_shape[1] * shN_shape[2];
+            }
+        }
+
+        const auto device = _splat_data->means().device();
 
         // Generate random noise [2, num_split, 3]
         const lfs::core::Tensor random_noise = lfs::core::Tensor::randn(
-            {split_size, static_cast<size_t>(num_split), 3},
-            _splat_data->sh0().device());
+            {2, static_cast<size_t>(num_split), 3}, device);
 
-        // Allocate output tensors [num_keep + num_split*2, ...]
-        const int out_size = num_keep + num_split * split_size;
-        auto positions_out = lfs::core::Tensor::empty({static_cast<size_t>(out_size), 3}, _splat_data->means().device());
-        auto rotations_out = lfs::core::Tensor::empty({static_cast<size_t>(out_size), 4}, _splat_data->rotation_raw().device());
-        auto scales_out = lfs::core::Tensor::empty({static_cast<size_t>(out_size), 3}, _splat_data->scaling_raw().device());
-        // CUDA kernel produces 2D outputs, we'll reshape to 3D after
-        auto sh0_out_2d = lfs::core::Tensor::empty({static_cast<size_t>(out_size), 3}, _splat_data->sh0().device());
-        auto shN_out_2d = lfs::core::Tensor::empty({static_cast<size_t>(out_size), static_cast<size_t>(shN_dim)}, _splat_data->shN().device());
-        auto opacities_out = lfs::core::Tensor::empty({static_cast<size_t>(out_size), 1}, _splat_data->opacity_raw().device());
+        // Allocate temporary tensors for second split results [num_split, ...]
+        auto second_positions = lfs::core::Tensor::empty({static_cast<size_t>(num_split), 3}, device);
+        auto second_rotations = lfs::core::Tensor::empty({static_cast<size_t>(num_split), 4}, device);
+        auto second_scales = lfs::core::Tensor::empty({static_cast<size_t>(num_split), 3}, device);
+        auto second_sh0 = lfs::core::Tensor::empty({static_cast<size_t>(num_split), 3}, device);
+        lfs::core::Tensor second_shN;
+        if (has_shN) {
+            second_shN = lfs::core::Tensor::empty({static_cast<size_t>(num_split), static_cast<size_t>(shN_dim)}, device);
+        }
+        auto second_opacities = lfs::core::Tensor::empty({static_cast<size_t>(num_split)}, device);
 
-        // Call custom CUDA kernel (outputs sh0 and shN separately - NO slice/contiguous overhead!)
-        kernels::launch_split_gaussians(
+        // Call in-place split kernel:
+        // - First split result modifies original positions in-place
+        // - Second split results go to temporary tensors
+        kernels::launch_split_gaussians_inplace(
             _splat_data->means().ptr<float>(),
             _splat_data->rotation_raw().ptr<float>(),
             _splat_data->scaling_raw().ptr<float>(),
             _splat_data->sh0().ptr<float>(),
-            _splat_data->shN().ptr<float>(),
+            has_shN ? _splat_data->shN().ptr<float>() : nullptr,
             _splat_data->opacity_raw().ptr<float>(),
-            positions_out.ptr<float>(),
-            rotations_out.ptr<float>(),
-            scales_out.ptr<float>(),
-            sh0_out_2d.ptr<float>(),
-            shN_out_2d.ptr<float>(),
-            opacities_out.ptr<float>(),
+            second_positions.ptr<float>(),
+            second_rotations.ptr<float>(),
+            second_scales.ptr<float>(),
+            second_sh0.ptr<float>(),
+            has_shN ? second_shN.ptr<float>() : nullptr,
+            second_opacities.ptr<float>(),
             split_idxs.ptr<int64_t>(),
-            keep_idxs.ptr<int64_t>(),
             random_noise.ptr<float>(),
-            N,
-            num_split,
-            num_keep,
+            static_cast<int>(num_split),
             shN_dim,
             _params->revised_opacity,
             nullptr  // default stream
         );
 
-        // Reshape sh0 and shN from flat 1D (per Gaussian) to original 3D structure
-        // sh0: [N, 3] -> [N, 1, 3] (3 elements = 1 coeff * 3 channels)
-        // shN: [N, 45] -> [N, 15, 3] (45 elements = 15 coeffs * 3 channels)
-        auto sh0_out = sh0_out_2d.reshape({out_size, 1, 3});
-        auto shN_out = shN_out_2d.reshape({out_size, shN_coeffs, shN_channels});
-
-        // Update SplatData with new tensors (already contiguous from kernel!)
-        _splat_data->means() = positions_out;
-        _splat_data->rotation_raw() = rotations_out;
-        _splat_data->scaling_raw() = scales_out;
-        _splat_data->sh0() = sh0_out;
-        _splat_data->shN() = shN_out;
-        _splat_data->opacity_raw() = opacities_out.squeeze(-1);
-
-        // Update optimizer states for split Gaussians
-        auto update_optimizer_state = [&](ParamType param_type) {
-            const auto* state = _optimizer->get_state(param_type);
+        // Reset optimizer states for split indices (first result modified in-place)
+        auto reset_optimizer_state_at_indices = [&](ParamType param_type) {
+            auto* state = _optimizer->get_state_mutable(param_type);
             if (!state) return;
 
-            const size_t n_new = num_split * split_size;
+            const auto& shape = state->exp_avg.shape();
+            std::vector<size_t> dims = {static_cast<size_t>(num_split)};
+            for (size_t i = 1; i < shape.rank(); ++i) {
+                dims.push_back(shape[i]);
+            }
+            auto zeros = lfs::core::Tensor::zeros(lfs::core::TensorShape(dims), state->exp_avg.device());
 
-            auto make_zeros = [&](const lfs::core::Tensor& t) {
-                const auto& shape = t.shape();
-                std::vector<size_t> dims = {n_new};
-                for (size_t i = 1; i < shape.rank(); i++) dims.push_back(shape[i]);
-                return lfs::core::Tensor::zeros(lfs::core::TensorShape(dims), t.device(), t.dtype());
-            };
-
-            AdamParamState new_state = *state;
-            new_state.exp_avg = state->exp_avg.index_select(0, keep_idxs).cat(make_zeros(state->exp_avg), 0);
-            new_state.exp_avg_sq = state->exp_avg_sq.index_select(0, keep_idxs).cat(make_zeros(state->exp_avg_sq), 0);
-            new_state.grad = state->grad.index_select(0, keep_idxs).cat(make_zeros(state->grad), 0);
-            new_state.size = num_keep + n_new;
-            _optimizer->set_state(param_type, new_state);
+            state->exp_avg.index_put_(split_idxs, zeros);
+            state->exp_avg_sq.index_put_(split_idxs, zeros);
+            if (state->grad.is_valid()) {
+                state->grad.index_put_(split_idxs, zeros);
+            }
         };
 
-        update_optimizer_state(ParamType::Means);
-        update_optimizer_state(ParamType::Rotation);
-        update_optimizer_state(ParamType::Scaling);
-        update_optimizer_state(ParamType::Sh0);
-        update_optimizer_state(ParamType::ShN);
-        update_optimizer_state(ParamType::Opacity);
+        reset_optimizer_state_at_indices(ParamType::Means);
+        reset_optimizer_state_at_indices(ParamType::Rotation);
+        reset_optimizer_state_at_indices(ParamType::Scaling);
+        reset_optimizer_state_at_indices(ParamType::Sh0);
+        reset_optimizer_state_at_indices(ParamType::ShN);
+        reset_optimizer_state_at_indices(ParamType::Opacity);
+
+        // Now place second split results: fill free slots first, then append
+        // Try to fill free slots first
+        auto [filled_indices, remaining] = fill_free_slots_with_data(
+            second_positions, second_rotations, second_scales,
+            second_sh0, second_shN, second_opacities, num_split);
+
+        const int64_t num_filled = num_split - remaining;
+
+        // Append remaining second results
+        if (remaining > 0) {
+            const size_t old_size = static_cast<size_t>(_splat_data->size());
+            const size_t n_remaining = static_cast<size_t>(remaining);
+
+            // Get the remaining data
+            const auto append_positions = second_positions.slice(0, num_filled, num_split);
+            const auto append_rotations = second_rotations.slice(0, num_filled, num_split);
+            const auto append_scales = second_scales.slice(0, num_filled, num_split);
+            const auto append_sh0_flat = second_sh0.slice(0, num_filled, num_split);
+            const auto append_opacities = second_opacities.slice(0, num_filled, num_split);
+
+            // Create indices for new rows
+            std::vector<int> new_indices_vec(n_remaining);
+            for (size_t i = 0; i < n_remaining; ++i) {
+                new_indices_vec[i] = static_cast<int>(old_size + i);
+            }
+            const auto new_indices = lfs::core::Tensor::from_vector(
+                new_indices_vec, lfs::core::TensorShape({n_remaining}), device);
+
+            // Extend and write data
+            _splat_data->means().append_zeros(n_remaining);
+            _splat_data->means().index_put_(new_indices, append_positions);
+
+            _splat_data->rotation_raw().append_zeros(n_remaining);
+            _splat_data->rotation_raw().index_put_(new_indices, append_rotations);
+
+            _splat_data->scaling_raw().append_zeros(n_remaining);
+            _splat_data->scaling_raw().index_put_(new_indices, append_scales);
+
+            const auto append_sh0_reshaped = append_sh0_flat.reshape(
+                lfs::core::TensorShape({n_remaining, 1, 3}));
+            _splat_data->sh0().append_zeros(n_remaining);
+            _splat_data->sh0().index_put_(new_indices, append_sh0_reshaped);
+
+            _splat_data->opacity_raw().append_zeros(n_remaining);
+            _splat_data->opacity_raw().index_put_(new_indices, append_opacities);
+
+            if (has_shN) {
+                auto append_shN = second_shN.slice(0, num_filled, num_split);
+                const auto& shN_shape = _splat_data->shN().shape();
+                if (shN_shape.rank() == 3) {
+                    append_shN = append_shN.reshape(
+                        lfs::core::TensorShape({n_remaining, shN_shape[1], shN_shape[2]}));
+                }
+                _splat_data->shN().append_zeros(n_remaining);
+                _splat_data->shN().index_put_(new_indices, append_shN);
+            }
+
+            // Update optimizer states
+            _optimizer->extend_state_for_new_params(ParamType::Means, n_remaining);
+            _optimizer->extend_state_for_new_params(ParamType::Rotation, n_remaining);
+            _optimizer->extend_state_for_new_params(ParamType::Scaling, n_remaining);
+            _optimizer->extend_state_for_new_params(ParamType::Sh0, n_remaining);
+            _optimizer->extend_state_for_new_params(ParamType::ShN, n_remaining);
+            _optimizer->extend_state_for_new_params(ParamType::Opacity, n_remaining);
+        }
+
+        LOG_DEBUG("split(): done, {} filled free slots, {} appended", num_filled, remaining);
+    }
+
+    std::pair<lfs::core::Tensor, int64_t> DefaultStrategy::fill_free_slots_with_data(
+        const lfs::core::Tensor& positions,
+        const lfs::core::Tensor& rotations,
+        const lfs::core::Tensor& scales,
+        const lfs::core::Tensor& sh0,
+        const lfs::core::Tensor& shN,
+        const lfs::core::Tensor& opacities,
+        int64_t count) {
+
+        if (!_free_mask.is_valid() || count == 0) {
+            return {lfs::core::Tensor(), count};
+        }
+
+        const size_t current_size = static_cast<size_t>(_splat_data->size());
+
+        // Find free slot indices within current size
+        auto active_region = _free_mask.slice(0, 0, current_size);
+        auto free_indices = active_region.nonzero().squeeze(-1);
+        const int64_t num_free = free_indices.numel();
+
+        if (num_free == 0) {
+            return {lfs::core::Tensor(), count};
+        }
+
+        const int64_t slots_to_fill = std::min(count, num_free);
+        auto target_indices = free_indices.slice(0, 0, slots_to_fill);
+
+        // Copy data to free slots
+        _splat_data->means().index_put_(target_indices, positions.slice(0, 0, slots_to_fill));
+        _splat_data->rotation_raw().index_put_(target_indices, rotations.slice(0, 0, slots_to_fill));
+        _splat_data->scaling_raw().index_put_(target_indices, scales.slice(0, 0, slots_to_fill));
+
+        // sh0 needs reshape from [slots_to_fill, 3] to [slots_to_fill, 1, 3]
+        auto sh0_reshaped = sh0.slice(0, 0, slots_to_fill).reshape(
+            lfs::core::TensorShape({static_cast<size_t>(slots_to_fill), 1, 3}));
+        _splat_data->sh0().index_put_(target_indices, sh0_reshaped);
+
+        _splat_data->opacity_raw().index_put_(target_indices, opacities.slice(0, 0, slots_to_fill));
+
+        if (shN.is_valid() && _splat_data->shN().is_valid()) {
+            auto shN_slice = shN.slice(0, 0, slots_to_fill);
+            // Reshape to match original shN shape
+            const auto& shN_shape = _splat_data->shN().shape();
+            if (shN_shape.rank() == 3) {
+                shN_slice = shN_slice.reshape(
+                    lfs::core::TensorShape({static_cast<size_t>(slots_to_fill), shN_shape[1], shN_shape[2]}));
+            }
+            _splat_data->shN().index_put_(target_indices, shN_slice);
+        }
+
+        // Reset optimizer states for filled slots
+        auto reset_optimizer_state = [&](ParamType param_type) {
+            auto* state = _optimizer->get_state_mutable(param_type);
+            if (!state) return;
+
+            const auto& shape = state->exp_avg.shape();
+            std::vector<size_t> dims = {static_cast<size_t>(slots_to_fill)};
+            for (size_t i = 1; i < shape.rank(); ++i) {
+                dims.push_back(shape[i]);
+            }
+            auto zeros = lfs::core::Tensor::zeros(lfs::core::TensorShape(dims), state->exp_avg.device());
+
+            state->exp_avg.index_put_(target_indices, zeros);
+            state->exp_avg_sq.index_put_(target_indices, zeros);
+            if (state->grad.is_valid()) {
+                state->grad.index_put_(target_indices, zeros);
+            }
+        };
+
+        reset_optimizer_state(ParamType::Means);
+        reset_optimizer_state(ParamType::Rotation);
+        reset_optimizer_state(ParamType::Scaling);
+        reset_optimizer_state(ParamType::Sh0);
+        reset_optimizer_state(ParamType::ShN);
+        reset_optimizer_state(ParamType::Opacity);
+
+        // Mark filled slots as active
+        auto false_vals = lfs::core::Tensor::zeros_bool({static_cast<size_t>(slots_to_fill)}, target_indices.device());
+        _free_mask.index_put_(target_indices, false_vals);
+
+        return {target_indices, count - slots_to_fill};
     }
 
     void DefaultStrategy::grow_gs(int iter) {
@@ -211,18 +338,65 @@ namespace lfs::training {
         lfs::core::Tensor denom = _splat_data->_densification_info[0];
         const lfs::core::Tensor grads = numer / denom.clamp_min(1.0f);
 
-        const lfs::core::Tensor is_grad_high = grads > _params->grad_threshold;
+        lfs::core::Tensor is_grad_high = grads > _params->grad_threshold;
+
+        // Exclude free slots from consideration
+        const size_t current_size = static_cast<size_t>(_splat_data->size());
+        if (_free_mask.is_valid() && current_size > 0) {
+            auto active_free_mask = _free_mask.slice(0, 0, current_size);
+            auto is_active = active_free_mask.logical_not();  // true = slot is active (not free)
+            is_grad_high = is_grad_high.logical_and(is_active);
+        }
 
         // Get max along last dimension
         const lfs::core::Tensor max_values = _splat_data->get_scaling().max(-1, false);
         const lfs::core::Tensor is_small = max_values <= _params->grow_scale3d * _splat_data->get_scene_scale();
-        const lfs::core::Tensor is_duplicated = is_grad_high.logical_and(is_small);
+        lfs::core::Tensor is_duplicated = is_grad_high.logical_and(is_small);
 
-        const auto num_duplicates = static_cast<int64_t>(is_duplicated.sum_scalar());
+        auto num_duplicates = static_cast<int64_t>(is_duplicated.sum_scalar());
 
         const lfs::core::Tensor is_large = is_small.logical_not();
         lfs::core::Tensor is_split = is_grad_high.logical_and(is_large);
-        const auto num_split = static_cast<int64_t>(is_split.sum_scalar());
+        auto num_split = static_cast<int64_t>(is_split.sum_scalar());
+
+        // Enforce max_cap: limit growth to stay within capacity
+        if (_params->max_cap > 0) {
+            const int current_n = _splat_data->size();
+            // Duplication adds num_duplicates, split replaces num_split with 2*num_split (net +num_split)
+            const int64_t potential_new = num_duplicates + num_split;
+            const int64_t available = std::max(0, _params->max_cap - current_n);
+
+            if (potential_new > available) {
+                // Need to limit - prioritize duplication over split (duplicates small Gaussians)
+                if (num_duplicates >= available) {
+                    // Can only do partial duplication, no split
+                    num_duplicates = available;
+                    num_split = 0;
+                    // Limit is_duplicated to first 'available' true values
+                    auto indices = is_duplicated.nonzero().squeeze(-1);
+                    if (indices.numel() > available) {
+                        auto keep_indices = indices.slice(0, 0, available);
+                        is_duplicated = lfs::core::Tensor::zeros_bool({static_cast<size_t>(current_n)}, is_duplicated.device());
+                        auto true_vals = lfs::core::Tensor::ones_bool({static_cast<size_t>(available)}, is_duplicated.device());
+                        is_duplicated.index_put_(keep_indices, true_vals);
+                    }
+                    is_split = lfs::core::Tensor::zeros_bool({static_cast<size_t>(current_n)}, is_split.device());
+                } else {
+                    // Do all duplications, limit splits
+                    const int64_t remaining = available - num_duplicates;
+                    num_split = remaining;
+                    // Limit is_split to first 'remaining' true values
+                    auto indices = is_split.nonzero().squeeze(-1);
+                    if (indices.numel() > remaining) {
+                        auto keep_indices = indices.slice(0, 0, remaining);
+                        is_split = lfs::core::Tensor::zeros_bool({static_cast<size_t>(current_n)}, is_split.device());
+                        auto true_vals = lfs::core::Tensor::ones_bool({static_cast<size_t>(remaining)}, is_split.device());
+                        is_split.index_put_(keep_indices, true_vals);
+                    }
+                }
+                LOG_DEBUG("max_cap enforcement: limited growth from {} to {} new Gaussians", potential_new, available);
+            }
+        }
 
         // First duplicate
         if (num_duplicates > 0) {
@@ -239,26 +413,55 @@ namespace lfs::training {
     }
 
     void DefaultStrategy::remove(const lfs::core::Tensor& is_prune) {
-        const lfs::core::Tensor sampled_idxs = is_prune.logical_not().nonzero().squeeze(-1);
+        // Soft deletion: mark slots as free instead of resizing tensors
+        // This avoids expensive tensor reallocations during training
+        const lfs::core::Tensor prune_indices = is_prune.nonzero().squeeze(-1);
+        const int64_t num_pruned = prune_indices.numel();
 
-        const auto param_fn = [&sampled_idxs](const int i, const lfs::core::Tensor& param) {
-            return param.index_select(0, sampled_idxs);
+        if (num_pruned == 0) {
+            return;
+        }
+
+        // Mark pruned slots as free
+        mark_as_free(prune_indices);
+
+        // Zero out quaternion to trigger early exit in preprocessing kernel
+        // The rasterizer checks: if (q_norm_sq < 1e-8f) active = false
+        // This happens BEFORE expensive covariance computation and gradient computation
+        auto zero_rotation = lfs::core::Tensor::zeros(
+            {static_cast<size_t>(num_pruned), 4},
+            _splat_data->rotation_raw().device());
+        _splat_data->rotation_raw().index_put_(prune_indices, zero_rotation);
+
+        // Zero optimizer states in-place (preserves capacity)
+        auto zero_optimizer_state = [&](ParamType param_type) {
+            auto* state = _optimizer->get_state_mutable(param_type);
+            if (!state) return;
+
+            // Create zero tensors matching the state dimensions
+            const auto& shape = state->exp_avg.shape();
+            std::vector<size_t> dims = {static_cast<size_t>(num_pruned)};
+            for (size_t i = 1; i < shape.rank(); ++i) {
+                dims.push_back(shape[i]);
+            }
+            auto zeros = lfs::core::Tensor::zeros(lfs::core::TensorShape(dims), state->exp_avg.device());
+
+            // Modify in-place to preserve capacity
+            state->exp_avg.index_put_(prune_indices, zeros);
+            state->exp_avg_sq.index_put_(prune_indices, zeros);
+            if (state->grad.is_valid()) {
+                state->grad.index_put_(prune_indices, zeros);
+            }
         };
 
-        const auto optimizer_fn = [&sampled_idxs](
-            AdamParamState& state,
-            const lfs::core::Tensor& new_param) {
-            // For remove, we select only the surviving Gaussians' optimizer state
-            size_t old_size = state.size;
-            state.exp_avg = state.exp_avg.index_select(0, sampled_idxs);
-            state.exp_avg_sq = state.exp_avg_sq.index_select(0, sampled_idxs);
-            // CRITICAL: Update size to match new parameter count
-            size_t new_size = sampled_idxs.shape()[0];
-            state.size = new_size;
-            LOG_DEBUG("  remove() size update: {} -> {} (removed {})", old_size, new_size, old_size - new_size);
-        };
+        zero_optimizer_state(ParamType::Means);
+        zero_optimizer_state(ParamType::Rotation);
+        zero_optimizer_state(ParamType::Scaling);
+        zero_optimizer_state(ParamType::Sh0);
+        zero_optimizer_state(ParamType::ShN);
+        zero_optimizer_state(ParamType::Opacity);
 
-        update_param_with_optimizer(param_fn, optimizer_fn, _optimizer, *_splat_data);
+        LOG_DEBUG("remove(): soft-deleted {} Gaussians (marked as free, rotation & gradients zeroed)", num_pruned);
     }
 
     void DefaultStrategy::prune_gs(int iter) {
@@ -275,6 +478,14 @@ namespace lfs::training {
             is_prune = is_prune.logical_or(is_too_big);
         }
 
+        // Exclude already-free slots from pruning (they're already soft-deleted)
+        const size_t current_size = static_cast<size_t>(_splat_data->size());
+        if (_free_mask.is_valid() && current_size > 0) {
+            auto active_free_mask = _free_mask.slice(0, 0, current_size);
+            auto is_active = active_free_mask.logical_not();  // true = slot is active
+            is_prune = is_prune.logical_and(is_active);       // only prune active slots
+        }
+
         const auto num_prunes = static_cast<int64_t>(is_prune.sum_scalar());
         if (num_prunes > 0) {
             remove(is_prune);
@@ -282,25 +493,17 @@ namespace lfs::training {
     }
 
     void DefaultStrategy::reset_opacity() {
-        const auto threshold = 2.0f * _params->prune_opacity;
+        const float threshold = 2.0f * _params->prune_opacity;
+        const float logit_threshold = std::log(threshold / (1.0f - threshold));
 
-        const auto param_fn = [&threshold](const int i, const lfs::core::Tensor& param) {
-            if (i == 5) {
-                // For opacity parameter, clamp to logit(threshold)
-                const float logit_threshold = std::log(threshold / (1.0f - threshold));
-                return param.clamp_max(logit_threshold);
-            }
-            LOG_ERROR("Invalid parameter index for reset_opacity: {}", i);
-            return param;
-        };
+        // In-place ops preserve capacity
+        _splat_data->opacity_raw().clamp_max_(logit_threshold);
 
-        const auto optimizer_fn = [](AdamParamState& state, const lfs::core::Tensor& new_param) {
-            // Reset optimizer state for opacity to zeros
-            state.exp_avg = lfs::core::Tensor::zeros_like(state.exp_avg);
-            state.exp_avg_sq = lfs::core::Tensor::zeros_like(state.exp_avg_sq);
-        };
-
-        update_param_with_optimizer(param_fn, optimizer_fn, _optimizer, *_splat_data, {5});
+        auto* state = _optimizer->get_state_mutable(ParamType::Opacity);
+        if (state) {
+            state->exp_avg.zero_();
+            state->exp_avg_sq.zero_();
+        }
     }
 
     void DefaultStrategy::post_backward(int iter, RenderOutput& render_output) {
@@ -344,7 +547,7 @@ namespace lfs::training {
 
     namespace {
         constexpr uint32_t DEFAULT_MAGIC = 0x4C464446;  // "LFDF"
-        constexpr uint32_t DEFAULT_VERSION = 1;
+        constexpr uint32_t DEFAULT_VERSION = 2;  // v2 adds free_mask serialization
     }
 
     void DefaultStrategy::serialize(std::ostream& os) const {
@@ -371,6 +574,16 @@ namespace lfs::training {
             os.write(reinterpret_cast<const char*>(&has_scheduler), sizeof(has_scheduler));
         }
 
+        // Serialize free mask (v2+)
+        if (_free_mask.is_valid()) {
+            uint8_t has_free_mask = 1;
+            os.write(reinterpret_cast<const char*>(&has_free_mask), sizeof(has_free_mask));
+            os << _free_mask;
+        } else {
+            uint8_t has_free_mask = 0;
+            os.write(reinterpret_cast<const char*>(&has_free_mask), sizeof(has_free_mask));
+        }
+
         LOG_DEBUG("Serialized DefaultStrategy");
     }
 
@@ -382,7 +595,7 @@ namespace lfs::training {
         if (magic != DEFAULT_MAGIC) {
             throw std::runtime_error("Invalid DefaultStrategy checkpoint: wrong magic");
         }
-        if (version != DEFAULT_VERSION) {
+        if (version > DEFAULT_VERSION) {
             throw std::runtime_error("Unsupported DefaultStrategy checkpoint version: " + std::to_string(version));
         }
 
@@ -400,7 +613,16 @@ namespace lfs::training {
             _scheduler->deserialize(is);
         }
 
-        LOG_DEBUG("Deserialized DefaultStrategy");
+        // Deserialize free mask (v2+)
+        if (version >= 2) {
+            uint8_t has_free_mask;
+            is.read(reinterpret_cast<char*>(&has_free_mask), sizeof(has_free_mask));
+            if (has_free_mask) {
+                is >> _free_mask;
+            }
+        }
+
+        LOG_DEBUG("Deserialized DefaultStrategy (version {})", version);
     }
 
     void DefaultStrategy::reserve_optimizer_capacity(size_t capacity) {
@@ -408,6 +630,138 @@ namespace lfs::training {
             _optimizer->reserve_capacity(capacity);
             LOG_INFO("Reserved optimizer capacity for {} Gaussians", capacity);
         }
+    }
+
+    size_t DefaultStrategy::active_count() const {
+        if (!_free_mask.is_valid()) {
+            return static_cast<size_t>(_splat_data->size());
+        }
+        // Count slots that are NOT free (i.e., active)
+        // Only count up to the current size (not full capacity)
+        const size_t current_size = static_cast<size_t>(_splat_data->size());
+        if (current_size == 0) return 0;
+
+        auto active_region = _free_mask.slice(0, 0, current_size);
+        auto free_count_val = static_cast<size_t>(active_region.sum_scalar());
+        return current_size - free_count_val;
+    }
+
+    size_t DefaultStrategy::free_count() const {
+        if (!_free_mask.is_valid()) {
+            return 0;
+        }
+        // Count free slots within current size
+        const size_t current_size = static_cast<size_t>(_splat_data->size());
+        if (current_size == 0) return 0;
+
+        auto active_region = _free_mask.slice(0, 0, current_size);
+        return static_cast<size_t>(active_region.sum_scalar());
+    }
+
+    lfs::core::Tensor DefaultStrategy::get_active_indices() const {
+        const size_t current_size = static_cast<size_t>(_splat_data->size());
+        if (current_size == 0) {
+            return lfs::core::Tensor();
+        }
+
+        if (!_free_mask.is_valid() || free_count() == 0) {
+            // No free mask or no free slots means all slots are active
+            // Create all indices using ones_bool -> nonzero
+            auto all_active = lfs::core::Tensor::ones_bool({current_size}, _splat_data->means().device());
+            return all_active.nonzero().squeeze(-1);
+        }
+
+        // Return indices where free_mask is false (i.e., active)
+        auto active_region = _free_mask.slice(0, 0, current_size);
+        auto is_active = active_region.logical_not();
+        return is_active.nonzero().squeeze(-1);
+    }
+
+    void DefaultStrategy::mark_as_free(const lfs::core::Tensor& indices) {
+        if (!_free_mask.is_valid() || indices.numel() == 0) {
+            return;
+        }
+        // Mark the given indices as free
+        auto true_vals = lfs::core::Tensor::ones_bool({static_cast<size_t>(indices.numel())}, indices.device());
+        _free_mask.index_put_(indices, true_vals);
+    }
+
+    std::pair<lfs::core::Tensor, int64_t> DefaultStrategy::fill_free_slots(
+        const lfs::core::Tensor& source_indices, int64_t count) {
+
+        if (!_free_mask.is_valid() || count == 0) {
+            // No free slot tracking, all need to be appended
+            return {lfs::core::Tensor(), count};
+        }
+
+        const size_t current_size = static_cast<size_t>(_splat_data->size());
+
+        // Find free slot indices within current size
+        auto active_region = _free_mask.slice(0, 0, current_size);
+        auto free_indices = active_region.nonzero().squeeze(-1);
+        const int64_t num_free = free_indices.numel();
+
+        if (num_free == 0) {
+            // No free slots available
+            return {lfs::core::Tensor(), count};
+        }
+
+        // Use min(count, num_free) slots
+        const int64_t slots_to_fill = std::min(count, num_free);
+        auto target_indices = free_indices.slice(0, 0, slots_to_fill);
+        auto src_indices = source_indices.slice(0, 0, slots_to_fill);
+
+        // Copy data from source to target slots
+        _splat_data->means().index_put_(target_indices, _splat_data->means().index_select(0, src_indices));
+        _splat_data->rotation_raw().index_put_(target_indices, _splat_data->rotation_raw().index_select(0, src_indices));
+        _splat_data->scaling_raw().index_put_(target_indices, _splat_data->scaling_raw().index_select(0, src_indices));
+        _splat_data->sh0().index_put_(target_indices, _splat_data->sh0().index_select(0, src_indices));
+        _splat_data->opacity_raw().index_put_(target_indices, _splat_data->opacity_raw().index_select(0, src_indices));
+
+        if (_splat_data->shN().is_valid()) {
+            _splat_data->shN().index_put_(target_indices, _splat_data->shN().index_select(0, src_indices));
+        }
+
+        // Reset optimizer states in-place (preserves capacity)
+        auto update_optimizer_state = [&](ParamType param_type) {
+            auto* state = _optimizer->get_state_mutable(param_type);
+            if (!state) return;
+
+            // Reset optimizer state for filled slots (new Gaussians start fresh)
+            auto zeros_avg = lfs::core::Tensor::zeros({static_cast<size_t>(slots_to_fill)}, state->exp_avg.device());
+            auto zeros_sq = lfs::core::Tensor::zeros({static_cast<size_t>(slots_to_fill)}, state->exp_avg_sq.device());
+
+            // Handle multi-dimensional states
+            const auto& shape = state->exp_avg.shape();
+            if (shape.rank() > 1) {
+                std::vector<size_t> dims = {static_cast<size_t>(slots_to_fill)};
+                for (size_t i = 1; i < shape.rank(); ++i) {
+                    dims.push_back(shape[i]);
+                }
+                zeros_avg = lfs::core::Tensor::zeros(lfs::core::TensorShape(dims), state->exp_avg.device());
+                zeros_sq = lfs::core::Tensor::zeros(lfs::core::TensorShape(dims), state->exp_avg_sq.device());
+            }
+
+            // Modify in-place to preserve capacity
+            state->exp_avg.index_put_(target_indices, zeros_avg);
+            state->exp_avg_sq.index_put_(target_indices, zeros_sq);
+        };
+
+        update_optimizer_state(ParamType::Means);
+        update_optimizer_state(ParamType::Rotation);
+        update_optimizer_state(ParamType::Scaling);
+        update_optimizer_state(ParamType::Sh0);
+        update_optimizer_state(ParamType::ShN);
+        update_optimizer_state(ParamType::Opacity);
+
+        // Mark filled slots as active (not free)
+        auto false_vals = lfs::core::Tensor::zeros_bool({static_cast<size_t>(slots_to_fill)}, target_indices.device());
+        _free_mask.index_put_(target_indices, false_vals);
+
+        const int64_t remaining = count - slots_to_fill;
+        LOG_DEBUG("fill_free_slots: filled {} slots, {} remaining to append", slots_to_fill, remaining);
+
+        return {target_indices, remaining};
     }
 
 } // namespace lfs::training

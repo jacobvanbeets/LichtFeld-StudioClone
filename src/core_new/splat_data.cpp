@@ -548,31 +548,37 @@ namespace lfs::core {
                 LOG_DEBUG("Creating direct tensors with capacity={}", capacity);
 
                 means_ = Tensor::zeros_direct(TensorShape({num_points, 3}), capacity);
+                means_.set_name("SplatData.means");
                 LOG_DEBUG("  means_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
                           means_.is_valid(), static_cast<void*>(means_.ptr<float>()),
                           means_.shape().str(), means_.numel());
 
                 scaling_ = Tensor::zeros_direct(TensorShape({num_points, 3}), capacity);
+                scaling_.set_name("SplatData.scaling");
                 LOG_DEBUG("  scaling_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
                           scaling_.is_valid(), static_cast<void*>(scaling_.ptr<float>()),
                           scaling_.shape().str(), scaling_.numel());
 
                 rotation_ = Tensor::zeros_direct(TensorShape({num_points, 4}), capacity);
+                rotation_.set_name("SplatData.rotation");
                 LOG_DEBUG("  rotation_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
                           rotation_.is_valid(), static_cast<void*>(rotation_.ptr<float>()),
                           rotation_.shape().str(), rotation_.numel());
 
                 opacity_ = Tensor::zeros_direct(TensorShape({num_points, 1}), capacity);
+                opacity_.set_name("SplatData.opacity");
                 LOG_DEBUG("  opacity_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
                           opacity_.is_valid(), static_cast<void*>(opacity_.ptr<float>()),
                           opacity_.shape().str(), opacity_.numel());
 
                 sh0_ = Tensor::zeros_direct(TensorShape({num_points, 1, 3}), capacity);
+                sh0_.set_name("SplatData.sh0");
                 LOG_DEBUG("  sh0_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
                           sh0_.is_valid(), static_cast<void*>(sh0_.ptr<float>()),
                           sh0_.shape().str(), sh0_.numel());
 
                 shN_ = Tensor::zeros_direct(TensorShape({num_points, static_cast<size_t>(feature_shape - 1), 3}), capacity);
+                shN_.set_name("SplatData.shN");
                 LOG_DEBUG("  shN_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
                           shN_.is_valid(), static_cast<void*>(shN_.ptr<float>()),
                           shN_.shape().str(), shN_.numel());

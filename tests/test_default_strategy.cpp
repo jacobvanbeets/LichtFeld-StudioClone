@@ -217,7 +217,10 @@ TEST(DefaultStrategyTest, RemoveGaussians) {
 
     strategy.remove_gaussians(mask);
 
-    EXPECT_EQ(strategy.get_model().size(), 40);
+    // With soft deletion, tensor size stays the same but active_count() reflects logical size
+    EXPECT_EQ(strategy.get_model().size(), 50);  // Physical size unchanged
+    EXPECT_EQ(strategy.active_count(), 40);       // Logical size is 40
+    EXPECT_EQ(strategy.free_count(), 10);         // 10 free slots
 }
 
 TEST(DefaultStrategyTest, FullTrainingLoop_ShortRun) {

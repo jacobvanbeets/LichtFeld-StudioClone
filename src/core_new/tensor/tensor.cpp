@@ -2196,6 +2196,8 @@ namespace lfs::core {
     void Tensor::reserve(size_t new_capacity) {
         // Validate tensor state
         if (!data_owner_) {
+            LOG_ERROR("reserve({}) failed on tensor '{}' (id={}): null data_owner_, is_view_={}, capacity_={}, shape={}",
+                     new_capacity, name_.empty() ? "<unnamed>" : name_, id_, is_view_, capacity_, shape_.str());
             throw TensorError("reserve() requires an owning tensor (not a view)", this);
         }
         if (shape_.rank() == 0) {
@@ -2295,9 +2297,27 @@ namespace lfs::core {
         for (size_t i = 1; i < shape.rank(); i++) {
             row_size *= shape[i];
         }
-        
-        size_t total_elements = capacity * row_size;
-        size_t total_bytes = total_elements * sizeof(float);
+
+        const size_t total_elements = capacity * row_size;
+        const size_t total_bytes = total_elements * sizeof(float);
+
+        // Handle zero-size tensors (shN with sh-degree 0 has shape [N, 0, 3])
+        if (total_bytes == 0) {
+            Tensor t;
+            t.data_ = nullptr;
+            // Dummy owner allows reserve() to recognize this as owning tensor
+            static char dummy_owner = 0;
+            t.data_owner_ = std::shared_ptr<void>(&dummy_owner, [](void*) {});
+            t.shape_ = shape;
+            t.strides_ = shape.strides();
+            t.storage_offset_ = 0;
+            t.device_ = device;
+            t.dtype_ = DataType::Float32;
+            t.capacity_ = capacity;
+            t.logical_size_ = current_size;
+            t.id_ = next_id_++;
+            return t;
+        }
 
         // Direct cudaMalloc bypassing pool
         void* data_ptr = nullptr;
@@ -2305,16 +2325,6 @@ namespace lfs::core {
         if (err != cudaSuccess) {
             throw TensorError("cudaMalloc failed in zeros_direct: " + std::string(cudaGetErrorString(err)));
         }
-
-        // Track direct allocations for memory profiling
-        static size_t total_zeros_direct_bytes = 0;
-        total_zeros_direct_bytes += total_bytes;
-        printf("[TRACKED-zeros_direct] cudaMalloc: %.2f MB (shape=[%zu",
-               total_bytes / (1024.0*1024.0), shape[0]);
-        for (size_t i = 1; i < shape.rank(); i++) {
-            printf(", %zu", shape[i]);
-        }
-        printf("], capacity=%zu) | Cumulative: %.2f MB\n", capacity, total_zeros_direct_bytes / (1024.0*1024.0));
 
         // Zero full capacity
         err = cudaMemset(data_ptr, 0, total_bytes);

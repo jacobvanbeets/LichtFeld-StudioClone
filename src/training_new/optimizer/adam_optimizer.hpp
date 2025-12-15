@@ -97,9 +97,11 @@ namespace lfs::training {
         // Low-level state manipulation
         void reset_state_at_indices(ParamType type, const std::vector<int64_t>& indices);
         void extend_state_for_new_params(ParamType type, size_t n_new);
+        void extend_state_by_gather(ParamType type, const lfs::core::Tensor& indices);
 
         // State access
         const AdamParamState* get_state(ParamType type) const;
+        AdamParamState* get_state_mutable(ParamType type);
         int64_t get_step_count(ParamType type) const;
         void set_state(ParamType type, const AdamParamState& state);
         const AdamConfig& get_config() const { return config_; }

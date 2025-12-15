@@ -924,12 +924,28 @@ namespace lfs::core {
 
         // Check if this is row-wise assignment (idx is 1D, vals is multi-dimensional)
         // Example: tensor[indices] = values where tensor:[N,M], indices:[K], values:[K,M]
-        bool is_row_assignment = (idx_same_device.ndim() == 1 && vals_same_device.ndim() >= 2 && ndim() >= 2);
+        const bool is_row_assignment = (idx_same_device.ndim() == 1 && vals_same_device.ndim() >= 2 && ndim() >= 2);
 
-        // Helper lambda for index_put_ implementation
+        // Fast path: use GPU kernel for row assignment on CUDA (avoids CPU roundtrip)
+        if (device_ == Device::CUDA && is_row_assignment && dtype_ == DataType::Float32) {
+            // Verify shape compatibility: vals should be [K, d1, d2, ...]
+            std::vector<size_t> expected_shape = shape_.dims();
+            expected_shape[0] = idx_same_device.numel();
+            if (vals_same_device.shape() == TensorShape(expected_shape)) {
+                // Convert indices to Int32 if needed (index_copy_ requires Int32)
+                Tensor idx_int32 = (idx_same_device.dtype() == DataType::Int32)
+                    ? idx_same_device : idx_same_device.to(DataType::Int32);
+                tensor_ops::launch_index_copy(ptr<float>(), idx_int32.ptr<int>(),
+                                              vals_same_device.ptr<float>(), shape_.dims().data(),
+                                              shape_.rank(), 0, idx_int32.numel(), stream_);
+                return *this;
+            }
+        }
+
+        // Helper lambda for index_put_ implementation (fallback path)
         auto index_put_impl = [&]<typename DataT, typename IndexT>() {
             if (device_ == Device::CUDA) {
-                // Transfer to CPU, operate, transfer back (more reliable than thrust::scatter)
+                // Fallback: CPU roundtrip for complex cases
                 auto cpu_tensor = to(Device::CPU);
                 auto cpu_idx = idx_same_device.to(Device::CPU);
                 auto cpu_vals = vals_same_device.to(Device::CPU);
@@ -939,27 +955,24 @@ namespace lfs::core {
                 const DataT* values = cpu_vals.ptr<DataT>();
 
                 if (is_row_assignment) {
-                    // Row-wise assignment: copy entire rows
                     size_t row_size = 1;
                     for (size_t i = 1; i < cpu_tensor.ndim(); ++i) {
                         row_size *= cpu_tensor.shape()[i];
                     }
-                    size_t num_rows = cpu_tensor.shape()[0];
+                    const size_t num_rows = cpu_tensor.shape()[0];
 
                     for (size_t i = 0; i < cpu_idx.numel(); ++i) {
                         IndexT row_idx = indices[i];
                         if (row_idx < 0)
                             row_idx += num_rows;
                         if (row_idx >= 0 && row_idx < static_cast<IndexT>(num_rows)) {
-                            // Copy entire row
                             std::memcpy(data + row_idx * row_size,
                                        values + i * row_size,
                                        row_size * sizeof(DataT));
                         }
                     }
                 } else {
-                    // Element-wise assignment
-                    size_t num_elements = cpu_tensor.numel();
+                    const size_t num_elements = cpu_tensor.numel();
                     for (size_t i = 0; i < cpu_idx.numel(); ++i) {
                         IndexT pos = indices[i];
                         if (pos < 0)
@@ -970,7 +983,11 @@ namespace lfs::core {
                     }
                 }
 
-                *this = cpu_tensor.to(device_);
+                // Copy back preserving capacity
+                auto result = cpu_tensor.to(device_);
+                const size_t bytes = numel() * dtype_size(dtype_);
+                CHECK_CUDA(cudaMemcpyAsync(data_, result.ptr<void>(), bytes, cudaMemcpyDeviceToDevice, stream_));
+                CHECK_CUDA(cudaStreamSynchronize(stream_));
             } else {
                 // CPU implementation
                 DataT* data = ptr<DataT>();
@@ -1094,7 +1111,11 @@ namespace lfs::core {
                     }
                 }
 
-                *this = cpu_tensor.to(device_);
+                // Copy data back to GPU preserving this tensor's capacity
+                auto result = cpu_tensor.to(device_);
+                const size_t bytes = numel() * dtype_size(dtype_);
+                CHECK_CUDA(cudaMemcpyAsync(data_, result.ptr<void>(), bytes, cudaMemcpyDeviceToDevice, stream_));
+                CHECK_CUDA(cudaStreamSynchronize(stream_));
             } else {
                 const int* row_ptr = row_idx.ptr<int>();
                 const int* col_ptr = col_idx.ptr<int>();
@@ -1774,6 +1795,8 @@ namespace lfs::core {
 
         // Validation: check capacity
         if (capacity_ == 0) {
+            LOG_ERROR("append_zeros({}) failed on tensor '{}' (id={}): capacity_=0, shape={}, is_view_={}",
+                     n_rows, name_.empty() ? "<unnamed>" : name_, id_, shape_.str(), is_view_);
             throw std::runtime_error("append_zeros() requires tensor with capacity > 0 (use reserve() first)");
         }
 

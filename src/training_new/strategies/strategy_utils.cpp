@@ -137,15 +137,10 @@ namespace lfs::training {
             }
             new_params[i] = new_param;
 
-            // Get optimizer state for this parameter type
-            const AdamParamState* state = optimizer->get_state(param_type);
-
+            // Modify state in-place (preserves capacity)
+            AdamParamState* state = optimizer->get_state_mutable(param_type);
             if (state) {
-                // Make a copy to pass to the update function
-                AdamParamState state_copy = *state;
-                optimizer_fn(state_copy, new_param);
-                // Write the modified state back to the optimizer
-                optimizer->set_state(param_type, state_copy);
+                optimizer_fn(*state, new_param);
             }
         }
 

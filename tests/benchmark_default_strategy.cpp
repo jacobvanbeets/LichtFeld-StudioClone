@@ -127,7 +127,9 @@ TEST(DefaultStrategyBenchmark, RemoveGaussians) {
     std::cout << "RemoveGaussians (" << n_to_remove << " of " << n_gaussians << "): "
               << avg_time << " ms" << std::endl;
 
-    EXPECT_EQ(strategy.get_model().size(), n_gaussians - n_to_remove);
+    // Soft deletion: tensor size unchanged, active_count reflects logical size
+    EXPECT_EQ(strategy.get_model().size(), n_gaussians);                // Physical size unchanged
+    EXPECT_EQ(strategy.active_count(), n_gaussians - n_to_remove);      // Logical size
     EXPECT_LT(avg_time, 500.0);  // Should complete quickly
 }
 

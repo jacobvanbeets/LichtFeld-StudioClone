@@ -54,6 +54,15 @@ namespace lfs::training {
         // Reserve optimizer capacity for future growth (e.g., after checkpoint load)
         void reserve_optimizer_capacity(size_t capacity) override;
 
+        // Get count of active (non-free) Gaussians
+        size_t active_count() const;
+
+        // Get count of free slots available for reuse
+        size_t free_count() const;
+
+        // Get indices of active (non-free) Gaussians for export
+        lfs::core::Tensor get_active_indices() const;
+
     private:
         // Helper functions
         void duplicate(const lfs::core::Tensor& is_duplicated);
@@ -68,10 +77,32 @@ namespace lfs::training {
 
         void reset_opacity();
 
+        // Reuse free slots for new Gaussians, returns indices that were filled
+        // and the count of remaining Gaussians that need to be appended
+        std::pair<lfs::core::Tensor, int64_t> fill_free_slots(
+            const lfs::core::Tensor& source_indices, int64_t count);
+
+        // Fill free slots with provided data (for split operation)
+        // Returns indices that were filled and count of remaining data
+        std::pair<lfs::core::Tensor, int64_t> fill_free_slots_with_data(
+            const lfs::core::Tensor& positions,
+            const lfs::core::Tensor& rotations,
+            const lfs::core::Tensor& scales,
+            const lfs::core::Tensor& sh0,
+            const lfs::core::Tensor& shN,
+            const lfs::core::Tensor& opacities,
+            int64_t count);
+
+        // Mark slots as free (for soft deletion)
+        void mark_as_free(const lfs::core::Tensor& indices);
+
         // Member variables
         std::unique_ptr<AdamOptimizer> _optimizer;
         std::unique_ptr<ExponentialLR> _scheduler;
         lfs::core::SplatData* _splat_data = nullptr;  // Scene-owned
         std::unique_ptr<const lfs::core::param::OptimizationParameters> _params;
+
+        // Free slot tracking - bool tensor [capacity], true = slot is free for reuse
+        lfs::core::Tensor _free_mask;
     };
 } // namespace lfs::training

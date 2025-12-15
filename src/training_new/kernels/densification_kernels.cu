@@ -490,4 +490,175 @@ void launch_split_gaussians(
     }
 }
 
+// ============================================================================
+// In-place Split Kernel
+// ============================================================================
+
+/**
+ * In-place split kernel: modifies original positions for first split,
+ * writes second split to separate output arrays.
+ */
+__global__ void split_gaussians_inplace_kernel(
+    float* __restrict__ positions,        // [N, 3] - modified in-place
+    float* __restrict__ rotations,        // [N, 4] - unchanged
+    float* __restrict__ scales,           // [N, 3] - modified in-place
+    const float* __restrict__ sh0,        // [N, 3] - read only
+    const float* __restrict__ shN,        // [N, shN_dim] - read only
+    float* __restrict__ opacities,        // [N, 1] - modified if revised
+    float* __restrict__ second_positions, // [num_split, 3]
+    float* __restrict__ second_rotations, // [num_split, 4]
+    float* __restrict__ second_scales,    // [num_split, 3]
+    float* __restrict__ second_sh0,       // [num_split, 3]
+    float* __restrict__ second_shN,       // [num_split, shN_dim]
+    float* __restrict__ second_opacities, // [num_split, 1]
+    const int64_t* __restrict__ split_indices,
+    const float* __restrict__ random_noise,  // [2, num_split, 3]
+    int num_split,
+    int shN_dim,
+    bool revised_opacity
+) {
+    int split_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (split_idx >= num_split) return;
+
+    int src_idx = split_indices[split_idx];
+
+    // Load original data
+    float pos[3], quat[4], scale[3], opacity;
+    pos[0] = positions[src_idx * 3 + 0];
+    pos[1] = positions[src_idx * 3 + 1];
+    pos[2] = positions[src_idx * 3 + 2];
+
+    quat[0] = rotations[src_idx * 4 + 0];
+    quat[1] = rotations[src_idx * 4 + 1];
+    quat[2] = rotations[src_idx * 4 + 2];
+    quat[3] = rotations[src_idx * 4 + 3];
+
+    scale[0] = scales[src_idx * 3 + 0];
+    scale[1] = scales[src_idx * 3 + 1];
+    scale[2] = scales[src_idx * 3 + 2];
+
+    opacity = opacities[src_idx];
+
+    // Convert quaternion to rotation matrix
+    float R[9];
+    quat_to_rotmat(quat, R);
+
+    // New scale = log(exp(old_scale) / 1.6)
+    float new_scale[3];
+    new_scale[0] = scale[0] - logf(1.6f);
+    new_scale[1] = scale[1] - logf(1.6f);
+    new_scale[2] = scale[2] - logf(1.6f);
+
+    // Adjust opacity if revised formula
+    float new_opacity = opacity;
+    if (revised_opacity) {
+        float sig = sigmoid(opacity);
+        float one_minus_sig = 1.0f - sig;
+        float adjusted = 1.0f - sqrtf(one_minus_sig);
+        new_opacity = inverse_sigmoid(adjusted);
+    }
+
+    // Compute offset for first split (copy 0)
+    float noise0[3];
+    int noise_offset0 = 0 * num_split * 3 + split_idx * 3;  // copy 0
+    noise0[0] = random_noise[noise_offset0 + 0];
+    noise0[1] = random_noise[noise_offset0 + 1];
+    noise0[2] = random_noise[noise_offset0 + 2];
+
+    float scaled_noise0[3];
+    scaled_noise0[0] = expf(scale[0]) * noise0[0];
+    scaled_noise0[1] = expf(scale[1]) * noise0[1];
+    scaled_noise0[2] = expf(scale[2]) * noise0[2];
+
+    float offset0[3];
+    matvec_3x3(R, scaled_noise0, offset0);
+
+    // Write first split result back to original position (in-place)
+    positions[src_idx * 3 + 0] = pos[0] + offset0[0];
+    positions[src_idx * 3 + 1] = pos[1] + offset0[1];
+    positions[src_idx * 3 + 2] = pos[2] + offset0[2];
+
+    scales[src_idx * 3 + 0] = new_scale[0];
+    scales[src_idx * 3 + 1] = new_scale[1];
+    scales[src_idx * 3 + 2] = new_scale[2];
+
+    if (revised_opacity) {
+        opacities[src_idx] = new_opacity;
+    }
+
+    // Compute offset for second split (copy 1)
+    float noise1[3];
+    int noise_offset1 = 1 * num_split * 3 + split_idx * 3;  // copy 1
+    noise1[0] = random_noise[noise_offset1 + 0];
+    noise1[1] = random_noise[noise_offset1 + 1];
+    noise1[2] = random_noise[noise_offset1 + 2];
+
+    float scaled_noise1[3];
+    scaled_noise1[0] = expf(scale[0]) * noise1[0];
+    scaled_noise1[1] = expf(scale[1]) * noise1[1];
+    scaled_noise1[2] = expf(scale[2]) * noise1[2];
+
+    float offset1[3];
+    matvec_3x3(R, scaled_noise1, offset1);
+
+    // Write second split result to output arrays
+    second_positions[split_idx * 3 + 0] = pos[0] + offset1[0];
+    second_positions[split_idx * 3 + 1] = pos[1] + offset1[1];
+    second_positions[split_idx * 3 + 2] = pos[2] + offset1[2];
+
+    second_rotations[split_idx * 4 + 0] = quat[0];
+    second_rotations[split_idx * 4 + 1] = quat[1];
+    second_rotations[split_idx * 4 + 2] = quat[2];
+    second_rotations[split_idx * 4 + 3] = quat[3];
+
+    second_scales[split_idx * 3 + 0] = new_scale[0];
+    second_scales[split_idx * 3 + 1] = new_scale[1];
+    second_scales[split_idx * 3 + 2] = new_scale[2];
+
+    // Copy SH coefficients
+    second_sh0[split_idx * 3 + 0] = sh0[src_idx * 3 + 0];
+    second_sh0[split_idx * 3 + 1] = sh0[src_idx * 3 + 1];
+    second_sh0[split_idx * 3 + 2] = sh0[src_idx * 3 + 2];
+
+    for (int i = 0; i < shN_dim; ++i) {
+        second_shN[split_idx * shN_dim + i] = shN[src_idx * shN_dim + i];
+    }
+
+    second_opacities[split_idx] = new_opacity;
+}
+
+void launch_split_gaussians_inplace(
+    float* positions,
+    float* rotations,
+    float* scales,
+    const float* sh0,
+    const float* shN,
+    float* opacities,
+    float* second_positions,
+    float* second_rotations,
+    float* second_scales,
+    float* second_sh0,
+    float* second_shN,
+    float* second_opacities,
+    const int64_t* split_indices,
+    const float* random_noise,
+    int num_split,
+    int shN_dim,
+    bool revised_opacity,
+    cudaStream_t stream
+) {
+    if (num_split == 0) return;
+
+    const int block_size = 256;
+    const int num_blocks = (num_split + block_size - 1) / block_size;
+
+    split_gaussians_inplace_kernel<<<num_blocks, block_size, 0, stream>>>(
+        positions, rotations, scales, sh0, shN, opacities,
+        second_positions, second_rotations, second_scales,
+        second_sh0, second_shN, second_opacities,
+        split_indices, random_noise,
+        num_split, shN_dim, revised_opacity
+    );
+}
+
 } // namespace lfs::training::kernels

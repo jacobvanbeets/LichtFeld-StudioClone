@@ -126,6 +126,7 @@ set(OPTIONAL_TEST_FILES
     test_tensor_uint8_inversion.cpp    # Tests for UInt8 mask inversion
     test_tensor_serialization.cpp      # Tests for tensor serialization with << and >> operators
     test_tensor_cat_reduction_bug.cpp  # Tests for cat+reduction bug (min/max on concatenated tensors)
+    test_tensor_inplace_capacity.cpp  # Tests for in-place operations preserving capacity (critical for training)
     test_sog_format.cpp  # Tests for SOG (SuperSplat Optimized Gaussian) format support
     test_sog_html_export.cpp  # Consolidated SOG/HTML export regression tests
     test_rasterizer_crash_dump.cpp  # Reproduce rasterizer crash from crash dump
