@@ -297,6 +297,10 @@ namespace lfs::core {
         static std::atomic<size_t> next_id_;
         static inline bool profiling_enabled_ = false;
 
+        // Debug tracking - when true, operations on this tensor are logged
+        bool tracked_ = false;
+        std::string name_;  // Optional name for identification in traces
+
         // Compute alignment flags for vectorization
         void compute_alignment() {
             if (data_ != nullptr) {
@@ -865,6 +869,16 @@ namespace lfs::core {
         // Stream accessor (for async CUDA operations)
         cudaStream_t stream() const { return stream_; }
         void set_stream(cudaStream_t stream) { stream_ = stream; }
+
+        // Debug tracking - mark tensor to trace all operations it's involved in
+        bool is_tracked() const { return tracked_; }
+        Tensor& set_tracked(bool tracked = true) { tracked_ = tracked; return *this; }
+        Tensor& track() { return set_tracked(true); }  // Convenience alias
+        Tensor& untrack() { return set_tracked(false); }
+
+        // Optional name for identifying tensors in traces
+        const std::string& name() const { return name_; }
+        Tensor& set_name(std::string name) { name_ = std::move(name); return *this; }
 
         size_t size(size_t dim) const {
             if (!is_valid())

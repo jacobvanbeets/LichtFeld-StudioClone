@@ -4,6 +4,7 @@
 #include "internal/tensor_impl.hpp"
 #include "internal/tensor_ops.hpp"
 #include "core_new/logger.hpp"
+#include "core_new/tensor_trace.hpp"
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 
@@ -225,6 +226,8 @@ namespace lfs::core {
     }
 
     Tensor Tensor::matmul(const Tensor& other) const {
+        debug::OpTraceGuard trace("matmul", *this, other);
+
         if (!is_valid() || !other.is_valid()) {
             LOG_ERROR("Invalid tensors for matmul");
             return Tensor();

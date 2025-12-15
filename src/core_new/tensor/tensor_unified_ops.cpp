@@ -3,6 +3,7 @@
 
 #include "core_new/logger.hpp"
 #include "core_new/pinned_memory_allocator.hpp"
+#include "core_new/tensor_trace.hpp"
 #include "internal/memory_pool.hpp"
 #include "internal/tensor_broadcast.hpp"
 #include "internal/tensor_functors.hpp"
@@ -619,6 +620,10 @@ namespace lfs::core {
     }
 
     Tensor Tensor::reduce(ReduceOp op, const ReduceArgs& args) const {
+        static const char* op_names[] = {"sum", "mean", "max", "min", "prod", "any", "all", "argmax", "argmin", "std", "var"};
+        const char* op_name = (static_cast<int>(op) < 11) ? op_names[static_cast<int>(op)] : "reduce";
+        debug::OpTraceGuard trace(op_name, *this);
+
         validate_unary_op();
 
         // Reduce kernel expects contiguous memory

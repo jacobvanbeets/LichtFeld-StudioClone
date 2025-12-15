@@ -13,6 +13,7 @@ set(LFS_CORE_CUDA_SOURCES
     kernels/kmeans_new.cu
     kernels/kdtree_kmeans.cu
     kernels/morton_encoding_new.cu
+    tensor_debug.cu
 )
 
 add_library(lfs_core_cuda STATIC ${LFS_CORE_CUDA_SOURCES})

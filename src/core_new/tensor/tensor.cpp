@@ -5,6 +5,7 @@
 #include "internal/tensor_impl.hpp"
 #include "internal/tensor_ops.hpp"
 #include "core_new/logger.hpp"
+#include "core_new/tensor_trace.hpp"
 #include <cstring>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
@@ -322,6 +323,8 @@ namespace lfs::core {
 
     // ============= Deep Copy (explicit) =============
     Tensor Tensor::clone() const {
+        debug::OpTraceGuard trace("clone", *this);
+
         if (!is_valid()) {
             LOG_ERROR("Cannot clone invalid tensor");
             return Tensor();
@@ -570,6 +573,9 @@ namespace lfs::core {
 
     // ============= Device Transfer =============
     Tensor Tensor::to(Device device, cudaStream_t stream) const {
+        const char* op_name = (device == Device::CUDA) ? "to_cuda" : "to_cpu";
+        debug::OpTraceGuard trace(op_name, *this);
+
         if (!is_valid()) {
             LOG_ERROR("Cannot transfer invalid tensor to device");
             return Tensor();

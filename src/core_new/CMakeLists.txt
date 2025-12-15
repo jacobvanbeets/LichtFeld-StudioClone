@@ -23,7 +23,9 @@ set(CORE_SOURCES
         splat_data_export.cpp
         splat_data_transform.cpp
         sogs.cpp  # Full SOG implementation with kmeans and morton encoding
+        tensor_debug.cpp
         tinyply.cpp
+        training_snapshot.cpp
 )
 
 add_library(lfs_core STATIC ${CORE_SOURCES})

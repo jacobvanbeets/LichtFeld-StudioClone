@@ -37,6 +37,7 @@ namespace lfs::vis::gui {
         void renderGettingStartedWindow();
         void renderAboutWindow();
         void renderInputSettingsWindow();
+        void renderDebugWindow();
 
         void setIsProjectTemp(bool is_temp) { is_project_temp_ = is_temp; }
         [[nodiscard]] bool getIsProjectTemp() const { return is_project_temp_; }
@@ -78,6 +79,7 @@ namespace lfs::vis::gui {
         bool show_about_window_ = false;
         bool show_getting_started_ = false;
         bool show_input_settings_ = false;
+        bool show_debug_window_ = false;
         bool is_project_temp_ = true;
 
         input::InputBindings* input_bindings_ = nullptr;

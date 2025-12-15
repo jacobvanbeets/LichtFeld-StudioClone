@@ -6,6 +6,8 @@
 #include "config.h"
 #include "core_new/image_io.hpp"
 #include "core_new/logger.hpp"
+#include "core_new/tensor_trace.hpp"
+#include "core_new/training_snapshot.hpp"
 #ifdef WIN32
 #include <winsock2.h>
 #endif
@@ -204,6 +206,10 @@ namespace lfs::vis::gui {
                     }
                     ImGui::EndMenu();
                 }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Debug Info...")) {
+                    show_debug_window_ = true;
+                }
                 ImGui::EndMenu();
             }
 
@@ -231,6 +237,7 @@ namespace lfs::vis::gui {
         renderGettingStartedWindow();
         renderAboutWindow();
         renderInputSettingsWindow();
+        renderDebugWindow();
     }
 
     void MenuBar::openURL(const char* url) {
@@ -968,6 +975,153 @@ namespace lfs::vis::gui {
         ImGui::End();
 
         ImGui::PopStyleColor(14);
+        ImGui::PopStyleVar(3);
+    }
+
+    void MenuBar::renderDebugWindow() {
+        if (!show_debug_window_) return;
+
+        constexpr ImGuiWindowFlags WINDOW_FLAGS = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize;
+        const auto& t = theme();
+
+        ImGui::SetNextWindowSize(ImVec2(450, 0), ImGuiCond_Once);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20.0f, 20.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 10.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, withAlpha(t.palette.surface, 0.98f));
+        ImGui::PushStyleColor(ImGuiCol_Text, t.palette.text);
+        ImGui::PushStyleColor(ImGuiCol_TitleBg, t.palette.surface);
+        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, t.palette.surface_bright);
+        ImGui::PushStyleColor(ImGuiCol_Border, withAlpha(t.palette.info, 0.3f));
+
+        if (ImGui::Begin("Debug Info", &show_debug_window_, WINDOW_FLAGS)) {
+            if (fonts_.heading) ImGui::PushFont(fonts_.heading);
+            ImGui::TextColored(t.palette.info, "DEBUG INFORMATION");
+            if (fonts_.heading) ImGui::PopFont();
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // GPU Memory Section
+            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            ImGui::TextColored(t.palette.text_dim, "GPU MEMORY");
+            if (fonts_.section) ImGui::PopFont();
+            ImGui::Spacing();
+
+            const auto mem = lfs::core::debug::get_memory_snapshot();
+            ImGui::Text("Used: %.2f GB / %.2f GB (%.1f%%)",
+                        mem.gpu_used_bytes / 1e9,
+                        mem.gpu_total_bytes / 1e9,
+                        mem.gpu_usage_percent());
+            ImGui::Text("Free: %.2f GB", mem.gpu_free_bytes / 1e9);
+
+            // Progress bar for memory usage
+            const float usage_ratio = mem.gpu_total_bytes > 0
+                ? static_cast<float>(mem.gpu_used_bytes) / static_cast<float>(mem.gpu_total_bytes)
+                : 0.0f;
+            const ImVec4 bar_color = usage_ratio > 0.9f ? t.palette.error
+                                   : usage_ratio > 0.7f ? t.palette.warning
+                                   : t.palette.success;
+            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, bar_color);
+            ImGui::ProgressBar(usage_ratio, ImVec2(-1, 0));
+            ImGui::PopStyleColor();
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // Tensor Operation Tracing Section
+            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            ImGui::TextColored(t.palette.text_dim, "TENSOR OP TRACING");
+            if (fonts_.section) ImGui::PopFont();
+            ImGui::Spacing();
+
+            auto& tracer = lfs::core::debug::TensorOpTracer::instance();
+            bool tracing_enabled = tracer.is_enabled();
+
+            if (ImGui::Checkbox("Enable Operation Tracing", &tracing_enabled)) {
+                tracer.set_enabled(tracing_enabled);
+            }
+            ImGui::SameLine();
+            ImGui::TextColored(t.palette.text_dim, "(Performance impact)");
+
+            if (tracing_enabled) {
+                const auto& history = tracer.get_history();
+                ImGui::Text("Recorded operations: %zu", history.size());
+
+                if (ImGui::Button("Clear History")) {
+                    tracer.clear_history();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Print to Log")) {
+                    tracer.print_history(50);
+                }
+
+                // Show last few operations
+                if (!history.empty()) {
+                    ImGui::Spacing();
+                    if (fonts_.small_font) ImGui::PushFont(fonts_.small_font);
+                    ImGui::TextColored(t.palette.text_dim, "Recent operations:");
+                    const size_t show_count = std::min(size_t{5}, history.size());
+                    for (size_t i = history.size() - show_count; i < history.size(); ++i) {
+                        const auto& op = history[i];
+                        std::string name_tag = op.tensor_name.empty() ? "" : std::format(" [{}]", op.tensor_name);
+                        std::string location = op.file.empty() ? "" : std::format(" @ {}:{}", op.file, op.line);
+                        ImGui::Text("  %s(%s) -> %s [%.2fms]%s%s",
+                                    op.op_name.c_str(),
+                                    op.input_shapes.c_str(),
+                                    op.output_shape.c_str(),
+                                    op.duration_ms,
+                                    name_tag.c_str(),
+                                    location.c_str());
+                    }
+                    if (fonts_.small_font) ImGui::PopFont();
+                }
+            }
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // Build Info Section
+            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            ImGui::TextColored(t.palette.text_dim, "BUILD FLAGS");
+            if (fonts_.section) ImGui::PopFont();
+            ImGui::Spacing();
+
+#ifdef TENSOR_VALIDATION_ENABLED
+            ImGui::TextColored(t.palette.success, "[x] Tensor Validation");
+#else
+            ImGui::TextColored(t.palette.text_dim, "[ ] Tensor Validation");
+#endif
+
+#ifdef CUDA_DEBUG_SYNC
+            ImGui::TextColored(t.palette.success, "[x] CUDA Debug Sync");
+#else
+            ImGui::TextColored(t.palette.text_dim, "[ ] CUDA Debug Sync");
+#endif
+
+#ifdef TENSOR_OP_TRACING
+            ImGui::TextColored(t.palette.success, "[x] Tensor Op Tracing (compile-time)");
+#else
+            ImGui::TextColored(t.palette.text_dim, "[ ] Tensor Op Tracing (compile-time)");
+#endif
+
+#ifdef DEBUG_BUILD
+            ImGui::TextColored(t.palette.success, "[x] Debug Build");
+#else
+            ImGui::TextColored(t.palette.text_dim, "[ ] Debug Build");
+#endif
+
+            ImGui::Spacing();
+            if (fonts_.small_font) ImGui::PushFont(fonts_.small_font);
+            ImGui::TextColored(t.palette.text_dim, "Rebuild with -DENABLE_TENSOR_VALIDATION=ON");
+            ImGui::TextColored(t.palette.text_dim, "or -DENABLE_CUDA_DEBUG_SYNC=ON to enable");
+            if (fonts_.small_font) ImGui::PopFont();
+        }
+        ImGui::End();
+
+        ImGui::PopStyleColor(5);
         ImGui::PopStyleVar(3);
     }
 
