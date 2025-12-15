@@ -2,12 +2,12 @@ name: Ubuntu CUDA Build
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, dev ]
     paths-ignore:
       - '**.md'
       - 'docs/**'
   pull_request:
-    branches: [ master ]
+    branches: [ master, dev ]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -28,93 +28,59 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Aggressive Free Up Disk Space
+      - name: Free disk space
         run: |
-          df -h
           apt-get clean
           rm -rf /var/lib/apt/lists/*
-          rm -rf /usr/share/dotnet
-          rm -rf /opt/ghc
-          rm -rf /opt/hostedtoolcache
-          df -h
+          rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache
 
-      - name: Install GCC 14 and dependencies
+      - name: Install build dependencies
         run: |
           apt-get update
+          apt-get install -y ca-certificates gpg wget
 
-          # install cmake from https://apt.kitware.com to get cmake 3.30+
-          
-          apt-get install -y ca-certificates gpg wget 
-
-          test -f /usr/share/doc/kitware-archive-keyring/copyright ||
+          # CMake 3.30+ from Kitware
           wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
-          
           echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ noble main' | tee /etc/apt/sources.list.d/kitware.list >/dev/null
           apt-get update
-
-          test -f /usr/share/doc/kitware-archive-keyring/copyright ||
-          rm /usr/share/keyrings/kitware-archive-keyring.gpg
-
           apt-get install -y kitware-archive-keyring
 
-          apt-get install -y git curl unzip cmake gcc-14 g++-14 ccache ninja-build
+          apt-get install -y git curl unzip cmake gcc-14 g++-14 ccache ninja-build \
+            zip tar pkg-config python3 python3-dev libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev
+
           update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 \
                               --slave /usr/bin/g++ g++ /usr/bin/g++-14
 
       - name: Setup vcpkg
         run: |
-          apt-get update
-          apt-get install -y zip tar pkg-config python3 python3-dev libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev
           cd ..
           git clone https://github.com/microsoft/vcpkg.git
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          
-          # Configure vcpkg to only build release and reduce parallelism
+
           cat >> $VCPKG_ROOT/triplets/x64-linux.cmake << EOF
           set(VCPKG_BUILD_TYPE release)
           set(VCPKG_MAX_CONCURRENCY 2)
           EOF
-          
-          cat $VCPKG_ROOT/triplets/x64-linux.cmake
-
-      - name: Cache LibTorch
-        id: cache-libtorch
-        uses: actions/cache@v4
-        with:
-          path: external/libtorch
-          key: libtorch-2.7.0-cu128-${{ runner.os }}
-
-      - name: Download LibTorch 2.7.0 (CUDA 12.8 build)
-        if: steps.cache-libtorch.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p external
-          cd ..
-          curl -L https://download.pytorch.org/libtorch/cu128/libtorch-cxx11-abi-shared-with-deps-2.7.0%2Bcu128.zip -o libtorch.zip
-          unzip libtorch.zip -d $GITHUB_WORKSPACE/external
 
       - name: Cache ccache
         uses: actions/cache@v4
         with:
           path: /github/home/.cache/ccache
           key: ccache-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            ccache-${{ runner.os }}-
+          restore-keys: ccache-${{ runner.os }}-
 
-      - name: Cache vcpkg binary archives
+      - name: Cache vcpkg
         uses: actions/cache@v4
         with:
           path: /github/home/.cache/vcpkg/archives
-          key: vcpkg-binary-archives-${{ runner.os }}-${{ hashFiles('**/vcpkg.json') }}
-          restore-keys: |
-            vcpkg-binary-archives-${{ runner.os }}-
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('**/vcpkg.json') }}
+          restore-keys: vcpkg-${{ runner.os }}-
 
-      - name: Configure with CMake
+      - name: Configure
         run: |
-          cmake -S . -B build \
+          cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -G Ninja \
-            -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja \
             -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
 
       - name: Build
-        run: cmake --build build --config Release --parallel 2
+        run: cmake --build build -j 2
