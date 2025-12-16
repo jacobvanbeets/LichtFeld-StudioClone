@@ -8,17 +8,13 @@
 #include "core_new/tensor.hpp"
 #include <string>
 
-namespace lfs::vis {
-    class SceneManager;
-}
-
 namespace lfs::vis::command {
 
     // Undo/redo command for soft crop operations using deletion masks
+    // Uses services() to access SceneManager - no stored pointer
     class CropCommand : public Command {
     public:
-        CropCommand(SceneManager* scene_manager,
-                    std::string node_name,
+        CropCommand(std::string node_name,
                     lfs::core::Tensor old_deleted_mask,
                     lfs::core::Tensor new_deleted_mask);
 
@@ -27,7 +23,6 @@ namespace lfs::vis::command {
         [[nodiscard]] std::string getName() const override { return "Crop"; }
 
     private:
-        SceneManager* const scene_manager_;
         const std::string node_name_;
         const lfs::core::Tensor old_deleted_mask_;
         const lfs::core::Tensor new_deleted_mask_;

@@ -5,6 +5,7 @@
 #include "scene/scene_manager.hpp"
 #include "command/command_history.hpp"
 #include "command/commands/crop_command.hpp"
+#include "core/services.hpp"
 #include "core_new/logger.hpp"
 #include "core_new/splat_data_export.hpp"
 #include "core_new/splat_data_transform.hpp"
@@ -60,11 +61,11 @@ namespace lfs::vis {
         // Handle PLY cycling with proper event emission for UI updates
         cmd::CyclePLY::when([this](const auto&) {
             // Check if rendering manager has split view enabled (in PLY comparison mode)
-            if (rendering_manager_) {
-                auto settings = rendering_manager_->getSettings();
+            if (services().renderingOrNull()) {
+                auto settings = services().renderingOrNull()->getSettings();
                 if (settings.split_view_mode == lfs::vis::SplitViewMode::PLYComparison) {
                     // In split mode: advance the offset
-                    rendering_manager_->advanceSplitOffset();
+                    services().renderingOrNull()->advanceSplitOffset();
                     LOG_DEBUG("Advanced split view offset");
                     return; // Don't cycle visibility when in split view
                 }
@@ -117,7 +118,7 @@ namespace lfs::vis {
         // Handle node selection from scene panel (both PLYs and Groups)
         ui::NodeSelected::when([this](const auto& event) {
             // Don't allow selection changes during training
-            if (trainer_manager_ && trainer_manager_->isRunning()) {
+            if (services().trainerOrNull() && services().trainerOrNull()->isRunning()) {
                 LOG_TRACE("Ignoring selection change during training");
                 return;
             }
@@ -145,7 +146,7 @@ namespace lfs::vis {
         // Handle node deselection (but not during training)
         ui::NodeDeselected::when([this](const auto&) {
             // Don't clear selection during training - dataset and model must stay selected
-            if (trainer_manager_ && trainer_manager_->isRunning()) {
+            if (services().trainerOrNull() && services().trainerOrNull()->isRunning()) {
                 LOG_TRACE("Ignoring deselection during training");
                 return;
             }
@@ -389,18 +390,18 @@ namespace lfs::vis {
         const bool affects_training = isTrainingNode();
 
         // Use state machine to check if deletion is allowed
-        if (affects_training && trainer_manager_) {
-            if (!trainer_manager_->canPerform(TrainingAction::DeleteTrainingNode)) {
+        if (affects_training && services().trainerOrNull()) {
+            if (!services().trainerOrNull()->canPerform(TrainingAction::DeleteTrainingNode)) {
                 LOG_WARN("Cannot delete '{}': {}", name,
-                         trainer_manager_->getActionBlockedReason(TrainingAction::DeleteTrainingNode));
+                         services().trainerOrNull()->getActionBlockedReason(TrainingAction::DeleteTrainingNode));
                 return;
             }
 
             // Clean up training state if deleting training model (e.g., while paused)
             LOG_INFO("Stopping training due to node deletion: {}", name);
-            trainer_manager_->stopTraining();
-            trainer_manager_->waitForCompletion();
-            trainer_manager_->clearTrainer();
+            services().trainerOrNull()->stopTraining();
+            services().trainerOrNull()->waitForCompletion();
+            services().trainerOrNull()->clearTrainer();
             scene_.setTrainingModelNode("");
         }
 
@@ -467,7 +468,7 @@ namespace lfs::vis {
                 }
             }
         }
-        if (rendering_manager_) rendering_manager_->triggerSelectionFlash();
+        if (services().renderingOrNull()) services().renderingOrNull()->triggerSelectionFlash();
     }
 
     void SceneManager::addToSelection(const std::string& name) {
@@ -476,7 +477,7 @@ namespace lfs::vis {
             std::lock_guard<std::mutex> lock(state_mutex_);
             selected_nodes_.insert(name);
         }
-        if (rendering_manager_) rendering_manager_->triggerSelectionFlash();
+        if (services().renderingOrNull()) services().renderingOrNull()->triggerSelectionFlash();
     }
 
     void SceneManager::clearSelection() {
@@ -952,8 +953,8 @@ namespace lfs::vis {
 
     void SceneManager::syncCropBoxToRenderSettings() {
         // Scene graph is single source of truth - just trigger re-render
-        if (rendering_manager_) {
-            rendering_manager_->markDirty();
+        if (services().renderingOrNull()) {
+            services().renderingOrNull()->markDirty();
         }
     }
 
@@ -983,8 +984,8 @@ namespace lfs::vis {
             }
 
             // Validation passed - now clear and load
-            if (trainer_manager_) {
-                trainer_manager_->clearTrainer();
+            if (services().trainerOrNull()) {
+                services().trainerOrNull()->clearTrainer();
             }
             clear();
 
@@ -1014,10 +1015,10 @@ namespace lfs::vis {
             trainer->setParams(dataset_params);
 
             // Pass trainer to manager
-            if (trainer_manager_) {
+            if (services().trainerOrNull()) {
                 LOG_DEBUG("Setting trainer in manager");
-                trainer_manager_->setScene(&scene_);
-                trainer_manager_->setTrainer(std::move(trainer));
+                services().trainerOrNull()->setScene(&scene_);
+                services().trainerOrNull()->setTrainer(std::move(trainer));
             } else {
                 LOG_ERROR("No trainer manager available");
                 throw std::runtime_error("No trainer manager available");
@@ -1057,7 +1058,7 @@ namespace lfs::vis {
 
             // Switch to point cloud rendering mode by default for datasets
             // Re-enabled with debug logging to investigate dimension mismatch
-            if (num_gaussians > 0 && trainer_manager_ && trainer_manager_->getTrainer()) {
+            if (num_gaussians > 0 && services().trainerOrNull() && services().trainerOrNull()->getTrainer()) {
                 ui::PointCloudModeChanged{
                     .enabled = true,
                     .voxel_size = 0.03f}
@@ -1124,8 +1125,8 @@ namespace lfs::vis {
             }
 
             // === Phase 2: Clear scene (validation passed) ===
-            if (trainer_manager_) {
-                trainer_manager_->clearTrainer();
+            if (services().trainerOrNull()) {
+                services().trainerOrNull()->clearTrainer();
             }
             clear();
 
@@ -1168,11 +1169,11 @@ namespace lfs::vis {
                 LOG_WARN("Failed to restore checkpoint state: {}", ckpt_load_result.error());
             }
 
-            if (!trainer_manager_) {
+            if (!services().trainerOrNull()) {
                 throw std::runtime_error("No trainer manager available");
             }
-            trainer_manager_->setScene(&scene_);
-            trainer_manager_->setTrainerFromCheckpoint(std::move(trainer), checkpoint_iteration);
+            services().trainerOrNull()->setScene(&scene_);
+            services().trainerOrNull()->setTrainerFromCheckpoint(std::move(trainer), checkpoint_iteration);
 
             {
                 std::lock_guard<std::mutex> lock(state_mutex_);
@@ -1206,15 +1207,15 @@ namespace lfs::vis {
         LOG_DEBUG("Clearing scene");
 
         // Check if clearing is allowed via state machine
-        if (trainer_manager_ && content_type_ == ContentType::Dataset) {
-            if (!trainer_manager_->canPerform(TrainingAction::ClearScene)) {
+        if (services().trainerOrNull() && content_type_ == ContentType::Dataset) {
+            if (!services().trainerOrNull()->canPerform(TrainingAction::ClearScene)) {
                 LOG_WARN("Cannot clear scene: {}",
-                         trainer_manager_->getActionBlockedReason(TrainingAction::ClearScene));
+                         services().trainerOrNull()->getActionBlockedReason(TrainingAction::ClearScene));
                 return;
             }
             LOG_DEBUG("Clearing trainer before scene");
             // clearTrainer() handles stop, wait, and cleanup internally
-            trainer_manager_->clearTrainer();
+            services().trainerOrNull()->clearTrainer();
         }
 
         scene_.clear();
@@ -1248,8 +1249,8 @@ namespace lfs::vis {
         auto splat_data = std::move(model_node->model);
         const size_t num_gaussians = splat_data->size();
 
-        if (trainer_manager_) {
-            trainer_manager_->clearTrainer();
+        if (services().trainerOrNull()) {
+            services().trainerOrNull()->clearTrainer();
         }
         scene_.clear();
 
@@ -1399,10 +1400,6 @@ namespace lfs::vis {
         state::SceneChanged{}.emit();
     }
 
-    void SceneManager::setRenderingManager(RenderingManager* rm) {
-        rendering_manager_ = rm;
-    }
-
     void SceneManager::handleCropActivePly(const lfs::geometry::BoundingBox& crop_box, const bool inverse) {
         std::vector<std::string> splat_node_names;
         std::vector<std::string> pointcloud_node_names;
@@ -1501,8 +1498,8 @@ namespace lfs::vis {
         if (splat_node_names.empty()) {
             if (!pointcloud_node_names.empty()) {
                 emitSceneChanged();
-                if (rendering_manager_) {
-                    rendering_manager_->markDirty();
+                if (services().renderingOrNull()) {
+                    services().renderingOrNull()->markDirty();
                 }
             }
             return;
@@ -1556,11 +1553,11 @@ namespace lfs::vis {
 
                 LOG_INFO("Cropped '{}': {} -> {} visible", node_name, original_visible, new_visible);
 
-                if (command_history_) {
+                if (services().commandsOrNull()) {
                     lfs::core::Tensor new_deleted_mask = node->model->deleted().clone();
                     auto cmd = std::make_unique<command::CropCommand>(
-                        this, node_name, std::move(old_deleted_mask), std::move(new_deleted_mask));
-                    command_history_->execute(std::move(cmd));
+                        node_name, std::move(old_deleted_mask), std::move(new_deleted_mask));
+                    services().commandsOrNull()->execute(std::move(cmd));
                 }
 
                 state::PLYAdded{
@@ -1593,8 +1590,8 @@ namespace lfs::vis {
 
     size_t SceneManager::applyDeleted() {
         const size_t removed = scene_.applyDeleted();
-        if (removed > 0 && rendering_manager_) {
-            rendering_manager_->markDirty();
+        if (removed > 0 && services().renderingOrNull()) {
+            services().renderingOrNull()->markDirty();
         }
         return removed;
     }
@@ -1799,7 +1796,7 @@ namespace lfs::vis {
     }
 
     void SceneManager::updateCropBoxToFitScene(const bool use_percentile) {
-        if (!rendering_manager_) return;
+        if (!services().renderingOrNull()) return;
 
         // Find selected cropbox or parent with cropbox child
         const SceneNode* cropbox = nullptr;
@@ -1857,7 +1854,7 @@ namespace lfs::vis {
             node->transform_dirty = true;
         }
 
-        rendering_manager_->markDirty();
+        services().renderingOrNull()->markDirty();
 
         LOG_INFO("Fit '{}' to '{}': center({:.2f},{:.2f},{:.2f}) size({:.2f},{:.2f},{:.2f})",
                  cropbox->name, parent->name, center.x, center.y, center.z,
@@ -2020,7 +2017,7 @@ namespace lfs::vis {
 
         scene_.invalidateCache();
         emitSceneChanged();
-        if (rendering_manager_) rendering_manager_->markDirty();
+        if (services().renderingOrNull()) services().renderingOrNull()->markDirty();
 
         LOG_INFO("Pasted {} Gaussians as '{}'", count, name);
         return {name};
@@ -2103,8 +2100,8 @@ namespace lfs::vis {
         scene_.invalidateCache();
         emitSceneChanged();
 
-        if (rendering_manager_) {
-            rendering_manager_->markDirty();
+        if (services().renderingOrNull()) {
+            services().renderingOrNull()->markDirty();
         }
 
         LOG_DEBUG("Pasted {} nodes", pasted_names.size());

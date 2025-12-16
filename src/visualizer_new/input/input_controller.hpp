@@ -4,11 +4,11 @@
 
 #pragma once
 
+#include "core/services.hpp"
 #include "core_new/events.hpp"
 #include "input/input_bindings.hpp"
 #include "input/input_types.hpp"
 #include "internal/viewport.hpp"
-#include "training/training_manager.hpp"
 #include <GLFW/glfw3.h>
 #include <chrono>
 #include <glm/glm.hpp>
@@ -22,11 +22,7 @@ namespace lfs::vis {
         class AlignTool;
         class SelectionTool;
     } // namespace tools
-    namespace gui {
-        class GuiManager;
-    }
     class ToolContext;
-    class RenderingManager;
 
     class InputController {
     public:
@@ -35,11 +31,6 @@ namespace lfs::vis {
 
         // Setup - MUST be called AFTER ImGui is initialized!
         void initialize();
-
-        // Set training manager for camera view commands
-        void setTrainingManager(std::shared_ptr<TrainerManager> tm) {
-            training_manager_ = tm;
-        }
 
         // Set brush tool
         void setBrushTool(std::shared_ptr<tools::BrushTool> tool) {
@@ -59,16 +50,6 @@ namespace lfs::vis {
         // Set tool context for gizmo
         void setToolContext(ToolContext* context) {
             tool_context_ = context;
-        }
-
-        // Set rendering manager for split view
-        void setRenderingManager(RenderingManager* rm) {
-            rendering_manager_ = rm;
-        }
-
-        // Set GUI manager for selection mode shortcuts
-        void setGuiManager(gui::GuiManager* gm) {
-            gui_manager_ = gm;
         }
 
         // Called every frame by GUI manager to update viewport bounds
@@ -155,9 +136,6 @@ namespace lfs::vis {
         // Core state
         GLFWwindow* window_;
         Viewport& viewport_;
-        std::shared_ptr<TrainerManager> training_manager_;
-        RenderingManager* rendering_manager_ = nullptr;
-        gui::GuiManager* gui_manager_ = nullptr;
 
         // Input bindings for customizable hotkeys
         input::InputBindings bindings_;

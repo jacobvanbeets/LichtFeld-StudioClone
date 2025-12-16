@@ -6,6 +6,7 @@
 #include "command/commands/crop_command.hpp"
 #include "command/commands/selection_command.hpp"
 #include "core/data_loading_service.hpp"
+#include "core/services.hpp"
 #include "core_new/logger.hpp"
 #include "scene/scene_manager.hpp"
 #include "tools/align_tool.hpp"
@@ -33,16 +34,12 @@ namespace lfs::vis {
         // Create trainer manager
         trainer_manager_ = std::make_shared<TrainerManager>();
         trainer_manager_->setViewer(this);
-        scene_manager_->setTrainerManager(trainer_manager_.get());
 
         // Create support components
         gui_manager_ = std::make_unique<gui::GuiManager>(this);
 
         // Create rendering manager with initial antialiasing setting
         rendering_manager_ = std::make_unique<RenderingManager>();
-
-        // Connect scene manager to rendering manager
-        scene_manager_->setRenderingManager(rendering_manager_.get());
 
         // Set initial antialiasing
         RenderSettings initial_settings;
@@ -56,12 +53,23 @@ namespace lfs::vis {
         // Create main loop
         main_loop_ = std::make_unique<MainLoop>();
 
+        // Register services in the service locator
+        services().set(scene_manager_.get());
+        services().set(trainer_manager_.get());
+        services().set(rendering_manager_.get());
+        services().set(window_manager_.get());
+        services().set(&command_history_);
+        services().set(gui_manager_.get());
+
         // Setup connections
         setupEventHandlers();
         setupComponentConnections();
     }
 
     VisualizerImpl::~VisualizerImpl() {
+        // Clear services before destroying components
+        services().clear();
+
         trainer_manager_.reset();
         brush_tool_.reset();
         tool_context_.reset();
@@ -125,9 +133,6 @@ namespace lfs::vis {
         main_loop_->setRenderCallback([this]() { render(); });
         main_loop_->setShutdownCallback([this]() { shutdown(); });
         main_loop_->setShouldCloseCallback([this]() { return allowclose(); });
-
-        // Connect command history to scene manager for undo/redo support
-        scene_manager_->setCommandHistory(&command_history_);
 
         gui_manager_->setFileSelectedCallback([this](const std::filesystem::path& path, bool is_dataset) {
             lfs::core::events::cmd::LoadFile{.path = path, .is_dataset = is_dataset}.emit();
@@ -274,13 +279,11 @@ namespace lfs::vis {
         }
 
         // Create simplified input controller AFTER ImGui is initialized
+        // NOTE: InputController uses services() for TrainerManager, RenderingManager, GuiManager
         if (!input_controller_) {
             input_controller_ = std::make_unique<InputController>(
                 window_manager_->getWindow(), viewport_);
             input_controller_->initialize();
-            input_controller_->setTrainingManager(trainer_manager_);
-            input_controller_->setRenderingManager(rendering_manager_.get());
-            input_controller_->setGuiManager(gui_manager_.get());
         }
 
         // Initialize rendering with proper viewport dimensions
@@ -504,9 +507,9 @@ namespace lfs::vis {
             // Get new state for redo
             auto new_deleted = node->model->deleted().clone();
 
-            // Create undo command
+            // Create undo command (uses services() internally)
             auto cmd = std::make_unique<command::CropCommand>(
-                scene_manager_.get(), node->name, std::move(old_deleted), std::move(new_deleted));
+                node->name, std::move(old_deleted), std::move(new_deleted));
             command_history_.execute(std::move(cmd));
 
             any_deleted = true;

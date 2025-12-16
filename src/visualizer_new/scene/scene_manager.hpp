@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/services.hpp"
 #include "core_new/events.hpp"
 #include "core_new/parameters.hpp"
 #include "geometry_new/bounding_box.hpp"
@@ -17,12 +18,6 @@ namespace lfs::vis {
 
     // Forward declarations
     class Trainer;
-    class TrainerManager;
-    class RenderingManager;
-
-    namespace command {
-        class CommandHistory;
-    }
 
     class SceneManager {
     public:
@@ -89,18 +84,11 @@ namespace lfs::vis {
         Scene& getScene() { return scene_; }
         const Scene& getScene() const { return scene_; }
 
-        // Trainer manager link
-        void setTrainerManager(TrainerManager* tm) { trainer_manager_ = tm; }
-        TrainerManager* getTrainerManager() { return trainer_manager_; }
-        const TrainerManager* getTrainerManager() const { return trainer_manager_; }
-
-        // Rendering manager link
-        void setRenderingManager(RenderingManager* rm);
-        RenderingManager* getRenderingManager() { return rendering_manager_; }
-
-        // Command history link (for undo/redo support)
-        void setCommandHistory(command::CommandHistory* ch) { command_history_ = ch; }
-        command::CommandHistory* getCommandHistory() { return command_history_; }
+        // Service accessors (via service locator)
+        TrainerManager* getTrainerManager() { return services().trainerOrNull(); }
+        const TrainerManager* getTrainerManager() const { return services().trainerOrNull(); }
+        RenderingManager* getRenderingManager() { return services().renderingOrNull(); }
+        command::CommandHistory* getCommandHistory() { return services().commandsOrNull(); }
 
         void changeContentType(const ContentType& type);
 
@@ -214,15 +202,6 @@ namespace lfs::vis {
         // splat name to splat path
         std::map<std::string, std::filesystem::path> splat_paths_;
         std::filesystem::path dataset_path_;
-
-        // Training support
-        TrainerManager* trainer_manager_ = nullptr;
-
-        // Rendering support
-        RenderingManager* rendering_manager_ = nullptr;
-
-        // Command history (for undo/redo support)
-        command::CommandHistory* command_history_ = nullptr;
 
         // Cache for parameters
         std::optional<lfs::core::param::TrainingParameters> cached_params_;

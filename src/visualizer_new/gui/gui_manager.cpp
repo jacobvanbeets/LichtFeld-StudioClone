@@ -1982,14 +1982,14 @@ namespace lfs::vis::gui {
             if (any_changed) {
                 if (count == 1) {
                     auto cmd = std::make_unique<command::TransformCommand>(
-                        scene_manager, node_gizmo_node_names_[0],
+                        node_gizmo_node_names_[0],
                         node_transforms_before_drag_[0], final_transforms[0]);
-                    viewer_->getCommandHistory().execute(std::move(cmd));
+                    services().commands().execute(std::move(cmd));
                 } else {
                     auto cmd = std::make_unique<command::MultiTransformCommand>(
-                        scene_manager, node_gizmo_node_names_,
+                        node_gizmo_node_names_,
                         node_transforms_before_drag_, std::move(final_transforms));
-                    viewer_->getCommandHistory().execute(std::move(cmd));
+                    services().commands().execute(std::move(cmd));
                 }
             }
         }

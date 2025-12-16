@@ -86,8 +86,8 @@ void DrawTransformControls(const UIContext& ctx, const ToolType current_tool,
                 scene_manager->setNodeTransform(name, IDENTITY);
             }
             auto cmd = std::make_unique<command::MultiTransformCommand>(
-                scene_manager, selected_names, std::move(old_transforms), std::move(new_transforms));
-            ctx.viewer->getCommandHistory().execute(std::move(cmd));
+                selected_names, std::move(old_transforms), std::move(new_transforms));
+            services().commands().execute(std::move(cmd));
         }
         return;
     }
@@ -243,17 +243,17 @@ void DrawTransformControls(const UIContext& ctx, const ToolType current_tool,
         const glm::mat4 final_transform = scene_manager->getSelectedNodeTransform();
         if (state.transform_before_edit != final_transform) {
             auto cmd = std::make_unique<command::TransformCommand>(
-                scene_manager, state.editing_node_name,
+                state.editing_node_name,
                 state.transform_before_edit, final_transform);
-            ctx.viewer->getCommandHistory().execute(std::move(cmd));
+            services().commands().execute(std::move(cmd));
         }
     }
 
     ImGui::Separator();
     if (ImGui::Button("Reset Transform")) {
         auto cmd = std::make_unique<command::TransformCommand>(
-            scene_manager, node_name, current_transform, glm::mat4(1.0f));
-        ctx.viewer->getCommandHistory().execute(std::move(cmd));
+            node_name, current_transform, glm::mat4(1.0f));
+        services().commands().execute(std::move(cmd));
         scene_manager->setSelectedNodeTransform(glm::mat4(1.0f));
         state.world_euler = glm::vec3(0.0f);
         state.prev_world_euler = glm::vec3(0.0f);

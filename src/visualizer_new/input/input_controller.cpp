@@ -12,6 +12,7 @@
 #include "tools/brush_tool.hpp"
 #include "tools/selection_tool.hpp"
 #include "tools/tool_base.hpp"
+#include "training/training_manager.hpp"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <format>
@@ -193,11 +194,11 @@ namespace lfs::vis {
     }
 
     bool InputController::isNearSplitter(double x) const {
-        if (!rendering_manager_ || rendering_manager_->getSettings().split_view_mode == SplitViewMode::Disabled) {
+        if (!services().renderingOrNull() || services().renderingOrNull()->getSettings().split_view_mode == SplitViewMode::Disabled) {
             return false;
         }
 
-        float split_pos = rendering_manager_->getSettings().split_position;
+        float split_pos = services().renderingOrNull()->getSettings().split_position;
         float split_x = viewport_bounds_.x + viewport_bounds_.width * split_pos;
 
         // Increase the hit area to 10 pixels for easier grabbing
@@ -207,8 +208,8 @@ namespace lfs::vis {
     // Core handlers
     void InputController::handleMouseButton(int button, int action, double x, double y) {
         // Forward to GUI for mouse capture (rebinding)
-        if (action == GLFW_PRESS && gui_manager_ && gui_manager_->isCapturingInput()) {
-            gui_manager_->captureMouseButton(button, getModifierKeys());
+        if (action == GLFW_PRESS && services().guiOrNull() && services().guiOrNull()->isCapturingInput()) {
+            services().guiOrNull()->captureMouseButton(button, getModifierKeys());
             return;
         }
 
@@ -247,9 +248,9 @@ namespace lfs::vis {
             }
 
             // Check for splitter drag
-            if (isNearSplitter(x) && rendering_manager_) {
+            if (isNearSplitter(x) && services().renderingOrNull()) {
                 drag_mode_ = DragMode::Splitter;
-                splitter_start_pos_ = rendering_manager_->getSettings().split_position;
+                splitter_start_pos_ = services().renderingOrNull()->getSettings().split_position;
                 splitter_start_x_ = x;
                 glfwSetCursor(window_, resize_cursor_);
                 LOG_TRACE("Started splitter drag");
@@ -265,8 +266,8 @@ namespace lfs::vis {
         }
 
         const bool over_gui = ImGui::GetIO().WantCaptureMouse ||
-                              (gui_manager_ && gui_manager_->isResizingPanel());
-        const bool over_gizmo = gui_manager_ && gui_manager_->isPositionInViewportGizmo(x, y);
+                              (services().guiOrNull() && services().guiOrNull()->isResizingPanel());
+        const bool over_gizmo = services().guiOrNull() && services().guiOrNull()->isPositionInViewportGizmo(x, y);
 
         // Single binding lookup with current tool mode
         const int mods = getModifierKeys();
@@ -461,7 +462,7 @@ namespace lfs::vis {
         glm::dvec2 current_pos{x, y};
 
         // Handle splitter dragging
-        if (drag_mode_ == DragMode::Splitter && rendering_manager_) {
+        if (drag_mode_ == DragMode::Splitter && services().renderingOrNull()) {
             double delta = x - splitter_start_x_;
             float new_pos = splitter_start_pos_ + static_cast<float>(delta / viewport_bounds_.width);
 
@@ -475,7 +476,7 @@ namespace lfs::vis {
 
         // Camera frustum hover detection with improved throttling
         // (frustum visibility is now controlled by scene graph, not a checkbox)
-        if (rendering_manager_ &&
+        if (services().renderingOrNull() &&
             isInViewport(x, y) &&
             drag_mode_ == DragMode::None &&
             !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
@@ -500,7 +501,7 @@ namespace lfs::vis {
             }
 
             if (should_pick) {
-                auto result = rendering_manager_->pickCameraFrustum(glm::vec2(x, y));
+                auto result = services().renderingOrNull()->pickCameraFrustum(glm::vec2(x, y));
                 if (result >= 0) {
                     const int cam_id = result;
                     if (cam_id != hovered_camera_id_) {
@@ -538,7 +539,7 @@ namespace lfs::vis {
 
         // Determine if we should show resize cursor for splitter
         bool should_show_resize = false;
-        if (rendering_manager_ && rendering_manager_->getSettings().split_view_mode != SplitViewMode::Disabled) {
+        if (services().renderingOrNull() && services().renderingOrNull()->getSettings().split_view_mode != SplitViewMode::Disabled) {
             should_show_resize = (drag_mode_ == DragMode::None &&
                                   isInViewport(x, y) &&
                                   isNearSplitter(x) &&
@@ -566,7 +567,7 @@ namespace lfs::vis {
         }
 
         // Skip selection if viewport gizmo is being dragged
-        const bool gizmo_dragging = gui_manager_ && gui_manager_->isViewportGizmoDragging();
+        const bool gizmo_dragging = services().guiOrNull() && services().guiOrNull()->isViewportGizmoDragging();
         if (selection_tool_ && selection_tool_->isEnabled() && tool_context_ && !gizmo_dragging) {
             if (drag_mode_ == DragMode::Brush) {
                 selection_tool_->handleMouseMove(x, y, *tool_context_);
@@ -651,15 +652,15 @@ namespace lfs::vis {
             viewport_.camera.rotate_roll(delta);
         } else {
             // In orthographic mode, adjust ortho_scale instead of camera position
-            if (rendering_manager_) {
-                auto settings = rendering_manager_->getSettings();
+            if (services().renderingOrNull()) {
+                auto settings = services().renderingOrNull()->getSettings();
                 if (settings.orthographic) {
                     // Zoom factor: positive delta = zoom in (increase scale)
                     constexpr float ORTHO_ZOOM_FACTOR = 0.1f;
                     const float scale_factor = 1.0f + delta * ORTHO_ZOOM_FACTOR;
                     settings.ortho_scale = std::clamp(settings.ortho_scale * scale_factor, 1.0f, 10000.0f);
-                    rendering_manager_->updateSettings(settings);
-                    rendering_manager_->markDirty();
+                    services().renderingOrNull()->updateSettings(settings);
+                    services().renderingOrNull()->markDirty();
                 } else {
                     viewport_.camera.zoom(delta);
                 }
@@ -685,8 +686,8 @@ namespace lfs::vis {
         }
 
         // Forward to GUI for key capture (rebinding)
-        if (action == GLFW_PRESS && gui_manager_ && gui_manager_->isCapturingInput()) {
-            gui_manager_->captureKey(key, mods);
+        if (action == GLFW_PRESS && services().guiOrNull() && services().guiOrNull()->isCapturingInput()) {
+            services().guiOrNull()->captureKey(key, mods);
             return;
         }
 
@@ -736,8 +737,8 @@ namespace lfs::vis {
                     return;
 
                 case input::Action::CYCLE_SELECTION_VIS:
-                    if (gui_manager_ &&
-                        gui_manager_->getCurrentToolMode() == gui::panels::ToolType::Selection) {
+                    if (services().guiOrNull() &&
+                        services().guiOrNull()->getCurrentToolMode() == gui::panels::ToolType::Selection) {
                         cmd::CycleSelectionVisualization{}.emit();
                     }
                     return;
@@ -798,8 +799,8 @@ namespace lfs::vis {
 
                 case input::Action::CAMERA_NEXT_VIEW:
                     if (ImGui::GetIO().WantTextInput) return;
-                    if (training_manager_) {
-                        const int num_cams = static_cast<int>(training_manager_->getCamList().size());
+                    if (services().trainerOrNull()) {
+                        const int num_cams = static_cast<int>(services().trainerOrNull()->getCamList().size());
                         if (num_cams > 0) {
                             last_camview_ = (last_camview_ < 0) ? 0 : (last_camview_ + 1) % num_cams;
                             cmd::GoToCamView{.cam_id = last_camview_}.emit();
@@ -809,8 +810,8 @@ namespace lfs::vis {
 
                 case input::Action::CAMERA_PREV_VIEW:
                     if (ImGui::GetIO().WantTextInput) return;
-                    if (training_manager_) {
-                        const int num_cams = static_cast<int>(training_manager_->getCamList().size());
+                    if (services().trainerOrNull()) {
+                        const int num_cams = static_cast<int>(services().trainerOrNull()->getCamList().size());
                         if (num_cams > 0) {
                             last_camview_ = (last_camview_ < 0) ? num_cams - 1 : (last_camview_ - 1 + num_cams) % num_cams;
                             cmd::GoToCamView{.cam_id = last_camview_}.emit();
@@ -835,32 +836,32 @@ namespace lfs::vis {
                     return;
 
                 case input::Action::SELECT_MODE_CENTERS:
-                    if (gui_manager_) {
-                        gui_manager_->setSelectionSubMode(gui::panels::SelectionSubMode::Centers);
+                    if (services().guiOrNull()) {
+                        services().guiOrNull()->setSelectionSubMode(gui::panels::SelectionSubMode::Centers);
                     }
                     return;
 
                 case input::Action::SELECT_MODE_RECTANGLE:
-                    if (gui_manager_) {
-                        gui_manager_->setSelectionSubMode(gui::panels::SelectionSubMode::Rectangle);
+                    if (services().guiOrNull()) {
+                        services().guiOrNull()->setSelectionSubMode(gui::panels::SelectionSubMode::Rectangle);
                     }
                     return;
 
                 case input::Action::SELECT_MODE_POLYGON:
-                    if (gui_manager_) {
-                        gui_manager_->setSelectionSubMode(gui::panels::SelectionSubMode::Polygon);
+                    if (services().guiOrNull()) {
+                        services().guiOrNull()->setSelectionSubMode(gui::panels::SelectionSubMode::Polygon);
                     }
                     return;
 
                 case input::Action::SELECT_MODE_LASSO:
-                    if (gui_manager_) {
-                        gui_manager_->setSelectionSubMode(gui::panels::SelectionSubMode::Lasso);
+                    if (services().guiOrNull()) {
+                        services().guiOrNull()->setSelectionSubMode(gui::panels::SelectionSubMode::Lasso);
                     }
                     return;
 
                 case input::Action::SELECT_MODE_RINGS:
-                    if (gui_manager_) {
-                        gui_manager_->setSelectionSubMode(gui::panels::SelectionSubMode::Rings);
+                    if (services().guiOrNull()) {
+                        services().guiOrNull()->setSelectionSubMode(gui::panels::SelectionSubMode::Rings);
                     }
                     return;
 
@@ -1025,12 +1026,12 @@ namespace lfs::vis {
     void InputController::handleGoToCamView(const lfs::core::events::cmd::GoToCamView& event) {
         LOG_TIMER_TRACE("HandleGoToCamView");
 
-        if (!training_manager_) {
+        if (!services().trainerOrNull()) {
             LOG_ERROR("GoToCamView: trainer_manager_ not initialized");
             return;
         }
 
-        auto cam_data = training_manager_->getCamById(event.cam_id);
+        auto cam_data = services().trainerOrNull()->getCamById(event.cam_id);
         if (!cam_data) {
             LOG_ERROR("Camera ID {} not found", event.cam_id);
             return;
@@ -1114,8 +1115,8 @@ namespace lfs::vis {
             .emit();
 
         // Set this as the current camera for GT comparison
-        if (rendering_manager_) {
-            rendering_manager_->setCurrentCameraId(event.cam_id);
+        if (services().renderingOrNull()) {
+            services().renderingOrNull()->setCurrentCameraId(event.cam_id);
         }
 
         last_camview_ = event.cam_id;
@@ -1206,8 +1207,8 @@ namespace lfs::vis {
     }
 
     void InputController::publishCameraMove() {
-        if (rendering_manager_) {
-            rendering_manager_->markDirty();
+        if (services().renderingOrNull()) {
+            services().renderingOrNull()->markDirty();
         }
 
         // Throttle event emission
@@ -1227,8 +1228,8 @@ namespace lfs::vis {
             last_camera_movement_time_ = std::chrono::steady_clock::now();
 
             // Pause training f it's running
-            if (training_manager_ && training_manager_->isRunning()) {
-                training_manager_->pauseTrainingTemporary();
+            if (services().trainerOrNull() && services().trainerOrNull()->isRunning()) {
+                services().trainerOrNull()->pauseTrainingTemporary();
                 training_was_paused_by_camera_ = true;
                 LOG_INFO("Camera movement detected - pausing training temporarily");
             }
@@ -1253,8 +1254,8 @@ namespace lfs::vis {
             camera_is_moving_ = false;
 
             // Resume training if we paused it
-            if (training_was_paused_by_camera_ && training_manager_ && training_manager_->isRunning()) {
-                training_manager_->resumeTrainingTemporary();
+            if (training_was_paused_by_camera_ && services().trainerOrNull() && services().trainerOrNull()->isRunning()) {
+                services().trainerOrNull()->resumeTrainingTemporary();
                 training_was_paused_by_camera_ = false;
                 LOG_INFO("Camera movement stopped - resuming training temporarily");
             }
@@ -1279,7 +1280,7 @@ namespace lfs::vis {
     }
 
     glm::vec3 InputController::unprojectScreenPoint(double x, double y, float fallback_distance) const {
-        if (!rendering_manager_) {
+        if (!services().renderingOrNull()) {
             glm::vec3 forward = viewport_.camera.R * glm::vec3(0, 0, 1);
             return viewport_.camera.t + forward * fallback_distance;
         }
@@ -1289,7 +1290,7 @@ namespace lfs::vis {
         const float local_y = static_cast<float>(y) - viewport_bounds_.y;
 
         // Try to get depth from rendering manager using viewport-local coordinates
-        const float depth = rendering_manager_->getDepthAtPixel(
+        const float depth = services().renderingOrNull()->getDepthAtPixel(
             static_cast<int>(local_x), static_cast<int>(local_y));
 
         // If no valid depth, use fallback distance along view direction
@@ -1303,7 +1304,7 @@ namespace lfs::vis {
         const float height = viewport_bounds_.height;
 
         // Pinhole camera unprojection matching the rasterizer
-        const float fov_y = glm::radians(rendering_manager_->getFovDegrees());
+        const float fov_y = glm::radians(services().renderingOrNull()->getFovDegrees());
         const float aspect = width / height;
         const float fov_x = 2.0f * std::atan(std::tan(fov_y / 2.0f) * aspect);
 
@@ -1342,8 +1343,8 @@ namespace lfs::vis {
         if (brush_tool_ && brush_tool_->isEnabled()) return input::ToolMode::BRUSH;
         if (align_tool_ && align_tool_->isEnabled()) return input::ToolMode::ALIGN;
         // Check GUI tool mode for CropBox (and transform tools)
-        if (gui_manager_) {
-            const auto gui_tool = gui_manager_->getCurrentToolMode();
+        if (services().guiOrNull()) {
+            const auto gui_tool = services().guiOrNull()->getCurrentToolMode();
             if (gui_tool == gui::panels::ToolType::CropBox) return input::ToolMode::CROP_BOX;
             if (gui_tool == gui::panels::ToolType::Translate) return input::ToolMode::TRANSLATE;
             if (gui_tool == gui::panels::ToolType::Rotate) return input::ToolMode::ROTATE;
