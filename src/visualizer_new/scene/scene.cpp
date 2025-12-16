@@ -174,7 +174,9 @@ namespace lfs::vis {
         }
 
         invalidateCache();
-        LOG_DEBUG("Removed node '{}'{}", name, keep_children ? " (children kept)" : "");
+        if (!name.empty()) {
+            LOG_DEBUG("Removed node '{}'{}", name, keep_children ? " (children kept)" : "");
+        }
     }
 
     void Scene::replaceNodeModel(const std::string& name, std::unique_ptr<lfs::core::SplatData> model) {
