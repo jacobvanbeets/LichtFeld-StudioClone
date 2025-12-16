@@ -1239,6 +1239,7 @@ namespace lfs::vis::gui {
                         case gsplat::CameraModelType::FISHEYE: model = "FISHEYE"; break;
                         case gsplat::CameraModelType::ORTHO: model = "ORTHO"; break;
                         case gsplat::CameraModelType::EQUIRECTANGULAR: model = "EQUIRECT"; break;
+                        case gsplat::CameraModelType::THIN_PRISM_FISHEYE: model = "THIN_PRISM"; break;
                         default: break;
                         }
                         const bool is_pinhole = (model_type == gsplat::CameraModelType::PINHOLE);

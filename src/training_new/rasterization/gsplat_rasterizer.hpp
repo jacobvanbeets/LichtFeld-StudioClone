@@ -57,6 +57,14 @@ namespace lfs::training {
         const float* K_ptr = nullptr;         // [C, 3, 3]
         lfs::core::Tensor K_tensor;           // Keeps K_ptr alive
 
+        // Distortion coefficients
+        const float* radial_ptr = nullptr;
+        const float* tangential_ptr = nullptr;
+        const float* thin_prism_ptr = nullptr;
+        lfs::core::Tensor radial_cuda;
+        lfs::core::Tensor tangential_cuda;
+        lfs::core::Tensor thin_prism_cuda;
+
         // Dimensions
         uint32_t N = 0;
         uint32_t K_sh = 0;

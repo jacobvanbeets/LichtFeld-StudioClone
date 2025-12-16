@@ -134,6 +134,20 @@ namespace gsplat_lfs {
             cm_params.shutter_type = rs_type;
             EquirectangularCameraModel camera_model(cm_params);
             ray = camera_model.image_point_to_world_ray_shutter_pose(vec2(px, py), rs_params);
+        } else if (camera_model_type == CameraModelType::THIN_PRISM_FISHEYE) {
+            ThinPrismFisheyeCameraModel<>::Parameters cm_params = {};
+            cm_params.resolution = {image_width, image_height};
+            cm_params.shutter_type = rs_type;
+            cm_params.principal_point = {principal_point.x, principal_point.y};
+            cm_params.focal_length = {focal_length.x, focal_length.y};
+            if (radial_coeffs != nullptr) {
+                cm_params.radial_coeffs = make_array<float, 4>(radial_coeffs + cid * 4);
+            }
+            if (thin_prism_coeffs != nullptr) {
+                cm_params.thin_prism_coeffs = make_array<float, 4>(thin_prism_coeffs + cid * 4);
+            }
+            ThinPrismFisheyeCameraModel camera_model(cm_params);
+            ray = camera_model.image_point_to_world_ray_shutter_pose(vec2(px, py), rs_params);
         } else {
             // should never reach here
             assert(false);

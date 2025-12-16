@@ -135,6 +135,22 @@ namespace gsplat_fwd {
             image_gaussian_return =
                 world_gaussian_to_image_gaussian_unscented_transform_shutter_pose(
                     camera_model, rs_params, ut_params, mean, scale, quat);
+        } else if (camera_model_type == CameraModelType::THIN_PRISM_FISHEYE) {
+            ThinPrismFisheyeCameraModel<>::Parameters cm_params = {};
+            cm_params.resolution = {image_width, image_height};
+            cm_params.shutter_type = rs_type;
+            cm_params.principal_point = {principal_point.x, principal_point.y};
+            cm_params.focal_length = {focal_length.x, focal_length.y};
+            if (radial_coeffs != nullptr) {
+                cm_params.radial_coeffs = make_array<float, 4>(radial_coeffs + cid * 4);
+            }
+            if (thin_prism_coeffs != nullptr) {
+                cm_params.thin_prism_coeffs = make_array<float, 4>(thin_prism_coeffs + cid * 4);
+            }
+            ThinPrismFisheyeCameraModel camera_model(cm_params);
+            image_gaussian_return =
+                world_gaussian_to_image_gaussian_unscented_transform_shutter_pose(
+                    camera_model, rs_params, ut_params, mean, scale, quat);
         } else {
             // should never reach here
             assert(false);

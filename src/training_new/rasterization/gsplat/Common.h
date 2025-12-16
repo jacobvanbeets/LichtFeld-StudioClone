@@ -24,7 +24,8 @@ enum CameraModelType {
     PINHOLE = 0,
     ORTHO = 1,
     FISHEYE = 2,
-    EQUIRECTANGULAR = 3
+    EQUIRECTANGULAR = 3,
+    THIN_PRISM_FISHEYE = 4
 };
 #endif
 

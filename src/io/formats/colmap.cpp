@@ -785,8 +785,15 @@ namespace lfs::io {
                 break;
 
             case CAMERA_MODEL::THIN_PRISM_FISHEYE:
-                LOG_ERROR("THIN_PRISM_FISHEYE not supported");
-                throw std::runtime_error("THIN_PRISM_FISHEYE not supported");
+                // fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, sx1, sy1
+                focal_x = params[0];
+                focal_y = params[1];
+                center_x = params[2];
+                center_y = params[3];
+                radial_dist = Tensor::from_vector({params[4], params[5], params[8], params[9]}, {4}, Device::CPU);  // k1,k2,k3,k4
+                tangential_dist = Tensor::from_vector({params[6], params[7], params[10], params[11]}, {4}, Device::CPU);  // p1,p2,sx1,sy1
+                camera_model_type = gsplat::CameraModelType::THIN_PRISM_FISHEYE;
+                break;
 
             case CAMERA_MODEL::FOV:
                 LOG_ERROR("FOV camera model not supported");

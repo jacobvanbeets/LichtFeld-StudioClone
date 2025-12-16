@@ -69,12 +69,48 @@ namespace lfs::training {
         const bool calc_compensations = antialiased;
         const CameraModelType camera_model = static_cast<CameraModelType>(viewpoint_camera.camera_model_type());
 
-        if (use_gut) {
-            static bool logged = false;
-            if (!logged) {
-                LOG_INFO("GUT mode enabled: using gsplat with Unscented Transform projection");
-                logged = true;
+        // Distortion coefficients
+        const core::Tensor radial_dist = viewpoint_camera.radial_distortion();
+        const core::Tensor tangential_dist = viewpoint_camera.tangential_distortion();
+        core::Tensor radial_cuda, tangential_cuda, thin_prism_cuda;
+        const float* radial_ptr = nullptr;
+        const float* tangential_ptr = nullptr;
+        const float* thin_prism_ptr = nullptr;
+
+        // Helper to copy tensor to CUDA
+        auto to_cuda = [](const core::Tensor& t) {
+            return t.to(core::Device::CUDA).contiguous();
+        };
+
+        switch (camera_model) {
+        case CameraModelType::THIN_PRISM_FISHEYE:
+            if (radial_dist.is_valid() && radial_dist.numel() == 4) {
+                radial_cuda = to_cuda(radial_dist);
+                radial_ptr = radial_cuda.ptr<float>();
             }
+            if (tangential_dist.is_valid() && tangential_dist.numel() == 4) {
+                thin_prism_cuda = to_cuda(tangential_dist);
+                thin_prism_ptr = thin_prism_cuda.ptr<float>();
+            }
+            break;
+        case CameraModelType::FISHEYE:
+            if (radial_dist.is_valid() && radial_dist.numel() >= 4) {
+                radial_cuda = to_cuda(radial_dist.numel() == 4 ? radial_dist : radial_dist.slice(0, 0, 4));
+                radial_ptr = radial_cuda.ptr<float>();
+            }
+            break;
+        case CameraModelType::PINHOLE:
+            if (radial_dist.is_valid() && radial_dist.numel() > 0) {
+                radial_cuda = to_cuda(radial_dist.numel() == 6 ? radial_dist : radial_dist.slice(0, 0, std::min(radial_dist.numel(), size_t(6))));
+                radial_ptr = radial_cuda.ptr<float>();
+            }
+            if (tangential_dist.is_valid() && tangential_dist.numel() >= 2) {
+                tangential_cuda = to_cuda(tangential_dist.numel() == 2 ? tangential_dist : tangential_dist.slice(0, 0, 2));
+                tangential_ptr = tangential_cuda.ptr<float>();
+            }
+            break;
+        default:
+            break;
         }
 
         UnscentedTransformParameters ut_params;
@@ -190,11 +226,11 @@ namespace lfs::training {
             static_cast<int>(render_mode),
             ut_params,
             ShutterType::GLOBAL,
-            nullptr,  // radial_coeffs
-            nullptr,  // tangential_coeffs
-            nullptr,  // thin_prism_coeffs
+            radial_ptr,
+            tangential_ptr,
+            thin_prism_ptr,
             result,
-            nullptr   // stream
+            nullptr
         );
 
         // Build RenderOutput - wrap raw pointers in tensor views
@@ -281,8 +317,16 @@ namespace lfs::training {
         // Store camera pointers
         ctx.viewmat_ptr = viewmat_ptr;
         ctx.K_ptr = K_ptr;
-        ctx.K_tensor = K_tensor;  // Keep tensor alive for K_ptr
+        ctx.K_tensor = K_tensor;
         ctx.bg_color = bg_color;
+
+        // Distortion coefficients
+        ctx.radial_ptr = radial_ptr;
+        ctx.tangential_ptr = tangential_ptr;
+        ctx.thin_prism_ptr = thin_prism_ptr;
+        ctx.radial_cuda = radial_cuda;
+        ctx.tangential_cuda = tangential_cuda;
+        ctx.thin_prism_cuda = thin_prism_cuda;
 
         // Save settings
         ctx.N = N;
@@ -432,9 +476,9 @@ namespace lfs::training {
             static_cast<int>(ctx.render_mode),
             ut_params,
             ShutterType::GLOBAL,
-            nullptr,  // radial_coeffs
-            nullptr,  // tangential_coeffs
-            nullptr,  // thin_prism_coeffs
+            ctx.radial_ptr,
+            ctx.tangential_ptr,
+            ctx.thin_prism_ptr,
             ctx.render_alphas_ptr,
             ctx.last_ids_ptr,
             ctx.tile_offsets_ptr,

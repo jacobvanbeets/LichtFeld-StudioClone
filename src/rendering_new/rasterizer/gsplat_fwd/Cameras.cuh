@@ -1040,6 +1040,147 @@ struct EquirectangularCameraModel : BaseCameraModel<EquirectangularCameraModel> 
     }
 };
 
+// COLMAP THIN_PRISM_FISHEYE: fisheye + tangential + thin prism distortion
+template <size_t N_NEWTON_ITERATIONS = 20, size_t N_UNDISTORT_ITERATIONS = 5>
+struct ThinPrismFisheyeCameraModel
+    : BaseCameraModel<ThinPrismFisheyeCameraModel<N_NEWTON_ITERATIONS, N_UNDISTORT_ITERATIONS>> {
+
+    using Base = BaseCameraModel<ThinPrismFisheyeCameraModel<N_NEWTON_ITERATIONS, N_UNDISTORT_ITERATIONS>>;
+
+    struct Parameters : Base::Parameters {
+        std::array<float, 2> principal_point;
+        std::array<float, 2> focal_length;
+        std::array<float, 4> radial_coeffs = {0.f};      // k1, k2, k3, k4
+        std::array<float, 4> thin_prism_coeffs = {0.f};  // p1, p2, sx1, sy1
+    };
+
+    __host__ __device__ ThinPrismFisheyeCameraModel(
+        Parameters const& parameters, float min_2d_norm = 1e-6f)
+        : parameters(parameters), min_2d_norm(min_2d_norm) {
+        auto const& [k1, k2, k3, k4] = parameters.radial_coeffs;
+        forward_poly_odd = {1.f, k1, k2, k3, k4};
+        dforward_poly_even = {1, 3 * k1, 5 * k2, 7 * k3, 9 * k4};
+
+        auto const max_diag_x =
+            max(parameters.resolution[0] - parameters.principal_point[0],
+                parameters.principal_point[0]);
+        auto const max_diag_y =
+            max(parameters.resolution[1] - parameters.principal_point[1],
+                parameters.principal_point[1]);
+        auto const max_radius_pixels =
+            std::sqrt(max_diag_x * max_diag_x + max_diag_y * max_diag_y);
+
+        if (k4 == 0) {
+            max_angle = std::sqrt(
+                compute_opencv_fisheye_max_angle(3.f * k1, 5.f * k2, 7.f * k3));
+        } else {
+            std::array<float, 4> ddforward_poly_odd = {6 * k1, 20 * k2, 42 * k3, 72 * k4};
+            std::array<float, 1> approx = {1.57f};
+            bool converged = false;
+            max_angle = eval_poly_inverse_horner_newton<N_NEWTON_ITERATIONS>(
+                PolynomialProxy<PolynomialType::EVEN, 5>{dforward_poly_even},
+                PolynomialProxy<PolynomialType::ODD, 4>{ddforward_poly_odd},
+                PolynomialProxy<PolynomialType::EVEN, 1>{approx},
+                0.f, converged);
+            if (!converged || max_angle <= 0.f) {
+                max_angle = std::numeric_limits<float>::max();
+            }
+        }
+
+        max_angle = min(max_angle,
+            max(max_radius_pixels / parameters.focal_length[0],
+                max_radius_pixels / parameters.focal_length[1]));
+
+        auto const max_normalized_dist = std::max(
+            parameters.resolution[0] / 2.f / parameters.focal_length[0],
+            parameters.resolution[1] / 2.f / parameters.focal_length[1]);
+        approx_backward_poly = {0.f, max_angle / max_normalized_dist};
+    }
+
+    Parameters parameters;
+    float min_2d_norm;
+    std::array<float, 5> forward_poly_odd;
+    std::array<float, 5> dforward_poly_even;
+    std::array<float, 2> approx_backward_poly;
+    float max_angle;
+
+    inline __device__ auto camera_ray_to_image_point(
+        glm::fvec3 const& cam_ray, float margin_factor) const -> typename Base::ImagePointReturn {
+        if (cam_ray.z <= 0.f)
+            return {{0.f, 0.f}, false};
+
+        auto cam_ray_xy_norm = numerically_stable_norm2(cam_ray.x, cam_ray.y);
+        if (cam_ray_xy_norm <= 0.f)
+            cam_ray_xy_norm = std::numeric_limits<float>::epsilon();
+
+        auto const theta_full = std::atan2(cam_ray_xy_norm, cam_ray.z);
+        auto const theta = theta_full < max_angle ? theta_full : max_angle;
+
+        // Fisheye radial distortion
+        auto const thetad = eval_poly_odd_horner(forward_poly_odd, theta);
+        if (thetad <= 0.f)
+            return {{0.f, 0.f}, false};
+
+        auto const scale = thetad / cam_ray_xy_norm;
+        auto const dx = scale * cam_ray.x;
+        auto const dy = scale * cam_ray.y;
+
+        // Tangential and thin prism distortion
+        auto const& [p1, p2, sx1, sy1] = parameters.thin_prism_coeffs;
+        auto const dr2 = dx * dx + dy * dy;
+
+        auto const x_dist = dx + 2.f * p1 * dx * dy + p2 * (dr2 + 2.f * dx * dx) + sx1 * dr2;
+        auto const y_dist = dy + p1 * (dr2 + 2.f * dy * dy) + 2.f * p2 * dx * dy + sy1 * dr2;
+
+        auto const image_point = glm::fvec2{
+            parameters.focal_length[0] * x_dist + parameters.principal_point[0],
+            parameters.focal_length[1] * y_dist + parameters.principal_point[1]};
+
+        auto valid = true;
+        valid &= image_point_in_image_bounds_margin(
+            image_point, parameters.resolution, margin_factor);
+        valid &= theta <= max_angle;
+
+        return {image_point, valid};
+    }
+
+    inline __device__ CameraRay image_point_to_camera_ray(glm::fvec2 image_point) const {
+        auto uv = (image_point - glm::fvec2{parameters.principal_point[0],
+                                             parameters.principal_point[1]}) /
+                  glm::fvec2{parameters.focal_length[0], parameters.focal_length[1]};
+
+        // Iteratively remove tangential and thin prism distortion
+        auto const& [p1, p2, sx1, sy1] = parameters.thin_prism_coeffs;
+        for (size_t i = 0; i < N_UNDISTORT_ITERATIONS; ++i) {
+            auto const dr2 = uv.x * uv.x + uv.y * uv.y;
+            auto const dx = 2.f * p1 * uv.x * uv.y + p2 * (dr2 + 2.f * uv.x * uv.x) + sx1 * dr2;
+            auto const dy = p1 * (dr2 + 2.f * uv.y * uv.y) + 2.f * p2 * uv.x * uv.y + sy1 * dr2;
+            uv.x -= dx;
+            uv.y -= dy;
+        }
+
+        auto const delta = length(uv);
+
+        bool converged = false;
+        auto const theta = eval_poly_inverse_horner_newton<N_NEWTON_ITERATIONS>(
+            PolynomialProxy<PolynomialType::ODD, 5>{forward_poly_odd},
+            PolynomialProxy<PolynomialType::EVEN, 5>{dforward_poly_even},
+            PolynomialProxy<PolynomialType::FULL, 2>{approx_backward_poly},
+            delta, converged);
+
+        if (theta < 0.f || theta >= max_angle || !converged) {
+            return {glm::fvec3{0.f, 0.f, 1.f}, false};
+        }
+
+        if (delta >= min_2d_norm) {
+            auto const scale_factor = std::sin(theta) / delta;
+            return {glm::fvec3{scale_factor * uv.x, scale_factor * uv.y, std::cos(theta)}, true};
+        } else {
+            return {glm::fvec3{0.f, 0.f, 1.f}, true};
+        }
+    }
+};
+
 // ---------------------------------------------------------------------------------------------
 
 // Gaussian projections
