@@ -5,6 +5,7 @@
 #pragma once
 
 #include "core_new/camera.hpp"
+#include "core_new/parameters.hpp"
 #include "training_new/trainer.hpp"
 #include <atomic>
 #include <deque>
@@ -114,6 +115,13 @@ namespace lfs::vis {
         std::shared_ptr<const lfs::core::Camera> getCamById(int camId) const;
         std::vector<std::shared_ptr<const lfs::core::Camera>> getCamList() const;
 
+        // Pending parameters (editable in Ready state, applied on start)
+        lfs::core::param::OptimizationParameters& getEditableOptParams() { return pending_opt_params_; }
+        const lfs::core::param::OptimizationParameters& getEditableOptParams() const { return pending_opt_params_; }
+        lfs::core::param::DatasetConfig& getEditableDatasetParams() { return pending_dataset_params_; }
+        const lfs::core::param::DatasetConfig& getEditableDatasetParams() const { return pending_dataset_params_; }
+        void applyPendingParams();
+
     private:
 
         // Training thread function
@@ -148,6 +156,9 @@ namespace lfs::vis {
         // Training time tracking
         std::chrono::steady_clock::time_point training_start_time_;
         std::chrono::steady_clock::duration accumulated_training_time_{0};
+
+        lfs::core::param::OptimizationParameters pending_opt_params_;
+        lfs::core::param::DatasetConfig pending_dataset_params_;
     };
 
 } // namespace lfs::vis

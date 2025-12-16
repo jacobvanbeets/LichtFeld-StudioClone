@@ -36,13 +36,13 @@ namespace lfs::vis {
         clearTrainer();
 
         if (trainer) {
-            LOG_DEBUG("Setting new trainer");
+            const auto& params = trainer->getParams();
+            pending_opt_params_ = params.optimization;
+            pending_dataset_params_ = params.dataset;
             trainer_ = std::move(trainer);
             setState(State::Ready);
-
-            // Trainer is ready
-            lfs::core::events::internal::TrainerReady{}.emit();
-            LOG_INFO("Trainer ready for training");
+            internal::TrainerReady{}.emit();
+            LOG_DEBUG("Trainer ready");
         }
     }
 
@@ -53,16 +53,13 @@ namespace lfs::vis {
         clearTrainer();
 
         if (trainer) {
-            LOG_DEBUG("Setting trainer from checkpoint (iteration {})", checkpoint_iteration);
+            const auto& params = trainer->getParams();
+            pending_opt_params_ = params.optimization;
+            pending_dataset_params_ = params.dataset;
             trainer_ = std::move(trainer);
-
-            // Set to Ready state - user will click "Resume" or "Start" to begin training
-            // The iteration is already set in the trainer from load_checkpoint
             setState(State::Ready);
-
-            // Trainer is ready
-            lfs::core::events::internal::TrainerReady{}.emit();
-            LOG_INFO("Trainer ready from checkpoint at iteration {} (state: Ready)", checkpoint_iteration);
+            internal::TrainerReady{}.emit();
+            LOG_DEBUG("Trainer ready from checkpoint (iteration {})", checkpoint_iteration);
         }
     }
 
@@ -126,10 +123,28 @@ namespace lfs::vis {
             return false;
         }
 
-        // Skip initialization if trainer is already initialized (e.g., resuming from checkpoint)
+        applyPendingParams();
+
         if (trainer_->isInitialized()) {
-            LOG_INFO("Trainer already initialized (resuming from iteration {}), skipping reinitialization",
-                     trainer_->get_current_iteration());
+            LOG_DEBUG("Resuming from iteration {}", trainer_->get_current_iteration());
+        } else {
+            const auto& params = trainer_->getParams();
+
+            if (scene_) {
+                if (auto result = lfs::training::initializeTrainingModel(params, *scene_); !result) {
+                    LOG_ERROR("Failed to initialize model: {}", result.error());
+                    setState(State::Error);
+                    last_error_ = result.error();
+                    return false;
+                }
+            }
+
+            if (auto result = trainer_->initialize(params); !result) {
+                LOG_ERROR("Failed to initialize trainer: {}", result.error());
+                setState(State::Error);
+                last_error_ = result.error();
+                return false;
+            }
         }
 
         // Reset completion state
@@ -509,6 +524,14 @@ namespace lfs::vis {
         }
         LOG_ERROR("getCamList called but scene is not set");
         return {};
+    }
+
+    void TrainerManager::applyPendingParams() {
+        if (!trainer_) return;
+        auto params = trainer_->getParams();
+        params.optimization = pending_opt_params_;
+        params.dataset = pending_dataset_params_;
+        trainer_->setParams(params);
     }
 
 } // namespace lfs::vis

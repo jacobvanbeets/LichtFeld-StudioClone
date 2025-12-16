@@ -247,20 +247,22 @@ namespace lfs::vis::gui::panels {
             return;
         }
 
-        // Get current state
-        auto trainer_state = trainer_manager->getState();
+        const auto trainer_state = trainer_manager->getState();
+        const bool can_edit = (trainer_state == TrainerManager::State::Ready);
 
-        // Get parameters from trainer (read-only)
-        const auto* trainer = trainer_manager->getTrainer();
-        if (!trainer) {
-            return;
+        lfs::core::param::OptimizationParameters opt_params;
+        lfs::core::param::DatasetConfig dataset_params;
+
+        if (can_edit) {
+            opt_params = trainer_manager->getEditableOptParams();
+            dataset_params = trainer_manager->getEditableDatasetParams();
+        } else {
+            const auto* trainer = trainer_manager->getTrainer();
+            if (!trainer) return;
+            const auto& params = trainer->getParams();
+            opt_params = params.optimization;
+            dataset_params = params.dataset;
         }
-        const auto& params = trainer->getParams();
-        lfs::core::param::OptimizationParameters opt_params = params.optimization;
-        lfs::core::param::DatasetConfig dataset_params = params.dataset;
-
-        // Parameter editing is not available without a project
-        bool can_edit = false;
 
         // Strategy parameter cache - preserves settings when switching strategies
         static StrategyParamsCache strategy_cache;
@@ -1572,9 +1574,10 @@ namespace lfs::vis::gui::panels {
         ImGui::TreePop();
         } // End Advanced Training Params
 
-        // Note: Parameter editing is disabled - parameters are read-only from trainer
-        (void)opt_params_changed;
-        (void)dataset_params_changed;
+        if (can_edit) {
+            if (opt_params_changed) trainer_manager->getEditableOptParams() = opt_params;
+            if (dataset_params_changed) trainer_manager->getEditableDatasetParams() = dataset_params;
+        }
 
         ImGui::PopStyleVar();
     }

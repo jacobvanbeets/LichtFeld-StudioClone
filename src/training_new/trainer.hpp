@@ -90,6 +90,7 @@ namespace lfs::training {
         std::shared_mutex& getRenderMutex() const { return render_mutex_; }
 
         const lfs::core::param::TrainingParameters& getParams() const { return params_; }
+        void setParams(const lfs::core::param::TrainingParameters& params) { params_ = params; }
 
         // Checkpoint methods
         std::expected<void, std::string> save_checkpoint(int iteration);

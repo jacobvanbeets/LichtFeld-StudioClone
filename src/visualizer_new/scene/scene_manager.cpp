@@ -971,6 +971,7 @@ namespace lfs::vis {
 
             // Create Trainer from Scene
             auto trainer = std::make_unique<lfs::training::Trainer>(scene_);
+            trainer->setParams(dataset_params);
 
             // Pass trainer to manager
             if (trainer_manager_) {
