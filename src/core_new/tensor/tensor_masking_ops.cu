@@ -874,23 +874,24 @@ namespace lfs::core::tensor_ops {
     template <typename T>
     void launch_scatter(T* out, const int* idx, const T* in,
                         const size_t* out_shape, const size_t* in_shape,
-                        size_t rank, int dim, size_t total, int mode, cudaStream_t stream) {
+                        size_t rank, int dim, size_t /*total*/, int mode, cudaStream_t stream) {
         size_t outer = 1, inner = 1;
         for (int i = 0; i < dim; ++i)
             outer *= out_shape[i];
         for (size_t i = dim + 1; i < rank; ++i)
             inner *= out_shape[i];
 
-        // Use 2D grid for large arrays to avoid exceeding grid dimension limits
-        size_t num_blocks = (total + 255) / 256;
-        const size_t max_blocks_x = 65535;
+        const size_t idx_count = in_shape[dim];
+        const size_t total_threads = outer * idx_count * inner;
+        const size_t num_blocks = (total_threads + 255) / 256;
+        constexpr size_t MAX_BLOCKS_X = 65535;
 
-        if (num_blocks <= max_blocks_x) {
+        if (num_blocks <= MAX_BLOCKS_X) {
             scatter_kernel<T><<<num_blocks, 256, 0, stream>>>(
                 out, idx, in, outer, out_shape[dim], inner, in_shape[dim], mode);
         } else {
-            dim3 grid(std::min(num_blocks, max_blocks_x),
-                      (num_blocks + max_blocks_x - 1) / max_blocks_x);
+            const dim3 grid(std::min(num_blocks, MAX_BLOCKS_X),
+                            (num_blocks + MAX_BLOCKS_X - 1) / MAX_BLOCKS_X);
             scatter_kernel<T><<<grid, 256, 0, stream>>>(
                 out, idx, in, outer, out_shape[dim], inner, in_shape[dim], mode);
         }

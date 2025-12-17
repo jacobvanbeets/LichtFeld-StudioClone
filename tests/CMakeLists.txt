@@ -133,6 +133,7 @@ set(OPTIONAL_TEST_FILES
     test_gsplat_rasterizer.cpp  # GSplat rasterizer tests
     test_spz_format.cpp  # Tests for SPZ (Niantic compressed) format support
     test_interleaved_slice_copy.cpp  # Tests for interleaved buffer construction via slice + copy_
+    test_default_strategy_tensor_ops.cpp  # Exhaustive tensor ops tests for default_strategy.cpp vs libtorch
 )
 
 foreach(TEST_FILE ${OPTIONAL_TEST_FILES})

@@ -35,7 +35,7 @@ add_library(lfs_visualizer STATIC
         gui/windows/image_preview.cpp
         gui/windows/export_dialog.cpp
         gui/windows/notification_popup.cpp
-        gui/windows/output_directory_popup.cpp
+        gui/windows/save_directory_popup.cpp
 
         # Scene management
         scene/scene.cpp

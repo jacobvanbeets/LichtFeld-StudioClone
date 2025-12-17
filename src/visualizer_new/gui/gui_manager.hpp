@@ -15,7 +15,7 @@
 #include "gui/utils/drag_drop_native.hpp"
 #include "windows/export_dialog.hpp"
 #include "windows/notification_popup.hpp"
-#include "windows/output_directory_popup.hpp"
+#include "windows/save_directory_popup.hpp"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <atomic>
@@ -107,7 +107,7 @@ namespace lfs::vis {
             std::unique_ptr<ScenePanel> scene_panel_;
             std::unique_ptr<ExportDialog> export_dialog_;
             std::unique_ptr<NotificationPopup> notification_popup_;
-            std::unique_ptr<OutputDirectoryPopup> output_directory_popup_;
+            std::unique_ptr<SaveDirectoryPopup> save_directory_popup_;
 
             // UI state only
             std::unordered_map<std::string, bool> window_states_;
