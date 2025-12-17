@@ -402,8 +402,9 @@ namespace lfs::training {
         );
 
         const int n_primitives = static_cast<int>(ctx.means.shape()[0]);
-        const bool update_densification_info = gaussian_model._densification_info.ndim() > 0 &&
-                                                gaussian_model._densification_info.shape()[0] > 0;
+        // densification_info has shape [2, N]
+        const bool update_densification_info = gaussian_model._densification_info.ndim() == 2 &&
+                                                gaussian_model._densification_info.shape()[1] >= static_cast<size_t>(n_primitives);
 
         // Get gradient pointers from optimizer
         auto backward_result = fast_lfs::rasterization::backward_raw(

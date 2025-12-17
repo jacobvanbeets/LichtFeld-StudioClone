@@ -623,11 +623,10 @@ namespace lfs::training {
                 cudaGetErrorString(err_post), N, K, K_dst, (void*)dst_shN);
         }
 
-        // Update densification info if available
-        // Use custom kernel to avoid tensor allocations from memory pool
+        // Update densification info if available (shape is [2, N])
         const bool update_densification_info =
-            gaussian_model._densification_info.ndim() > 0 &&
-            gaussian_model._densification_info.shape()[0] >= N;  // Ensure buffer is large enough
+            gaussian_model._densification_info.ndim() == 2 &&
+            gaussian_model._densification_info.shape()[1] >= N;
 
         if (update_densification_info) {
             // Compute ||grad_means[i]||_2 and add to densification_info[i]

@@ -82,13 +82,14 @@ namespace lfs::training {
                 _splat_data->shN().append_gather(append_src_indices);
             }
 
-            // Update optimizer states (gathers exp_avg/exp_avg_sq for momentum)
-            _optimizer->extend_state_by_gather(ParamType::Means, append_src_indices);
-            _optimizer->extend_state_by_gather(ParamType::Rotation, append_src_indices);
-            _optimizer->extend_state_by_gather(ParamType::Scaling, append_src_indices);
-            _optimizer->extend_state_by_gather(ParamType::Sh0, append_src_indices);
-            _optimizer->extend_state_by_gather(ParamType::ShN, append_src_indices);
-            _optimizer->extend_state_by_gather(ParamType::Opacity, append_src_indices);
+            // Initialize optimizer states with zeros
+            const size_t n_new = static_cast<size_t>(remaining);
+            _optimizer->extend_state_for_new_params(ParamType::Means, n_new);
+            _optimizer->extend_state_for_new_params(ParamType::Rotation, n_new);
+            _optimizer->extend_state_for_new_params(ParamType::Scaling, n_new);
+            _optimizer->extend_state_for_new_params(ParamType::Sh0, n_new);
+            _optimizer->extend_state_for_new_params(ParamType::ShN, n_new);
+            _optimizer->extend_state_for_new_params(ParamType::Opacity, n_new);
         }
     }
 
