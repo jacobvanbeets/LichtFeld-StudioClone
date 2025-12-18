@@ -140,8 +140,14 @@ namespace lfs::training {
             const lfs::core::Tensor& gt_image,
             const lfs::core::param::OptimizationParameters& opt_params);
 
-        // Masked version of photometric loss for attention masks
-        std::expected<std::pair<lfs::core::Tensor, lfs::core::Tensor>, std::string> compute_photometric_loss_with_mask(
+        struct MaskLossResult {
+            lfs::core::Tensor loss;
+            lfs::core::Tensor grad_image;
+            lfs::core::Tensor grad_alpha;
+        };
+
+        // Masked photometric loss with optional alpha gradient
+        std::expected<MaskLossResult, std::string> compute_photometric_loss_with_mask(
             const lfs::core::Tensor& rendered,
             const lfs::core::Tensor& gt_image,
             const lfs::core::Tensor& mask,

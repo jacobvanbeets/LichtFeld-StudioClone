@@ -677,25 +677,22 @@ namespace gs::loader {
             out[i]._image_path = images_path / img._name;
             out[i]._image_name = img._name;
 
-            // Try both mask formats: prefer img_name.png (e.g., cam_1/00.png.png), fallback to img_name (e.g., cam_1/00.png)
-            std::filesystem::path mask_path_png = masks_path / img._name;
-            std::filesystem::path mask_path_png_rs = masks_path / img._name;
+            // Mask path resolution: full+.png, full+.mask.png, stem+.png, stem+.mask.png, exact
+            const std::filesystem::path img_path(img._name);
+            const std::filesystem::path stem_path = img_path.parent_path() / img_path.stem();
 
-            mask_path_png += ".png";  // Append .png to get cam_1/00.png.png
-            mask_path_png_rs += ".mask.png";  // Append .mask.png to get cam_1/00.png.mask.png
+            auto mask_full_png = masks_path / img._name; mask_full_png += ".png";
+            auto mask_full_mask = masks_path / img._name; mask_full_mask += ".mask.png";
+            auto mask_stem_png = masks_path / stem_path; mask_stem_png += ".png";
+            auto mask_stem_mask = masks_path / stem_path; mask_stem_mask += ".mask.png";
+            const auto mask_same = masks_path / img._name;
 
-            std::filesystem::path mask_path_same = masks_path / img._name;
-
-            if (std::filesystem::exists(mask_path_png)) {
-                out[i]._mask_path = mask_path_png;  // Prefer .ext.png format (e.g., cam_1/00.png.png)
-            } else if (std::filesystem::exists( mask_path_png_rs)) {
-                out[i]._mask_path =  mask_path_png_rs;  // Fallback to .mask.png format from reality scan (e.g., cam_1/00.png.mask.png)
-            } else if (std::filesystem::exists(mask_path_same)) {
-                out[i]._mask_path = mask_path_same;  // Fallback to .ext format (e.g., cam_1/00.png)
-            } else {
-                // No mask found, leave empty
-                out[i]._mask_path = "";
-            }
+            if (std::filesystem::exists(mask_full_png)) out[i]._mask_path = mask_full_png;
+            else if (std::filesystem::exists(mask_full_mask)) out[i]._mask_path = mask_full_mask;
+            else if (std::filesystem::exists(mask_stem_png)) out[i]._mask_path = mask_stem_png;
+            else if (std::filesystem::exists(mask_stem_mask)) out[i]._mask_path = mask_stem_mask;
+            else if (std::filesystem::exists(mask_same)) out[i]._mask_path = mask_same;
+            else out[i]._mask_path = "";
 
             out[i]._R = qvec2rotmat(img._qvec);
             out[i]._T = img._tvec.clone();

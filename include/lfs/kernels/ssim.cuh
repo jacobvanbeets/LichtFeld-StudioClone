@@ -73,6 +73,19 @@ std::pair<lfs::core::Tensor, SSIMContext> ssim_forward(
     SSIMWorkspace& workspace,
     bool apply_valid_padding = true);
 
+// Per-pixel SSIM map result for masked loss computation
+struct SSIMMapResult {
+    lfs::core::Tensor ssim_map;   // [N, C, H, W]
+    lfs::core::Tensor ssim_value; // Mean SSIM scalar
+    SSIMContext ctx;
+};
+
+// Returns per-pixel SSIM map (same padding when apply_valid_padding=false)
+SSIMMapResult ssim_forward_map(
+    const lfs::core::Tensor& img1,
+    const lfs::core::Tensor& img2,
+    bool apply_valid_padding = false);
+
 // Manual SSIM backward (no autograd) - computes gradient w.r.t. img1
 lfs::core::Tensor ssim_backward(
     const SSIMContext& ctx,
@@ -83,5 +96,10 @@ lfs::core::Tensor ssim_backward(
     const SSIMContext& ctx,
     SSIMWorkspace& workspace,
     float grad_loss);
+
+// Per-pixel gradient version for masked SSIM (d(loss)/d(ssim_map) per pixel)
+lfs::core::Tensor ssim_backward_with_grad_map(
+    const SSIMContext& ctx,
+    const lfs::core::Tensor& dL_dmap);  // [N, C, H, W] per-pixel gradient
 
 } // namespace lfs::training::kernels

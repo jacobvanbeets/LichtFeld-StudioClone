@@ -533,6 +533,59 @@ std::pair<lfs::core::Tensor, SSIMContext> ssim_forward(
     return {ssim_value_tensor, ctx};
 }
 
+SSIMMapResult ssim_forward_map(
+    const lfs::core::Tensor& img1_input,
+    const lfs::core::Tensor& img2_input,
+    const bool apply_valid_padding) {
+
+    constexpr float C1 = 0.01f * 0.01f;
+    constexpr float C2 = 0.03f * 0.03f;
+
+    auto img1 = img1_input.contiguous();
+    auto img2 = img2_input.contiguous();
+    if (img1.ndim() == 3) img1 = img1.unsqueeze(0);
+    if (img2.ndim() == 3) img2 = img2.unsqueeze(0);
+
+    const int N = static_cast<int>(img1.shape()[0]);
+    const int C = static_cast<int>(img1.shape()[1]);
+    const int H = static_cast<int>(img1.shape()[2]);
+    const int W = static_cast<int>(img1.shape()[3]);
+
+    const dim3 grid((W + BLOCK_X - 1) / BLOCK_X, (H + BLOCK_Y - 1) / BLOCK_Y, N);
+    const dim3 block(BLOCK_X, BLOCK_Y);
+
+    auto ssim_map = lfs::core::Tensor::zeros(img1.shape(), lfs::core::Device::CUDA);
+    auto dm_dmu1 = lfs::core::Tensor::zeros(img1.shape(), lfs::core::Device::CUDA);
+    auto dm_dsigma1_sq = lfs::core::Tensor::zeros(img1.shape(), lfs::core::Device::CUDA);
+    auto dm_dsigma12 = lfs::core::Tensor::zeros(img1.shape(), lfs::core::Device::CUDA);
+
+    fusedssimCUDA<<<grid, block>>>(
+        H, W, C, C1, C2,
+        img1.ptr<float>(), img2.ptr<float>(),
+        ssim_map.ptr<float>(), dm_dmu1.ptr<float>(),
+        dm_dsigma1_sq.ptr<float>(), dm_dsigma12.ptr<float>());
+
+    lfs::core::Tensor ssim_map_for_mean = ssim_map;
+    if (apply_valid_padding && H > 10 && W > 10) {
+        ssim_map_for_mean = ssim_map.slice(2, 5, H - 5).slice(3, 5, W - 5);
+    }
+
+    return SSIMMapResult{
+        .ssim_map = ssim_map,
+        .ssim_value = ssim_map_for_mean.mean(),
+        .ctx = SSIMContext{
+            .img1 = img1,
+            .img2 = img2,
+            .dm_dmu1 = dm_dmu1,
+            .dm_dsigma1_sq = dm_dsigma1_sq,
+            .dm_dsigma12 = dm_dsigma12,
+            .original_h = H,
+            .original_w = W,
+            .apply_valid_padding = apply_valid_padding
+        }
+    };
+}
+
 lfs::core::Tensor ssim_backward(
     const SSIMContext& ctx,
     float grad_loss) {
@@ -588,6 +641,29 @@ lfs::core::Tensor ssim_backward(
         ctx.dm_dmu1.ptr<float>(),
         ctx.dm_dsigma1_sq.ptr<float>(),
         ctx.dm_dsigma12.ptr<float>());
+
+    return dL_dimg1;
+}
+
+lfs::core::Tensor ssim_backward_with_grad_map(
+    const SSIMContext& ctx,
+    const lfs::core::Tensor& dL_dmap) {
+
+    constexpr float C1 = 0.01f * 0.01f;
+    constexpr float C2 = 0.03f * 0.03f;
+    const size_t N = ctx.img1.shape()[0];
+    const size_t C = ctx.img1.shape()[1];
+
+    auto dL_dimg1 = lfs::core::Tensor::zeros(ctx.img1.shape(), lfs::core::Device::CUDA);
+    const dim3 grid((ctx.original_w + BLOCK_X - 1) / BLOCK_X,
+                    (ctx.original_h + BLOCK_Y - 1) / BLOCK_Y, N);
+    const dim3 block(BLOCK_X, BLOCK_Y);
+
+    fusedssim_backwardCUDA<<<grid, block>>>(
+        ctx.original_h, ctx.original_w, static_cast<int>(C), C1, C2,
+        ctx.img1.ptr<float>(), ctx.img2.ptr<float>(), dL_dmap.ptr<float>(),
+        dL_dimg1.ptr<float>(), ctx.dm_dmu1.ptr<float>(),
+        ctx.dm_dsigma1_sq.ptr<float>(), ctx.dm_dsigma12.ptr<float>());
 
     return dL_dimg1;
 }

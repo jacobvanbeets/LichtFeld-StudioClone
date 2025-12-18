@@ -388,9 +388,12 @@ namespace lfs::core {
             mask = Tensor::full(mask.shape(), 1.0f, mask.device()) - mask;
         }
 
-        // Apply threshold: >= threshold becomes 1.0
-        const auto threshold_mask = mask.ge(mask_threshold);
-        mask = mask.where(threshold_mask, Tensor::full(mask.shape(), 1.0f, mask.device()));
+        // Threshold: values >= threshold become 1.0
+        if (mask_threshold > 0.0f && mask_threshold < 1.0f) {
+            const auto ones = Tensor::full(mask.shape(), 1.0f, mask.device());
+            const auto threshold_mask = mask.ge(mask_threshold);
+            mask = ones.where(threshold_mask, mask);
+        }
 
         _cached_mask = mask;
         _mask_loaded = true;

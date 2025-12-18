@@ -135,6 +135,7 @@ set(OPTIONAL_TEST_FILES
     test_interleaved_slice_copy.cpp  # Tests for interleaved buffer construction via slice + copy_
     test_default_strategy_tensor_ops.cpp  # Exhaustive tensor ops tests for default_strategy.cpp vs libtorch
     test_tensor_zero_dimension.cpp  # Tests for zero-dimension tensor handling (sh-degree 0 bug)
+    test_mask_loss.cpp  # Tests for masked photometric loss computation
 )
 
 foreach(TEST_FILE ${OPTIONAL_TEST_FILES})

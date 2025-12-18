@@ -278,6 +278,14 @@ namespace lfs::core {
             opt_json["prune_ratio"] = prune_ratio;
             opt_json["bg_modulation"] = bg_modulation;
 
+            // Mask parameters
+            static constexpr const char* MASK_MODE_NAMES[] = {"none", "segment", "ignore", "alpha_consistent"};
+            opt_json["mask_mode"] = MASK_MODE_NAMES[static_cast<int>(mask_mode)];
+            opt_json["invert_masks"] = invert_masks;
+            opt_json["mask_opacity_penalty_weight"] = mask_opacity_penalty_weight;
+            opt_json["mask_opacity_penalty_power"] = mask_opacity_penalty_power;
+            opt_json["mask_threshold"] = mask_threshold;
+
             return opt_json;
         }
 
@@ -422,6 +430,32 @@ namespace lfs::core {
                 params.bg_modulation = json["bg_modulation"];
             }
 
+            // Mask parameters
+            if (json.contains("mask_mode")) {
+                std::string mode = json["mask_mode"];
+                if (mode == "none") {
+                    params.mask_mode = MaskMode::None;
+                } else if (mode == "segment") {
+                    params.mask_mode = MaskMode::Segment;
+                } else if (mode == "ignore") {
+                    params.mask_mode = MaskMode::Ignore;
+                } else if (mode == "alpha_consistent") {
+                    params.mask_mode = MaskMode::AlphaConsistent;
+                }
+            }
+            if (json.contains("invert_masks")) {
+                params.invert_masks = json["invert_masks"];
+            }
+            if (json.contains("mask_opacity_penalty_weight")) {
+                params.mask_opacity_penalty_weight = json["mask_opacity_penalty_weight"];
+            }
+            if (json.contains("mask_opacity_penalty_power")) {
+                params.mask_opacity_penalty_power = json["mask_opacity_penalty_power"];
+            }
+            if (json.contains("mask_threshold")) {
+                params.mask_threshold = json["mask_threshold"];
+            }
+
             return params;
         }
 
@@ -548,6 +582,8 @@ namespace lfs::core {
             json["test_every"] = test_every;
             json["max_width"] = max_width;
             json["loading_params"] = loading_params.to_json();
+            json["invert_masks"] = invert_masks;
+            json["mask_threshold"] = mask_threshold;
 
             return json;
         }
@@ -564,6 +600,12 @@ namespace lfs::core {
 
             if (j.contains("loading_params")) {
                 dataset.loading_params = LoadingParams::from_json(j["loading_params"]);
+            }
+            if (j.contains("invert_masks")) {
+                dataset.invert_masks = j["invert_masks"].get<bool>();
+            }
+            if (j.contains("mask_threshold")) {
+                dataset.mask_threshold = j["mask_threshold"].get<float>();
             }
 
             return dataset;

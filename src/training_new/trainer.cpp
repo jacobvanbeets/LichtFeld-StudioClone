@@ -21,6 +21,7 @@
 #include "rasterization/gsplat_rasterizer.hpp"
 #include "core_new/cuda/memory_arena.hpp"
 #include "losses/losses.hpp"
+#include "lfs/kernels/ssim.cuh"
 
 #include <atomic>
 #include <chrono>
@@ -103,8 +104,7 @@ namespace lfs::training {
         }
     }
 
-    // Compute photometric loss AND gradient manually (using loss struct)
-    // Returns GPU tensors (loss and gradient) - NO SYNC!
+    // Compute photometric loss AND gradient manually
     std::expected<std::pair<lfs::core::Tensor, lfs::core::Tensor>, std::string> Trainer::compute_photometric_loss_with_gradient(
         const lfs::core::Tensor& rendered,
         const lfs::core::Tensor& gt_image,
@@ -142,7 +142,7 @@ namespace lfs::training {
         return {};
     }
 
-    std::expected<std::pair<lfs::core::Tensor, lfs::core::Tensor>, std::string> Trainer::compute_photometric_loss_with_mask(
+    std::expected<Trainer::MaskLossResult, std::string> Trainer::compute_photometric_loss_with_mask(
         const lfs::core::Tensor& rendered,
         const lfs::core::Tensor& gt_image,
         const lfs::core::Tensor& mask,
@@ -151,37 +151,66 @@ namespace lfs::training {
 
         using namespace lfs::core;
         constexpr float EPSILON = 1e-8f;
-        const auto mode = opt_params.mask_mode;
+        constexpr float ALPHA_CONSISTENCY_WEIGHT = 10.0f;
 
-        Tensor mask_2d = mask.ndim() == 3 ? mask.squeeze(0) : mask;
-        Tensor mask_expanded = mask_2d.unsqueeze(0).expand({
+        const auto mode = opt_params.mask_mode;
+        const Tensor mask_2d = mask.ndim() == 3 ? mask.squeeze(0) : mask;
+        const Tensor mask_expanded = mask_2d.unsqueeze(0).expand({
             static_cast<int>(rendered.shape()[0]),
             static_cast<int>(mask_2d.shape()[0]),
             static_cast<int>(mask_2d.shape()[1])});
+        const Tensor mask_sum = mask_expanded.sum() + EPSILON;
 
-        Tensor loss;
-        Tensor grad;
+        Tensor loss, grad, grad_alpha;
 
         if (mode == param::MaskMode::Segment || mode == param::MaskMode::Ignore) {
+            // Masked L1 loss
             const Tensor l1_diff = (rendered - gt_image).abs();
-            const Tensor mask_sum = mask_expanded.sum() + EPSILON;
-            loss = (l1_diff * mask_expanded).sum() / mask_sum;
-
+            const Tensor masked_l1 = (l1_diff * mask_expanded).sum() / mask_sum;
             const Tensor sign_diff = (rendered - gt_image).sign();
-            grad = sign_diff * mask_expanded / mask_sum;
+            Tensor l1_grad = sign_diff * mask_expanded / mask_sum;
 
+            if (opt_params.lambda_dssim > 0.0f) {
+                // Masked SSIM (same padding to preserve dimensions)
+                const auto rendered_4d = rendered.unsqueeze(0);
+                const auto gt_4d = gt_image.unsqueeze(0);
+                auto ssim_result = lfs::training::kernels::ssim_forward_map(rendered_4d, gt_4d, false);
+
+                const Tensor ssim_map_3d = ssim_result.ssim_map.squeeze(0);
+                const Tensor masked_ssim = (ssim_map_3d * mask_expanded).sum() / mask_sum;
+                const Tensor ssim_loss = Tensor::full({}, 1.0f, rendered.device()) - masked_ssim;
+
+                const float l1_weight = 1.0f - opt_params.lambda_dssim;
+                const float ssim_weight = opt_params.lambda_dssim;
+                loss = masked_l1 * l1_weight + ssim_loss * ssim_weight;
+
+                // SSIM backward with per-pixel gradient: d(loss)/d(ssim_map[i]) = -mask[i] / mask_sum
+                const Tensor mask_4d = mask_expanded.unsqueeze(0);
+                const Tensor dL_dmap = mask_4d * (-1.0f) / mask_sum;
+                const Tensor ssim_grad = lfs::training::kernels::ssim_backward_with_grad_map(ssim_result.ctx, dL_dmap).squeeze(0);
+                grad = l1_grad * l1_weight + ssim_grad * ssim_weight;
+            } else {
+                loss = masked_l1;
+                grad = l1_grad;
+            }
+
+            // Segment: opacity penalty for background
             if (mode == param::MaskMode::Segment && alpha.is_valid()) {
                 const Tensor alpha_2d = alpha.ndim() == 3 ? alpha.squeeze(0) : alpha;
                 const Tensor bg_mask = Tensor::full(mask_2d.shape(), 1.0f, mask_2d.device()) - mask_2d;
-                const Tensor penalty = (alpha_2d.pow(opt_params.mask_opacity_penalty_power) * bg_mask).mean()
-                                       * opt_params.mask_opacity_penalty_weight;
+                const Tensor penalty_weights = bg_mask.pow(opt_params.mask_opacity_penalty_power);
+                const Tensor penalty = (alpha_2d * penalty_weights).mean() * opt_params.mask_opacity_penalty_weight;
+
+                const float inv_pixels = opt_params.mask_opacity_penalty_weight / static_cast<float>(alpha_2d.numel());
+                grad_alpha = penalty_weights * inv_pixels;
                 loss = loss + penalty;
             }
 
         } else if (mode == param::MaskMode::AlphaConsistent) {
-            lfs::training::losses::PhotometricLoss photometric_loss;
+            // Standard photometric loss
+            lfs::training::losses::PhotometricLoss photo_loss_fn;
             const lfs::training::losses::PhotometricLoss::Params params{.lambda_dssim = opt_params.lambda_dssim};
-            auto result = photometric_loss.forward(rendered, gt_image, params);
+            auto result = photo_loss_fn.forward(rendered, gt_image, params);
             if (!result) {
                 return std::unexpected(result.error());
             }
@@ -189,17 +218,22 @@ namespace lfs::training {
             loss = photo_loss;
             grad = ctx.grad_image;
 
+            // Alpha should match mask
             if (alpha.is_valid()) {
                 const Tensor alpha_2d = alpha.ndim() == 3 ? alpha.squeeze(0) : alpha;
-                const Tensor alpha_loss = (alpha_2d - mask_2d).pow(2).mean();
-                loss = loss + alpha_loss * opt_params.mask_opacity_penalty_weight;
+                const Tensor alpha_loss = (alpha_2d - mask_2d).abs().mean() * ALPHA_CONSISTENCY_WEIGHT;
+                loss = loss + alpha_loss;
+                grad_alpha = (alpha_2d - mask_2d).sign() * (ALPHA_CONSISTENCY_WEIGHT / static_cast<float>(alpha_2d.numel()));
             }
         } else {
-            // Fallback to standard loss
-            return compute_photometric_loss_with_gradient(rendered, gt_image, opt_params);
+            auto fallback = compute_photometric_loss_with_gradient(rendered, gt_image, opt_params);
+            if (!fallback) {
+                return std::unexpected(fallback.error());
+            }
+            return MaskLossResult{.loss = fallback->first, .grad_image = fallback->second, .grad_alpha = {}};
         }
 
-        return std::make_pair(loss, grad);
+        return MaskLossResult{.loss = loss, .grad_image = grad, .grad_alpha = grad_alpha};
     }
 
     // Returns GPU tensor for loss - NO SYNC!
@@ -454,6 +488,10 @@ namespace lfs::training {
             // Print configuration
             LOG_INFO("Visualization: {}", params.optimization.headless ? "disabled" : "enabled");
             LOG_INFO("Strategy: {}", params.optimization.strategy);
+            if (params.optimization.mask_mode != lfs::core::param::MaskMode::None) {
+                static constexpr const char* MASK_MODE_NAMES[] = {"none", "segment", "ignore", "alpha_consistent"};
+                LOG_INFO("Mask mode: {}", MASK_MODE_NAMES[static_cast<int>(params.optimization.mask_mode)]);
+            }
             if (current_iteration_ > 0) {
                 LOG_INFO("Starting from iteration: {}", current_iteration_.load());
             }
@@ -795,14 +833,48 @@ namespace lfs::training {
 
                 // Compute photometric loss and gradients for this tile
                 nvtxRangePush("compute_photometric_loss");
-                auto loss_grad_result = compute_photometric_loss_with_gradient(
-                    corrected_image,
-                    gt_tile,
-                    params_.optimization);
-                if (!loss_grad_result) {
-                    return std::unexpected(loss_grad_result.error());
+                lfs::core::Tensor tile_loss;
+                lfs::core::Tensor tile_grad;
+                lfs::core::Tensor tile_grad_alpha;  // Gradient for alpha (from mask penalty)
+
+                const bool use_mask = params_.optimization.mask_mode != lfs::core::param::MaskMode::None
+                                      && cam->has_mask();
+                if (use_mask) {
+                    // Load mask (cached after first load)
+                    auto mask = cam->load_and_get_mask(
+                        params_.dataset.resize_factor,
+                        params_.dataset.max_width,
+                        params_.optimization.invert_masks,
+                        params_.optimization.mask_threshold);
+
+                    // Extract mask tile if tiling
+                    lfs::core::Tensor mask_tile = mask;
+                    if (num_tiles > 1 && mask.ndim() == 2) {
+                        auto tile_h = mask.slice(0, tile_y_offset, tile_y_offset + tile_height);
+                        mask_tile = tile_h.slice(1, tile_x_offset, tile_x_offset + tile_width);
+                    }
+
+                    auto result = compute_photometric_loss_with_mask(
+                        corrected_image, gt_tile, mask_tile, output.alpha, params_.optimization);
+                    if (!result) {
+                        nvtxRangePop();
+                        nvtxRangePop();
+                        return std::unexpected(result.error());
+                    }
+                    tile_loss = result->loss;
+                    tile_grad = result->grad_image;
+                    tile_grad_alpha = result->grad_alpha;
+                } else {
+                    auto result = compute_photometric_loss_with_gradient(
+                        corrected_image, gt_tile, params_.optimization);
+                    if (!result) {
+                        nvtxRangePop();
+                        nvtxRangePop();
+                        return std::unexpected(result.error());
+                    }
+                    tile_loss = result->first;
+                    tile_grad = result->second;
                 }
-                auto [tile_loss, tile_grad] = *loss_grad_result;
 
                 // Accumulate tile loss (stay on GPU)
                 if (tile_idx == 0) {
@@ -823,12 +895,15 @@ namespace lfs::training {
                 nvtxRangePush("rasterize_backward");
                 if (gsplat_ctx) {
                     // GUT mode: use gsplat backward (needs grad_alpha too)
-                    auto grad_alpha = lfs::core::Tensor::zeros_like(output.alpha);
+                    auto grad_alpha = tile_grad_alpha.is_valid()
+                        ? tile_grad_alpha
+                        : lfs::core::Tensor::zeros_like(output.alpha);
                     gsplat_rasterize_backward(*gsplat_ctx, raster_grad, grad_alpha,
                                               strategy_->get_model(), strategy_->get_optimizer());
                 } else {
-                    // Standard mode: use fast rasterizer backward
-                    fast_rasterize_backward(*fast_ctx, raster_grad, strategy_->get_model(), strategy_->get_optimizer());
+                    // Standard mode: use fast rasterizer backward with optional alpha gradient
+                    fast_rasterize_backward(*fast_ctx, raster_grad, strategy_->get_model(),
+                                            strategy_->get_optimizer(), tile_grad_alpha);
                 }
                 nvtxRangePop();
 

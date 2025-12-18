@@ -265,6 +265,68 @@ namespace lfs::vis::gui::panels {
                 }
             }
 
+            if (opt_params.mask_mode != lfs::core::param::MaskMode::None && has_masks) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("  Invert Masks:");
+                ImGui::TableNextColumn();
+                if (can_edit) {
+                    ImGui::Checkbox("##invert_masks", &opt_params.invert_masks);
+                } else {
+                    ImGui::Text("%s", opt_params.invert_masks ? "Yes" : "No");
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Swap object/background in masks");
+                }
+            }
+
+            if (opt_params.mask_mode == lfs::core::param::MaskMode::Segment) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("  Opacity Penalty Weight:");
+                ImGui::TableNextColumn();
+                if (can_edit) {
+                    ImGui::PushItemWidth(-1);
+                    ImGui::InputFloat("##mask_penalty_weight", &opt_params.mask_opacity_penalty_weight, 0.1f, 1.0f, "%.1f");
+                    ImGui::PopItemWidth();
+                } else {
+                    ImGui::Text("%.1f", opt_params.mask_opacity_penalty_weight);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Weight for opacity penalty in background regions");
+                }
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("  Opacity Penalty Power:");
+                ImGui::TableNextColumn();
+                if (can_edit) {
+                    ImGui::PushItemWidth(-1);
+                    ImGui::SliderFloat("##mask_penalty_power", &opt_params.mask_opacity_penalty_power, 0.5f, 4.0f, "%.1f");
+                    ImGui::PopItemWidth();
+                } else {
+                    ImGui::Text("%.1f", opt_params.mask_opacity_penalty_power);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Penalty falloff: 1=linear, 2=quadratic, >2=gentler");
+                }
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("  Mask Threshold:");
+                ImGui::TableNextColumn();
+                if (can_edit) {
+                    ImGui::PushItemWidth(-1);
+                    ImGui::SliderFloat("##mask_threshold", &opt_params.mask_threshold, 0.0f, 1.0f, "%.2f");
+                    ImGui::PopItemWidth();
+                } else {
+                    ImGui::Text("%.2f", opt_params.mask_threshold);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Values >= threshold become 1.0 (object)");
+                }
+            }
+
             // Enable Sparsity
             ImGui::TableNextRow();
             ImGui::TableNextColumn();

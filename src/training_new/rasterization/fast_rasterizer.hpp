@@ -60,12 +60,13 @@ namespace lfs::training {
         int tile_width = 0,
         int tile_height = 0);
 
-    // Explicit backward pass - computes gradients and accumulates into optimizer
+    // Backward pass with optional extra alpha gradient for masked training
     void fast_rasterize_backward(
         const FastRasterizeContext& ctx,
         const lfs::core::Tensor& grad_image,
         lfs::core::SplatData& gaussian_model,
-        AdamOptimizer& optimizer);
+        AdamOptimizer& optimizer,
+        const lfs::core::Tensor& grad_alpha_extra = {});
 
     // Convenience wrapper for inference (no backward needed)
     inline RenderOutput fast_rasterize(

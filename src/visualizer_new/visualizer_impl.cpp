@@ -163,6 +163,11 @@ namespace lfs::vis {
                 LOG_ERROR("Cannot reset: empty path");
                 return;
             }
+            // Preserve output_path and sync GUI params before reset
+            if (auto* const param_mgr = services().paramsOrNull(); param_mgr && param_mgr->ensureLoaded()) {
+                const auto& prev = data_loader_->getParameters();
+                data_loader_->setParameters(param_mgr->createForDataset(path, prev.dataset.output_path));
+            }
             LOG_DEBUG("Resetting: reloading {}", path.string());
             if (const auto result = data_loader_->loadDataset(path); !result) {
                 LOG_ERROR("Reload failed: {}", result.error());

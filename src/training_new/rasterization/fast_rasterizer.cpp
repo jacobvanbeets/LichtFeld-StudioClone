@@ -372,7 +372,8 @@ namespace lfs::training {
         const FastRasterizeContext& ctx,
         const core::Tensor& grad_image,
         core::SplatData& gaussian_model,
-        AdamOptimizer& optimizer) {
+        AdamOptimizer& optimizer,
+        const core::Tensor& grad_alpha_extra) {
 
         // Compute grad_alpha from background blending: output = image + (1 - alpha) * bg
         int H, W;
@@ -400,6 +401,10 @@ namespace lfs::training {
             is_chw_layout,
             nullptr
         );
+
+        if (grad_alpha_extra.is_valid() && grad_alpha_extra.numel() > 0) {
+            grad_alpha = grad_alpha + grad_alpha_extra;
+        }
 
         const int n_primitives = static_cast<int>(ctx.means.shape()[0]);
         // densification_info has shape [2, N]

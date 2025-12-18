@@ -48,5 +48,10 @@
   "enable_sparsity": false,
   "sparsify_steps": 15000,
   "init_rho": 0.0005,
-  "prune_ratio": 0.6
+  "prune_ratio": 0.6,
+  "mask_mode": "none",
+  "invert_masks": false,
+  "mask_opacity_penalty_weight": 1.0,
+  "mask_opacity_penalty_power": 2.0,
+  "mask_threshold": 0.5
 }

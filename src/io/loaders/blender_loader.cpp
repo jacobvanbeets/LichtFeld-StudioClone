@@ -25,27 +25,31 @@ namespace lfs::io {
 
     namespace {
         constexpr std::array MASK_FOLDERS = {"masks", "mask", "segmentation"};
-        constexpr std::array MASK_EXTENSIONS = {".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG"};
+        constexpr std::array MASK_EXTENSIONS = {".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG", ".mask.png"};
     } // namespace
 
+    // Searches for mask file matching image_name in mask folders.
+    // Priority: exact match, stem+ext (e.g., img.png), full+ext (e.g., img.jpg.png)
     static std::filesystem::path find_mask_path(const std::filesystem::path& base_path,
                                                 const std::string& image_name) {
         const std::filesystem::path img_path(image_name);
-        const std::string stem = img_path.stem().string();
+        const std::filesystem::path stem_path = img_path.parent_path() / img_path.stem();
 
         for (const auto& folder : MASK_FOLDERS) {
             const std::filesystem::path mask_dir = base_path / folder;
-            if (!std::filesystem::exists(mask_dir))
-                continue;
+            if (!std::filesystem::exists(mask_dir)) continue;
 
-            if (const auto exact = mask_dir / image_name; std::filesystem::exists(exact)) {
+            if (const auto exact = mask_dir / image_name; std::filesystem::exists(exact))
                 return exact;
+
+            for (const auto& ext : MASK_EXTENSIONS) {
+                auto path = mask_dir / stem_path; path += ext;
+                if (std::filesystem::exists(path)) return path;
             }
 
             for (const auto& ext : MASK_EXTENSIONS) {
-                if (const auto path = mask_dir / (stem + ext); std::filesystem::exists(path)) {
-                    return path;
-                }
+                auto path = mask_dir / image_name; path += ext;
+                if (std::filesystem::exists(path)) return path;
             }
         }
         return {};
