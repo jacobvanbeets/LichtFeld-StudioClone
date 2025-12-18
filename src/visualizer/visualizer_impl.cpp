@@ -6,8 +6,8 @@
 #include "command/commands/crop_command.hpp"
 #include "command/commands/selection_command.hpp"
 #include "core/data_loading_service.hpp"
-#include "core/services.hpp"
 #include "core/logger.hpp"
+#include "core/services.hpp"
 #include "scene/scene_manager.hpp"
 #include "tools/align_tool.hpp"
 #include "tools/brush_tool.hpp"
@@ -402,7 +402,7 @@ namespace lfs::vis {
             window_manager_->pollEvents();
         } else if (is_training) {
             // Training: short wait for UI responsiveness
-            constexpr double TRAINING_WAIT_SEC = 0.016;  // ~60 Hz
+            constexpr double TRAINING_WAIT_SEC = 0.016; // ~60 Hz
             window_manager_->waitEvents(TRAINING_WAIT_SEC);
         } else {
             // Idle: long wait to minimize CPU usage (VSync still applies on wake)
@@ -478,7 +478,8 @@ namespace lfs::vis {
     }
 
     void VisualizerImpl::deleteSelectedGaussians() {
-        if (!scene_manager_) return;
+        if (!scene_manager_)
+            return;
 
         auto& scene = scene_manager_->getScene();
         auto selection = scene.getSelectionMask();
@@ -490,16 +491,19 @@ namespace lfs::vis {
 
         // Get all visible nodes and apply deletion
         auto nodes = scene.getVisibleNodes();
-        if (nodes.empty()) return;
+        if (nodes.empty())
+            return;
 
         size_t offset = 0;
         bool any_deleted = false;
 
         for (const auto* node : nodes) {
-            if (!node || !node->model) continue;
+            if (!node || !node->model)
+                continue;
 
             const size_t node_size = node->model->size();
-            if (node_size == 0) continue;
+            if (node_size == 0)
+                continue;
 
             // Extract selection for this node
             auto node_selection = selection->slice(0, offset, offset + node_size);
@@ -509,8 +513,8 @@ namespace lfs::vis {
 
             // Get old state for undo (clone before modifying)
             auto old_deleted = node->model->has_deleted_mask()
-                ? node->model->deleted().clone()
-                : lfs::core::Tensor::zeros({node_size}, lfs::core::Device::CUDA, lfs::core::DataType::Bool);
+                                   ? node->model->deleted().clone()
+                                   : lfs::core::Tensor::zeros({node_size}, lfs::core::Device::CUDA, lfs::core::DataType::Bool);
 
             // Apply soft delete (OR with existing deleted mask)
             node->model->soft_delete(bool_mask);
@@ -540,10 +544,12 @@ namespace lfs::vis {
     }
 
     void VisualizerImpl::invertSelection() {
-        if (!scene_manager_) return;
+        if (!scene_manager_)
+            return;
         auto& scene = scene_manager_->getScene();
         const size_t total = scene.getTotalGaussianCount();
-        if (total == 0) return;
+        if (total == 0)
+            return;
 
         const auto old_mask = scene.getSelectionMask();
         const auto ones = lfs::core::Tensor::ones({total}, lfs::core::Device::CUDA, lfs::core::DataType::UInt8);
@@ -555,15 +561,19 @@ namespace lfs::vis {
             scene_manager_.get(),
             old_mask ? std::make_shared<lfs::core::Tensor>(old_mask->clone()) : nullptr,
             new_mask));
-        if (rendering_manager_) rendering_manager_->markDirty();
+        if (rendering_manager_)
+            rendering_manager_->markDirty();
     }
 
     void VisualizerImpl::deselectAll() {
-        if (selection_tool_) selection_tool_->clearPolygon();
+        if (selection_tool_)
+            selection_tool_->clearPolygon();
 
-        if (!scene_manager_) return;
+        if (!scene_manager_)
+            return;
         auto& scene = scene_manager_->getScene();
-        if (!scene.hasSelection()) return;
+        if (!scene.hasSelection())
+            return;
 
         const auto old_mask = scene.getSelectionMask();
         scene.clearSelection();
@@ -571,11 +581,13 @@ namespace lfs::vis {
             scene_manager_.get(),
             old_mask ? std::make_shared<lfs::core::Tensor>(old_mask->clone()) : nullptr,
             nullptr));
-        if (rendering_manager_) rendering_manager_->markDirty();
+        if (rendering_manager_)
+            rendering_manager_->markDirty();
     }
 
     void VisualizerImpl::selectAll() {
-        if (!scene_manager_) return;
+        if (!scene_manager_)
+            return;
 
         const auto tool = editor_context_.getActiveTool();
         const bool is_selection_tool = (tool == ToolType::Selection || tool == ToolType::Brush);
@@ -584,16 +596,20 @@ namespace lfs::vis {
             // Select all gaussians for the active node
             auto& scene = scene_manager_->getScene();
             const size_t total = scene.getTotalGaussianCount();
-            if (total == 0) return;
+            if (total == 0)
+                return;
 
             const auto& selected_name = scene_manager_->getSelectedNodeName();
-            if (selected_name.empty()) return;
+            if (selected_name.empty())
+                return;
 
             const int node_index = scene.getVisibleNodeIndex(selected_name);
-            if (node_index < 0) return;
+            if (node_index < 0)
+                return;
 
             const auto transform_indices = scene.getTransformIndices();
-            if (!transform_indices || transform_indices->numel() != total) return;
+            if (!transform_indices || transform_indices->numel() != total)
+                return;
 
             const auto old_mask = scene.getSelectionMask();
             auto new_mask = std::make_shared<lfs::core::Tensor>(transform_indices->eq(node_index));
@@ -617,11 +633,13 @@ namespace lfs::vis {
                 scene_manager_->selectNodes(splat_names);
             }
         }
-        if (rendering_manager_) rendering_manager_->markDirty();
+        if (rendering_manager_)
+            rendering_manager_->markDirty();
     }
 
     void VisualizerImpl::copySelection() {
-        if (!scene_manager_) return;
+        if (!scene_manager_)
+            return;
 
         const auto tool = editor_context_.getActiveTool();
         const bool is_selection_tool = (tool == ToolType::Selection || tool == ToolType::Brush);
@@ -634,13 +652,15 @@ namespace lfs::vis {
     }
 
     void VisualizerImpl::pasteSelection() {
-        if (!scene_manager_) return;
+        if (!scene_manager_)
+            return;
 
         const auto pasted = scene_manager_->hasGaussianClipboard()
-            ? scene_manager_->pasteGaussians()
-            : scene_manager_->pasteNodes();
+                                ? scene_manager_->pasteGaussians()
+                                : scene_manager_->pasteNodes();
 
-        if (pasted.empty()) return;
+        if (pasted.empty())
+            return;
 
         if (selection_tool_) {
             selection_tool_->clearPolygon();
@@ -653,7 +673,8 @@ namespace lfs::vis {
             scene_manager_->addToSelection(name);
         }
 
-        if (rendering_manager_) rendering_manager_->markDirty();
+        if (rendering_manager_)
+            rendering_manager_->markDirty();
     }
 
     void VisualizerImpl::run() {

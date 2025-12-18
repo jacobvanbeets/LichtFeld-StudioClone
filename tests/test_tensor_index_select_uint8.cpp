@@ -1,51 +1,53 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
-#include <torch/torch.h>
 #include "core/tensor.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <gtest/gtest.h>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 
 namespace {
 
-void compare_uint8_tensors(const Tensor& lfs, const torch::Tensor& ref, const std::string& ctx = "") {
-    const auto torch_cpu = ref.cpu().contiguous();
-    const auto lfs_cpu = lfs.cpu();
+    void compare_uint8_tensors(const Tensor& lfs, const torch::Tensor& ref, const std::string& ctx = "") {
+        const auto torch_cpu = ref.cpu().contiguous();
+        const auto lfs_cpu = lfs.cpu();
 
-    ASSERT_EQ(lfs_cpu.ndim(), static_cast<size_t>(torch_cpu.dim())) << ctx;
-    for (size_t i = 0; i < lfs_cpu.ndim(); ++i) {
-        ASSERT_EQ(lfs_cpu.size(i), static_cast<size_t>(torch_cpu.size(i))) << ctx << " dim " << i;
+        ASSERT_EQ(lfs_cpu.ndim(), static_cast<size_t>(torch_cpu.dim())) << ctx;
+        for (size_t i = 0; i < lfs_cpu.ndim(); ++i) {
+            ASSERT_EQ(lfs_cpu.size(i), static_cast<size_t>(torch_cpu.size(i))) << ctx << " dim " << i;
+        }
+        if (lfs_cpu.numel() == 0)
+            return;
+
+        const auto* lfs_ptr = lfs_cpu.ptr<uint8_t>();
+        const auto torch_flat = torch_cpu.flatten();
+        const auto acc = torch_flat.accessor<uint8_t, 1>();
+        for (size_t i = 0; i < lfs_cpu.numel(); ++i) {
+            EXPECT_EQ(lfs_ptr[i], acc[i]) << ctx << " at " << i;
+        }
     }
-    if (lfs_cpu.numel() == 0) return;
 
-    const auto* lfs_ptr = lfs_cpu.ptr<uint8_t>();
-    const auto torch_flat = torch_cpu.flatten();
-    const auto acc = torch_flat.accessor<uint8_t, 1>();
-    for (size_t i = 0; i < lfs_cpu.numel(); ++i) {
-        EXPECT_EQ(lfs_ptr[i], acc[i]) << ctx << " at " << i;
+    void compare_float_tensors(const Tensor& lfs, const torch::Tensor& ref, const std::string& ctx = "", float tol = 1e-5f) {
+        const auto torch_cpu = ref.cpu().contiguous();
+        const auto lfs_cpu = lfs.cpu();
+
+        ASSERT_EQ(lfs_cpu.ndim(), static_cast<size_t>(torch_cpu.dim())) << ctx;
+        for (size_t i = 0; i < lfs_cpu.ndim(); ++i) {
+            ASSERT_EQ(lfs_cpu.size(i), static_cast<size_t>(torch_cpu.size(i))) << ctx << " dim " << i;
+        }
+        if (lfs_cpu.numel() == 0)
+            return;
+
+        const auto* lfs_ptr = lfs_cpu.ptr<float>();
+        const auto torch_flat = torch_cpu.flatten();
+        const auto acc = torch_flat.accessor<float, 1>();
+        for (size_t i = 0; i < lfs_cpu.numel(); ++i) {
+            EXPECT_NEAR(lfs_ptr[i], acc[i], tol) << ctx << " at " << i;
+        }
     }
-}
-
-void compare_float_tensors(const Tensor& lfs, const torch::Tensor& ref, const std::string& ctx = "", float tol = 1e-5f) {
-    const auto torch_cpu = ref.cpu().contiguous();
-    const auto lfs_cpu = lfs.cpu();
-
-    ASSERT_EQ(lfs_cpu.ndim(), static_cast<size_t>(torch_cpu.dim())) << ctx;
-    for (size_t i = 0; i < lfs_cpu.ndim(); ++i) {
-        ASSERT_EQ(lfs_cpu.size(i), static_cast<size_t>(torch_cpu.size(i))) << ctx << " dim " << i;
-    }
-    if (lfs_cpu.numel() == 0) return;
-
-    const auto* lfs_ptr = lfs_cpu.ptr<float>();
-    const auto torch_flat = torch_cpu.flatten();
-    const auto acc = torch_flat.accessor<float, 1>();
-    for (size_t i = 0; i < lfs_cpu.numel(); ++i) {
-        EXPECT_NEAR(lfs_ptr[i], acc[i], tol) << ctx << " at " << i;
-    }
-}
 
 } // namespace
 
@@ -63,7 +65,8 @@ TEST_F(TensorIndexSelectUInt8Test, Basic_1D_CUDA) {
     auto data = Tensor::zeros({10}, Device::CUDA, DataType::UInt8);
     auto data_cpu = data.cpu();
     auto* p = data_cpu.ptr<uint8_t>();
-    for (int i = 0; i < 10; ++i) p[i] = static_cast<uint8_t>(i * 10);
+    for (int i = 0; i < 10; ++i)
+        p[i] = static_cast<uint8_t>(i * 10);
     data = data_cpu.cuda();
 
     // Create indices
@@ -89,7 +92,8 @@ TEST_F(TensorIndexSelectUInt8Test, Basic_2D_CUDA) {
     auto data = Tensor::zeros({4, 3}, Device::CUDA, DataType::UInt8);
     auto data_cpu = data.cpu();
     auto* p = data_cpu.ptr<uint8_t>();
-    for (int i = 0; i < 12; ++i) p[i] = static_cast<uint8_t>(i * 20);
+    for (int i = 0; i < 12; ++i)
+        p[i] = static_cast<uint8_t>(i * 20);
     data = data_cpu.cuda();
 
     // Select rows 0 and 2
@@ -115,7 +119,8 @@ TEST_F(TensorIndexSelectUInt8Test, Basic_2D_CUDA) {
 TEST_F(TensorIndexSelectUInt8Test, Basic_CPU) {
     auto data = Tensor::zeros({6}, Device::CPU, DataType::UInt8);
     auto* p = data.ptr<uint8_t>();
-    for (int i = 0; i < 6; ++i) p[i] = static_cast<uint8_t>(i + 100);
+    for (int i = 0; i < 6; ++i)
+        p[i] = static_cast<uint8_t>(i + 100);
 
     auto indices = Tensor::from_vector(std::vector<int>{1, 3, 5}, {3}, Device::CPU);
     auto result = data.index_select(0, indices);
@@ -140,7 +145,8 @@ TEST_F(TensorIndexSelectUInt8Test, SelectAll) {
     auto data = Tensor::zeros({5, 3}, Device::CUDA, DataType::UInt8);
     auto data_cpu = data.cpu();
     auto* p = data_cpu.ptr<uint8_t>();
-    for (int i = 0; i < 15; ++i) p[i] = static_cast<uint8_t>(i);
+    for (int i = 0; i < 15; ++i)
+        p[i] = static_cast<uint8_t>(i);
     data = data_cpu.cuda();
 
     auto indices = Tensor::from_vector(std::vector<int>{0, 1, 2, 3, 4}, {5}, Device::CUDA);
@@ -162,7 +168,8 @@ TEST_F(TensorIndexSelectUInt8Test, VsTorch_1D) {
     auto lfs_data = Tensor::zeros({256}, Device::CUDA, DataType::UInt8);
     auto lfs_cpu = lfs_data.cpu();
     auto* p = lfs_cpu.ptr<uint8_t>();
-    for (int i = 0; i < 256; ++i) p[i] = static_cast<uint8_t>(i);
+    for (int i = 0; i < 256; ++i)
+        p[i] = static_cast<uint8_t>(i);
     lfs_data = lfs_cpu.cuda();
 
     // Indices
@@ -207,7 +214,8 @@ TEST_F(TensorIndexSelectUInt8Test, VsTorch_LargeScale) {
 
     // Select every 10th point
     std::vector<int> idx_vec;
-    for (int i = 0; i < N; i += 10) idx_vec.push_back(i);
+    for (int i = 0; i < N; i += 10)
+        idx_vec.push_back(i);
 
     auto t_indices = torch::tensor(std::vector<int64_t>(idx_vec.begin(), idx_vec.end()), torch::kLong).cuda();
     auto lfs_indices = Tensor::from_vector(idx_vec, {idx_vec.size()}, Device::CUDA);
@@ -234,15 +242,16 @@ TEST_F(TensorIndexSelectUInt8Test, PointCloudCroppingPipeline_Basic) {
     auto colors = Tensor::zeros({N, 3}, Device::CUDA, DataType::UInt8);
     auto colors_cpu = colors.cpu();
     auto* cp = colors_cpu.ptr<uint8_t>();
-    for (size_t i = 0; i < N * 3; ++i) cp[i] = static_cast<uint8_t>(i % 256);
+    for (size_t i = 0; i < N * 3; ++i)
+        cp[i] = static_cast<uint8_t>(i % 256);
     colors = colors_cpu.cuda();
 
     // Cropbox: keep points where x in [-0.5, 0.5]
-    auto x = means.slice(1, 0, 1).squeeze(1);  // [N]
-    auto mask = (x >= -0.5f) && (x <= 0.5f);   // [N] Bool
+    auto x = means.slice(1, 0, 1).squeeze(1); // [N]
+    auto mask = (x >= -0.5f) && (x <= 0.5f);  // [N] Bool
 
     // Get indices
-    auto indices = mask.nonzero().squeeze(1);  // [K] Int64
+    auto indices = mask.nonzero().squeeze(1); // [K] Int64
     ASSERT_GT(indices.numel(), 0) << "Should have some points in cropbox";
 
     // Filter both
@@ -261,7 +270,7 @@ TEST_F(TensorIndexSelectUInt8Test, PointCloudCroppingPipeline_WithTransform) {
     constexpr size_t N = 5000;
 
     // Create point cloud
-    auto means = Tensor::randn({N, 3}, Device::CUDA) * 10.0f;  // Points in [-10, 10]
+    auto means = Tensor::randn({N, 3}, Device::CUDA) * 10.0f; // Points in [-10, 10]
     auto colors = Tensor::zeros({N, 3}, Device::CUDA, DataType::UInt8);
     auto colors_cpu = colors.cpu();
     for (size_t i = 0; i < N * 3; ++i) {
@@ -280,8 +289,8 @@ TEST_F(TensorIndexSelectUInt8Test, PointCloudCroppingPipeline_WithTransform) {
 
     // Transform: [4,4] x [4,N] -> [4,N] -> [N,3]
     auto ones = Tensor::ones({N, 1}, Device::CUDA);
-    auto means_homo = means.cat(ones, 1);  // [N, 4]
-    auto local_pos = transform.mm(means_homo.t()).t();  // [N, 4]
+    auto means_homo = means.cat(ones, 1);              // [N, 4]
+    auto local_pos = transform.mm(means_homo.t()).t(); // [N, 4]
 
     // Extract xyz
     auto x = local_pos.slice(1, 0, 1).squeeze(1);
@@ -365,7 +374,8 @@ TEST_F(TensorIndexSelectUInt8Test, SingleElement) {
 TEST_F(TensorIndexSelectUInt8Test, DuplicateIndices) {
     auto data = Tensor::zeros({3, 2}, Device::CUDA, DataType::UInt8);
     auto data_cpu = data.cpu();
-    for (int i = 0; i < 6; ++i) data_cpu.ptr<uint8_t>()[i] = static_cast<uint8_t>(i * 40);
+    for (int i = 0; i < 6; ++i)
+        data_cpu.ptr<uint8_t>()[i] = static_cast<uint8_t>(i * 40);
     data = data_cpu.cuda();
 
     // Select row 1 three times
@@ -386,7 +396,8 @@ TEST_F(TensorIndexSelectUInt8Test, DuplicateIndices) {
 TEST_F(TensorIndexSelectUInt8Test, ReversedIndices) {
     auto data = Tensor::zeros({5}, Device::CUDA, DataType::UInt8);
     auto data_cpu = data.cpu();
-    for (int i = 0; i < 5; ++i) data_cpu.ptr<uint8_t>()[i] = static_cast<uint8_t>(i);
+    for (int i = 0; i < 5; ++i)
+        data_cpu.ptr<uint8_t>()[i] = static_cast<uint8_t>(i);
     data = data_cpu.cuda();
 
     auto indices = Tensor::from_vector(std::vector<int>{4, 3, 2, 1, 0}, {5}, Device::CUDA);

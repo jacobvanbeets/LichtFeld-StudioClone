@@ -6,8 +6,8 @@
 #include "adam_optimizer.hpp"
 #include "core/logger.hpp"
 #include <cmath>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 
 namespace lfs::training {
 
@@ -38,8 +38,7 @@ namespace lfs::training {
             {ParamType::ShN, "shN"},
             {ParamType::Scaling, "scaling"},
             {ParamType::Rotation, "rotation"},
-            {ParamType::Opacity, "opacity"}
-        };
+            {ParamType::Opacity, "opacity"}};
 
         if (params_to_update_.empty()) {
             // Default behavior (MCMC): Update ONLY global LR (means uses this)
@@ -84,7 +83,7 @@ namespace lfs::training {
         double old_global_lr = optimizer_.get_lr();
 
         double new_global_lr;
-        double scale_factor;  // How much to scale LRs (relative to initial)
+        double scale_factor; // How much to scale LRs (relative to initial)
 
         const char* phase = nullptr;
         if (current_step_ <= warmup_steps_) {
@@ -108,8 +107,7 @@ namespace lfs::training {
             {ParamType::ShN, "shN"},
             {ParamType::Scaling, "scaling"},
             {ParamType::Rotation, "rotation"},
-            {ParamType::Opacity, "opacity"}
-        };
+            {ParamType::Opacity, "opacity"}};
 
         if (params_to_update_.empty()) {
             // Default behavior: Update ONLY global LR
@@ -153,10 +151,10 @@ namespace lfs::training {
     // ===== Serialization =====
 
     namespace {
-        constexpr uint32_t SCHED_EXPONENTIAL_MAGIC = 0x4C465345;  // "LFSE"
-        constexpr uint32_t SCHED_WARMUP_MAGIC = 0x4C465357;       // "LFSW"
+        constexpr uint32_t SCHED_EXPONENTIAL_MAGIC = 0x4C465345; // "LFSE"
+        constexpr uint32_t SCHED_WARMUP_MAGIC = 0x4C465357;      // "LFSW"
         constexpr uint32_t SCHED_VERSION = 1;
-    }
+    } // namespace
 
     void ExponentialLR::serialize(std::ostream& os) const {
         os.write(reinterpret_cast<const char*>(&SCHED_EXPONENTIAL_MAGIC), sizeof(SCHED_EXPONENTIAL_MAGIC));

@@ -11,10 +11,10 @@
  * memory accumulation seen in long MCMC training runs.
  */
 
-#include <gtest/gtest.h>
-#include "core/tensor.hpp"
 #include "../src/core/tensor/internal/memory_pool.hpp"
+#include "core/tensor.hpp"
 #include <cuda_runtime.h>
+#include <gtest/gtest.h>
 #include <iostream>
 #include <vector>
 
@@ -55,7 +55,7 @@ TEST(AppendGather, BasicFunctionality) {
     param.append_gather(indices);
 
     // Verify shape
-    ASSERT_EQ(param.shape()[0], 5);  // 2 original + 3 gathered
+    ASSERT_EQ(param.shape()[0], 5); // 2 original + 3 gathered
     ASSERT_EQ(param.shape()[1], 3);
 
     // Verify values
@@ -67,9 +67,9 @@ TEST(AppendGather, BasicFunctionality) {
     EXPECT_FLOAT_EQ(data[3], 4.0f);
 
     // Gathered rows: [1,2,3], [4,5,6], [1,2,3]
-    EXPECT_FLOAT_EQ(data[6], 1.0f);   // row 0
-    EXPECT_FLOAT_EQ(data[9], 4.0f);   // row 1
-    EXPECT_FLOAT_EQ(data[12], 1.0f);  // row 0 again
+    EXPECT_FLOAT_EQ(data[6], 1.0f);  // row 0
+    EXPECT_FLOAT_EQ(data[9], 4.0f);  // row 1
+    EXPECT_FLOAT_EQ(data[12], 1.0f); // row 0 again
 }
 
 TEST(AppendGather, MultipleAppends) {
@@ -127,12 +127,12 @@ TEST(InplaceCat, MCMCMultipleAttributes) {
     const size_t max_capacity = 4000000;
 
     struct Attributes {
-        Tensor means;       // [N, 3]
-        Tensor scales;      // [N, 3]
-        Tensor rotations;   // [N, 4]
-        Tensor sh0;         // [N, 3]
-        Tensor shN;         // [N, 45]
-        Tensor opacity;     // [N, 1]
+        Tensor means;     // [N, 3]
+        Tensor scales;    // [N, 3]
+        Tensor rotations; // [N, 4]
+        Tensor sh0;       // [N, 3]
+        Tensor shN;       // [N, 45]
+        Tensor opacity;   // [N, 1]
     };
 
     Attributes attrs;
@@ -208,10 +208,10 @@ TEST(InplaceCat, MultipleSequentialAdds) {
         void* after_ptr = tensor.data_ptr();
 
         // Verify pointer stays the same (in-place optimization)
-        EXPECT_EQ(before_ptr, after_ptr) << "Add operation " << (i+1) << " reallocated";
+        EXPECT_EQ(before_ptr, after_ptr) << "Add operation " << (i + 1) << " reallocated";
         EXPECT_EQ(after_ptr, initial_ptr) << "Pointer changed from initial";
 
-        EXPECT_EQ(tensor.shape()[0], initial_size + (i+1) * add_size);
+        EXPECT_EQ(tensor.shape()[0], initial_size + (i + 1) * add_size);
     }
 }
 
@@ -262,7 +262,7 @@ TEST(MemoryLeak, AppendGatherVsIndexSelectCat) {
             auto weights = Tensor::ones({param.shape()[0]}, Device::CUDA);
             auto sampled_idxs = Tensor::multinomial(weights, n_new, true);
 
-            auto new_values = param.index_select(0, sampled_idxs);  // Allocates
+            auto new_values = param.index_select(0, sampled_idxs); // Allocates
             param = Tensor::cat({param, new_values}, 0);
 
             if (i % 10 == 0) {
@@ -287,7 +287,7 @@ TEST(MemoryLeak, AppendGatherVsIndexSelectCat) {
             auto weights = Tensor::ones({param.shape()[0]}, Device::CUDA);
             auto sampled_idxs = Tensor::multinomial(weights, n_new, true);
 
-            param.append_gather(sampled_idxs);  // No intermediate allocation
+            param.append_gather(sampled_idxs); // No intermediate allocation
 
             if (i % 10 == 0) {
                 CudaMemoryPool::instance().trim_cached_memory();
@@ -313,12 +313,12 @@ TEST(MemoryLeak, RealisticMCMCLoop) {
     // Simulate 6 parameters like MCMC
     std::vector<Tensor> params;
     std::vector<std::pair<size_t, size_t>> param_shapes = {
-        {initial_size, 3},   // means
-        {initial_size, 3},   // sh0
-        {initial_size, 45},  // shN
-        {initial_size, 3},   // scaling
-        {initial_size, 4},   // rotation
-        {initial_size, 1}    // opacity
+        {initial_size, 3},  // means
+        {initial_size, 3},  // sh0
+        {initial_size, 45}, // shN
+        {initial_size, 3},  // scaling
+        {initial_size, 4},  // rotation
+        {initial_size, 1}   // opacity
     };
 
     for (auto& shape : param_shapes) {
@@ -360,7 +360,7 @@ TEST(MemoryLeak, RealisticMCMCLoop) {
     }
 
     size_t expected_data_growth = (final_total_elements - initial_total_elements) * sizeof(float);
-    size_t allowed_overhead = 200 * 1024 * 1024;  // 200MB overhead
+    size_t allowed_overhead = 200 * 1024 * 1024; // 200MB overhead
 
     std::cout << "Expected data growth: " << format_bytes(expected_data_growth) << std::endl;
     std::cout << "Actual memory growth: " << format_bytes(mem_growth) << std::endl;

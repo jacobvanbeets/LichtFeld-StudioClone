@@ -46,7 +46,8 @@ namespace lfs::core::debug {
                 << "\"mean\": " << stats.mean << ", "
                 << "\"std\": " << stats.std << ", "
                 << "\"numel\": " << stats.numel << "}";
-            if (++i < param_stats.size()) oss << ",";
+            if (++i < param_stats.size())
+                oss << ",";
             oss << "\n";
         }
         oss << "  },\n";
@@ -59,7 +60,8 @@ namespace lfs::core::debug {
                 << "\"max\": " << stats.max << ", "
                 << "\"mean\": " << stats.mean << ", "
                 << "\"std\": " << stats.std << "}";
-            if (++i < grad_stats.size()) oss << ",";
+            if (++i < grad_stats.size())
+                oss << ",";
             oss << "\n";
         }
         oss << "  }\n";

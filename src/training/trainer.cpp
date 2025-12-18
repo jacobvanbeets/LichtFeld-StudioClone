@@ -3,25 +3,25 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "trainer.hpp"
-#include "io/filesystem_utils.hpp"
-#include "visualizer/scene/scene.hpp"
-#include "strategies/mcmc.hpp"
-#include "strategies/default_strategy.hpp"
 #include "components/bilateral_grid.hpp"
 #include "components/sparsity_optimizer.hpp"
+#include "core/cuda/memory_arena.hpp"
 #include "core/events.hpp"
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
 #include "core/splat_data_export.hpp"
 #include "core/splat_data_transform.hpp"
 #include "core/tensor/internal/memory_pool.hpp"
-#include "optimizer/adam_optimizer.hpp"
 #include "io/cache_image_loader.hpp"
+#include "io/filesystem_utils.hpp"
+#include "lfs/kernels/ssim.cuh"
+#include "losses/losses.hpp"
+#include "optimizer/adam_optimizer.hpp"
 #include "rasterization/fast_rasterizer.hpp"
 #include "rasterization/gsplat_rasterizer.hpp"
-#include "core/cuda/memory_arena.hpp"
-#include "losses/losses.hpp"
-#include "lfs/kernels/ssim.cuh"
+#include "strategies/default_strategy.hpp"
+#include "strategies/mcmc.hpp"
+#include "visualizer/scene/scene.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -34,9 +34,9 @@ namespace lfs::training {
 
     // Tile configuration for memory-efficient training
     enum class TileMode {
-        One = 1,   // 1 tile  - 1x1 - Render full image (no tiling)
-        Two = 2,   // 2 tiles - 2x1 - Two horizontal tiles
-        Four = 4   // 4 tiles - 2x2 - Four tiles in a grid
+        One = 1, // 1 tile  - 1x1 - Render full image (no tiling)
+        Two = 2, // 2 tiles - 2x1 - Two horizontal tiles
+        Four = 4 // 4 tiles - 2x2 - Four tiles in a grid
     };
 
     void Trainer::cleanup() {
@@ -155,10 +155,9 @@ namespace lfs::training {
 
         const auto mode = opt_params.mask_mode;
         const Tensor mask_2d = mask.ndim() == 3 ? mask.squeeze(0) : mask;
-        const Tensor mask_expanded = mask_2d.unsqueeze(0).expand({
-            static_cast<int>(rendered.shape()[0]),
-            static_cast<int>(mask_2d.shape()[0]),
-            static_cast<int>(mask_2d.shape()[1])});
+        const Tensor mask_expanded = mask_2d.unsqueeze(0).expand({static_cast<int>(rendered.shape()[0]),
+                                                                  static_cast<int>(mask_2d.shape()[0]),
+                                                                  static_cast<int>(mask_2d.shape()[1])});
         const Tensor mask_sum = mask_expanded.sum() + EPSILON;
 
         Tensor loss, grad, grad_alpha;
@@ -450,8 +449,7 @@ namespace lfs::training {
                     .init_rho = params.optimization.init_rho,
                     .prune_ratio = params.optimization.prune_ratio,
                     .update_every = SPARSITY_UPDATE_INTERVAL,
-                    .start_iteration = base_iterations
-                };
+                    .start_iteration = base_iterations};
 
                 sparsity_optimizer_ = SparsityOptimizerFactory::create("admm", sparsity_config);
                 if (sparsity_optimizer_) {
@@ -642,8 +640,7 @@ namespace lfs::training {
         const float result[3] = {
             std::clamp(0.5f * (1.0f + std::sin(pr)) * w, CLAMP_EPS, 1.0f - CLAMP_EPS),
             std::clamp(0.5f * (1.0f + std::sin(pg + PHASE_OFFSET_G)) * w, CLAMP_EPS, 1.0f - CLAMP_EPS),
-            std::clamp(0.5f * (1.0f + std::sin(pb + PHASE_OFFSET_B)) * w, CLAMP_EPS, 1.0f - CLAMP_EPS)
-        };
+            std::clamp(0.5f * (1.0f + std::sin(pb + PHASE_OFFSET_B)) * w, CLAMP_EPS, 1.0f - CLAMP_EPS)};
 
         if (bg_mix_buffer_.is_empty()) {
             bg_mix_buffer_ = lfs::core::Tensor::empty({3}, lfs::core::Device::CUDA, lfs::core::DataType::Float32);
@@ -710,15 +707,18 @@ namespace lfs::training {
             // Determine tile configuration
             int tile_rows = 1, tile_cols = 1;
             switch (tile_mode) {
-                case TileMode::One:
-                    tile_rows = 1; tile_cols = 1;
-                    break;
-                case TileMode::Two:
-                    tile_rows = 2; tile_cols = 1;
-                    break;
-                case TileMode::Four:
-                    tile_rows = 2; tile_cols = 2;
-                    break;
+            case TileMode::One:
+                tile_rows = 1;
+                tile_cols = 1;
+                break;
+            case TileMode::Two:
+                tile_rows = 2;
+                tile_cols = 1;
+                break;
+            case TileMode::Four:
+                tile_rows = 2;
+                tile_cols = 2;
+                break;
             }
 
             const int tile_width = full_width / tile_cols;
@@ -727,7 +727,7 @@ namespace lfs::training {
 
             // Accumulate loss across tiles (keep on GPU until final sync)
             lfs::core::Tensor loss_tensor_gpu;
-            RenderOutput r_output;  // Last tile's output (for densification info)
+            RenderOutput r_output; // Last tile's output (for densification info)
 
             // Loop over tiles (row-major order)
             for (int tile_idx = 0; tile_idx < num_tiles; ++tile_idx) {
@@ -769,8 +769,8 @@ namespace lfs::training {
                         1.0f, false, GsplatRenderMode::RGB, true /* use_gut */);
 
                     if (!rasterize_result) {
-                        nvtxRangePop();  // rasterize_forward
-                        nvtxRangePop();  // tile
+                        nvtxRangePop(); // rasterize_forward
+                        nvtxRangePop(); // tile
                         return std::unexpected(rasterize_result.error());
                     }
 
@@ -781,15 +781,15 @@ namespace lfs::training {
                     auto rasterize_result = fast_rasterize_forward(
                         *cam, strategy_->get_model(), bg,
                         tile_x_offset, tile_y_offset,
-                        (num_tiles > 1) ? tile_width : 0,   // 0 means full image
+                        (num_tiles > 1) ? tile_width : 0, // 0 means full image
                         (num_tiles > 1) ? tile_height : 0);
 
                     // Check for OOM error
                     if (!rasterize_result) {
                         const std::string& error = rasterize_result.error();
                         if (error.find("OUT_OF_MEMORY") != std::string::npos) {
-                            nvtxRangePop();  // rasterize_forward
-                            nvtxRangePop();  // tile
+                            nvtxRangePop(); // rasterize_forward
+                            nvtxRangePop(); // tile
 
                             // Handle OOM by switching tile mode
                             if (tile_mode == TileMode::Four) {
@@ -806,7 +806,7 @@ namespace lfs::training {
                                 params_.optimization.tile_mode = static_cast<int>(new_mode);
 
                                 // Retry this step with new tile mode
-                                return std::unexpected("OOM_RETRY");  // Signal to retry the step
+                                return std::unexpected("OOM_RETRY"); // Signal to retry the step
                             }
                         } else {
                             // Non-OOM error - propagate
@@ -820,7 +820,7 @@ namespace lfs::training {
                     fast_ctx.emplace(std::move(rasterize_result->second));
                 }
 
-                r_output = output;  // Save last tile for densification
+                r_output = output; // Save last tile for densification
                 nvtxRangePop();
 
                 // Apply bilateral grid if enabled (before loss computation)
@@ -835,10 +835,9 @@ namespace lfs::training {
                 nvtxRangePush("compute_photometric_loss");
                 lfs::core::Tensor tile_loss;
                 lfs::core::Tensor tile_grad;
-                lfs::core::Tensor tile_grad_alpha;  // Gradient for alpha (from mask penalty)
+                lfs::core::Tensor tile_grad_alpha; // Gradient for alpha (from mask penalty)
 
-                const bool use_mask = params_.optimization.mask_mode != lfs::core::param::MaskMode::None
-                                      && cam->has_mask();
+                const bool use_mask = params_.optimization.mask_mode != lfs::core::param::MaskMode::None && cam->has_mask();
                 if (use_mask) {
                     // Load mask (cached after first load)
                     auto mask = cam->load_and_get_mask(
@@ -896,8 +895,8 @@ namespace lfs::training {
                 if (gsplat_ctx) {
                     // GUT mode: use gsplat backward (needs grad_alpha too)
                     auto grad_alpha = tile_grad_alpha.is_valid()
-                        ? tile_grad_alpha
-                        : lfs::core::Tensor::zeros_like(output.alpha);
+                                          ? tile_grad_alpha
+                                          : lfs::core::Tensor::zeros_like(output.alpha);
                     gsplat_rasterize_backward(*gsplat_ctx, raster_grad, grad_alpha,
                                               strategy_->get_model(), strategy_->get_optimizer());
                 } else {
@@ -907,7 +906,7 @@ namespace lfs::training {
                 }
                 nvtxRangePop();
 
-                nvtxRangePop();  // End tile
+                nvtxRangePop(); // End tile
             }
 
             // Average the loss across tiles for correct reporting
@@ -969,7 +968,8 @@ namespace lfs::training {
 
                 if (ctx.n > 0) {
                     if (auto result = sparsity_optimizer_->compute_loss_backward(
-                            ctx, 1.0f, strategy_->get_optimizer().get_grad(ParamType::Opacity)); !result) {
+                            ctx, 1.0f, strategy_->get_optimizer().get_grad(ParamType::Opacity));
+                        !result) {
                         nvtxRangePop();
                         return std::unexpected(result.error());
                     }
@@ -992,8 +992,8 @@ namespace lfs::training {
             if (iter % LOSS_SYNC_INTERVAL == 0 || iter == 1) {
                 // Accumulate on GPU then sync once
                 auto total_loss = sparsity_loss_gpu.numel() > 0
-                    ? (loss_tensor_gpu + sparsity_loss_gpu)
-                    : loss_tensor_gpu;
+                                      ? (loss_tensor_gpu + sparsity_loss_gpu)
+                                      : loss_tensor_gpu;
                 loss_value = total_loss.item<float>();
 
                 current_loss_ = loss_value;
@@ -1016,7 +1016,7 @@ namespace lfs::training {
 
                     // Skip post_backward during sparsification phase
                     const bool in_sparsification = params_.optimization.enable_sparsity &&
-                        iter > (params_.optimization.iterations - params_.optimization.sparsify_steps);
+                                                   iter > (params_.optimization.iterations - params_.optimization.sparsify_steps);
                     if (!in_sparsification) {
                         strategy_->post_backward(iter, r_output);
                     }
@@ -1067,7 +1067,7 @@ namespace lfs::training {
                             RenderOutput rendered_timelapse_output;
                             if (params_.optimization.gut) {
                                 rendered_timelapse_output = gsplat_rasterize(*cam_to_use, strategy_->get_model(), background_,
-                                                                              1.0f, false, GsplatRenderMode::RGB, true);
+                                                                             1.0f, false, GsplatRenderMode::RGB, true);
                             } else {
                                 rendered_timelapse_output = fast_rasterize(*cam_to_use, strategy_->get_model(), background_);
                             }
@@ -1079,7 +1079,7 @@ namespace lfs::training {
                             std::filesystem::create_directories(output_path);
 
                             lfs::core::image_io::save_image_async(output_path / std::format("{:06d}.jpg", iter),
-                                                                   rendered_timelapse_output.image);
+                                                                  rendered_timelapse_output.image);
                         } else {
                             LOG_WARN("Timelapse image '{}' not found in dataset.", img_name);
                         }
@@ -1201,7 +1201,7 @@ namespace lfs::training {
                                      total_mem / (1024.0 * 1024.0 * 1024.0));
                         } else {
                             LOG_WARN("cudaMemGetInfo failed: {}", cudaGetErrorString(err));
-                            cudaGetLastError();  // Clear this error too
+                            cudaGetLastError(); // Clear this error too
                         }
 
                         // Retry the same step with upgraded tile mode

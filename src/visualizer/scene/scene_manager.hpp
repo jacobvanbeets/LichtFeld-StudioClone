@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "core/services.hpp"
 #include "core/events.hpp"
 #include "core/parameters.hpp"
+#include "core/services.hpp"
 #include "geometry/bounding_box.hpp"
 #include "scene/scene.hpp"
 #include "scene/scene_render_state.hpp"
@@ -141,14 +141,14 @@ namespace lfs::vis {
         NodeId getSelectedNodeCropBoxId() const;
         CropBoxData* getSelectedNodeCropBox();
         const CropBoxData* getSelectedNodeCropBox() const;
-        void syncCropBoxToRenderSettings();  // Sync selected node's cropbox to render settings
+        void syncCropBoxToRenderSettings(); // Sync selected node's cropbox to render settings
 
         void loadDataset(const std::filesystem::path& path,
                          const lfs::core::param::TrainingParameters& params);
         void loadCheckpointForTraining(const std::filesystem::path& path,
                                        const lfs::core::param::TrainingParameters& params);
         void clear();
-        void switchToEditMode();  // Keep trained model, discard dataset
+        void switchToEditMode(); // Keep trained model, discard dataset
 
         // For rendering - gets appropriate model
         const lfs::core::SplatData* getModelForRendering() const;

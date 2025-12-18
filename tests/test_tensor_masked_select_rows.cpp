@@ -9,26 +9,26 @@ using namespace lfs::core;
 
 namespace {
 
-void compare_tensors(const Tensor& custom, const torch::Tensor& reference,
-                     const float rtol = 1e-5f, const float atol = 1e-7f,
-                     const std::string& msg = "") {
-    const auto ref_cpu = reference.cpu().contiguous();
-    const auto custom_cpu = custom.cpu();
+    void compare_tensors(const Tensor& custom, const torch::Tensor& reference,
+                         const float rtol = 1e-5f, const float atol = 1e-7f,
+                         const std::string& msg = "") {
+        const auto ref_cpu = reference.cpu().contiguous();
+        const auto custom_cpu = custom.cpu();
 
-    ASSERT_EQ(custom_cpu.ndim(), static_cast<size_t>(ref_cpu.dim())) << msg << ": Rank mismatch";
-    for (size_t i = 0; i < custom_cpu.ndim(); ++i) {
-        ASSERT_EQ(custom_cpu.size(i), static_cast<size_t>(ref_cpu.size(i)))
-            << msg << ": Shape mismatch at dim " << i;
-    }
+        ASSERT_EQ(custom_cpu.ndim(), static_cast<size_t>(ref_cpu.dim())) << msg << ": Rank mismatch";
+        for (size_t i = 0; i < custom_cpu.ndim(); ++i) {
+            ASSERT_EQ(custom_cpu.size(i), static_cast<size_t>(ref_cpu.size(i)))
+                << msg << ": Shape mismatch at dim " << i;
+        }
 
-    const auto custom_vec = custom_cpu.to_vector();
-    const auto* ref_ptr = ref_cpu.data_ptr<float>();
-    for (size_t i = 0; i < custom_vec.size(); ++i) {
-        const float diff = std::abs(custom_vec[i] - ref_ptr[i]);
-        const float threshold = atol + rtol * std::abs(ref_ptr[i]);
-        EXPECT_LE(diff, threshold) << msg << ": Mismatch at index " << i;
+        const auto custom_vec = custom_cpu.to_vector();
+        const auto* ref_ptr = ref_cpu.data_ptr<float>();
+        for (size_t i = 0; i < custom_vec.size(); ++i) {
+            const float diff = std::abs(custom_vec[i] - ref_ptr[i]);
+            const float threshold = atol + rtol * std::abs(ref_ptr[i]);
+            EXPECT_LE(diff, threshold) << msg << ": Mismatch at index " << i;
+        }
     }
-}
 
 } // namespace
 

@@ -13,12 +13,11 @@ namespace gsplat_lfs {
     template <typename scalar_t>
     __global__ void relocation_kernel(
         int N,
-        scalar_t* opacities,         // [N] - modified in-place
-        scalar_t* scales,            // [N, 3] - modified in-place
-        const int* ratios,           // [N] - integer split counts
-        const scalar_t* binoms,      // [n_max, n_max]
-        int n_max
-    ) {
+        scalar_t* opacities,    // [N] - modified in-place
+        scalar_t* scales,       // [N, 3] - modified in-place
+        const int* ratios,      // [N] - integer split counts
+        const scalar_t* binoms, // [n_max, n_max]
+        int n_max) {
         int idx = threadIdx.x + blockIdx.x * blockDim.x;
         if (idx >= N)
             return;
@@ -53,14 +52,13 @@ namespace gsplat_lfs {
     }
 
     void launch_relocation_kernel(
-        float* opacities,            // [N] - modified in-place
-        float* scales,               // [N, 3] - modified in-place
-        const int32_t* ratios,       // [N] - integer split counts
-        const float* binoms,         // [n_max, n_max]
+        float* opacities,      // [N] - modified in-place
+        float* scales,         // [N, 3] - modified in-place
+        const int32_t* ratios, // [N] - integer split counts
+        const float* binoms,   // [n_max, n_max]
         int64_t N,
         int32_t n_max,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         int64_t n_elements = N;
         dim3 threads(256);
         dim3 grid((n_elements + threads.x - 1) / threads.x);
@@ -113,8 +111,7 @@ namespace gsplat_lfs {
         const scalar_t* raw_quats,     // [N, 4] - read only for noise computation
         const scalar_t* noise,         // [N, 3]
         scalar_t* means,               // [N, 3] - modified in-place
-        float current_lr
-    ) {
+        float current_lr) {
         int idx = threadIdx.x + blockIdx.x * blockDim.x;
         if (idx >= N)
             return;
@@ -141,15 +138,14 @@ namespace gsplat_lfs {
     }
 
     void launch_add_noise_kernel(
-        float* raw_opacities,        // [N] - read only for this kernel
-        float* raw_scales,           // [N, 3] - read only for this kernel
-        float* raw_quats,            // [N, 4] - read only for this kernel
-        const float* noise,          // [N, 3]
-        float* means,                // [N, 3] - modified in-place
+        float* raw_opacities, // [N] - read only for this kernel
+        float* raw_scales,    // [N, 3] - read only for this kernel
+        float* raw_quats,     // [N, 4] - read only for this kernel
+        const float* noise,   // [N, 3]
+        float* means,         // [N, 3] - modified in-place
         int64_t N,
         float current_lr,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         int64_t n_elements = N;
         dim3 threads(256);
         dim3 grid((n_elements + threads.x - 1) / threads.x);

@@ -741,15 +741,15 @@ namespace lfs::io {
 
                 if (archive_write_set_format_zip(a_) != ARCHIVE_OK) {
                     last_error_ = std::format("Failed to set ZIP format: {}",
-                        archive_error_string(a_) ? archive_error_string(a_) : "unknown error");
+                                              archive_error_string(a_) ? archive_error_string(a_) : "unknown error");
                     return;
                 }
 
                 const int result = archive_write_open_filename(a_, output_path.string().c_str());
                 if (result != ARCHIVE_OK) {
                     last_error_ = std::format("Failed to create archive '{}': {}",
-                        output_path.string(),
-                        archive_error_string(a_) ? archive_error_string(a_) : "unknown error");
+                                              output_path.string(),
+                                              archive_error_string(a_) ? archive_error_string(a_) : "unknown error");
                     return;
                 }
 
@@ -782,7 +782,7 @@ namespace lfs::io {
                 auto* entry = archive_entry_new();
                 if (!entry) {
                     return make_error(ErrorCode::INTERNAL_ERROR,
-                        std::format("Failed to create archive entry for '{}'", filename), output_path_);
+                                      std::format("Failed to create archive entry for '{}'", filename), output_path_);
                 }
 
                 const auto now = std::chrono::system_clock::now();
@@ -798,8 +798,9 @@ namespace lfs::io {
                     const char* err = archive_error_string(a_);
                     archive_entry_free(entry);
                     return make_error(ErrorCode::WRITE_FAILURE,
-                        std::format("Failed to write header for '{}': {}",
-                            filename, err ? err : "unknown error"), output_path_);
+                                      std::format("Failed to write header for '{}': {}",
+                                                  filename, err ? err : "unknown error"),
+                                      output_path_);
                 }
 
                 const ssize_t written = archive_write_data(a_, data, size);
@@ -810,19 +811,21 @@ namespace lfs::io {
                     // Check if this might be a disk space issue
                     if (written < 0) {
                         return make_error(ErrorCode::WRITE_FAILURE,
-                            std::format("Failed to write '{}': {} (wrote {} of {} bytes)",
-                                filename, err ? err : "write error", written, size), output_path_);
+                                          std::format("Failed to write '{}': {} (wrote {} of {} bytes)",
+                                                      filename, err ? err : "write error", written, size),
+                                          output_path_);
                     }
                     return make_error(ErrorCode::INSUFFICIENT_DISK_SPACE,
-                        std::format("Partial write for '{}': wrote {} of {} bytes (disk full?)",
-                            filename, written, size), output_path_);
+                                      std::format("Partial write for '{}': wrote {} of {} bytes (disk full?)",
+                                                  filename, written, size),
+                                      output_path_);
                 }
 
                 return {};
             }
 
             [[nodiscard]] Result<void> add_webp(const std::string& filename,
-                                                 const uint8_t* data, int width, int height) {
+                                                const uint8_t* data, int width, int height) {
                 if (!valid_) {
                     return make_error(ErrorCode::ARCHIVE_CREATION_FAILED, last_error_, output_path_);
                 }
@@ -835,8 +838,9 @@ namespace lfs::io {
                         WebPFree(output);
                     }
                     return make_error(ErrorCode::ENCODING_FAILED,
-                        std::format("WebP encoding failed for '{}' ({}x{} image)",
-                            filename, width, height), output_path_);
+                                      std::format("WebP encoding failed for '{}' ({}x{} image)",
+                                                  filename, width, height),
+                                      output_path_);
                 }
 
                 auto result = add_file(filename, output, output_size);

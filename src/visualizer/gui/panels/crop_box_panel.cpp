@@ -13,8 +13,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
-#include <imgui.h>
 #include <optional>
+#include <imgui.h>
 
 namespace lfs::vis::gui::panels {
 
@@ -40,15 +40,16 @@ namespace lfs::vis::gui::panels {
                 .min = node->cropbox->min,
                 .max = node->cropbox->max,
                 .local_transform = node->local_transform.get(),
-                .inverse = node->cropbox->inverse
-            };
+                .inverse = node->cropbox->inverse};
         }
 
         void commitUndoIfChanged(VisualizerImpl* viewer, SceneManager* sm, const std::string& node_name) {
-            if (!s_state_before_edit.has_value()) return;
+            if (!s_state_before_edit.has_value())
+                return;
 
             const auto* node = sm->getScene().getNode(node_name);
-            if (!node) return;
+            if (!node)
+                return;
 
             const auto new_state = captureState(node);
             const bool changed = (s_state_before_edit->min != new_state.min ||
@@ -79,9 +80,11 @@ namespace lfs::vis::gui::panels {
     void DrawCropBoxControls(const UIContext& ctx) {
         auto* const sm = ctx.viewer->getSceneManager();
         auto* const rm = ctx.viewer->getRenderingManager();
-        if (!sm || !rm) return;
+        if (!sm || !rm)
+            return;
 
-        if (!ImGui::CollapsingHeader("Crop Box", ImGuiTreeNodeFlags_DefaultOpen)) return;
+        if (!ImGui::CollapsingHeader("Crop Box", ImGuiTreeNodeFlags_DefaultOpen))
+            return;
 
         const auto& settings = rm->getSettings();
         if (!settings.show_crop_box) {
@@ -117,33 +120,51 @@ namespace lfs::vis::gui::panels {
 
         // Position (translation)
         if (ImGui::TreeNodeEx("Position", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Text("X:"); ImGui::SameLine(); ImGui::SetNextItemWidth(width);
+            ImGui::Text("X:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
             changed |= ImGui::InputFloat("##PosX", &translation.x, POSITION_STEP, POSITION_STEP_FAST, "%.3f");
-            any_active |= ImGui::IsItemActive(); any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+            any_active |= ImGui::IsItemActive();
+            any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
 
-            ImGui::Text("Y:"); ImGui::SameLine(); ImGui::SetNextItemWidth(width);
+            ImGui::Text("Y:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
             changed |= ImGui::InputFloat("##PosY", &translation.y, POSITION_STEP, POSITION_STEP_FAST, "%.3f");
-            any_active |= ImGui::IsItemActive(); any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+            any_active |= ImGui::IsItemActive();
+            any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
 
-            ImGui::Text("Z:"); ImGui::SameLine(); ImGui::SetNextItemWidth(width);
+            ImGui::Text("Z:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
             changed |= ImGui::InputFloat("##PosZ", &translation.z, POSITION_STEP, POSITION_STEP_FAST, "%.3f");
-            any_active |= ImGui::IsItemActive(); any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+            any_active |= ImGui::IsItemActive();
+            any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
             ImGui::TreePop();
         }
 
         // Rotation (euler angles)
         if (ImGui::TreeNodeEx("Rotation", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Text("X:"); ImGui::SameLine(); ImGui::SetNextItemWidth(width);
+            ImGui::Text("X:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
             changed |= ImGui::InputFloat("##RotX", &euler.x, ROTATION_STEP, ROTATION_STEP_FAST, "%.1f");
-            any_active |= ImGui::IsItemActive(); any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+            any_active |= ImGui::IsItemActive();
+            any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
 
-            ImGui::Text("Y:"); ImGui::SameLine(); ImGui::SetNextItemWidth(width);
+            ImGui::Text("Y:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
             changed |= ImGui::InputFloat("##RotY", &euler.y, ROTATION_STEP, ROTATION_STEP_FAST, "%.1f");
-            any_active |= ImGui::IsItemActive(); any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+            any_active |= ImGui::IsItemActive();
+            any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
 
-            ImGui::Text("Z:"); ImGui::SameLine(); ImGui::SetNextItemWidth(width);
+            ImGui::Text("Z:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
             changed |= ImGui::InputFloat("##RotZ", &euler.z, ROTATION_STEP, ROTATION_STEP_FAST, "%.1f");
-            any_active |= ImGui::IsItemActive(); any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+            any_active |= ImGui::IsItemActive();
+            any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
             ImGui::TreePop();
         }
 
@@ -152,17 +173,26 @@ namespace lfs::vis::gui::panels {
             glm::vec3 size = node->cropbox->max - node->cropbox->min;
             const glm::vec3 center = (node->cropbox->min + node->cropbox->max) * 0.5f;
 
-            ImGui::Text("X:"); ImGui::SameLine(); ImGui::SetNextItemWidth(width);
+            ImGui::Text("X:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
             changed |= ImGui::InputFloat("##SizeX", &size.x, POSITION_STEP, POSITION_STEP_FAST, "%.3f");
-            any_active |= ImGui::IsItemActive(); any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+            any_active |= ImGui::IsItemActive();
+            any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
 
-            ImGui::Text("Y:"); ImGui::SameLine(); ImGui::SetNextItemWidth(width);
+            ImGui::Text("Y:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
             changed |= ImGui::InputFloat("##SizeY", &size.y, POSITION_STEP, POSITION_STEP_FAST, "%.3f");
-            any_active |= ImGui::IsItemActive(); any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+            any_active |= ImGui::IsItemActive();
+            any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
 
-            ImGui::Text("Z:"); ImGui::SameLine(); ImGui::SetNextItemWidth(width);
+            ImGui::Text("Z:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
             changed |= ImGui::InputFloat("##SizeZ", &size.z, POSITION_STEP, POSITION_STEP_FAST, "%.3f");
-            any_active |= ImGui::IsItemActive(); any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
+            any_active |= ImGui::IsItemActive();
+            any_deactivated |= ImGui::IsItemDeactivatedAfterEdit();
 
             size = glm::max(size, glm::vec3(MIN_SIZE));
 

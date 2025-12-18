@@ -14,8 +14,8 @@
 #include "gui/utils/windows_utils.hpp"
 #include "theme/theme.hpp"
 
-#include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glad/glad.h>
 #include <imgui.h>
 
 #include <cstdlib>
@@ -35,7 +35,8 @@ namespace lfs::vis::gui {
     }
 
     void MenuBar::startThumbnailDownload(const std::string& video_id) {
-        if (video_id.empty() || thumbnails_.contains(video_id)) return;
+        if (video_id.empty() || thumbnails_.contains(video_id))
+            return;
 
         auto& thumb = thumbnails_[video_id];
         thumb.state = Thumbnail::State::LOADING;
@@ -109,7 +110,8 @@ namespace lfs::vis::gui {
             openURL(url);
 
         const bool hovered = ImGui::IsItemHovered();
-        if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        if (hovered)
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
 
         auto* const dl = ImGui::GetWindowDrawList();
         const ImU32 bg = hovered ? toU32(lighten(t.palette.surface_bright, 0.1f)) : toU32(t.palette.surface_bright);
@@ -141,7 +143,8 @@ namespace lfs::vis::gui {
         const auto& t = theme();
 
         // Use regular font for entire menu bar
-        if (fonts_.regular) ImGui::PushFont(fonts_.regular);
+        if (fonts_.regular)
+            ImGui::PushFont(fonts_.regular);
 
         ImGui::PushStyleColor(ImGuiCol_MenuBarBg, t.menu_background());
         ImGui::PushStyleColor(ImGuiCol_Header, t.menu_active());
@@ -223,7 +226,8 @@ namespace lfs::vis::gui {
 
         ImGui::PopStyleVar(5);
         ImGui::PopStyleColor(6);
-        if (fonts_.regular) ImGui::PopFont();
+        if (fonts_.regular)
+            ImGui::PopFont();
 
         renderGettingStartedWindow();
         renderAboutWindow();
@@ -241,7 +245,8 @@ namespace lfs::vis::gui {
     }
 
     void MenuBar::renderGettingStartedWindow() {
-        if (!show_getting_started_) return;
+        if (!show_getting_started_)
+            return;
 
         constexpr ImGuiWindowFlags WINDOW_FLAGS = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize;
         constexpr float WINDOW_ROUNDING = 8.0f;
@@ -265,9 +270,11 @@ namespace lfs::vis::gui {
         if (ImGui::Begin("Getting Started", &show_getting_started_, WINDOW_FLAGS)) {
             updateThumbnails();
 
-            if (fonts_.heading) ImGui::PushFont(fonts_.heading);
+            if (fonts_.heading)
+                ImGui::PushFont(fonts_.heading);
             ImGui::TextColored(t.palette.info, "QUICK START GUIDE");
-            if (fonts_.heading) ImGui::PopFont();
+            if (fonts_.heading)
+                ImGui::PopFont();
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
@@ -287,9 +294,11 @@ namespace lfs::vis::gui {
             ImGui::Separator();
             ImGui::Spacing();
 
-            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            if (fonts_.section)
+                ImGui::PushFont(fonts_.section);
             ImGui::TextColored(t.palette.text_dim, "WIKI & FAQ");
-            if (fonts_.section) ImGui::PopFont();
+            if (fonts_.section)
+                ImGui::PopFont();
             ImGui::Spacing();
 
             static constexpr const char* WIKI_URL = "https://github.com/MrNeRF/LichtFeld-Studio/wiki";
@@ -335,9 +344,11 @@ namespace lfs::vis::gui {
         static constexpr const char* WEBSITE_URL = "https://lichtfeld.io";
 
         if (ImGui::Begin("About LichtFeld Studio", &show_about_window_, WINDOW_FLAGS)) {
-            if (fonts_.heading) ImGui::PushFont(fonts_.heading);
+            if (fonts_.heading)
+                ImGui::PushFont(fonts_.heading);
             ImGui::TextColored(t.palette.info, "LICHTFELD STUDIO");
-            if (fonts_.heading) ImGui::PopFont();
+            if (fonts_.heading)
+                ImGui::PopFont();
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
@@ -349,9 +360,11 @@ namespace lfs::vis::gui {
             ImGui::Spacing();
             ImGui::Spacing();
 
-            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            if (fonts_.section)
+                ImGui::PushFont(fonts_.section);
             ImGui::TextColored(t.palette.text_dim, "BUILD INFORMATION");
-            if (fonts_.section) ImGui::PopFont();
+            if (fonts_.section)
+                ImGui::PopFont();
             ImGui::Spacing();
 
             constexpr ImGuiTableFlags TABLE_FLAGS = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
@@ -423,9 +436,11 @@ namespace lfs::vis::gui {
             ImGui::Spacing();
             ImGui::Spacing();
 
-            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            if (fonts_.section)
+                ImGui::PushFont(fonts_.section);
             ImGui::TextColored(t.palette.text_dim, "LINKS");
-            if (fonts_.section) ImGui::PopFont();
+            if (fonts_.section)
+                ImGui::PopFont();
             ImGui::Spacing();
 
             const ImVec4 LINK_COLOR = lighten(t.palette.info, 0.3f);
@@ -507,7 +522,7 @@ namespace lfs::vis::gui {
             default: return "Unknown";
             }
         }
-    }
+    } // namespace
 
     void MenuBar::renderBindingRow(const input::Action action, const input::ToolMode mode) {
         static constexpr ImVec4 COLOR_ACTION{0.9f, 0.9f, 0.9f, 1.0f};
@@ -521,8 +536,8 @@ namespace lfs::vis::gui {
         static constexpr ImVec4 COLOR_CANCEL_ACTIVE{0.8f, 0.4f, 0.4f, 1.0f};
 
         const bool is_rebinding = rebinding_action_.has_value() &&
-                                   *rebinding_action_ == action &&
-                                   rebinding_mode_ == mode;
+                                  *rebinding_action_ == action &&
+                                  rebinding_mode_ == mode;
 
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
@@ -675,9 +690,11 @@ namespace lfs::vis::gui {
         ImGui::PushStyleColor(ImGuiCol_TableBorderStrong, lighten(t.palette.surface_bright, 0.15f));
 
         if (ImGui::Begin("Input Settings", &show_input_settings_, WINDOW_FLAGS)) {
-            if (fonts_.heading) ImGui::PushFont(fonts_.heading);
+            if (fonts_.heading)
+                ImGui::PushFont(fonts_.heading);
             ImGui::TextColored(t.palette.info, "INPUT SETTINGS");
-            if (fonts_.heading) ImGui::PopFont();
+            if (fonts_.heading)
+                ImGui::PopFont();
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
@@ -714,12 +731,16 @@ namespace lfs::vis::gui {
                 ImGui::Spacing();
                 ImGui::Spacing();
 
-                if (fonts_.section) ImGui::PushFont(fonts_.section);
+                if (fonts_.section)
+                    ImGui::PushFont(fonts_.section);
                 ImGui::TextColored(t.palette.text_dim, "TOOL MODE");
-                if (fonts_.section) ImGui::PopFont();
-                if (fonts_.small_font) ImGui::PushFont(fonts_.small_font);
+                if (fonts_.section)
+                    ImGui::PopFont();
+                if (fonts_.small_font)
+                    ImGui::PushFont(fonts_.small_font);
                 ImGui::TextColored(t.palette.text_dim, "Select tool mode to view/edit bindings");
-                if (fonts_.small_font) ImGui::PopFont();
+                if (fonts_.small_font)
+                    ImGui::PopFont();
                 ImGui::Spacing();
 
                 // Tool mode selector
@@ -755,20 +776,24 @@ namespace lfs::vis::gui {
                 ImGui::Spacing();
                 ImGui::Spacing();
 
-                if (fonts_.section) ImGui::PushFont(fonts_.section);
+                if (fonts_.section)
+                    ImGui::PushFont(fonts_.section);
                 ImGui::TextColored(t.palette.text_dim, "CURRENT BINDINGS");
-                if (fonts_.section) ImGui::PopFont();
-                if (fonts_.small_font) ImGui::PushFont(fonts_.small_font);
+                if (fonts_.section)
+                    ImGui::PopFont();
+                if (fonts_.small_font)
+                    ImGui::PushFont(fonts_.small_font);
                 if (selected_tool_mode_ == input::ToolMode::GLOBAL) {
                     ImGui::TextColored(t.palette.text_dim, "Global bindings apply everywhere unless overridden");
                 } else {
                     ImGui::TextColored(t.palette.text_dim, "Tool-specific bindings override global bindings");
                 }
-                if (fonts_.small_font) ImGui::PopFont();
+                if (fonts_.small_font)
+                    ImGui::PopFont();
                 ImGui::Spacing();
 
                 constexpr ImGuiTableFlags TABLE_FLAGS = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY;
-                constexpr float FOOTER_HEIGHT = 150.0f;  // Space for buttons below table
+                constexpr float FOOTER_HEIGHT = 150.0f; // Space for buttons below table
                 const float available_height = ImGui::GetContentRegionAvail().y - FOOTER_HEIGHT;
                 const float table_height = std::max(200.0f, available_height);
 
@@ -962,7 +987,8 @@ namespace lfs::vis::gui {
     }
 
     void MenuBar::renderDebugWindow() {
-        if (!show_debug_window_) return;
+        if (!show_debug_window_)
+            return;
 
         constexpr ImGuiWindowFlags WINDOW_FLAGS = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize;
         const auto& t = theme();
@@ -978,17 +1004,21 @@ namespace lfs::vis::gui {
         ImGui::PushStyleColor(ImGuiCol_Border, withAlpha(t.palette.info, 0.3f));
 
         if (ImGui::Begin("Debug Info", &show_debug_window_, WINDOW_FLAGS)) {
-            if (fonts_.heading) ImGui::PushFont(fonts_.heading);
+            if (fonts_.heading)
+                ImGui::PushFont(fonts_.heading);
             ImGui::TextColored(t.palette.info, "DEBUG INFORMATION");
-            if (fonts_.heading) ImGui::PopFont();
+            if (fonts_.heading)
+                ImGui::PopFont();
             ImGui::Spacing();
             ImGui::Separator();
             ImGui::Spacing();
 
             // GPU Memory Section
-            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            if (fonts_.section)
+                ImGui::PushFont(fonts_.section);
             ImGui::TextColored(t.palette.text_dim, "GPU MEMORY");
-            if (fonts_.section) ImGui::PopFont();
+            if (fonts_.section)
+                ImGui::PopFont();
             ImGui::Spacing();
 
             const auto mem = lfs::core::debug::get_memory_snapshot();
@@ -1000,11 +1030,11 @@ namespace lfs::vis::gui {
 
             // Progress bar for memory usage
             const float usage_ratio = mem.gpu_total_bytes > 0
-                ? static_cast<float>(mem.gpu_used_bytes) / static_cast<float>(mem.gpu_total_bytes)
-                : 0.0f;
-            const ImVec4 bar_color = usage_ratio > 0.9f ? t.palette.error
-                                   : usage_ratio > 0.7f ? t.palette.warning
-                                   : t.palette.success;
+                                          ? static_cast<float>(mem.gpu_used_bytes) / static_cast<float>(mem.gpu_total_bytes)
+                                          : 0.0f;
+            const ImVec4 bar_color = usage_ratio > 0.9f   ? t.palette.error
+                                     : usage_ratio > 0.7f ? t.palette.warning
+                                                          : t.palette.success;
             ImGui::PushStyleColor(ImGuiCol_PlotHistogram, bar_color);
             ImGui::ProgressBar(usage_ratio, ImVec2(-1, 0));
             ImGui::PopStyleColor();
@@ -1014,9 +1044,11 @@ namespace lfs::vis::gui {
             ImGui::Spacing();
 
             // Tensor Operation Tracing Section
-            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            if (fonts_.section)
+                ImGui::PushFont(fonts_.section);
             ImGui::TextColored(t.palette.text_dim, "TENSOR OP TRACING");
-            if (fonts_.section) ImGui::PopFont();
+            if (fonts_.section)
+                ImGui::PopFont();
             ImGui::Spacing();
 
             auto& tracer = lfs::core::debug::TensorOpTracer::instance();
@@ -1043,7 +1075,8 @@ namespace lfs::vis::gui {
                 // Show last few operations
                 if (!history.empty()) {
                     ImGui::Spacing();
-                    if (fonts_.small_font) ImGui::PushFont(fonts_.small_font);
+                    if (fonts_.small_font)
+                        ImGui::PushFont(fonts_.small_font);
                     ImGui::TextColored(t.palette.text_dim, "Recent operations:");
                     const size_t show_count = std::min(size_t{5}, history.size());
                     for (size_t i = history.size() - show_count; i < history.size(); ++i) {
@@ -1058,7 +1091,8 @@ namespace lfs::vis::gui {
                                     name_tag.c_str(),
                                     location.c_str());
                     }
-                    if (fonts_.small_font) ImGui::PopFont();
+                    if (fonts_.small_font)
+                        ImGui::PopFont();
                 }
             }
 
@@ -1067,9 +1101,11 @@ namespace lfs::vis::gui {
             ImGui::Spacing();
 
             // Build Info Section
-            if (fonts_.section) ImGui::PushFont(fonts_.section);
+            if (fonts_.section)
+                ImGui::PushFont(fonts_.section);
             ImGui::TextColored(t.palette.text_dim, "BUILD FLAGS");
-            if (fonts_.section) ImGui::PopFont();
+            if (fonts_.section)
+                ImGui::PopFont();
             ImGui::Spacing();
 
 #ifdef TENSOR_VALIDATION_ENABLED
@@ -1097,10 +1133,12 @@ namespace lfs::vis::gui {
 #endif
 
             ImGui::Spacing();
-            if (fonts_.small_font) ImGui::PushFont(fonts_.small_font);
+            if (fonts_.small_font)
+                ImGui::PushFont(fonts_.small_font);
             ImGui::TextColored(t.palette.text_dim, "Rebuild with -DENABLE_TENSOR_VALIDATION=ON");
             ImGui::TextColored(t.palette.text_dim, "or -DENABLE_CUDA_DEBUG_SYNC=ON to enable");
-            if (fonts_.small_font) ImGui::PopFont();
+            if (fonts_.small_font)
+                ImGui::PopFont();
         }
         ImGui::End();
 

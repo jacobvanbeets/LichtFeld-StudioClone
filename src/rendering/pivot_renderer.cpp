@@ -9,10 +9,10 @@
 
 namespace lfs::rendering {
 
-namespace {
+    namespace {
 
-// Billboard quad with fixed screen size
-constexpr const char* VERT_SRC = R"(
+        // Billboard quad with fixed screen size
+        constexpr const char* VERT_SRC = R"(
 #version 330 core
 
 uniform mat4 u_view;
@@ -41,8 +41,8 @@ void main() {
 }
 )";
 
-// Ripple effect with flash and expanding rings
-constexpr const char* FRAG_SRC = R"(
+        // Ripple effect with flash and expanding rings
+        constexpr const char* FRAG_SRC = R"(
 #version 330 core
 
 uniform vec3 u_color;
@@ -97,117 +97,119 @@ void main() {
 }
 )";
 
-GLuint compileShader(const GLenum type, const char* source) {
-    const GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &source, nullptr);
-    glCompileShader(shader);
+        GLuint compileShader(const GLenum type, const char* source) {
+            const GLuint shader = glCreateShader(type);
+            glShaderSource(shader, 1, &source, nullptr);
+            glCompileShader(shader);
 
-    GLint success;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        char log[512];
-        glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
-        LOG_ERROR("Shader compile error: {}", log);
-        glDeleteShader(shader);
-        return 0;
-    }
-    return shader;
-}
+            GLint success;
+            glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+            if (!success) {
+                char log[512];
+                glGetShaderInfoLog(shader, sizeof(log), nullptr, log);
+                LOG_ERROR("Shader compile error: {}", log);
+                glDeleteShader(shader);
+                return 0;
+            }
+            return shader;
+        }
 
-} // namespace
+    } // namespace
 
-Result<void> RenderPivotPoint::init() {
-    if (initialized_) {
+    Result<void> RenderPivotPoint::init() {
+        if (initialized_) {
+            return {};
+        }
+
+        const GLuint vert = compileShader(GL_VERTEX_SHADER, VERT_SRC);
+        if (vert == 0) {
+            return std::unexpected("Failed to compile pivot vertex shader");
+        }
+
+        const GLuint frag = compileShader(GL_FRAGMENT_SHADER, FRAG_SRC);
+        if (frag == 0) {
+            glDeleteShader(vert);
+            return std::unexpected("Failed to compile pivot fragment shader");
+        }
+
+        shader_program_ = glCreateProgram();
+        glAttachShader(shader_program_, vert);
+        glAttachShader(shader_program_, frag);
+        glLinkProgram(shader_program_);
+        glDeleteShader(vert);
+        glDeleteShader(frag);
+
+        GLint success;
+        glGetProgramiv(shader_program_, GL_LINK_STATUS, &success);
+        if (!success) {
+            char log[512];
+            glGetProgramInfoLog(shader_program_, sizeof(log), nullptr, log);
+            LOG_ERROR("Shader link error: {}", log);
+            glDeleteProgram(shader_program_);
+            shader_program_ = 0;
+            return std::unexpected("Failed to link pivot shader");
+        }
+
+        // Cache uniform locations
+        loc_view_ = glGetUniformLocation(shader_program_, "u_view");
+        loc_projection_ = glGetUniformLocation(shader_program_, "u_projection");
+        loc_pivot_pos_ = glGetUniformLocation(shader_program_, "u_pivot_pos");
+        loc_screen_size_ = glGetUniformLocation(shader_program_, "u_screen_size");
+        loc_viewport_size_ = glGetUniformLocation(shader_program_, "u_viewport_size");
+        loc_color_ = glGetUniformLocation(shader_program_, "u_color");
+        loc_opacity_ = glGetUniformLocation(shader_program_, "u_opacity");
+
+        auto vao_result = create_vao();
+        if (!vao_result) {
+            return std::unexpected(vao_result.error());
+        }
+        vao_ = std::move(*vao_result);
+
+        initialized_ = true;
+        LOG_DEBUG("Pivot renderer initialized");
         return {};
     }
 
-    const GLuint vert = compileShader(GL_VERTEX_SHADER, VERT_SRC);
-    if (vert == 0) {
-        return std::unexpected("Failed to compile pivot vertex shader");
+    Result<void> RenderPivotPoint::render(const glm::mat4& view, const glm::mat4& projection) {
+        if (!initialized_) {
+            return std::unexpected("Pivot renderer not initialized");
+        }
+
+        GLint viewport[4];
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        const glm::vec2 viewport_size(static_cast<float>(viewport[2]), static_cast<float>(viewport[3]));
+
+        // Save GL state
+        const GLboolean depth_enabled = glIsEnabled(GL_DEPTH_TEST);
+        const GLboolean blend_enabled = glIsEnabled(GL_BLEND);
+        GLint blend_src, blend_dst;
+        glGetIntegerv(GL_BLEND_SRC_ALPHA, &blend_src);
+        glGetIntegerv(GL_BLEND_DST_ALPHA, &blend_dst);
+
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        glUseProgram(shader_program_);
+        glUniformMatrix4fv(loc_view_, 1, GL_FALSE, &view[0][0]);
+        glUniformMatrix4fv(loc_projection_, 1, GL_FALSE, &projection[0][0]);
+        glUniform3fv(loc_pivot_pos_, 1, &pivot_position_[0]);
+        glUniform1f(loc_screen_size_, screen_size_);
+        glUniform2fv(loc_viewport_size_, 1, &viewport_size[0]);
+        glUniform3fv(loc_color_, 1, &color_[0]);
+        glUniform1f(loc_opacity_, opacity_);
+
+        VAOBinder vao_bind(vao_);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        // Restore GL state
+        if (depth_enabled)
+            glEnable(GL_DEPTH_TEST);
+        if (!blend_enabled)
+            glDisable(GL_BLEND);
+        glBlendFunc(blend_src, blend_dst);
+
+        return {};
     }
-
-    const GLuint frag = compileShader(GL_FRAGMENT_SHADER, FRAG_SRC);
-    if (frag == 0) {
-        glDeleteShader(vert);
-        return std::unexpected("Failed to compile pivot fragment shader");
-    }
-
-    shader_program_ = glCreateProgram();
-    glAttachShader(shader_program_, vert);
-    glAttachShader(shader_program_, frag);
-    glLinkProgram(shader_program_);
-    glDeleteShader(vert);
-    glDeleteShader(frag);
-
-    GLint success;
-    glGetProgramiv(shader_program_, GL_LINK_STATUS, &success);
-    if (!success) {
-        char log[512];
-        glGetProgramInfoLog(shader_program_, sizeof(log), nullptr, log);
-        LOG_ERROR("Shader link error: {}", log);
-        glDeleteProgram(shader_program_);
-        shader_program_ = 0;
-        return std::unexpected("Failed to link pivot shader");
-    }
-
-    // Cache uniform locations
-    loc_view_ = glGetUniformLocation(shader_program_, "u_view");
-    loc_projection_ = glGetUniformLocation(shader_program_, "u_projection");
-    loc_pivot_pos_ = glGetUniformLocation(shader_program_, "u_pivot_pos");
-    loc_screen_size_ = glGetUniformLocation(shader_program_, "u_screen_size");
-    loc_viewport_size_ = glGetUniformLocation(shader_program_, "u_viewport_size");
-    loc_color_ = glGetUniformLocation(shader_program_, "u_color");
-    loc_opacity_ = glGetUniformLocation(shader_program_, "u_opacity");
-
-    auto vao_result = create_vao();
-    if (!vao_result) {
-        return std::unexpected(vao_result.error());
-    }
-    vao_ = std::move(*vao_result);
-
-    initialized_ = true;
-    LOG_DEBUG("Pivot renderer initialized");
-    return {};
-}
-
-Result<void> RenderPivotPoint::render(const glm::mat4& view, const glm::mat4& projection) {
-    if (!initialized_) {
-        return std::unexpected("Pivot renderer not initialized");
-    }
-
-    GLint viewport[4];
-    glGetIntegerv(GL_VIEWPORT, viewport);
-    const glm::vec2 viewport_size(static_cast<float>(viewport[2]), static_cast<float>(viewport[3]));
-
-    // Save GL state
-    const GLboolean depth_enabled = glIsEnabled(GL_DEPTH_TEST);
-    const GLboolean blend_enabled = glIsEnabled(GL_BLEND);
-    GLint blend_src, blend_dst;
-    glGetIntegerv(GL_BLEND_SRC_ALPHA, &blend_src);
-    glGetIntegerv(GL_BLEND_DST_ALPHA, &blend_dst);
-
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glUseProgram(shader_program_);
-    glUniformMatrix4fv(loc_view_, 1, GL_FALSE, &view[0][0]);
-    glUniformMatrix4fv(loc_projection_, 1, GL_FALSE, &projection[0][0]);
-    glUniform3fv(loc_pivot_pos_, 1, &pivot_position_[0]);
-    glUniform1f(loc_screen_size_, screen_size_);
-    glUniform2fv(loc_viewport_size_, 1, &viewport_size[0]);
-    glUniform3fv(loc_color_, 1, &color_[0]);
-    glUniform1f(loc_opacity_, opacity_);
-
-    VAOBinder vao_bind(vao_);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-
-    // Restore GL state
-    if (depth_enabled) glEnable(GL_DEPTH_TEST);
-    if (!blend_enabled) glDisable(GL_BLEND);
-    glBlendFunc(blend_src, blend_dst);
-
-    return {};
-}
 
 } // namespace lfs::rendering

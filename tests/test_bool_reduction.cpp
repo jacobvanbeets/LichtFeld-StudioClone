@@ -56,7 +56,7 @@ TEST(BoolReduction, ComparisonResult) {
     const auto t = Tensor::arange(0, 100, 1);
     const auto mask = t > 50.0f;
     ASSERT_EQ(mask.dtype(), DataType::Bool);
-    ASSERT_FLOAT_EQ(mask.sum_scalar(), 49.0f);  // Values 51-99
+    ASSERT_FLOAT_EQ(mask.sum_scalar(), 49.0f); // Values 51-99
 }
 
 TEST(BoolReduction, NoDuplicatesBugFix) {
@@ -91,14 +91,14 @@ TEST(BoolReduction, AllDim1_MixedRows) {
     // First 30 rows: all True, next 40: partial True, last 30: all False
     auto t = Tensor::full_bool({100, 3}, false, Device::CUDA);
     t.slice(0, 0, 30).fill_(true);
-    t.slice(0, 30, 70).slice(1, 0, 1).fill_(true);  // Only first column
+    t.slice(0, 30, 70).slice(1, 0, 1).fill_(true); // Only first column
 
     const std::vector<int> axes = {1};
     const auto result = t.all(std::span<const int>(axes), false);
 
     ASSERT_EQ(result.ndim(), 1);
     ASSERT_EQ(result.shape()[0], 100);
-    EXPECT_EQ(result.sum_scalar(), 30.0f);  // Only first 30 rows all True
+    EXPECT_EQ(result.sum_scalar(), 30.0f); // Only first 30 rows all True
 }
 
 TEST(BoolReduction, AllDim1_CropBoxSimulation) {
@@ -124,7 +124,7 @@ TEST(BoolReduction, AllDim1_SingleFalseBreaksRow) {
     const std::vector<int> axes = {1};
     const auto result = t.all(std::span<const int>(axes), false);
 
-    EXPECT_EQ(result.sum_scalar(), 5.0f);  // First 5 rows all True
+    EXPECT_EQ(result.sum_scalar(), 5.0f); // First 5 rows all True
 }
 
 TEST(BoolReduction, AnyDim1_Basic) {
@@ -134,7 +134,7 @@ TEST(BoolReduction, AnyDim1_Basic) {
     const std::vector<int> axes = {1};
     const auto result = t.any(std::span<const int>(axes), false);
 
-    EXPECT_EQ(result.sum_scalar(), 30.0f);  // First 30 rows have at least one True
+    EXPECT_EQ(result.sum_scalar(), 30.0f); // First 30 rows have at least one True
 }
 
 TEST(BoolReduction, AllDim0_Basic) {
@@ -146,5 +146,5 @@ TEST(BoolReduction, AllDim0_Basic) {
 
     ASSERT_EQ(result.ndim(), 1);
     ASSERT_EQ(result.shape()[0], 3);
-    EXPECT_EQ(result.sum_scalar(), 2.0f);  // Columns 1,2 all True, column 0 has False
+    EXPECT_EQ(result.sum_scalar(), 2.0f); // Columns 1,2 all True, column 0 has False
 }

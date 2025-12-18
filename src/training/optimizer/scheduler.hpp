@@ -10,7 +10,7 @@
 
 namespace lfs::training {
 
-    class AdamOptimizer; // Forward declaration
+    class AdamOptimizer;  // Forward declaration
     enum class ParamType; // Forward declaration
 
     /**
@@ -42,8 +42,10 @@ namespace lfs::training {
     class ExponentialLR {
     public:
         ExponentialLR(AdamOptimizer& optimizer, double gamma,
-                     std::vector<ParamType> params_to_update = {})
-            : optimizer_(optimizer), gamma_(gamma), params_to_update_(params_to_update) {
+                      std::vector<ParamType> params_to_update = {})
+            : optimizer_(optimizer),
+              gamma_(gamma),
+              params_to_update_(params_to_update) {
         }
 
         void step();
@@ -58,7 +60,7 @@ namespace lfs::training {
     private:
         AdamOptimizer& optimizer_;
         double gamma_;
-        std::vector<ParamType> params_to_update_;  // Empty = only global LR
+        std::vector<ParamType> params_to_update_; // Empty = only global LR
     };
 
     /**
@@ -120,7 +122,7 @@ namespace lfs::training {
         double warmup_start_factor_;
         int current_step_;
         double initial_lr_;
-        std::vector<ParamType> params_to_update_;  // Empty = only global LR
+        std::vector<ParamType> params_to_update_; // Empty = only global LR
     };
 
 } // namespace lfs::training

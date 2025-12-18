@@ -31,7 +31,7 @@ namespace lfs::io {
 
         if (!std::filesystem::exists(path)) {
             return make_error(ErrorCode::PATH_NOT_FOUND,
-                "SPZ file does not exist", path);
+                              "SPZ file does not exist", path);
         }
 
         // Validation only mode
@@ -42,7 +42,7 @@ namespace lfs::io {
             std::ifstream file(path, std::ios::binary);
             if (!file) {
                 return make_error(ErrorCode::READ_FAILURE,
-                    "Cannot open SPZ file", path);
+                                  "Cannot open SPZ file", path);
             }
 
             uint8_t header[2];
@@ -51,7 +51,7 @@ namespace lfs::io {
             // Gzip magic: 0x1f 0x8b
             if (header[0] != 0x1f || header[1] != 0x8b) {
                 return make_error(ErrorCode::INVALID_HEADER,
-                    "Invalid SPZ format (expected gzip compressed data)", path);
+                                  "Invalid SPZ format (expected gzip compressed data)", path);
             }
 
             if (options.progress) {
@@ -77,7 +77,7 @@ namespace lfs::io {
         auto splat_result = load_spz(path);
         if (!splat_result) {
             return make_error(ErrorCode::CORRUPTED_DATA,
-                std::format("Failed to load SPZ: {}", splat_result.error()), path);
+                              std::format("Failed to load SPZ: {}", splat_result.error()), path);
         }
 
         if (options.progress) {

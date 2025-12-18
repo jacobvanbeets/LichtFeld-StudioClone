@@ -60,10 +60,10 @@ namespace lfs::core {
 
         // ========== Computed getters ==========
         Tensor get_means() const;
-        Tensor get_opacity() const;    // Returns sigmoid(opacity_raw)
-        Tensor get_rotation() const;   // Returns normalized quaternions
-        Tensor get_scaling() const;    // Returns exp(scaling_raw)
-        Tensor get_shs() const;        // Returns concatenated sh0 + shN
+        Tensor get_opacity() const;  // Returns sigmoid(opacity_raw)
+        Tensor get_rotation() const; // Returns normalized quaternions
+        Tensor get_scaling() const;  // Returns exp(scaling_raw)
+        Tensor get_shs() const;      // Returns concatenated sh0 + shN
 
         // ========== Simple inline getters ==========
         int get_active_sh_degree() const { return _active_sh_degree; }

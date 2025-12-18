@@ -1,9 +1,9 @@
 /* Binary search to find what corrupts CUDA state */
-#include "core/tensor.hpp"
-#include "core/splat_data.hpp"
 #include "core/parameters.hpp"
-#include "training/strategies/default_strategy.hpp"
+#include "core/splat_data.hpp"
+#include "core/tensor.hpp"
 #include "optimizer/render_output.hpp"
+#include "training/strategies/default_strategy.hpp"
 #include <gtest/gtest.h>
 #include <iostream>
 
@@ -21,13 +21,13 @@ TEST(BinarySearchBug, Step1_CreateSplatData) {
         rotation.slice(1, 0, 1).fill_(1.0f);
 
         lfs::core::SplatData splat(3,
-            Tensor::randn({n, 3}, Device::CUDA),
-            Tensor::randn({n, 3}, Device::CUDA),
-            Tensor::randn({n, 48}, Device::CUDA),
-            Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
-            rotation,
-            Tensor::randn({n, 1}, Device::CUDA),
-            1.0f);
+                                   Tensor::randn({n, 3}, Device::CUDA),
+                                   Tensor::randn({n, 3}, Device::CUDA),
+                                   Tensor::randn({n, 48}, Device::CUDA),
+                                   Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
+                                   rotation,
+                                   Tensor::randn({n, 1}, Device::CUDA),
+                                   1.0f);
 
         std::cout << "[TEST] SplatData created, size=" << splat.size() << std::endl;
 
@@ -55,13 +55,13 @@ TEST(BinarySearchBug, Step2_CreateStrategy) {
         rotation.slice(1, 0, 1).fill_(1.0f);
 
         lfs::core::SplatData splat(3,
-            Tensor::randn({n, 3}, Device::CUDA),
-            Tensor::randn({n, 3}, Device::CUDA),
-            Tensor::randn({n, 48}, Device::CUDA),
-            Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
-            rotation,
-            Tensor::randn({n, 1}, Device::CUDA),
-            1.0f);
+                                   Tensor::randn({n, 3}, Device::CUDA),
+                                   Tensor::randn({n, 3}, Device::CUDA),
+                                   Tensor::randn({n, 48}, Device::CUDA),
+                                   Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
+                                   rotation,
+                                   Tensor::randn({n, 1}, Device::CUDA),
+                                   1.0f);
 
         std::cout << "[TEST] SplatData created" << std::endl;
 
@@ -92,13 +92,13 @@ TEST(BinarySearchBug, Step3_InitializeStrategy) {
         rotation.slice(1, 0, 1).fill_(1.0f);
 
         lfs::core::SplatData splat(3,
-            Tensor::randn({n, 3}, Device::CUDA),
-            Tensor::randn({n, 3}, Device::CUDA),
-            Tensor::randn({n, 48}, Device::CUDA),
-            Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
-            rotation,
-            Tensor::randn({n, 1}, Device::CUDA),
-            1.0f);
+                                   Tensor::randn({n, 3}, Device::CUDA),
+                                   Tensor::randn({n, 3}, Device::CUDA),
+                                   Tensor::randn({n, 48}, Device::CUDA),
+                                   Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
+                                   rotation,
+                                   Tensor::randn({n, 1}, Device::CUDA),
+                                   1.0f);
 
         lfs::training::DefaultStrategy strat(splat);
 
@@ -142,13 +142,13 @@ TEST(BinarySearchBug, Step4_CallPostBackward) {
         rotation.slice(1, 0, 1).fill_(1.0f);
 
         lfs::core::SplatData splat(3,
-            Tensor::randn({n, 3}, Device::CUDA),
-            Tensor::randn({n, 3}, Device::CUDA),
-            Tensor::randn({n, 48}, Device::CUDA),
-            Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
-            rotation,
-            Tensor::randn({n, 1}, Device::CUDA),
-            1.0f);
+                                   Tensor::randn({n, 3}, Device::CUDA),
+                                   Tensor::randn({n, 3}, Device::CUDA),
+                                   Tensor::randn({n, 48}, Device::CUDA),
+                                   Tensor::randn({n, 3}, Device::CUDA) - 2.0f,
+                                   rotation,
+                                   Tensor::randn({n, 1}, Device::CUDA),
+                                   1.0f);
 
         splat._densification_info = Tensor::ones({2, static_cast<size_t>(n)}, Device::CUDA);
         auto numer = Tensor::ones({static_cast<size_t>(n)}, Device::CUDA) * 10.0f;
@@ -286,7 +286,7 @@ TEST(TensorIndexSelectBug, GetRotationPattern_10K) {
 
     // Normalize (this is what get_rotation does)
     auto squared = rotation.square();
-    auto sum_squared = squared.sum({1}, true);  // [N, 1]
+    auto sum_squared = squared.sum({1}, true); // [N, 1]
     auto norm = sum_squared.sqrt();
     auto normalized = rotation.div(norm.clamp_min(1e-12f));
 
@@ -320,7 +320,7 @@ TEST(TensorIndexSelectBug, GetRotationPattern_100K) {
     auto squared = rotation.square();
 
     std::cout << "  Computing sum_squared..." << std::endl;
-    auto sum_squared = squared.sum({1}, true);  // [N, 1] - THIS MIGHT BE WHERE IT FAILS
+    auto sum_squared = squared.sum({1}, true); // [N, 1] - THIS MIGHT BE WHERE IT FAILS
 
     std::cout << "  Computing norm..." << std::endl;
     auto norm = sum_squared.sqrt();

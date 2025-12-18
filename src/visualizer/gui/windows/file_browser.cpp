@@ -223,7 +223,7 @@ namespace lfs::vis::gui {
 
                     auto dataset_type = lfs::io::Loader::getDatasetType(selected_path);
                     const char* type_str = (dataset_type == lfs::io::DatasetType::COLMAP) ? "(COLMAP)" : (dataset_type == lfs::io::DatasetType::Transforms) ? "(Transforms)"
-                                                                                                                                                                    : "(Dataset)";
+                                                                                                                                                            : "(Dataset)";
                     ImGui::TextDisabled(type_str);
                 } else if (is_sog_dir) {
                     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.5f, 0.1f, 1.0f)); // Orange button

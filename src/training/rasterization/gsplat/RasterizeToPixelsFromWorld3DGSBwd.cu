@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include <cooperative_groups.h>
-#include <cuda_runtime.h>
 #include <cstdio>
+#include <cuda_runtime.h>
 
 #include "Cameras.cuh"
 #include "Common.h"
@@ -438,8 +438,7 @@ namespace gsplat_lfs {
         float* v_scales,
         float* v_colors,
         float* v_opacities,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         const bool packed = false; // Only support non-packed for now
         const uint32_t tile_width = (image_width + tile_size - 1) / tile_size;
         const uint32_t tile_height = (image_height + tile_size - 1) / tile_size;
@@ -463,9 +462,9 @@ namespace gsplat_lfs {
             shmem_size);
         if (err != cudaSuccess) {
             fprintf(stderr,
-                "GSPLAT ERROR: Failed to set maximum shared memory size "
-                "(requested %ld bytes), try lowering tile_size. CUDA error: %s\n",
-                shmem_size, cudaGetErrorString(err));
+                    "GSPLAT ERROR: Failed to set maximum shared memory size "
+                    "(requested %ld bytes), try lowering tile_size. CUDA error: %s\n",
+                    shmem_size, cudaGetErrorString(err));
             return;
         }
 
@@ -513,41 +512,41 @@ namespace gsplat_lfs {
     // Explicit Instantiations
     ////////////////////////////////////////////////////////////////
 
-#define __INS__(CDIM)                                                              \
-    template void launch_rasterize_to_pixels_from_world_3dgs_bwd_kernel<CDIM>(      \
-        const float* means,                                                        \
-        const float* quats,                                                        \
-        const float* scales,                                                       \
-        const float* colors,                                                       \
-        const float* opacities,                                                    \
-        const float* backgrounds,                                                  \
-        const bool* masks,                                                         \
-        uint32_t C,                                                                \
-        uint32_t N,                                                                \
-        uint32_t n_isects,                                                         \
-        uint32_t image_width,                                                      \
-        uint32_t image_height,                                                     \
-        uint32_t tile_size,                                                        \
-        const float* viewmats0,                                                    \
-        const float* viewmats1,                                                    \
-        const float* Ks,                                                           \
-        CameraModelType camera_model,                                              \
-        const UnscentedTransformParameters& ut_params,                             \
-        ShutterType rs_type,                                                       \
-        const float* radial_coeffs,                                                \
-        const float* tangential_coeffs,                                            \
-        const float* thin_prism_coeffs,                                            \
-        const int32_t* tile_offsets,                                               \
-        const int32_t* flatten_ids,                                                \
-        const float* render_alphas,                                                \
-        const int32_t* last_ids,                                                   \
-        const float* v_render_colors,                                              \
-        const float* v_render_alphas,                                              \
-        float* v_means,                                                            \
-        float* v_quats,                                                            \
-        float* v_scales,                                                           \
-        float* v_colors,                                                           \
-        float* v_opacities,                                                        \
+#define __INS__(CDIM)                                                          \
+    template void launch_rasterize_to_pixels_from_world_3dgs_bwd_kernel<CDIM>( \
+        const float* means,                                                    \
+        const float* quats,                                                    \
+        const float* scales,                                                   \
+        const float* colors,                                                   \
+        const float* opacities,                                                \
+        const float* backgrounds,                                              \
+        const bool* masks,                                                     \
+        uint32_t C,                                                            \
+        uint32_t N,                                                            \
+        uint32_t n_isects,                                                     \
+        uint32_t image_width,                                                  \
+        uint32_t image_height,                                                 \
+        uint32_t tile_size,                                                    \
+        const float* viewmats0,                                                \
+        const float* viewmats1,                                                \
+        const float* Ks,                                                       \
+        CameraModelType camera_model,                                          \
+        const UnscentedTransformParameters& ut_params,                         \
+        ShutterType rs_type,                                                   \
+        const float* radial_coeffs,                                            \
+        const float* tangential_coeffs,                                        \
+        const float* thin_prism_coeffs,                                        \
+        const int32_t* tile_offsets,                                           \
+        const int32_t* flatten_ids,                                            \
+        const float* render_alphas,                                            \
+        const int32_t* last_ids,                                               \
+        const float* v_render_colors,                                          \
+        const float* v_render_alphas,                                          \
+        float* v_means,                                                        \
+        float* v_quats,                                                        \
+        float* v_scales,                                                       \
+        float* v_colors,                                                       \
+        float* v_opacities,                                                    \
         cudaStream_t stream);
 
     __INS__(1)

@@ -4,9 +4,9 @@
 
 #include <glad/glad.h>
 
-#include "gui/panels/scene_panel.hpp"
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
+#include "gui/panels/scene_panel.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "gui/windows/image_preview.hpp"
 #include "internal/resource_paths.hpp"
@@ -17,8 +17,8 @@
 
 #include <algorithm>
 #include <format>
-#include <imgui.h>
 #include <ranges>
+#include <imgui.h>
 
 namespace lfs::vis::gui {
 
@@ -78,7 +78,8 @@ namespace lfs::vis::gui {
     }
 
     void ScenePanel::initIcons() {
-        if (m_icons.initialized) return;
+        if (m_icons.initialized)
+            return;
 
         m_icons.visible = loadSceneIcon("visible.png");
         m_icons.hidden = loadSceneIcon("hidden.png");
@@ -95,7 +96,8 @@ namespace lfs::vis::gui {
     }
 
     void ScenePanel::shutdownIcons() {
-        if (!m_icons.initialized) return;
+        if (!m_icons.initialized)
+            return;
 
         deleteTexture(m_icons.visible);
         deleteTexture(m_icons.hidden);
@@ -124,7 +126,9 @@ namespace lfs::vis::gui {
         });
 
         state::DatasetLoadCompleted::when([this](const auto& e) {
-            if (e.success) { loadImageCams(e.path); }
+            if (e.success) {
+                loadImageCams(e.path);
+            }
         });
     }
 
@@ -147,9 +151,11 @@ namespace lfs::vis::gui {
     }
 
     bool ScenePanel::hasPLYs(const UIContext* ctx) const {
-        if (!ctx || !ctx->viewer) return false;
+        if (!ctx || !ctx->viewer)
+            return false;
         const auto* sm = ctx->viewer->getSceneManager();
-        if (!sm) return false;
+        if (!sm)
+            return false;
         return sm->getScene().hasNodes();
     }
 
@@ -181,13 +187,16 @@ namespace lfs::vis::gui {
     }
 
     void ScenePanel::renderPLYSceneGraph(const UIContext* ctx) {
-        if (!ctx || !ctx->viewer) return;
+        if (!ctx || !ctx->viewer)
+            return;
 
         // Lazy-load icons
-        if (!m_icons.initialized) initIcons();
+        if (!m_icons.initialized)
+            initIcons();
 
         auto* scene_manager = ctx->viewer->getSceneManager();
-        if (!scene_manager) return;
+        if (!scene_manager)
+            return;
 
         // Update flash intensity
         const auto* rm = ctx->viewer->getRenderingManager();
@@ -246,10 +255,11 @@ namespace lfs::vis::gui {
         // Count only splat nodes
         const auto nodes = scene.getNodes();
         const size_t splat_count = std::ranges::count_if(nodes,
-            [](const SceneNode* n) { return n->type == NodeType::SPLAT; });
+                                                         [](const SceneNode* n) { return n->type == NodeType::SPLAT; });
 
         const std::string label = std::format("Models ({})", splat_count);
-        if (!ImGui::TreeNodeEx(label.c_str(), FOLDER_FLAGS)) return;
+        if (!ImGui::TreeNodeEx(label.c_str(), FOLDER_FLAGS))
+            return;
 
         // Drop target for moving nodes to root
         handleDragDrop("", true);
@@ -389,18 +399,18 @@ namespace lfs::vis::gui {
         // [Grip] - drag indicator
         if (m_icons.grip) {
             const ImVec4 grip_tint = can_drag
-                ? withAlpha(t.palette.text_dim, 0.5f)
-                : ImVec4(0, 0, 0, 0);
-            ImGui::Image(static_cast<ImTextureID>(m_icons.grip), icon_sz, {0,0}, {1,1}, grip_tint, {0,0,0,0});
+                                         ? withAlpha(t.palette.text_dim, 0.5f)
+                                         : ImVec4(0, 0, 0, 0);
+            ImGui::Image(static_cast<ImTextureID>(m_icons.grip), icon_sz, {0, 0}, {1, 1}, grip_tint, {0, 0, 0, 0});
             ImGui::SameLine(0.0f, ICON_SPACING);
         }
 
         // [Visibility] - toggle visible/hidden
         if (const unsigned int vis_tex = is_visible ? m_icons.visible : m_icons.hidden) {
             const ImVec4 vis_tint = is_visible
-                ? ImVec4(0.4f, 0.9f, 0.4f, 1.0f)
-                : ImVec4(0.6f, 0.4f, 0.4f, 0.7f);
-            if (ImGui::ImageButton("##vis", static_cast<ImTextureID>(vis_tex), icon_sz, {0,0}, {1,1}, {0,0,0,0}, vis_tint))
+                                        ? ImVec4(0.4f, 0.9f, 0.4f, 1.0f)
+                                        : ImVec4(0.6f, 0.4f, 0.4f, 0.7f);
+            if (ImGui::ImageButton("##vis", static_cast<ImTextureID>(vis_tex), icon_sz, {0, 0}, {1, 1}, {0, 0, 0, 0}, vis_tint))
                 cmd::SetPLYVisibility{.name = node.name, .visible = !is_visible}.emit();
             ImGui::SameLine(0.0f, ICON_SPACING);
         }
@@ -408,9 +418,9 @@ namespace lfs::vis::gui {
         // [Trash] - delete node
         if (is_deletable && m_icons.trash) {
             const ImVec4 trash_tint = is_selected
-                ? ImVec4(1.0f, 0.6f, 0.6f, 0.9f)
-                : withAlpha(t.palette.text_dim, 0.5f);
-            if (ImGui::ImageButton("##del", static_cast<ImTextureID>(m_icons.trash), icon_sz, {0,0}, {1,1}, {0,0,0,0}, trash_tint))
+                                          ? ImVec4(1.0f, 0.6f, 0.6f, 0.9f)
+                                          : withAlpha(t.palette.text_dim, 0.5f);
+            if (ImGui::ImageButton("##del", static_cast<ImTextureID>(m_icons.trash), icon_sz, {0, 0}, {1, 1}, {0, 0, 0, 0}, trash_tint))
                 cmd::RemovePLY{.name = node.name, .keep_children = false}.emit();
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Delete");
@@ -432,7 +442,8 @@ namespace lfs::vis::gui {
             const bool entered = ImGui::InputText("##rename", m_renameState.buffer,
                                                   sizeof(m_renameState.buffer), RENAME_INPUT_FLAGS);
             const bool is_focused = ImGui::IsItemFocused();
-            if (ImGui::IsItemActive()) m_renameState.input_was_active = true;
+            if (ImGui::IsItemActive())
+                m_renameState.input_was_active = true;
 
             if (entered) {
                 // Need non-const scene_manager for rename - get from context indirectly via event
@@ -444,7 +455,7 @@ namespace lfs::vis::gui {
         } else {
             // Type indicator icon
             unsigned int type_tex = m_icons.splat;
-            ImVec4 type_tint(0.6f, 0.8f, 1.0f, 0.9f);  // Blue for splats
+            ImVec4 type_tint(0.6f, 0.8f, 1.0f, 0.9f); // Blue for splats
 
             if (is_group) {
                 type_tex = m_icons.group;
@@ -455,8 +466,8 @@ namespace lfs::vis::gui {
             } else if (is_camera_group || is_camera) {
                 type_tex = m_icons.camera;
                 type_tint = is_camera_group
-                    ? ImVec4(0.6f, 0.7f, 0.9f, 0.8f)
-                    : ImVec4(0.5f, 0.6f, 0.8f, 0.6f);
+                                ? ImVec4(0.6f, 0.7f, 0.9f, 0.8f)
+                                : ImVec4(0.5f, 0.6f, 0.8f, 0.6f);
             } else if (is_cropbox) {
                 type_tex = m_icons.cropbox;
                 type_tint = ImVec4(1.0f, 0.7f, 0.3f, 0.9f);
@@ -467,7 +478,7 @@ namespace lfs::vis::gui {
 
             // [Type] - node type indicator
             if (type_tex) {
-                ImGui::Image(static_cast<ImTextureID>(type_tex), icon_sz, {0,0}, {1,1}, type_tint, {0,0,0,0});
+                ImGui::Image(static_cast<ImTextureID>(type_tex), icon_sz, {0, 0}, {1, 1}, type_tint, {0, 0, 0, 0});
             } else {
                 ImGui::Dummy(icon_sz);
             }
@@ -475,16 +486,18 @@ namespace lfs::vis::gui {
             // [Mask] - indicator for cameras with masks
             if (has_mask && m_icons.mask) {
                 ImGui::SameLine(0.0f, ICON_SPACING);
-                ImGui::Image(static_cast<ImTextureID>(m_icons.mask), icon_sz, {0,0}, {1,1},
-                             ImVec4(0.9f, 0.5f, 0.6f, 0.8f), {0,0,0,0});
+                ImGui::Image(static_cast<ImTextureID>(m_icons.mask), icon_sz, {0, 0}, {1, 1},
+                             ImVec4(0.9f, 0.5f, 0.6f, 0.8f), {0, 0, 0, 0});
             }
 
             ImGui::SameLine(0.0f, ICON_SPACING + 2.0f);
 
             static constexpr ImGuiTreeNodeFlags BASE_FLAGS = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
             ImGuiTreeNodeFlags flags = BASE_FLAGS;
-            if (!has_children) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-            if (is_group || is_dataset) flags |= ImGuiTreeNodeFlags_DefaultOpen;
+            if (!has_children)
+                flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+            if (is_group || is_dataset)
+                flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
             // Build label with count suffix
             std::string label = node.name;
@@ -513,7 +526,8 @@ namespace lfs::vis::gui {
             }
 
             // Drop target (only groups accept children)
-            if (is_group) handleDragDrop(node.name, true);
+            if (is_group)
+                handleDragDrop(node.name, true);
 
             // Selection - emit event, let SceneManager handle state
             // Camera nodes don't participate in selection - they have their own interactions
@@ -523,17 +537,22 @@ namespace lfs::vis::gui {
                 } else {
                     // Determine node type string for event
                     std::string type_str = "PLY";
-                    if (is_group) type_str = "Group";
-                    else if (is_dataset) type_str = "Dataset";
-                    else if (is_camera_group) type_str = "CameraGroup";
-                    else if (is_pointcloud) type_str = "PointCloud";
+                    if (is_group)
+                        type_str = "Group";
+                    else if (is_dataset)
+                        type_str = "Dataset";
+                    else if (is_camera_group)
+                        type_str = "CameraGroup";
+                    else if (is_pointcloud)
+                        type_str = "PointCloud";
 
                     ui::NodeSelected{
                         .path = node.name,
                         .type = type_str,
                         .metadata = {{"name", node.name},
                                      {"gaussians", std::to_string(node.gaussian_count)},
-                                     {"visible", is_visible ? "true" : "false"}}}.emit();
+                                     {"visible", is_visible ? "true" : "false"}}}
+                        .emit();
                 }
             }
 
@@ -568,7 +587,8 @@ namespace lfs::vis::gui {
                     size_t current_idx = 0;
 
                     for (size_t i = 0; i < entries.size(); ++i) {
-                        if (entries[i].name == node.name) current_idx = i;
+                        if (entries[i].name == node.name)
+                            current_idx = i;
                         camera_paths.push_back(entries[i].image_path);
                         mask_paths.push_back(entries[i].mask_path);
                     }
@@ -640,8 +660,10 @@ namespace lfs::vis::gui {
                 if (!is_group && ImGui::MenuItem("Export...")) {
                     cmd::ShowWindow{.window_name = "export_dialog", .show = true}.emit();
                 }
-                if (ImGui::MenuItem("Rename")) startRenaming(node.name);
-                if (ImGui::MenuItem("Duplicate")) cmd::DuplicateNode{.name = node.name}.emit();
+                if (ImGui::MenuItem("Rename"))
+                    startRenaming(node.name);
+                if (ImGui::MenuItem("Duplicate"))
+                    cmd::DuplicateNode{.name = node.name}.emit();
 
                 if (ImGui::BeginMenu("Move to")) {
                     const auto* parent_node = scene.getNodeById(node.parent_id);
@@ -689,7 +711,8 @@ namespace lfs::vis::gui {
                                         const std::unordered_set<std::string>& selected_names,
                                         const int depth) {
         const auto* parent = scene.getNodeById(parent_id);
-        if (!parent) return;
+        if (!parent)
+            return;
 
         for (const NodeId child_id : parent->children) {
             if (const auto* child = scene.getNodeById(child_id))
@@ -698,7 +721,8 @@ namespace lfs::vis::gui {
     }
 
     void ScenePanel::renderIndentGuides(const int depth) const {
-        if (depth <= 0) return;
+        if (depth <= 0)
+            return;
 
         constexpr float INDENT_WIDTH = 14.0f;
         constexpr float LINE_OFFSET_X = 7.0f;
@@ -737,7 +761,8 @@ namespace lfs::vis::gui {
         if (target) {
             const auto* check = target;
             while (check) {
-                if (check->id == node.id) return false;
+                if (check->id == node.id)
+                    return false;
                 check = scene.getNodeById(check->parent_id);
             }
         }
@@ -746,7 +771,8 @@ namespace lfs::vis::gui {
     }
 
     bool ScenePanel::handleDragDrop(const std::string& target_name, const bool is_group_target) {
-        if (!ImGui::BeginDragDropTarget()) return false;
+        if (!ImGui::BeginDragDropTarget())
+            return false;
 
         bool handled = false;
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_NODE")) {
@@ -754,8 +780,8 @@ namespace lfs::vis::gui {
             if (dragged_name != target_name) {
                 cmd::ReparentNode{
                     .node_name = std::string(dragged_name),
-                    .new_parent_name = is_group_target ? target_name : ""
-                }.emit();
+                    .new_parent_name = is_group_target ? target_name : ""}
+                    .emit();
                 handled = true;
             }
         }
@@ -773,7 +799,8 @@ namespace lfs::vis::gui {
     }
 
     void ScenePanel::finishRenaming(SceneManager* /*scene_manager*/) {
-        if (!m_renameState.is_renaming) return;
+        if (!m_renameState.is_renaming)
+            return;
 
         std::string new_name(m_renameState.buffer);
         // Trim whitespace
@@ -784,8 +811,8 @@ namespace lfs::vis::gui {
         if (!new_name.empty() && new_name != m_renameState.renaming_node_name) {
             cmd::RenamePLY{
                 .old_name = m_renameState.renaming_node_name,
-                .new_name = new_name
-            }.emit();
+                .new_name = new_name}
+                .emit();
         }
 
         cancelRenaming();
@@ -894,12 +921,13 @@ namespace lfs::vis::gui {
         ui::NodeSelected{
             .path = imagePath.string(),
             .type = "Images",
-            .metadata = {{"filename", imagePath.filename().string()}, {"path", imagePath.string()}}
-        }.emit();
+            .metadata = {{"filename", imagePath.filename().string()}, {"path", imagePath.string()}}}
+            .emit();
     }
 
     void ScenePanel::onImageDoubleClicked(const size_t imageIndex) {
-        if (imageIndex >= m_imagePaths.size()) return;
+        if (imageIndex >= m_imagePaths.size())
+            return;
 
         if (m_imagePreview) {
             m_imagePreview->open(m_imagePaths, imageIndex);

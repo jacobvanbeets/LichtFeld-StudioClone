@@ -86,12 +86,9 @@ namespace lfs::rendering {
         // Instance layout: [pos(3f), color(3f), transform_index(1f)] = 28 bytes
         constexpr GLsizei INSTANCE_STRIDE = 7 * sizeof(float);
         builder.attachVBO(instance_vbo_)
-            .setAttribute({.index = 1, .size = 3, .type = GL_FLOAT, .normalized = GL_FALSE,
-                           .stride = INSTANCE_STRIDE, .offset = nullptr, .divisor = 1})
-            .setAttribute({.index = 2, .size = 3, .type = GL_FLOAT, .normalized = GL_FALSE,
-                           .stride = INSTANCE_STRIDE, .offset = reinterpret_cast<const void*>(3 * sizeof(float)), .divisor = 1})
-            .setAttribute({.index = 3, .size = 1, .type = GL_FLOAT, .normalized = GL_FALSE,
-                           .stride = INSTANCE_STRIDE, .offset = reinterpret_cast<const void*>(6 * sizeof(float)), .divisor = 1});
+            .setAttribute({.index = 1, .size = 3, .type = GL_FLOAT, .normalized = GL_FALSE, .stride = INSTANCE_STRIDE, .offset = nullptr, .divisor = 1})
+            .setAttribute({.index = 2, .size = 3, .type = GL_FLOAT, .normalized = GL_FALSE, .stride = INSTANCE_STRIDE, .offset = reinterpret_cast<const void*>(3 * sizeof(float)), .divisor = 1})
+            .setAttribute({.index = 3, .size = 1, .type = GL_FLOAT, .normalized = GL_FALSE, .stride = INSTANCE_STRIDE, .offset = reinterpret_cast<const void*>(6 * sizeof(float)), .divisor = 1});
 
         // Attach EBO - stays bound to VAO
         std::span<const unsigned int> indices_span(cube_indices_,
@@ -243,19 +240,25 @@ namespace lfs::rendering {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         ShaderScope s(shader_);
-        if (auto result = s->set("u_view", view); !result) return result;
-        if (auto result = s->set("u_projection", projection); !result) return result;
-        if (auto result = s->set("u_voxel_size", voxel_size); !result) return result;
+        if (auto result = s->set("u_view", view); !result)
+            return result;
+        if (auto result = s->set("u_projection", projection); !result)
+            return result;
+        if (auto result = s->set("u_voxel_size", voxel_size); !result)
+            return result;
 
         constexpr int MAX_TRANSFORMS = 64;
         const int num_transforms = static_cast<int>(std::min(model_transforms.size(), size_t(MAX_TRANSFORMS)));
-        if (auto result = s->set("u_num_transforms", num_transforms); !result) return result;
+        if (auto result = s->set("u_num_transforms", num_transforms); !result)
+            return result;
         for (int i = 0; i < num_transforms; ++i) {
             s->set(std::format("u_model_transforms[{}]", i), model_transforms[i]);
         }
 
-        if (!cube_vao_ || cube_vao_.get() == 0) return std::unexpected("Invalid cube VAO");
-        if (current_point_count_ == 0) return {};
+        if (!cube_vao_ || cube_vao_.get() == 0)
+            return std::unexpected("Invalid cube VAO");
+        if (current_point_count_ == 0)
+            return {};
 
         VAOBinder vao_bind(cube_vao_);
         glDrawElementsInstanced(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0, static_cast<GLsizei>(current_point_count_));

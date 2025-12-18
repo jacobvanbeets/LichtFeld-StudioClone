@@ -55,8 +55,8 @@ namespace lfs::vis::input {
         TOGGLE_DEPTH_MODE,
         CYCLE_PLY,
         // Editing
-        DELETE_SELECTED,    // Delete selected Gaussians (selection tool)
-        DELETE_NODE,        // Delete selected PLY node (global mode)
+        DELETE_SELECTED, // Delete selected Gaussians (selection tool)
+        DELETE_NODE,     // Delete selected PLY node (global mode)
         UNDO,
         REDO,
         INVERT_SELECTION,

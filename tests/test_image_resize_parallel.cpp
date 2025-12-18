@@ -1,12 +1,12 @@
 /* Test to isolate cudaErrorInvalidDevice with resized images in parallel operations */
 
-#include <gtest/gtest.h>
-#include "io/cache_image_loader.hpp"
-#include "core/tensor.hpp"
 #include "core/logger.hpp"
+#include "core/tensor.hpp"
+#include "io/cache_image_loader.hpp"
 #include <cuda_runtime.h>
-#include <vector>
+#include <gtest/gtest.h>
 #include <thread>
+#include <vector>
 
 using namespace lfs::core;
 using namespace lfs::io;
@@ -17,7 +17,7 @@ TEST(ImageResizeParallelTest, LoadImagesWithResize) {
     const int NUM_IMAGES = 10;
 
     // Get singleton instance with CPU cache enabled
-    auto& loader = CacheLoader::getInstance(true, false);  // use_cpu_memory=true, use_fs_cache=false
+    auto& loader = CacheLoader::getInstance(true, false); // use_cpu_memory=true, use_fs_cache=false
 
     // Find test images
     std::vector<std::filesystem::path> image_paths;
@@ -27,7 +27,8 @@ TEST(ImageResizeParallelTest, LoadImagesWithResize) {
         for (const auto& entry : std::filesystem::directory_iterator(data_dir)) {
             if (entry.path().extension() == ".JPG" || entry.path().extension() == ".jpg") {
                 image_paths.push_back(entry.path());
-                if (image_paths.size() >= NUM_IMAGES) break;
+                if (image_paths.size() >= NUM_IMAGES)
+                    break;
             }
         }
     }
@@ -72,7 +73,7 @@ TEST(ImageResizeParallelTest, LoadImagesWithResize) {
                 auto& img = loaded_images[i];
 
                 // Typical operations that might happen in training
-                auto normalized = img * 2.0f - 1.0f;  // Normalize
+                auto normalized = img * 2.0f - 1.0f;   // Normalize
                 auto mean = normalized.mean();         // Reduce operation
                 auto reshaped = normalized.view({-1}); // Reshape
 
@@ -80,7 +81,7 @@ TEST(ImageResizeParallelTest, LoadImagesWithResize) {
                 cudaError_t err = cudaGetLastError();
                 if (err != cudaSuccess) {
                     LOG_ERROR("Thread {} CUDA error at image {}: {}",
-                             thread_id, i, cudaGetErrorString(err));
+                              thread_id, i, cudaGetErrorString(err));
                     error_count++;
                 }
             } catch (const std::exception& e) {
@@ -117,7 +118,7 @@ TEST(ImageResizeParallelTest, LoadImagesWithResize) {
 }
 
 TEST(ImageResizeParallelTest, CompareWithNoResize) {
-    auto& loader = CacheLoader::getInstance(true, false);  // use_cpu_memory=true, use_fs_cache=false
+    auto& loader = CacheLoader::getInstance(true, false); // use_cpu_memory=true, use_fs_cache=false
 
     std::filesystem::path data_dir = "data/bicycle/images_4";
     std::vector<std::filesystem::path> image_paths;
@@ -126,14 +127,15 @@ TEST(ImageResizeParallelTest, CompareWithNoResize) {
         for (const auto& entry : std::filesystem::directory_iterator(data_dir)) {
             if (entry.path().extension() == ".JPG" || entry.path().extension() == ".jpg") {
                 image_paths.push_back(entry.path());
-                if (image_paths.size() >= 3) break;
+                if (image_paths.size() >= 3)
+                    break;
             }
         }
     }
 
     if (image_paths.size() > 0) {
         LoadParams params;
-        params.resize_factor = 1;  // No resize
+        params.resize_factor = 1; // No resize
         params.max_width = 0;
 
         for (const auto& path : image_paths) {

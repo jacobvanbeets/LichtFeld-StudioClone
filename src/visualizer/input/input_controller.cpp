@@ -279,8 +279,8 @@ namespace lfs::vis {
         const double time_since_last = std::chrono::duration<double>(now - last_general_click_time_).count();
         const double dist = glm::length(glm::dvec2(x, y) - last_general_click_pos_);
         const bool is_general_double_click = (time_since_last < DOUBLE_CLICK_TIME &&
-                                               dist < DOUBLE_CLICK_DISTANCE &&
-                                               last_general_click_button_ == button);
+                                              dist < DOUBLE_CLICK_DISTANCE &&
+                                              last_general_click_button_ == button);
 
         // Update click tracking for double-click detection
         last_general_click_time_ = now;
@@ -585,7 +585,8 @@ namespace lfs::vis {
         // Node rectangle dragging
         if (is_node_rect_dragging_) {
             node_rect_end_ = glm::vec2(static_cast<float>(x), static_cast<float>(y));
-            if (tool_context_) tool_context_->requestRender();
+            if (tool_context_)
+                tool_context_->requestRender();
         }
 
         // Block camera dragging if ImGuizmo is being used
@@ -798,7 +799,8 @@ namespace lfs::vis {
                     return;
 
                 case input::Action::CAMERA_NEXT_VIEW:
-                    if (ImGui::GetIO().WantTextInput) return;
+                    if (ImGui::GetIO().WantTextInput)
+                        return;
                     if (services().trainerOrNull()) {
                         const int num_cams = static_cast<int>(services().trainerOrNull()->getCamList().size());
                         if (num_cams > 0) {
@@ -809,7 +811,8 @@ namespace lfs::vis {
                     return;
 
                 case input::Action::CAMERA_PREV_VIEW:
-                    if (ImGui::GetIO().WantTextInput) return;
+                    if (ImGui::GetIO().WantTextInput)
+                        return;
                     if (services().trainerOrNull()) {
                         const int num_cams = static_cast<int>(services().trainerOrNull()->getCamList().size());
                         if (num_cams > 0) {
@@ -902,7 +905,7 @@ namespace lfs::vis {
 
     void InputController::update(float delta_time) {
         const bool drag_button_released = drag_button_ >= 0 &&
-            glfwGetMouseButton(window_, drag_button_) != GLFW_PRESS;
+                                          glfwGetMouseButton(window_, drag_button_) != GLFW_PRESS;
 
         // Handle missed mouse release events (e.g., outside window)
         if (drag_mode_ == DragMode::Orbit && drag_button_released) {
@@ -997,7 +1000,7 @@ namespace lfs::vis {
                 // Checkpoint files go through the training resume flow
                 cmd::LoadCheckpointForTraining{.path = filepath}.emit();
                 LOG_INFO("Loading checkpoint for training via drag-and-drop: {}", filepath.filename().string());
-                return;  // Don't process other files when loading a checkpoint
+                return; // Don't process other files when loading a checkpoint
             } else if (ext == ".ply" || ext == ".sog" || ext == ".spz") {
                 splat_files.push_back(filepath);
             } else if (!dataset_path && std::filesystem::is_directory(filepath)) {
@@ -1121,9 +1124,11 @@ namespace lfs::vis {
     }
 
     void InputController::handleFocusSelection() {
-        if (!tool_context_) return;
+        if (!tool_context_)
+            return;
         auto* const sm = tool_context_->getSceneManager();
-        if (!sm) return;
+        if (!sm)
+            return;
 
         const auto& scene = sm->getScene();
         const auto& selected = sm->getSelectedNodeNames();
@@ -1134,7 +1139,8 @@ namespace lfs::vis {
         // Accumulate world-space AABB from node's local bounds
         const auto accumulateBounds = [&](const SceneNode* node) {
             glm::vec3 local_min, local_max;
-            if (!scene.getNodeBounds(node->id, local_min, local_max)) return;
+            if (!scene.getNodeBounds(node->id, local_min, local_max))
+                return;
 
             const glm::mat4 world_xform = scene.getWorldTransform(node->id);
             for (int i = 0; i < 8; ++i) {
@@ -1192,16 +1198,16 @@ namespace lfs::vis {
         increase ? viewport_.camera.increaseWasdSpeed() : viewport_.camera.decreaseWasdSpeed();
         ui::SpeedChanged{
             .current_speed = viewport_.camera.getWasdSpeed(),
-            .max_speed = viewport_.camera.getMaxWasdSpeed()
-        }.emit();
+            .max_speed = viewport_.camera.getMaxWasdSpeed()}
+            .emit();
     }
 
     void InputController::updateZoomSpeed(const bool increase) {
         increase ? viewport_.camera.increaseZoomSpeed() : viewport_.camera.decreaseZoomSpeed();
         ui::ZoomSpeedChanged{
             .zoom_speed = viewport_.camera.getZoomSpeed(),
-            .max_zoom_speed = viewport_.camera.getMaxZoomSpeed()
-        }.emit();
+            .max_zoom_speed = viewport_.camera.getMaxZoomSpeed()}
+            .emit();
     }
 
     void InputController::publishCameraMove() {
@@ -1337,16 +1343,23 @@ namespace lfs::vis {
     }
 
     input::ToolMode InputController::getCurrentToolMode() const {
-        if (selection_tool_ && selection_tool_->isEnabled()) return input::ToolMode::SELECTION;
-        if (brush_tool_ && brush_tool_->isEnabled()) return input::ToolMode::BRUSH;
-        if (align_tool_ && align_tool_->isEnabled()) return input::ToolMode::ALIGN;
+        if (selection_tool_ && selection_tool_->isEnabled())
+            return input::ToolMode::SELECTION;
+        if (brush_tool_ && brush_tool_->isEnabled())
+            return input::ToolMode::BRUSH;
+        if (align_tool_ && align_tool_->isEnabled())
+            return input::ToolMode::ALIGN;
         // Check GUI tool mode for CropBox (and transform tools)
         if (services().guiOrNull()) {
             const auto gui_tool = services().guiOrNull()->getCurrentToolMode();
-            if (gui_tool == gui::panels::ToolType::CropBox) return input::ToolMode::CROP_BOX;
-            if (gui_tool == gui::panels::ToolType::Translate) return input::ToolMode::TRANSLATE;
-            if (gui_tool == gui::panels::ToolType::Rotate) return input::ToolMode::ROTATE;
-            if (gui_tool == gui::panels::ToolType::Scale) return input::ToolMode::SCALE;
+            if (gui_tool == gui::panels::ToolType::CropBox)
+                return input::ToolMode::CROP_BOX;
+            if (gui_tool == gui::panels::ToolType::Translate)
+                return input::ToolMode::TRANSLATE;
+            if (gui_tool == gui::panels::ToolType::Rotate)
+                return input::ToolMode::ROTATE;
+            if (gui_tool == gui::panels::ToolType::Scale)
+                return input::ToolMode::SCALE;
         }
         return input::ToolMode::GLOBAL;
     }

@@ -7,8 +7,8 @@
 #include "core/parameters.hpp"
 #include "core/splat_data.hpp"
 #include "optimizer/render_output.hpp"
-#include <ostream>
 #include <istream>
+#include <ostream>
 
 namespace lfs::training {
 

@@ -2,10 +2,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "core/tensor.hpp"
-#include <gtest/gtest.h>
-#include <torch/torch.h>
 #include <filesystem>
+#include <gtest/gtest.h>
 #include <sstream>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 namespace fs = std::filesystem;
@@ -103,7 +103,8 @@ TEST_F(TensorSerializationTest, Empty) {
 
 TEST_F(TensorSerializationTest, Int64) {
     auto t = Tensor::empty({4}, Device::CPU, DataType::Int64);
-    for (size_t i = 0; i < 4; ++i) t.ptr<int64_t>()[i] = static_cast<int64_t>(i) * 1000000000LL;
+    for (size_t i = 0; i < 4; ++i)
+        t.ptr<int64_t>()[i] = static_cast<int64_t>(i) * 1000000000LL;
     std::stringstream ss;
     ss << t;
     Tensor loaded;
@@ -113,7 +114,8 @@ TEST_F(TensorSerializationTest, Int64) {
 
 TEST_F(TensorSerializationTest, UInt8) {
     auto t = Tensor::empty({16}, Device::CPU, DataType::UInt8);
-    for (size_t i = 0; i < 16; ++i) t.ptr<uint8_t>()[i] = static_cast<uint8_t>(i);
+    for (size_t i = 0; i < 16; ++i)
+        t.ptr<uint8_t>()[i] = static_cast<uint8_t>(i);
     std::stringstream ss;
     ss << t;
     Tensor loaded;
@@ -215,7 +217,8 @@ TEST_F(TensorSerializationTest, Transpose) {
     EXPECT_EQ(loaded.size(1), 2);
     const std::vector<float> expected = {1.0f, 4.0f, 2.0f, 5.0f, 3.0f, 6.0f};
     const auto v = loaded.to_vector();
-    for (size_t i = 0; i < expected.size(); ++i) EXPECT_FLOAT_EQ(v[i], expected[i]);
+    for (size_t i = 0; i < expected.size(); ++i)
+        EXPECT_FLOAT_EQ(v[i], expected[i]);
 }
 
 TEST_F(TensorSerializationTest, Slice) {

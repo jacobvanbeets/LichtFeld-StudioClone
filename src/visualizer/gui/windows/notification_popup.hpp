@@ -12,7 +12,9 @@ namespace lfs::vis::gui {
 
     class NotificationPopup {
     public:
-        enum class Type { INFO, WARNING, FAILURE };
+        enum class Type { INFO,
+                          WARNING,
+                          FAILURE };
         using Callback = std::function<void()>;
 
         NotificationPopup();

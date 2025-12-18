@@ -201,7 +201,7 @@ namespace lfs::rendering {
             std::vector<float> transform_data(16);
             for (int row = 0; row < 4; ++row) {
                 for (int col = 0; col < 4; ++col) {
-                    transform_data[row * 4 + col] = w2b[col][row];  // Transpose to row-major
+                    transform_data[row * 4 + col] = w2b[col][row]; // Transpose to row-major
                 }
             }
             crop_box_transform_tensor = Tensor::from_vector(transform_data, {4, 4}, lfs::core::Device::CPU).cuda();
@@ -227,7 +227,7 @@ namespace lfs::rendering {
             std::vector<float> transform_data(16);
             for (int row = 0; row < 4; ++row) {
                 for (int col = 0; col < 4; ++col) {
-                    transform_data[row * 4 + col] = w2b[col][row];  // Transpose to row-major
+                    transform_data[row * 4 + col] = w2b[col][row]; // Transpose to row-major
                 }
             }
             depth_filter_transform_tensor = Tensor::from_vector(transform_data, {4, 4}, lfs::core::Device::CPU).cuda();
@@ -255,8 +255,8 @@ namespace lfs::rendering {
             .image = std::make_shared<Tensor>(pipeline_result->image),
             .depth = std::make_shared<Tensor>(pipeline_result->depth),
             .screen_positions = pipeline_result->screen_positions.is_valid()
-                ? std::make_shared<Tensor>(pipeline_result->screen_positions)
-                : nullptr,
+                                    ? std::make_shared<Tensor>(pipeline_result->screen_positions)
+                                    : nullptr,
             .valid = true};
 
         return result;

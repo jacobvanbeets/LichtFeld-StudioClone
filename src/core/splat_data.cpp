@@ -198,7 +198,7 @@ namespace lfs::core {
         // _sh0 is [N, 1, 3], _shN is [N, coeffs, 3]
         // Concatenate along dim 1 (coeffs) to get [N, total_coeffs, 3]
         if (!_shN.is_valid()) {
-            return _sh0;  // SH degree 0: only DC component
+            return _sh0; // SH degree 0: only DC component
         }
         return _sh0.cat(_shN, 1);
     }
@@ -220,12 +220,18 @@ namespace lfs::core {
     }
 
     void SplatData::reserve_capacity(const size_t capacity) {
-        if (_means.is_valid()) _means.reserve(capacity);
-        if (_sh0.is_valid()) _sh0.reserve(capacity);
-        if (_shN.is_valid()) _shN.reserve(capacity);
-        if (_scaling.is_valid()) _scaling.reserve(capacity);
-        if (_rotation.is_valid()) _rotation.reserve(capacity);
-        if (_opacity.is_valid()) _opacity.reserve(capacity);
+        if (_means.is_valid())
+            _means.reserve(capacity);
+        if (_sh0.is_valid())
+            _sh0.reserve(capacity);
+        if (_shN.is_valid())
+            _shN.reserve(capacity);
+        if (_scaling.is_valid())
+            _scaling.reserve(capacity);
+        if (_rotation.is_valid())
+            _rotation.reserve(capacity);
+        if (_opacity.is_valid())
+            _opacity.reserve(capacity);
     }
 
     // ========== SOFT DELETION ==========
@@ -367,9 +373,9 @@ namespace lfs::core {
     // ========== SERIALIZATION ==========
 
     namespace {
-        constexpr uint32_t SPLAT_DATA_MAGIC = 0x4C465350;   // "LFSP"
+        constexpr uint32_t SPLAT_DATA_MAGIC = 0x4C465350; // "LFSP"
         constexpr uint32_t SPLAT_DATA_VERSION = 3;
-    }
+    } // namespace
 
     void SplatData::serialize(std::ostream& os) const {
         os.write(reinterpret_cast<const char*>(&SPLAT_DATA_MAGIC), sizeof(SPLAT_DATA_MAGIC));
@@ -389,11 +395,13 @@ namespace lfs::core {
 
         const uint8_t has_deleted = _deleted.is_valid() ? 1 : 0;
         os.write(reinterpret_cast<const char*>(&has_deleted), sizeof(has_deleted));
-        if (has_deleted) os << _deleted;
+        if (has_deleted)
+            os << _deleted;
 
         const uint8_t has_densification = _densification_info.is_valid() ? 1 : 0;
         os.write(reinterpret_cast<const char*>(&has_densification), sizeof(has_densification));
-        if (has_densification) os << _densification_info;
+        if (has_densification)
+            os << _densification_info;
 
         LOG_DEBUG("Serialized SplatData: {} Gaussians, SH {}/{}", size(), _active_sh_degree, _max_sh_degree);
     }
@@ -703,7 +711,7 @@ namespace lfs::core {
                           static_cast<void*>(means_.ptr<float>()),
                           means_cpu.numel() * sizeof(float));
                 err = cudaMemcpy(means_.ptr<float>(), means_cpu.ptr<float>(),
-                                means_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
+                                 means_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
                 if (err != cudaSuccess) {
                     LOG_ERROR("cudaMemcpy failed for means:");
                     LOG_ERROR("  src (CPU): is_valid={}, ptr={}, device={}, numel={}",
@@ -722,7 +730,7 @@ namespace lfs::core {
                           static_cast<void*>(scaling_.ptr<float>()),
                           scaling_cpu.numel() * sizeof(float));
                 err = cudaMemcpy(scaling_.ptr<float>(), scaling_cpu.ptr<float>(),
-                                scaling_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
+                                 scaling_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
                 if (err != cudaSuccess) {
                     LOG_ERROR("cudaMemcpy failed for scaling:");
                     LOG_ERROR("  src (CPU): is_valid={}, ptr={}, numel={}",
@@ -739,7 +747,7 @@ namespace lfs::core {
                           static_cast<void*>(rotation_.ptr<float>()),
                           rotation_cpu.numel() * sizeof(float));
                 err = cudaMemcpy(rotation_.ptr<float>(), rotation_cpu.ptr<float>(),
-                                rotation_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
+                                 rotation_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
                 if (err != cudaSuccess) {
                     LOG_ERROR("cudaMemcpy failed for rotation:");
                     LOG_ERROR("  src (CPU): is_valid={}, ptr={}, numel={}",
@@ -756,7 +764,7 @@ namespace lfs::core {
                           static_cast<void*>(opacity_.ptr<float>()),
                           opacity_cpu.numel() * sizeof(float));
                 err = cudaMemcpy(opacity_.ptr<float>(), opacity_cpu.ptr<float>(),
-                                opacity_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
+                                 opacity_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
                 if (err != cudaSuccess) {
                     LOG_ERROR("cudaMemcpy failed for opacity:");
                     LOG_ERROR("  src (CPU): is_valid={}, ptr={}, numel={}",
@@ -773,7 +781,7 @@ namespace lfs::core {
                           static_cast<void*>(sh0_.ptr<float>()),
                           sh0_cpu.numel() * sizeof(float));
                 err = cudaMemcpy(sh0_.ptr<float>(), sh0_cpu.ptr<float>(),
-                                sh0_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
+                                 sh0_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
                 if (err != cudaSuccess) {
                     LOG_ERROR("cudaMemcpy failed for sh0:");
                     LOG_ERROR("  src (CPU): is_valid={}, ptr={}, numel={}",
@@ -790,7 +798,7 @@ namespace lfs::core {
                           static_cast<void*>(shN_.ptr<float>()),
                           shN_cpu.numel() * sizeof(float));
                 err = cudaMemcpy(shN_.ptr<float>(), shN_cpu.ptr<float>(),
-                                shN_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
+                                 shN_cpu.numel() * sizeof(float), cudaMemcpyHostToDevice);
                 if (err != cudaSuccess) {
                     LOG_ERROR("cudaMemcpy failed for shN:");
                     LOG_ERROR("  src (CPU): is_valid={}, ptr={}, numel={}",
@@ -814,11 +822,11 @@ namespace lfs::core {
                 auto nn_dist = compute_mean_neighbor_distances(means_temp).clamp_min(1e-7f);
                 std::vector<int> scale_expand_shape = {static_cast<int>(num_points), 3};
                 auto scaling_temp = nn_dist.sqrt()
-                                    .mul(params.optimization.init_scaling)
-                                    .log()
-                                    .unsqueeze(-1)
-                                    .expand(std::span<const int>(scale_expand_shape))
-                                    .cuda();
+                                        .mul(params.optimization.init_scaling)
+                                        .log()
+                                        .unsqueeze(-1)
+                                        .expand(std::span<const int>(scale_expand_shape))
+                                        .cuda();
 
                 auto ones_col = Tensor::ones({num_points, 1}, Device::CUDA);
                 auto zeros_cols = Tensor::zeros({num_points, 3}, Device::CUDA);

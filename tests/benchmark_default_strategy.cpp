@@ -4,13 +4,13 @@
 // Performance benchmarks for DefaultStrategy
 // Measures timing of critical operations to ensure performance matches or exceeds reference
 
-#include "training/strategies/default_strategy.hpp"
 #include "core/logger.hpp"
 #include "core/parameters.hpp"
 #include "core/point_cloud.hpp"
 #include "core/splat_data.hpp"
-#include <gtest/gtest.h>
+#include "training/strategies/default_strategy.hpp"
 #include <chrono>
+#include <gtest/gtest.h>
 
 using namespace lfs::training;
 using namespace lfs::core;
@@ -33,10 +33,10 @@ static SplatData create_benchmark_splat_data(int n_gaussians) {
         scaling_data[i * 3 + 1] = -2.0f + ((i + 3) % 10) / 10.0f;
         scaling_data[i * 3 + 2] = -2.0f + ((i + 7) % 10) / 10.0f;
 
-        rotation_data[i * 4 + 0] = 1.0f;  // w
-        rotation_data[i * 4 + 1] = 0.0f;  // x
-        rotation_data[i * 4 + 2] = 0.0f;  // y
-        rotation_data[i * 4 + 3] = 0.0f;  // z
+        rotation_data[i * 4 + 0] = 1.0f; // w
+        rotation_data[i * 4 + 1] = 0.0f; // x
+        rotation_data[i * 4 + 2] = 0.0f; // y
+        rotation_data[i * 4 + 3] = 0.0f; // z
     }
 
     std::vector<float> opacity_data(n_gaussians, 0.5f);
@@ -52,7 +52,7 @@ static SplatData create_benchmark_splat_data(int n_gaussians) {
 }
 
 // Helper to time operations
-template<typename Func>
+template <typename Func>
 double time_operation(Func&& func, int warmup_runs = 3, int timed_runs = 10) {
     // Warmup
     for (int i = 0; i < warmup_runs; ++i) {
@@ -74,7 +74,7 @@ double time_operation(Func&& func, int warmup_runs = 3, int timed_runs = 10) {
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> elapsed = end - start;
 
-    return elapsed.count() / timed_runs;  // Return average time in ms
+    return elapsed.count() / timed_runs; // Return average time in ms
 }
 
 // Benchmark initialization
@@ -88,13 +88,14 @@ TEST(DefaultStrategyBenchmark, Initialization) {
         param::OptimizationParameters opt_params;
         opt_params.iterations = 30000;
         strategy.initialize(opt_params);
-    }, 1, 5);
+    },
+                                     1, 5);
 
     std::cout << "Initialization (" << n_gaussians << " Gaussians): "
               << avg_time << " ms" << std::endl;
 
     // Sanity check: should complete in reasonable time
-    EXPECT_LT(avg_time, 1000.0);  // Less than 1 second
+    EXPECT_LT(avg_time, 1000.0); // Less than 1 second
 }
 
 // Benchmark remove operation
@@ -122,15 +123,16 @@ TEST(DefaultStrategyBenchmark, RemoveGaussians) {
         // For proper benchmarking, we'd need to recreate the strategy each time
         // Here we just measure a single operation
         strategy.remove_gaussians(mask);
-    }, 0, 1);
+    },
+                                     0, 1);
 
     std::cout << "RemoveGaussians (" << n_to_remove << " of " << n_gaussians << "): "
               << avg_time << " ms" << std::endl;
 
     // Soft deletion: tensor size unchanged, active_count reflects logical size
-    EXPECT_EQ(strategy.get_model().size(), n_gaussians);                // Physical size unchanged
-    EXPECT_EQ(strategy.active_count(), n_gaussians - n_to_remove);      // Logical size
-    EXPECT_LT(avg_time, 500.0);  // Should complete quickly
+    EXPECT_EQ(strategy.get_model().size(), n_gaussians);           // Physical size unchanged
+    EXPECT_EQ(strategy.active_count(), n_gaussians - n_to_remove); // Logical size
+    EXPECT_LT(avg_time, 500.0);                                    // Should complete quickly
 }
 
 // Benchmark training step
@@ -164,7 +166,7 @@ TEST(DefaultStrategyBenchmark, TrainingStep) {
     std::cout << "Training step (" << n_gaussians << " Gaussians): "
               << avg_time << " ms" << std::endl;
 
-    EXPECT_LT(avg_time, 100.0);  // Should be fast
+    EXPECT_LT(avg_time, 100.0); // Should be fast
 }
 
 // Benchmark full training loop
@@ -221,7 +223,7 @@ TEST(DefaultStrategyBenchmark, FullTrainingLoop_100Iterations) {
     std::cout << "  Final Gaussian count: " << strategy.get_model().size() << std::endl;
 
     EXPECT_GT(strategy.get_model().size(), 0);
-    EXPECT_LT(elapsed.count(), 10000.0);  // Should complete in reasonable time
+    EXPECT_LT(elapsed.count(), 10000.0); // Should complete in reasonable time
 }
 
 // Benchmark scaling with different Gaussian counts
@@ -240,7 +242,8 @@ TEST(DefaultStrategyBenchmark, ScalingTest) {
             param::OptimizationParameters opt_params;
             opt_params.iterations = 30000;
             strategy.initialize(opt_params);
-        }, 1, 3);
+        },
+                                          1, 3);
 
         // Single step time
         auto splat_data = create_benchmark_splat_data(n_gaussians);
@@ -268,8 +271,8 @@ TEST(DefaultStrategyBenchmark, ScalingTest) {
         std::cout << n_gaussians << "\t\t" << init_time << "\t\t" << step_time << std::endl;
 
         // Verify reasonable performance
-        EXPECT_LT(init_time, 2000.0);  // Init should be < 2 seconds
-        EXPECT_LT(step_time, 200.0);   // Step should be < 200ms
+        EXPECT_LT(init_time, 2000.0); // Init should be < 2 seconds
+        EXPECT_LT(step_time, 200.0);  // Step should be < 200ms
     }
 }
 

@@ -4,10 +4,10 @@
 // Test to check if LibTorch changes CUDA device state
 
 #include "core/tensor.hpp"
-#include <gtest/gtest.h>
-#include <torch/torch.h>
 #include <cuda_runtime.h>
+#include <gtest/gtest.h>
 #include <iostream>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 
@@ -33,7 +33,8 @@ TEST(CUDADeviceState, AfterLFSTensorOp) {
 
     auto t = Tensor::randn({100000, 4}, Device::CUDA);
     std::vector<int> idx_data(50000);
-    for (int i = 0; i < 50000; ++i) idx_data[i] = i;
+    for (int i = 0; i < 50000; ++i)
+        idx_data[i] = i;
     auto indices = Tensor::from_vector(idx_data, TensorShape({50000}), Device::CUDA);
     auto result = t.index_select(0, indices);
 
@@ -69,7 +70,8 @@ TEST(CUDADeviceState, TorchThenLFS) {
     try {
         auto t_lfs = Tensor::randn({100000, 4}, Device::CUDA);
         std::vector<int> idx_data_lfs(50000);
-        for (int i = 0; i < 50000; ++i) idx_data_lfs[i] = i;
+        for (int i = 0; i < 50000; ++i)
+            idx_data_lfs[i] = i;
         auto idx_lfs = Tensor::from_vector(idx_data_lfs, TensorShape({50000}), Device::CUDA);
         auto result_lfs = t_lfs.index_select(0, idx_lfs);
 
@@ -104,7 +106,8 @@ TEST(CUDADeviceState, ResetDeviceBeforeLFS) {
     try {
         auto t_lfs = Tensor::randn({100000, 4}, Device::CUDA);
         std::vector<int> idx_data_lfs(50000);
-        for (int i = 0; i < 50000; ++i) idx_data_lfs[i] = i;
+        for (int i = 0; i < 50000; ++i)
+            idx_data_lfs[i] = i;
         auto idx_lfs = Tensor::from_vector(idx_data_lfs, TensorShape({50000}), Device::CUDA);
         auto result_lfs = t_lfs.index_select(0, idx_lfs);
 

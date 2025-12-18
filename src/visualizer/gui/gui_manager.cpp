@@ -14,7 +14,6 @@
 #include "core/sogs.hpp"
 #include "core/splat_data_export.hpp"
 #include "gui/html_viewer_export.hpp"
-#include "io/exporter.hpp"
 #include "gui/panels/main_panel.hpp"
 #include "gui/panels/scene_panel.hpp"
 #include "gui/panels/tools_panel.hpp"
@@ -22,29 +21,30 @@
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "gui/windows/file_browser.hpp"
+#include "io/exporter.hpp"
 
 #include "input/input_controller.hpp"
 #include "internal/resource_paths.hpp"
 #include "tools/align_tool.hpp"
 
-#include <cuda_runtime.h>
-#include "tools/brush_tool.hpp"
-#include "tools/selection_tool.hpp"
-#include "rendering/rendering_manager.hpp"
-#include "rendering/rendering.hpp"
 #include "core/events.hpp"
+#include "rendering/rendering.hpp"
+#include "rendering/rendering_manager.hpp"
 #include "scene/scene.hpp"
 #include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
+#include "tools/brush_tool.hpp"
+#include "tools/selection_tool.hpp"
 #include "training/training_state.hpp"
 #include "visualizer_impl.hpp"
+#include <cuda_runtime.h>
 
+#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
 #include <format>
-#include <GLFW/glfw3.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
@@ -61,7 +61,8 @@ namespace lfs::vis::gui {
 
     // Truncate SH to target degree. shN has (d+1)²-1 coefficients for degree d.
     void truncateSHDegree(lfs::core::SplatData& splat, const int target_degree) {
-        if (target_degree >= splat.get_max_sh_degree()) return;
+        if (target_degree >= splat.get_max_sh_degree())
+            return;
 
         if (target_degree == 0) {
             splat.shN() = lfs::core::Tensor{};
@@ -144,7 +145,8 @@ namespace lfs::vis::gui {
                                            const std::string& default_name,
                                            const std::vector<std::string>& node_names,
                                            int sh_degree) {
-            if (isExporting()) return;
+            if (isExporting())
+                return;
 
             // Show native file dialog based on format
             std::filesystem::path path;
@@ -163,11 +165,13 @@ namespace lfs::vis::gui {
                 break;
             }
 
-            if (path.empty()) return;
+            if (path.empty())
+                return;
 
             // Perform the export
             auto* const scene_manager = viewer_->getSceneManager();
-            if (!scene_manager || node_names.empty()) return;
+            if (!scene_manager || node_names.empty())
+                return;
 
             // Collect splats with transforms for selected nodes
             const auto& scene = scene_manager->getScene();
@@ -179,11 +183,13 @@ namespace lfs::vis::gui {
                 }
             }
 
-            if (splats.empty()) return;
+            if (splats.empty())
+                return;
 
             // Merge selected splats
             auto merged = Scene::mergeSplatsWithTransforms(splats);
-            if (!merged) return;
+            if (!merged)
+                return;
 
             // Truncate SH data if needed
             if (sh_degree < merged->get_max_sh_degree()) {
@@ -204,7 +210,8 @@ namespace lfs::vis::gui {
 
         menu_bar_->setCanClearCheck([this]() {
             auto* trainer_mgr = viewer_->getTrainerManager();
-            if (!trainer_mgr) return true;
+            if (!trainer_mgr)
+                return true;
             return trainer_mgr->canPerform(TrainingAction::ClearScene);
         });
     }
@@ -269,11 +276,16 @@ namespace lfs::vis::gui {
             if (!all_loaded) {
                 LOG_WARN("Some fonts failed to load, using fallback");
                 ImFont* const fallback = font_regular_ ? font_regular_ : io.Fonts->AddFontDefault();
-                if (!font_regular_) font_regular_ = fallback;
-                if (!font_bold_) font_bold_ = fallback;
-                if (!font_heading_) font_heading_ = fallback;
-                if (!font_small_) font_small_ = fallback;
-                if (!font_section_) font_section_ = fallback;
+                if (!font_regular_)
+                    font_regular_ = fallback;
+                if (!font_bold_)
+                    font_bold_ = fallback;
+                if (!font_heading_)
+                    font_heading_ = fallback;
+                if (!font_small_)
+                    font_small_ = fallback;
+                if (!font_section_)
+                    font_section_ = fallback;
             } else {
                 LOG_INFO("Loaded fonts: {} and {}", t.fonts.regular_path, t.fonts.bold_path);
             }
@@ -316,7 +328,8 @@ namespace lfs::vis::gui {
         menu_bar_->setFonts({font_regular_, font_bold_, font_heading_, font_small_, font_section_});
         drag_drop_.init(viewer_->getWindow());
         drag_drop_.setFileDropCallback([this](const std::vector<std::string>& paths) {
-            if (auto* const ic = viewer_->getInputController()) ic->handleFileDrop(paths);
+            if (auto* const ic = viewer_->getInputController())
+                ic->handleFileDrop(paths);
         });
     }
 
@@ -522,10 +535,15 @@ namespace lfs::vis::gui {
                 if (ImGui::BeginChild("##RenderingPanel", {0, 0}, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground)) {
                     if (viewer_->getTrainer()) {
                         if (ImGui::BeginTabBar("##BottomTabs")) {
-                            if (ImGui::BeginTabItem("Rendering")) { draw_rendering(); ImGui::EndTabItem(); }
+                            if (ImGui::BeginTabItem("Rendering")) {
+                                draw_rendering();
+                                ImGui::EndTabItem();
+                            }
                             const ImGuiTabItemFlags flags = focus_training_panel_
-                                ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
-                            if (focus_training_panel_) focus_training_panel_ = false;
+                                                                ? ImGuiTabItemFlags_SetSelected
+                                                                : ImGuiTabItemFlags_None;
+                            if (focus_training_panel_)
+                                focus_training_panel_ = false;
                             if (ImGui::BeginTabItem("Training", nullptr, flags)) {
                                 panels::DrawTrainingControls(ctx);
                                 ImGui::Separator();
@@ -608,26 +626,30 @@ namespace lfs::vis::gui {
 
             previous_tool_ = current_tool;
 
-            if (brush_tool) brush_tool->setEnabled(is_brush_mode);
-            if (align_tool) align_tool->setEnabled(is_align_mode);
-            if (selection_tool) selection_tool->setEnabled(is_selection_mode);
+            if (brush_tool)
+                brush_tool->setEnabled(is_brush_mode);
+            if (align_tool)
+                align_tool->setEnabled(is_align_mode);
+            if (selection_tool)
+                selection_tool->setEnabled(is_selection_mode);
 
             // Update selection mode and auto-toggle ring rendering
             if (is_selection_mode) {
                 if (auto* rm = ctx.viewer->getRenderingManager()) {
                     lfs::rendering::SelectionMode mode = lfs::rendering::SelectionMode::Centers;
                     switch (gizmo_toolbar_state_.selection_mode) {
-                        case panels::SelectionSubMode::Centers:   mode = lfs::rendering::SelectionMode::Centers; break;
-                        case panels::SelectionSubMode::Rectangle: mode = lfs::rendering::SelectionMode::Rectangle; break;
-                        case panels::SelectionSubMode::Polygon:   mode = lfs::rendering::SelectionMode::Polygon; break;
-                        case panels::SelectionSubMode::Lasso:     mode = lfs::rendering::SelectionMode::Lasso; break;
-                        case panels::SelectionSubMode::Rings:     mode = lfs::rendering::SelectionMode::Rings; break;
+                    case panels::SelectionSubMode::Centers: mode = lfs::rendering::SelectionMode::Centers; break;
+                    case panels::SelectionSubMode::Rectangle: mode = lfs::rendering::SelectionMode::Rectangle; break;
+                    case panels::SelectionSubMode::Polygon: mode = lfs::rendering::SelectionMode::Polygon; break;
+                    case panels::SelectionSubMode::Lasso: mode = lfs::rendering::SelectionMode::Lasso; break;
+                    case panels::SelectionSubMode::Rings: mode = lfs::rendering::SelectionMode::Rings; break;
                     }
                     rm->setSelectionMode(mode);
 
                     // Reset selection state when switching modes
                     if (gizmo_toolbar_state_.selection_mode != previous_selection_mode_) {
-                        if (selection_tool) selection_tool->onSelectionModeChanged();
+                        if (selection_tool)
+                            selection_tool->onSelectionModeChanged();
 
                         // Auto-enable rings when switching to Rings sub-mode
                         if (gizmo_toolbar_state_.selection_mode == panels::SelectionSubMode::Rings) {
@@ -639,16 +661,15 @@ namespace lfs::vis::gui {
 
                         previous_selection_mode_ = gizmo_toolbar_state_.selection_mode;
                     }
-
                 }
             }
 
             if (is_cropbox_mode) {
                 switch (gizmo_toolbar_state_.cropbox_operation) {
-                    case panels::CropBoxOperation::Bounds:    crop_gizmo_operation_ = ImGuizmo::BOUNDS; break;
-                    case panels::CropBoxOperation::Translate: crop_gizmo_operation_ = ImGuizmo::TRANSLATE; break;
-                    case panels::CropBoxOperation::Rotate:    crop_gizmo_operation_ = ImGuizmo::ROTATE; break;
-                    case panels::CropBoxOperation::Scale:     crop_gizmo_operation_ = ImGuizmo::SCALE; break;
+                case panels::CropBoxOperation::Bounds: crop_gizmo_operation_ = ImGuizmo::BOUNDS; break;
+                case panels::CropBoxOperation::Translate: crop_gizmo_operation_ = ImGuizmo::TRANSLATE; break;
+                case panels::CropBoxOperation::Rotate: crop_gizmo_operation_ = ImGuizmo::ROTATE; break;
+                case panels::CropBoxOperation::Scale: crop_gizmo_operation_ = ImGuizmo::SCALE; break;
                 }
             }
 
@@ -677,8 +698,7 @@ namespace lfs::vis::gui {
                                 .min = node->cropbox->min,
                                 .max = node->cropbox->max,
                                 .local_transform = node->local_transform.get(),
-                                .inverse = node->cropbox->inverse
-                            };
+                                .inverse = node->cropbox->inverse};
 
                             // Apply reset to scene graph
                             node->cropbox->min = glm::vec3(-1.0f);
@@ -693,8 +713,7 @@ namespace lfs::vis::gui {
                                 .min = node->cropbox->min,
                                 .max = node->cropbox->max,
                                 .local_transform = node->local_transform.get(),
-                                .inverse = node->cropbox->inverse
-                            };
+                                .inverse = node->cropbox->inverse};
 
                             // Create undo command
                             auto cmd = std::make_unique<command::CropBoxCommand>(
@@ -712,8 +731,10 @@ namespace lfs::vis::gui {
             show_node_gizmo_ = false;
             auto* brush_tool = ctx.viewer->getBrushTool();
             auto* align_tool = ctx.viewer->getAlignTool();
-            if (brush_tool) brush_tool->setEnabled(false);
-            if (align_tool) align_tool->setEnabled(false);
+            if (brush_tool)
+                brush_tool->setEnabled(false);
+            if (align_tool)
+                align_tool->setEnabled(false);
         }
 
         auto* brush_tool = ctx.viewer->getBrushTool();
@@ -788,7 +809,7 @@ namespace lfs::vis::gui {
 
                 if (t.viewport.border_size > 0.0f) {
                     dl->AddRect({x1, y1}, {x2, y2}, t.viewport_border_u32(), r,
-                               ImDrawFlags_RoundCornersAll, t.viewport.border_size);
+                                ImDrawFlags_RoundCornersAll, t.viewport.border_size);
                 }
             }
         }
@@ -837,8 +858,8 @@ namespace lfs::vis::gui {
                                 lfs::core::events::ui::GridSettingsChanged{
                                     .enabled = settings.show_grid,
                                     .plane = axis,
-                                    .opacity = settings.grid_opacity
-                                }.emit();
+                                    .opacity = settings.grid_opacity}
+                                    .emit();
 
                                 rendering_manager->markDirty();
                             } else {
@@ -932,7 +953,8 @@ namespace lfs::vis::gui {
         constexpr float PANEL_GAP = 2.0f;
         const auto* const vp = ImGui::GetMainViewport();
         const float w = (show_main_panel_ && !ui_hidden_)
-            ? vp->WorkSize.x - right_panel_width_ - PANEL_GAP : vp->WorkSize.x;
+                            ? vp->WorkSize.x - right_panel_width_ - PANEL_GAP
+                            : vp->WorkSize.x;
         const float h = ui_hidden_ ? vp->WorkSize.y : vp->WorkSize.y - STATUS_BAR_HEIGHT;
         viewport_pos_ = {vp->WorkPos.x, vp->WorkPos.y};
         viewport_size_ = {w, h};
@@ -978,7 +1000,8 @@ namespace lfs::vis::gui {
     }
 
     bool GuiManager::isPositionInViewportGizmo(const double x, const double y) const {
-        if (!show_viewport_gizmo_ || ui_hidden_) return false;
+        if (!show_viewport_gizmo_ || ui_hidden_)
+            return false;
 
         const float gizmo_x = viewport_pos_.x + viewport_size_.x - VIEWPORT_GIZMO_SIZE - VIEWPORT_GIZMO_MARGIN_X;
         const float gizmo_y = viewport_pos_.y + viewport_size_.y - VIEWPORT_GIZMO_SIZE - VIEWPORT_GIZMO_MARGIN_Y;
@@ -990,7 +1013,8 @@ namespace lfs::vis::gui {
     void GuiManager::renderStatusBar(const UIContext& ctx) {
         auto* const rm = ctx.viewer->getRenderingManager();
         auto* const sm = ctx.viewer->getSceneManager();
-        if (!rm) return;
+        if (!rm)
+            return;
 
         constexpr float PADDING = 8.0f, SPACING = 20.0f, FADE_DURATION_MS = 500.0f;
         const auto& t = theme();
@@ -1002,7 +1026,7 @@ namespace lfs::vis::gui {
         // Fade alpha helper
         const auto fade_alpha = [&](auto start_time) {
             const auto remaining = speed_overlay_duration_ -
-                std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time);
+                                   std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time);
             return (remaining.count() < FADE_DURATION_MS) ? remaining.count() / FADE_DURATION_MS : 1.0f;
         };
 
@@ -1030,10 +1054,11 @@ namespace lfs::vis::gui {
 
         if (ImGui::Begin("##StatusBar", nullptr, FLAGS)) {
             // Use regular font as base for status bar
-            if (ctx.fonts.regular) ImGui::PushFont(ctx.fonts.regular);
+            if (ctx.fonts.regular)
+                ImGui::PushFont(ctx.fonts.regular);
 
             ImGui::GetWindowDrawList()->AddLine(pos, {pos.x + size.x, pos.y},
-                toU32(withAlpha(t.palette.surface_bright, 0.4f)), 1.0f);
+                                                toU32(withAlpha(t.palette.surface_bright, 0.4f)), 1.0f);
 
             // Mode (bold)
             const char* mode = "Empty";
@@ -1045,7 +1070,9 @@ namespace lfs::vis::gui {
             if (sm) {
                 switch (sm->getContentType()) {
                 case SceneManager::ContentType::SplatFiles:
-                    mode = "Viewer"; color = t.palette.info; break;
+                    mode = "Viewer";
+                    color = t.palette.info;
+                    break;
                 case SceneManager::ContentType::Dataset:
                     trainer_mgr = sm->getTrainerManager();
                     if (trainer_mgr && trainer_mgr->hasTrainer()) {
@@ -1053,15 +1080,29 @@ namespace lfs::vis::gui {
                         const int current_iter = trainer_mgr->getCurrentIteration();
                         const char* base_mode = "Dataset";
                         switch (state) {
-                        case TrainerManager::State::Running:   base_mode = "Training"; color = t.palette.warning; show_training_progress = true; break;
-                        case TrainerManager::State::Paused:    base_mode = "Paused";   color = t.palette.text_dim; show_training_progress = true; break;
-                        case TrainerManager::State::Ready:     base_mode = (current_iter > 0) ? "Resume" : "Ready"; color = t.palette.success; break;
+                        case TrainerManager::State::Running:
+                            base_mode = "Training";
+                            color = t.palette.warning;
+                            show_training_progress = true;
+                            break;
+                        case TrainerManager::State::Paused:
+                            base_mode = "Paused";
+                            color = t.palette.text_dim;
+                            show_training_progress = true;
+                            break;
+                        case TrainerManager::State::Ready:
+                            base_mode = (current_iter > 0) ? "Resume" : "Ready";
+                            color = t.palette.success;
+                            break;
                         case TrainerManager::State::Finished: {
                             const auto reason = trainer_mgr->getStateMachine().getFinishReason();
                             if (reason == FinishReason::Completed) {
-                                base_mode = "Complete"; color = t.palette.success; show_training_progress = true;
+                                base_mode = "Complete";
+                                color = t.palette.success;
+                                show_training_progress = true;
                             } else {
-                                base_mode = "Error"; color = t.palette.error;
+                                base_mode = "Error";
+                                color = t.palette.error;
                             }
                             break;
                         }
@@ -1071,18 +1112,22 @@ namespace lfs::vis::gui {
                         const char* strategy = trainer_mgr->getStrategyType();
                         const bool gut = trainer_mgr->isGutEnabled();
                         snprintf(mode_buf, sizeof(mode_buf), "%s (%s/%s)",
-                            base_mode,
-                            strcmp(strategy, "mcmc") == 0 ? "MCMC" : "Default",
-                            gut ? "GUT" : "3DGS");
+                                 base_mode,
+                                 strcmp(strategy, "mcmc") == 0 ? "MCMC" : "Default",
+                                 gut ? "GUT" : "3DGS");
                         mode = mode_buf;
-                    } else { mode = "Dataset"; }
+                    } else {
+                        mode = "Dataset";
+                    }
                     break;
                 default: break;
                 }
             }
-            if (ctx.fonts.bold) ImGui::PushFont(ctx.fonts.bold);
+            if (ctx.fonts.bold)
+                ImGui::PushFont(ctx.fonts.bold);
             ImGui::TextColored(color, "%s", mode);
-            if (ctx.fonts.bold) ImGui::PopFont();
+            if (ctx.fonts.bold)
+                ImGui::PopFont();
 
             // Training progress display
             if (show_training_progress && trainer_mgr) {
@@ -1096,7 +1141,8 @@ namespace lfs::vis::gui {
                 const int current_iter = trainer_mgr->getCurrentIteration();
                 const int total_iter = trainer_mgr->getTotalIterations();
                 const float progress = total_iter > 0
-                    ? static_cast<float>(current_iter) / static_cast<float>(total_iter) : 0.0f;
+                                           ? static_cast<float>(current_iter) / static_cast<float>(total_iter)
+                                           : 0.0f;
 
                 ImDrawList* const draw_list = ImGui::GetWindowDrawList();
                 ImFont* const font = ctx.fonts.bold ? ctx.fonts.bold : ImGui::GetFont();
@@ -1128,18 +1174,26 @@ namespace lfs::vis::gui {
 
                 // Helper: format count with K/M suffix
                 const auto fmt_count = [](const int n, char* buf, const size_t size) {
-                    if (n >= 1'000'000) snprintf(buf, size, "%.2fM", n / 1e6);
-                    else if (n >= 1'000) snprintf(buf, size, "%.0fK", n / 1e3);
-                    else snprintf(buf, size, "%d", n);
+                    if (n >= 1'000'000)
+                        snprintf(buf, size, "%.2fM", n / 1e6);
+                    else if (n >= 1'000)
+                        snprintf(buf, size, "%.0fK", n / 1e3);
+                    else
+                        snprintf(buf, size, "%d", n);
                 };
 
                 // Helper: format time as h:mm:ss or m:ss
                 const auto fmt_time = [](const float secs, char* buf, const size_t size) {
-                    if (secs < 0.0f) { snprintf(buf, size, "--:--"); return; }
+                    if (secs < 0.0f) {
+                        snprintf(buf, size, "--:--");
+                        return;
+                    }
                     const int total = static_cast<int>(secs);
                     const int h = total / 3600, m = (total % 3600) / 60, s = total % 60;
-                    if (h > 0) snprintf(buf, size, "%d:%02d:%02d", h, m, s);
-                    else snprintf(buf, size, "%d:%02d", m, s);
+                    if (h > 0)
+                        snprintf(buf, size, "%d:%02d:%02d", h, m, s);
+                    else
+                        snprintf(buf, size, "%d:%02d", m, s);
                 };
 
                 ImGui::SameLine(0.0f, SPACING);
@@ -1150,17 +1204,17 @@ namespace lfs::vis::gui {
 
                 // Progress bar
                 draw_list->AddRectFilled({x, y_bar}, {x + BAR_WIDTH, y_bar + BAR_HEIGHT},
-                    col_bar_bg, BAR_ROUNDING);
+                                         col_bar_bg, BAR_ROUNDING);
                 if (progress > 0.0f) {
                     draw_list->AddRectFilled({x, y_bar}, {x + BAR_WIDTH * progress, y_bar + BAR_HEIGHT},
-                        col_bar_fill, BAR_ROUNDING);
+                                             col_bar_fill, BAR_ROUNDING);
                 }
                 char pct_buf[8];
                 snprintf(pct_buf, sizeof(pct_buf), "%.0f%%", progress * 100.0f);
                 const ImVec2 pct_size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, pct_buf);
                 draw_list->AddText(font, font_size,
-                    {x + (BAR_WIDTH - pct_size.x) * 0.5f, y_bar + (BAR_HEIGHT - pct_size.y) * 0.5f},
-                    col_text, pct_buf);
+                                   {x + (BAR_WIDTH - pct_size.x) * 0.5f, y_bar + (BAR_HEIGHT - pct_size.y) * 0.5f},
+                                   col_text, pct_buf);
                 x += BAR_WIDTH + SECTION_GAP;
 
                 // Step
@@ -1208,7 +1262,8 @@ namespace lfs::vis::gui {
                 for (const auto* n : sm->getScene().getNodes()) {
                     if (n->type == NodeType::SPLAT) {
                         total += n->gaussian_count;
-                        if (n->visible.get()) visible += n->gaussian_count;
+                        if (n->visible.get())
+                            visible += n->gaussian_count;
                     }
                 }
                 if (total > 0) {
@@ -1216,16 +1271,20 @@ namespace lfs::vis::gui {
                     ImGui::TextColored(t.palette.text_dim, "|");
                     ImGui::SameLine();
                     const auto fmt = [](const size_t n) -> std::string {
-                        if (n >= 1'000'000) return std::format("{:.2f}M", n / 1e6);
-                        if (n >= 1'000) return std::format("{:.1f}K", n / 1e3);
+                        if (n >= 1'000'000)
+                            return std::format("{:.2f}M", n / 1e6);
+                        if (n >= 1'000)
+                            return std::format("{:.1f}K", n / 1e3);
                         return std::to_string(n);
                     };
-                    if (ctx.fonts.bold) ImGui::PushFont(ctx.fonts.bold);
+                    if (ctx.fonts.bold)
+                        ImGui::PushFont(ctx.fonts.bold);
                     if (visible == total)
                         ImGui::Text("%s Gaussians", fmt(total).c_str());
                     else
                         ImGui::Text("%s / %s Gaussians", fmt(visible).c_str(), fmt(total).c_str());
-                    if (ctx.fonts.bold) ImGui::PopFont();
+                    if (ctx.fonts.bold)
+                        ImGui::PopFont();
                 }
             }
 
@@ -1244,8 +1303,10 @@ namespace lfs::vis::gui {
                         const auto& path = cam->image_path();
                         const std::string filename = path.filename().string();
                         std::string ext = path.extension().string();
-                        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
-                        for (auto& c : ext) c = static_cast<char>(std::toupper(c));
+                        if (!ext.empty() && ext[0] == '.')
+                            ext = ext.substr(1);
+                        for (auto& c : ext)
+                            c = static_cast<char>(std::toupper(c));
 
                         // Infer channels from extension
                         const char* channels = "RGB";
@@ -1259,7 +1320,7 @@ namespace lfs::vis::gui {
 
                         // Dimensions and channels
                         ImGui::TextColored(t.palette.text_dim, "%dx%d %s",
-                            cam->image_width(), cam->image_height(), channels);
+                                           cam->image_width(), cam->image_height(), channels);
                         ImGui::SameLine(0.0f, SPACING);
 
                         // Format
@@ -1329,17 +1390,17 @@ namespace lfs::vis::gui {
             const float total_gb = static_cast<float>(total_mem) * BYTES_TO_GB;
             const float pct_used = (used_gb / total_gb) * 100.0f;
 
-            const ImVec4 mem_color = pct_used < GPU_MEM_WARN_PCT ? t.palette.success
-                                   : pct_used < GPU_MEM_CRIT_PCT ? t.palette.warning
-                                   : t.palette.error;
+            const ImVec4 mem_color = pct_used < GPU_MEM_WARN_PCT   ? t.palette.success
+                                     : pct_used < GPU_MEM_CRIT_PCT ? t.palette.warning
+                                                                   : t.palette.error;
 
             char mem_buf[32];
             snprintf(mem_buf, sizeof(mem_buf), "%.1f/%.1fGB", used_gb, total_gb);
 
             const float fps = rm->getAverageFPS();
-            const ImVec4 fps_color = fps >= FPS_GOOD ? t.palette.success
-                                   : fps >= FPS_WARN ? t.palette.warning
-                                   : t.palette.error;
+            const ImVec4 fps_color = fps >= FPS_GOOD   ? t.palette.success
+                                     : fps >= FPS_WARN ? t.palette.warning
+                                                       : t.palette.error;
             char fps_buf[16];
             snprintf(fps_buf, sizeof(fps_buf), "%.0f", fps);
 
@@ -1352,19 +1413,24 @@ namespace lfs::vis::gui {
 
             ImGui::TextColored(t.palette.text_dim, "GPU ");
             ImGui::SameLine(0.0f, 0.0f);
-            if (ctx.fonts.bold) ImGui::PushFont(ctx.fonts.bold);
+            if (ctx.fonts.bold)
+                ImGui::PushFont(ctx.fonts.bold);
             ImGui::TextColored(mem_color, "%s", mem_buf);
-            if (ctx.fonts.bold) ImGui::PopFont();
+            if (ctx.fonts.bold)
+                ImGui::PopFont();
 
             ImGui::SameLine(0.0f, SPACING);
 
-            if (ctx.fonts.bold) ImGui::PushFont(ctx.fonts.bold);
+            if (ctx.fonts.bold)
+                ImGui::PushFont(ctx.fonts.bold);
             ImGui::TextColored(fps_color, "%s", fps_buf);
             ImGui::SameLine(0.0f, 0.0f);
             ImGui::TextColored(t.palette.text_dim, " FPS");
-            if (ctx.fonts.bold) ImGui::PopFont();
+            if (ctx.fonts.bold)
+                ImGui::PopFont();
 
-            if (ctx.fonts.regular) ImGui::PopFont();
+            if (ctx.fonts.regular)
+                ImGui::PopFont();
         }
         ImGui::End();
 
@@ -1390,15 +1456,18 @@ namespace lfs::vis::gui {
     }
 
     void GuiManager::updateCropFlash() {
-        if (!crop_flash_active_) return;
+        if (!crop_flash_active_)
+            return;
 
         auto* const sm = viewer_->getSceneManager();
         auto* const rm = viewer_->getRenderingManager();
-        if (!sm || !rm) return;
+        if (!sm || !rm)
+            return;
 
         constexpr int DURATION_MS = 400;
         const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - crop_flash_start_).count();
+                                    std::chrono::steady_clock::now() - crop_flash_start_)
+                                    .count();
 
         const NodeId cropbox_id = sm->getSelectedNodeCropBoxId();
         if (cropbox_id == NULL_NODE) {
@@ -1423,9 +1492,12 @@ namespace lfs::vis::gui {
     }
 
     void GuiManager::deactivateAllTools() {
-        if (auto* const t = viewer_->getSelectionTool()) t->setEnabled(false);
-        if (auto* const t = viewer_->getBrushTool()) t->setEnabled(false);
-        if (auto* const t = viewer_->getAlignTool()) t->setEnabled(false);
+        if (auto* const t = viewer_->getSelectionTool())
+            t->setEnabled(false);
+        if (auto* const t = viewer_->getBrushTool())
+            t->setEnabled(false);
+        if (auto* const t = viewer_->getAlignTool())
+            t->setEnabled(false);
 
         if (auto* const sm = viewer_->getSceneManager()) {
             sm->applyDeleted();
@@ -1459,15 +1531,22 @@ namespace lfs::vis::gui {
         });
 
         ui::NodeSelected::when([this](const auto&) {
-            if (auto* const t = viewer_->getSelectionTool()) t->setEnabled(false);
-            if (auto* const t = viewer_->getBrushTool()) t->setEnabled(false);
-            if (auto* const t = viewer_->getAlignTool()) t->setEnabled(false);
-            if (auto* const sm = viewer_->getSceneManager()) sm->syncCropBoxToRenderSettings();
+            if (auto* const t = viewer_->getSelectionTool())
+                t->setEnabled(false);
+            if (auto* const t = viewer_->getBrushTool())
+                t->setEnabled(false);
+            if (auto* const t = viewer_->getAlignTool())
+                t->setEnabled(false);
+            if (auto* const sm = viewer_->getSceneManager())
+                sm->syncCropBoxToRenderSettings();
         });
         ui::NodeDeselected::when([this](const auto&) {
-            if (auto* const t = viewer_->getSelectionTool()) t->setEnabled(false);
-            if (auto* const t = viewer_->getBrushTool()) t->setEnabled(false);
-            if (auto* const t = viewer_->getAlignTool()) t->setEnabled(false);
+            if (auto* const t = viewer_->getSelectionTool())
+                t->setEnabled(false);
+            if (auto* const t = viewer_->getBrushTool())
+                t->setEnabled(false);
+            if (auto* const t = viewer_->getAlignTool())
+                t->setEnabled(false);
         });
         state::PLYRemoved::when([this](const auto&) { deactivateAllTools(); });
         state::SceneCleared::when([this](const auto&) { deactivateAllTools(); });
@@ -1495,13 +1574,16 @@ namespace lfs::vis::gui {
                 return;
             }
             auto* const sm = viewer_->getSceneManager();
-            if (!sm) return;
+            if (!sm)
+                return;
 
             const NodeId cropbox_id = sm->getSelectedNodeCropBoxId();
-            if (cropbox_id == NULL_NODE) return;
+            if (cropbox_id == NULL_NODE)
+                return;
 
             const auto* cropbox_node = sm->getScene().getNodeById(cropbox_id);
-            if (!cropbox_node || !cropbox_node->cropbox) return;
+            if (!cropbox_node || !cropbox_node->cropbox)
+                return;
 
             const glm::mat4 world_transform = sm->getScene().getWorldTransform(cropbox_id);
 
@@ -1518,21 +1600,23 @@ namespace lfs::vis::gui {
                 return;
             }
             auto* const sm = viewer_->getSceneManager();
-            if (!sm) return;
+            if (!sm)
+                return;
 
             const NodeId cropbox_id = sm->getSelectedNodeCropBoxId();
-            if (cropbox_id == NULL_NODE) return;
+            if (cropbox_id == NULL_NODE)
+                return;
 
             auto* node = sm->getScene().getMutableNode(sm->getScene().getNodeById(cropbox_id)->name);
-            if (!node || !node->cropbox) return;
+            if (!node || !node->cropbox)
+                return;
 
             // Capture state before toggle
             const command::CropBoxState old_state{
                 .min = node->cropbox->min,
                 .max = node->cropbox->max,
                 .local_transform = node->local_transform.get(),
-                .inverse = node->cropbox->inverse
-            };
+                .inverse = node->cropbox->inverse};
 
             // Toggle crop inverse
             node->cropbox->inverse = !node->cropbox->inverse;
@@ -1543,8 +1627,7 @@ namespace lfs::vis::gui {
                 .min = node->cropbox->min,
                 .max = node->cropbox->max,
                 .local_transform = node->local_transform.get(),
-                .inverse = node->cropbox->inverse
-            };
+                .inverse = node->cropbox->inverse};
 
             auto cmd = std::make_unique<command::CropBoxCommand>(
                 sm, node->name, old_state, new_state);
@@ -1553,9 +1636,11 @@ namespace lfs::vis::gui {
 
         // Cycle: normal -> center markers -> rings -> normal
         cmd::CycleSelectionVisualization::when([this](const auto&) {
-            if (viewer_->getEditorContext().getActiveTool() != ToolType::Selection) return;
+            if (viewer_->getEditorContext().getActiveTool() != ToolType::Selection)
+                return;
             auto* const rm = viewer_->getRenderingManager();
-            if (!rm) return;
+            if (!rm)
+                return;
 
             auto settings = rm->getSettings();
             const bool centers = settings.show_center_markers;
@@ -1651,22 +1736,28 @@ namespace lfs::vis::gui {
     }
 
     void GuiManager::renderCropBoxGizmo(const UIContext& ctx) {
-        if (isModalWindowOpen()) return;
+        if (isModalWindowOpen())
+            return;
 
         auto* const render_manager = ctx.viewer->getRenderingManager();
         auto* const scene_manager = ctx.viewer->getSceneManager();
-        if (!render_manager || !scene_manager) return;
+        if (!render_manager || !scene_manager)
+            return;
 
         const auto& settings = render_manager->getSettings();
-        if (!settings.show_crop_box) return;
+        if (!settings.show_crop_box)
+            return;
 
         // Get selected cropbox from scene graph
         const NodeId cropbox_id = scene_manager->getSelectedNodeCropBoxId();
-        if (cropbox_id == NULL_NODE) return;
+        if (cropbox_id == NULL_NODE)
+            return;
 
         const auto* cropbox_node = scene_manager->getScene().getNodeById(cropbox_id);
-        if (!cropbox_node || !cropbox_node->visible || !cropbox_node->cropbox) return;
-        if (!scene_manager->getScene().isNodeEffectivelyVisible(cropbox_id)) return;
+        if (!cropbox_node || !cropbox_node->visible || !cropbox_node->cropbox)
+            return;
+        if (!scene_manager->getScene().isNodeEffectivelyVisible(cropbox_id))
+            return;
 
         // Camera setup
         auto& viewport = ctx.viewer->getViewport();
@@ -1719,10 +1810,11 @@ namespace lfs::vis::gui {
         ImGuizmo::SetDrawlist(overlay_drawlist);
 
         glm::mat4 delta_matrix;
-        constexpr float LOCAL_BOUNDS[6] = { -0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f };
+        constexpr float LOCAL_BOUNDS[6] = {-0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f};
 
         const ImGuizmo::MODE gizmo_mode = (crop_gizmo_operation_ == ImGuizmo::TRANSLATE)
-                                          ? ImGuizmo::WORLD : ImGuizmo::LOCAL;
+                                              ? ImGuizmo::WORLD
+                                              : ImGuizmo::LOCAL;
 
         const bool gizmo_changed = ImGuizmo::Manipulate(
             glm::value_ptr(view), glm::value_ptr(projection),
@@ -1740,8 +1832,7 @@ namespace lfs::vis::gui {
                 .min = cropbox_node->cropbox->min,
                 .max = cropbox_node->cropbox->max,
                 .local_transform = cropbox_node->local_transform.get(),
-                .inverse = cropbox_node->cropbox->inverse
-            };
+                .inverse = cropbox_node->cropbox->inverse};
         }
 
         if (gizmo_changed) {
@@ -1811,8 +1902,7 @@ namespace lfs::vis::gui {
                         .min = node->cropbox->min,
                         .max = node->cropbox->max,
                         .local_transform = node->local_transform.get(),
-                        .inverse = node->cropbox->inverse
-                    };
+                        .inverse = node->cropbox->inverse};
 
                     auto cmd = std::make_unique<command::CropBoxCommand>(
                         scene_manager, cropbox_node_name_, *cropbox_state_before_drag_, new_state);
@@ -1822,7 +1912,8 @@ namespace lfs::vis::gui {
                     ui::CropBoxChanged{
                         .min_bounds = node->cropbox->min,
                         .max_bounds = node->cropbox->max,
-                        .enabled = settings.use_crop_box}.emit();
+                        .enabled = settings.use_crop_box}
+                        .emit();
                 }
                 cropbox_state_before_drag_.reset();
             }
@@ -1832,11 +1923,14 @@ namespace lfs::vis::gui {
     }
 
     void GuiManager::renderNodeTransformGizmo(const UIContext& ctx) {
-        if (isModalWindowOpen()) return;
-        if (!show_node_gizmo_) return;
+        if (isModalWindowOpen())
+            return;
+        if (!show_node_gizmo_)
+            return;
 
         auto* scene_manager = ctx.viewer->getSceneManager();
-        if (!scene_manager || !scene_manager->hasSelectedNode()) return;
+        if (!scene_manager || !scene_manager->hasSelectedNode())
+            return;
 
         // Check visibility of at least one selected node
         const auto& scene = scene_manager->getScene();
@@ -1850,10 +1944,12 @@ namespace lfs::vis::gui {
                 }
             }
         }
-        if (!any_visible) return;
+        if (!any_visible)
+            return;
 
         auto* render_manager = ctx.viewer->getRenderingManager();
-        if (!render_manager) return;
+        if (!render_manager)
+            return;
 
         const auto& settings = render_manager->getSettings();
         const bool is_multi_selection = (selected_names.size() > 1);
@@ -1869,9 +1965,9 @@ namespace lfs::vis::gui {
             (gizmo_toolbar_state_.transform_space == panels::TransformSpace::World) || is_multi_selection;
 
         const glm::vec3 gizmo_position = is_multi_selection
-            ? scene_manager->getSelectionWorldCenter()
-            : glm::vec3(scene_manager->getSelectedNodeWorldTransform() *
-                        glm::vec4(scene_manager->getSelectionCenter(), 1.0f));
+                                             ? scene_manager->getSelectionWorldCenter()
+                                             : glm::vec3(scene_manager->getSelectedNodeWorldTransform() *
+                                                         glm::vec4(scene_manager->getSelectionCenter(), 1.0f));
 
         glm::mat4 gizmo_matrix(1.0f);
         gizmo_matrix[3] = glm::vec4(gizmo_position, 1.0f);
@@ -1965,8 +2061,8 @@ namespace lfs::vis::gui {
                 const auto& scene = scene_manager->getScene();
                 const auto* node = scene.getNode(*selected_names.begin());
                 const glm::mat4 parent_world_inv = (node && node->parent_id != NULL_NODE)
-                    ? glm::inverse(scene.getWorldTransform(node->parent_id))
-                    : glm::mat4(1.0f);
+                                                       ? glm::inverse(scene.getWorldTransform(node->parent_id))
+                                                       : glm::mat4(1.0f);
                 const glm::vec3 new_gizmo_pos = glm::vec3(parent_world_inv * glm::vec4(new_gizmo_pos_world, 1.0f));
 
                 glm::mat4 new_transform;
@@ -2023,8 +2119,8 @@ namespace lfs::vis::gui {
     }
 
     void GuiManager::startAsyncExport(ExportFormat format,
-                                       const std::filesystem::path& path,
-                                       std::unique_ptr<lfs::core::SplatData> data) {
+                                      const std::filesystem::path& path,
+                                      std::unique_ptr<lfs::core::SplatData> data) {
         if (!data) {
             LOG_ERROR("No splat data to export");
             return;
@@ -2073,8 +2169,7 @@ namespace lfs::vis::gui {
                     const lfs::core::SogWriteOptions options{
                         .iterations = 10,
                         .output_path = path,
-                        .progress_callback = update_progress
-                    };
+                        .progress_callback = update_progress};
                     if (auto result = lfs::core::write_sog(*splat_data, options); result) {
                         success = true;
                     } else {
@@ -2098,8 +2193,7 @@ namespace lfs::vis::gui {
                         .output_path = path,
                         .progress_callback = [&update_progress](float p, const std::string& s) {
                             update_progress(p, s);
-                        }
-                    };
+                        }};
                     if (auto result = export_html_viewer(*splat_data, options); result) {
                         success = true;
                     } else {
@@ -2125,7 +2219,8 @@ namespace lfs::vis::gui {
     }
 
     void GuiManager::cancelExport() {
-        if (!export_state_.active.load()) return;
+        if (!export_state_.active.load())
+            return;
 
         LOG_INFO("Cancelling export");
         export_state_.cancel_requested.store(true);
@@ -2152,8 +2247,7 @@ namespace lfs::vis::gui {
         const ImGuiViewport* const viewport = ImGui::GetMainViewport();
         const ImVec2 overlay_pos(
             viewport->WorkPos.x + (viewport->WorkSize.x - OVERLAY_WIDTH) * 0.5f,
-            viewport->WorkPos.y + (viewport->WorkSize.y - OVERLAY_HEIGHT) * 0.5f
-        );
+            viewport->WorkPos.y + (viewport->WorkSize.y - OVERLAY_HEIGHT) * 0.5f);
 
         ImGui::SetNextWindowPos(overlay_pos, ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(OVERLAY_WIDTH, 0), ImGuiCond_Always);
@@ -2215,14 +2309,15 @@ namespace lfs::vis::gui {
             viewport->WorkPos,
             ImVec2(viewport->WorkPos.x + viewport->WorkSize.x,
                    viewport->WorkPos.y + viewport->WorkSize.y),
-            IM_COL32(0, 0, 0, 100)
-        );
+            IM_COL32(0, 0, 0, 100));
     }
 
     void GuiManager::renderEmptyStateOverlay() {
         const auto* const scene_manager = viewer_->getSceneManager();
-        if (!scene_manager || !scene_manager->isEmpty() || drag_drop_hovering_) return;
-        if (viewport_size_.x < 200.0f || viewport_size_.y < 200.0f) return;
+        if (!scene_manager || !scene_manager->isEmpty() || drag_drop_hovering_)
+            return;
+        if (viewport_size_.x < 200.0f || viewport_size_.y < 200.0f)
+            return;
 
         constexpr float ZONE_PADDING = 40.0f;
         constexpr float DASH_LENGTH = 12.0f;
@@ -2282,9 +2377,11 @@ namespace lfs::vis::gui {
 
         // Text
         const auto calcTextSize = [this](const char* text, ImFont* font) {
-            if (font) ImGui::PushFont(font);
+            if (font)
+                ImGui::PushFont(font);
             const ImVec2 size = ImGui::CalcTextSize(text);
-            if (font) ImGui::PopFont();
+            if (font)
+                ImGui::PopFont();
             return size;
         };
 
@@ -2296,21 +2393,28 @@ namespace lfs::vis::gui {
         const ImVec2 subtitle_size = calcTextSize(SUBTITLE, font_bold_);
         const ImVec2 hint_size = calcTextSize(HINT, font_heading_);
 
-        if (font_heading_) ImGui::PushFont(font_heading_);
+        if (font_heading_)
+            ImGui::PushFont(font_heading_);
         draw_list->AddText({center_x - title_size.x * 0.5f, center_y + 10.0f}, TITLE_COLOR, TITLE);
-        if (font_heading_) ImGui::PopFont();
+        if (font_heading_)
+            ImGui::PopFont();
 
-        if (font_bold_) ImGui::PushFont(font_bold_);
+        if (font_bold_)
+            ImGui::PushFont(font_bold_);
         draw_list->AddText({center_x - subtitle_size.x * 0.5f, center_y + 40.0f}, SUBTITLE_COLOR, SUBTITLE);
-        if (font_bold_) ImGui::PopFont();
+        if (font_bold_)
+            ImGui::PopFont();
 
-        if (font_heading_) ImGui::PushFont(font_heading_);
+        if (font_heading_)
+            ImGui::PushFont(font_heading_);
         draw_list->AddText({center_x - hint_size.x * 0.5f, center_y + 70.0f}, HINT_COLOR, HINT);
-        if (font_heading_) ImGui::PopFont();
+        if (font_heading_)
+            ImGui::PopFont();
     }
 
     void GuiManager::renderDragDropOverlay() {
-        if (!drag_drop_hovering_) return;
+        if (!drag_drop_hovering_)
+            return;
 
         constexpr float INSET = 30.0f;
         constexpr float CORNER_RADIUS = 16.0f;
@@ -2356,9 +2460,11 @@ namespace lfs::vis::gui {
 
         // Text
         const auto calcTextSize = [this](const char* text, ImFont* font) {
-            if (font) ImGui::PushFont(font);
+            if (font)
+                ImGui::PushFont(font);
             const ImVec2 size = ImGui::CalcTextSize(text);
-            if (font) ImGui::PopFont();
+            if (font)
+                ImGui::PopFont();
             return size;
         };
 
@@ -2368,13 +2474,17 @@ namespace lfs::vis::gui {
         const ImVec2 title_size = calcTextSize(TITLE, font_heading_);
         const ImVec2 subtitle_size = calcTextSize(SUBTITLE, font_small_);
 
-        if (font_heading_) ImGui::PushFont(font_heading_);
+        if (font_heading_)
+            ImGui::PushFont(font_heading_);
         draw_list->AddText({center_x - title_size.x * 0.5f, center_y + 5.0f}, TITLE_COLOR, TITLE);
-        if (font_heading_) ImGui::PopFont();
+        if (font_heading_)
+            ImGui::PopFont();
 
-        if (font_small_) ImGui::PushFont(font_small_);
+        if (font_small_)
+            ImGui::PushFont(font_small_);
         draw_list->AddText({center_x - subtitle_size.x * 0.5f, center_y + 35.0f}, SUBTITLE_COLOR, SUBTITLE);
-        if (font_small_) ImGui::PopFont();
+        if (font_small_)
+            ImGui::PopFont();
     }
 
 } // namespace lfs::vis::gui

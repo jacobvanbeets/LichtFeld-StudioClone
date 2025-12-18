@@ -9,10 +9,10 @@
  * on top of existing gradients rather than overwriting them.
  */
 
-#include <gtest/gtest.h>
-#include <spdlog/spdlog.h>
 #include "core/tensor.hpp"
 #include "training/losses/regularization.hpp"
+#include <gtest/gtest.h>
+#include <spdlog/spdlog.h>
 
 using namespace lfs::core;
 using namespace lfs::training::losses;
@@ -48,7 +48,7 @@ TEST_F(GradientAccumulationTest, OpacityRegularization_AccumulatesGradients) {
 
     // Test 2: Apply regularization to EXISTING gradients (should accumulate)
     spdlog::info("--- Test 2: Regularization on existing gradients (should accumulate) ---");
-    auto opacity_grad_2 = Tensor::ones_like(opacity) * 0.1f;  // Pre-existing gradients
+    auto opacity_grad_2 = Tensor::ones_like(opacity) * 0.1f; // Pre-existing gradients
 
     float grad_norm_before = opacity_grad_2.abs().sum().item<float>();
     spdlog::info("Before regularization: norm={:.6e}", grad_norm_before);
@@ -102,7 +102,7 @@ TEST_F(GradientAccumulationTest, ScaleRegularization_AccumulatesGradients) {
 
     // Test 2: Apply regularization to EXISTING gradients (should accumulate)
     spdlog::info("--- Test 2: Regularization on existing gradients (should accumulate) ---");
-    auto scaling_grad_2 = Tensor::ones_like(scaling) * 0.1f;  // Pre-existing gradients
+    auto scaling_grad_2 = Tensor::ones_like(scaling) * 0.1f; // Pre-existing gradients
 
     float grad_norm_before = scaling_grad_2.abs().sum().item<float>();
     spdlog::info("Before regularization: norm={:.6e}", grad_norm_before);
@@ -174,7 +174,7 @@ TEST_F(GradientAccumulationTest, RasterGradient_ThenRegularization) {
 
     // Simulate large gradients from rasterizer backward
     spdlog::info("Step 1: Simulate rasterizer backward (large gradients)");
-    auto raster_grads = Tensor::randn({N, 1}, Device::CUDA) * 0.01f;  // Typical rasterizer magnitude
+    auto raster_grads = Tensor::randn({N, 1}, Device::CUDA) * 0.01f; // Typical rasterizer magnitude
     opacity_grad = opacity_grad + raster_grads;
 
     float grad_after_raster = opacity_grad.abs().sum().item<float>();
@@ -197,13 +197,13 @@ TEST_F(GradientAccumulationTest, RasterGradient_ThenRegularization) {
     spdlog::info("Gradient increase from regularization: {:.6e}",
                  grad_after_reg - grad_after_raster);
 
-    EXPECT_GT(grad_after_reg, grad_after_raster * 0.99f)  // Allow for small numerical variance
+    EXPECT_GT(grad_after_reg, grad_after_raster * 0.99f) // Allow for small numerical variance
         << "Regularization should add gradient, not overwrite!";
 
     // The increase should be small but non-zero (regularization is a small term)
     float rel_increase = (grad_after_reg - grad_after_raster) / grad_after_raster;
     spdlog::info("Relative increase: {:.2f}%", rel_increase * 100.0f);
 
-    EXPECT_GT(rel_increase, -0.01f)  // Should not decrease (allowing tiny numerical error)
+    EXPECT_GT(rel_increase, -0.01f) // Should not decrease (allowing tiny numerical error)
         << "Regularization should not decrease total gradient significantly";
 }

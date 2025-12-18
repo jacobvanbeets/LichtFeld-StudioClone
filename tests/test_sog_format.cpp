@@ -9,15 +9,15 @@
  * and produce comparable results to the original PLY.
  */
 
-#include <gtest/gtest.h>
-#include <filesystem>
 #include <cmath>
+#include <filesystem>
+#include <gtest/gtest.h>
 
-#include "io/formats/sogs.hpp"
-#include "io/formats/ply.hpp"
+#include "core/sogs.hpp" // for write_sog
 #include "core/splat_data.hpp"
 #include "core/tensor.hpp"
-#include "core/sogs.hpp"  // for write_sog
+#include "io/formats/ply.hpp"
+#include "io/formats/sogs.hpp"
 
 namespace fs = std::filesystem;
 
@@ -41,9 +41,9 @@ protected:
 
     // Compare SplatData instances with tolerance for SOG lossy compression
     static void compareSplatDataSog(const lfs::core::SplatData& sog,
-                                     const lfs::core::SplatData& reference,
-                                     float pos_tol = 0.5f,  // Position tolerance
-                                     float attr_tol = 1.0f) { // Attribute tolerance
+                                    const lfs::core::SplatData& reference,
+                                    float pos_tol = 0.5f,    // Position tolerance
+                                    float attr_tol = 1.0f) { // Attribute tolerance
         ASSERT_EQ(sog.size(), reference.size())
             << "Splat count mismatch";
 
@@ -239,7 +239,7 @@ TEST_F(SogFormatTest, CompareWithOriginalPly) {
     std::cout << "  Orig: min=" << orig_scale_min << ", max=" << orig_scale_max << ", avg=" << orig_scale_avg << std::endl;
 
     // Tolerances for lossy k-means compression
-    constexpr float avg_tol = 0.1f;  // Average should be close
+    constexpr float avg_tol = 0.1f;   // Average should be close
     constexpr float range_tol = 0.5f; // Min/max should be within 50%
 
     EXPECT_NEAR(sog_pos_avg, orig_pos_avg, std::abs(orig_pos_avg) * avg_tol + 0.1f)
@@ -333,8 +333,7 @@ TEST_F(SogFormatTest, ExportRoundtrip) {
 
     lfs::core::SogWriteOptions options{
         .iterations = 10,
-        .output_path = export_path
-    };
+        .output_path = export_path};
 
     auto write_result = lfs::core::write_sog(*orig_result, options);
     ASSERT_TRUE(write_result.has_value()) << "Failed to write SOG: " << write_result.error();
@@ -372,8 +371,8 @@ TEST_F(SogFormatTest, ExportRoundtrip) {
     // First few values (note: Morton reordered, so indices won't match)
     std::cout << "\nFirst 5 SH0 values (different order due to Morton):" << std::endl;
     for (int i = 0; i < 5; ++i) {
-        std::cout << "  [" << i << "] Orig=" << orig_sh0_ptr[i*3] << "," << orig_sh0_ptr[i*3+1] << "," << orig_sh0_ptr[i*3+2]
-                  << " Reimp=" << reimp_sh0_ptr[i*3] << "," << reimp_sh0_ptr[i*3+1] << "," << reimp_sh0_ptr[i*3+2] << std::endl;
+        std::cout << "  [" << i << "] Orig=" << orig_sh0_ptr[i * 3] << "," << orig_sh0_ptr[i * 3 + 1] << "," << orig_sh0_ptr[i * 3 + 2]
+                  << " Reimp=" << reimp_sh0_ptr[i * 3] << "," << reimp_sh0_ptr[i * 3 + 1] << "," << reimp_sh0_ptr[i * 3 + 2] << std::endl;
     }
 
     // Average should be close (within 10% tolerance for lossy k-means)

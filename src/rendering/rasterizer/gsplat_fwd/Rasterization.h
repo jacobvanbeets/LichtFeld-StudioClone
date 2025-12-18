@@ -45,7 +45,6 @@ namespace gsplat_fwd {
         float* renders,
         float* alphas,
         int32_t* last_ids,
-        cudaStream_t stream = nullptr
-    );
+        cudaStream_t stream = nullptr);
 
 } // namespace gsplat_fwd

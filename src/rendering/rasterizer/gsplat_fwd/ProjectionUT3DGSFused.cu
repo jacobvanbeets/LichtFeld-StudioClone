@@ -228,13 +228,13 @@ namespace gsplat_fwd {
 
     void launch_projection_ut_3dgs_fused_kernel(
         // inputs
-        const float* means,                   // [N, 3]
-        const float* quats,                   // [N, 4]
-        const float* scales,                  // [N, 3]
-        const float* opacities,               // [N] optional (can be nullptr)
-        const float* viewmats0,               // [C, 4, 4]
-        const float* viewmats1,               // [C, 4, 4] optional for rolling shutter (can be nullptr)
-        const float* Ks,                      // [C, 3, 3]
+        const float* means,     // [N, 3]
+        const float* quats,     // [N, 4]
+        const float* scales,    // [N, 3]
+        const float* opacities, // [N] optional (can be nullptr)
+        const float* viewmats0, // [C, 4, 4]
+        const float* viewmats1, // [C, 4, 4] optional for rolling shutter (can be nullptr)
+        const float* Ks,        // [C, 3, 3]
         uint32_t N,
         uint32_t C,
         uint32_t image_width,
@@ -247,17 +247,16 @@ namespace gsplat_fwd {
         // uncented transform
         const UnscentedTransformParameters& ut_params,
         ShutterType rs_type,
-        const float* radial_coeffs,           // [C, 6] or [C, 4] optional (can be nullptr)
-        const float* tangential_coeffs,       // [C, 2] optional (can be nullptr)
-        const float* thin_prism_coeffs,       // [C, 2] optional (can be nullptr)
+        const float* radial_coeffs,     // [C, 6] or [C, 4] optional (can be nullptr)
+        const float* tangential_coeffs, // [C, 2] optional (can be nullptr)
+        const float* thin_prism_coeffs, // [C, 2] optional (can be nullptr)
         // outputs
-        int32_t* radii,                       // [C, N, 2]
-        float* means2d,                       // [C, N, 2]
-        float* depths,                        // [C, N]
-        float* conics,                        // [C, N, 3]
-        float* compensations,                 // [C, N] optional (can be nullptr)
-        cudaStream_t stream
-    ) {
+        int32_t* radii,       // [C, N, 2]
+        float* means2d,       // [C, N, 2]
+        float* depths,        // [C, N]
+        float* conics,        // [C, N, 3]
+        float* compensations, // [C, N] optional (can be nullptr)
+        cudaStream_t stream) {
         int64_t n_elements = C * N;
         dim3 threads(256);
         dim3 grid((n_elements + threads.x - 1) / threads.x);

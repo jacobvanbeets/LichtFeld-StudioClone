@@ -197,7 +197,8 @@ namespace lfs::vis::gui::widgets {
 
     void DrawWindowShadow(const ImVec2& pos, const ImVec2& size, const float rounding) {
         const auto& t = theme();
-        if (!t.shadows.enabled) return;
+        if (!t.shadows.enabled)
+            return;
 
         constexpr int LAYER_COUNT = 8;
         constexpr float FALLOFF_SCALE = 0.18f;
@@ -213,7 +214,8 @@ namespace lfs::vis::gui::widgets {
             const float inv_t = 1.0f - t_val;
             const float falloff = inv_t * inv_t * inv_t;
             const int alpha = static_cast<int>(base_alpha * falloff * FALLOFF_SCALE);
-            if (alpha < 1) continue;
+            if (alpha < 1)
+                continue;
 
             const float expand = blur * t_val;
             const ImVec2 p1 = {pos.x + off.x - expand, pos.y + off.y - expand};
@@ -224,7 +226,8 @@ namespace lfs::vis::gui::widgets {
 
     void DrawViewportVignette(const ImVec2& pos, const ImVec2& size) {
         const auto& t = theme();
-        if (!t.vignette.enabled) return;
+        if (!t.vignette.enabled)
+            return;
 
         constexpr float EDGE_SCALE = 0.5f;
         constexpr ImU32 CLEAR_COLOR = IM_COL32(0, 0, 0, 0);
@@ -257,18 +260,18 @@ namespace lfs::vis::gui::widgets {
         const ImVec4 bg_hovered = selected ? t.button_selected_hovered() : t.button_hovered();
         const ImVec4 bg_active = selected ? darken(t.button_selected(), ACTIVE_DARKEN) : t.button_active();
         const ImVec4 tint = selected
-            ? ImVec4{TINT_BASE + t.palette.primary.x * TINT_ACCENT,
-                     TINT_BASE + t.palette.primary.y * TINT_ACCENT,
-                     TINT_BASE + t.palette.primary.z * TINT_ACCENT, 1.0f}
-            : TINT_NORMAL;
+                                ? ImVec4{TINT_BASE + t.palette.primary.x * TINT_ACCENT,
+                                         TINT_BASE + t.palette.primary.y * TINT_ACCENT,
+                                         TINT_BASE + t.palette.primary.z * TINT_ACCENT, 1.0f}
+                                : TINT_NORMAL;
 
         ImGui::PushStyleColor(ImGuiCol_Button, bg_normal);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg_hovered);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg_active);
 
         const bool clicked = texture
-            ? ImGui::ImageButton(id, static_cast<ImTextureID>(texture), size, {0, 0}, {1, 1}, {0, 0, 0, 0}, tint)
-            : ImGui::Button(fallback_label, {size.x + FALLBACK_PADDING, size.y + FALLBACK_PADDING});
+                                 ? ImGui::ImageButton(id, static_cast<ImTextureID>(texture), size, {0, 0}, {1, 1}, {0, 0, 0, 0}, tint)
+                                 : ImGui::Button(fallback_label, {size.x + FALLBACK_PADDING, size.y + FALLBACK_PADDING});
 
         ImGui::PopStyleColor(3);
         return clicked;
@@ -276,9 +279,11 @@ namespace lfs::vis::gui::widgets {
 
     void SectionHeader(const char* text, const FontSet& fonts) {
         const auto& t = theme();
-        if (fonts.section) ImGui::PushFont(fonts.section);
+        if (fonts.section)
+            ImGui::PushFont(fonts.section);
         ImGui::TextColored(t.palette.text_dim, "%s", text);
-        if (fonts.section) ImGui::PopFont();
+        if (fonts.section)
+            ImGui::PopFont();
         ImGui::Separator();
     }
 
@@ -295,8 +300,8 @@ namespace lfs::vis::gui::widgets {
             case ButtonStyle::Primary: return t.palette.primary;
             case ButtonStyle::Success: return t.palette.success;
             case ButtonStyle::Warning: return t.palette.warning;
-            case ButtonStyle::Error:   return t.palette.error;
-            default:                   return t.palette.text_dim;
+            case ButtonStyle::Error: return t.palette.error;
+            default: return t.palette.text_dim;
             }
         }();
 

@@ -23,6 +23,7 @@ namespace lfs::vis::gui {
 #ifdef _WIN32
         friend class DropTarget;
 #endif
+
     public:
         using DragEnterCallback = std::function<void(const std::vector<std::string>& mime_types)>;
         using DragLeaveCallback = std::function<void()>;

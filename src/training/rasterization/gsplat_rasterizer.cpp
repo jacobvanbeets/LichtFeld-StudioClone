@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gsplat_rasterizer.hpp"
-#include "gsplat/Ops.h"
-#include "core/logger.hpp"
 #include "core/cuda/memory_arena.hpp"
+#include "core/logger.hpp"
+#include "gsplat/Ops.h"
 #include "training/kernels/grad_alpha.hpp"
 #include <spdlog/spdlog.h>
 
@@ -36,10 +36,10 @@ namespace lfs::training {
 
         // Get Gaussian parameters (activated) - ensure contiguous
         auto means = gaussian_model.get_means().contiguous();
-        auto opacities = gaussian_model.get_opacity().contiguous();  // [N] sigmoid applied
-        auto scales = gaussian_model.get_scaling().contiguous();     // [N, 3] exp applied
-        auto quats = gaussian_model.get_rotation().contiguous();     // [N, 4] normalized
-        auto sh_coeffs = gaussian_model.get_shs().contiguous();      // [N, K, 3]
+        auto opacities = gaussian_model.get_opacity().contiguous(); // [N] sigmoid applied
+        auto scales = gaussian_model.get_scaling().contiguous();    // [N, 3] exp applied
+        auto quats = gaussian_model.get_rotation().contiguous();    // [N, 4] normalized
+        auto sh_coeffs = gaussian_model.get_shs().contiguous();     // [N, K, 3]
         const uint32_t sh_degree = static_cast<uint32_t>(gaussian_model.get_active_sh_degree());
 
         // Squeeze opacities if needed
@@ -119,9 +119,10 @@ namespace lfs::training {
 
         // Calculate buffer dimensions
         const uint32_t N = static_cast<uint32_t>(means.shape()[0]);
-        const uint32_t C = 1;  // Single camera
+        const uint32_t C = 1; // Single camera
         const uint32_t K = (sh_coeffs.is_valid() && sh_coeffs.ndim() >= 2)
-            ? static_cast<uint32_t>(sh_coeffs.shape()[1]) : 0;  // SH coefficients
+                               ? static_cast<uint32_t>(sh_coeffs.shape()[1])
+                               : 0; // SH coefficients
         const uint32_t H = image_height;
         const uint32_t W = image_width;
         const uint32_t tile_height = (H + tile_size - 1) / tile_size;
@@ -164,20 +165,31 @@ namespace lfs::training {
 
         // Carve out buffers (aligned)
         char* ptr = blob;
-        auto* radii_ptr_out = reinterpret_cast<int32_t*>(ptr); ptr += radii_size;
-        auto* means2d_ptr_out = reinterpret_cast<float*>(ptr); ptr += means2d_size;
-        auto* depths_ptr_out = reinterpret_cast<float*>(ptr); ptr += depths_size;
-        auto* dirs_ptr_out = reinterpret_cast<float*>(ptr); ptr += dirs_size;
-        auto* conics_ptr_out = reinterpret_cast<float*>(ptr); ptr += conics_size;
+        auto* radii_ptr_out = reinterpret_cast<int32_t*>(ptr);
+        ptr += radii_size;
+        auto* means2d_ptr_out = reinterpret_cast<float*>(ptr);
+        ptr += means2d_size;
+        auto* depths_ptr_out = reinterpret_cast<float*>(ptr);
+        ptr += depths_size;
+        auto* dirs_ptr_out = reinterpret_cast<float*>(ptr);
+        ptr += dirs_size;
+        auto* conics_ptr_out = reinterpret_cast<float*>(ptr);
+        ptr += conics_size;
         float* compensations_ptr_out = nullptr;
         if (calc_compensations) {
-            compensations_ptr_out = reinterpret_cast<float*>(ptr); ptr += compensations_size;
+            compensations_ptr_out = reinterpret_cast<float*>(ptr);
+            ptr += compensations_size;
         }
-        auto* tiles_per_gauss_ptr = reinterpret_cast<int32_t*>(ptr); ptr += tiles_per_gauss_size;
-        auto* tile_offsets_ptr_out = reinterpret_cast<int32_t*>(ptr); ptr += tile_offsets_size;
-        auto* colors_ptr_out = reinterpret_cast<float*>(ptr); ptr += colors_size;
-        auto* render_colors_ptr_out = reinterpret_cast<float*>(ptr); ptr += render_colors_size;
-        auto* render_alphas_ptr_out = reinterpret_cast<float*>(ptr); ptr += render_alphas_size;
+        auto* tiles_per_gauss_ptr = reinterpret_cast<int32_t*>(ptr);
+        ptr += tiles_per_gauss_size;
+        auto* tile_offsets_ptr_out = reinterpret_cast<int32_t*>(ptr);
+        ptr += tile_offsets_size;
+        auto* colors_ptr_out = reinterpret_cast<float*>(ptr);
+        ptr += colors_size;
+        auto* render_colors_ptr_out = reinterpret_cast<float*>(ptr);
+        ptr += render_colors_size;
+        auto* render_alphas_ptr_out = reinterpret_cast<float*>(ptr);
+        ptr += render_alphas_size;
         auto* last_ids_ptr_out = reinterpret_cast<int32_t*>(ptr);
 
         // Setup result struct
@@ -196,8 +208,7 @@ namespace lfs::training {
             .compensations = compensations_ptr_out,
             .isect_ids = nullptr,
             .flatten_ids = nullptr,
-            .n_isects = 0
-        };
+            .n_isects = 0};
 
         // Call raw pointer forward API
         gsplat_lfs::rasterize_from_world_with_sh_fwd(
@@ -208,7 +219,7 @@ namespace lfs::training {
             sh_coeffs_ptr,
             sh_degree,
             bg_ptr,
-            nullptr,  // masks
+            nullptr, // masks
             N,
             C,
             K,
@@ -216,7 +227,7 @@ namespace lfs::training {
             image_height,
             tile_size,
             viewmat_ptr,
-            nullptr,  // viewmats1 (rolling shutter)
+            nullptr, // viewmats1 (rolling shutter)
             K_ptr,
             camera_model,
             eps2d,
@@ -232,8 +243,7 @@ namespace lfs::training {
             tangential_ptr,
             thin_prism_ptr,
             result,
-            nullptr
-        );
+            nullptr);
 
         // Build RenderOutput - wrap raw pointers in tensor views
         RenderOutput render_output;
@@ -391,12 +401,18 @@ namespace lfs::training {
 
         // Carve out backward buffers
         char* bwd_ptr = bwd_blob;
-        auto* v_render_colors_ptr = reinterpret_cast<float*>(bwd_ptr); bwd_ptr += v_render_colors_size;
-        auto* v_render_alphas_ptr = reinterpret_cast<float*>(bwd_ptr); bwd_ptr += v_render_alphas_size;
-        auto* v_means_ptr = reinterpret_cast<float*>(bwd_ptr); bwd_ptr += v_means_size;
-        auto* v_quats_ptr = reinterpret_cast<float*>(bwd_ptr); bwd_ptr += v_quats_size;
-        auto* v_scales_ptr = reinterpret_cast<float*>(bwd_ptr); bwd_ptr += v_scales_size;
-        auto* v_opacities_ptr = reinterpret_cast<float*>(bwd_ptr); bwd_ptr += v_opacities_size;
+        auto* v_render_colors_ptr = reinterpret_cast<float*>(bwd_ptr);
+        bwd_ptr += v_render_colors_size;
+        auto* v_render_alphas_ptr = reinterpret_cast<float*>(bwd_ptr);
+        bwd_ptr += v_render_alphas_size;
+        auto* v_means_ptr = reinterpret_cast<float*>(bwd_ptr);
+        bwd_ptr += v_means_size;
+        auto* v_quats_ptr = reinterpret_cast<float*>(bwd_ptr);
+        bwd_ptr += v_quats_size;
+        auto* v_scales_ptr = reinterpret_cast<float*>(bwd_ptr);
+        bwd_ptr += v_scales_size;
+        auto* v_opacities_ptr = reinterpret_cast<float*>(bwd_ptr);
+        bwd_ptr += v_opacities_size;
         auto* v_sh_coeffs_ptr = reinterpret_cast<float*>(bwd_ptr);
 
         // Zero the gradient buffers
@@ -414,8 +430,7 @@ namespace lfs::training {
                 grad_image.ptr<float>(),
                 v_render_colors_ptr,
                 static_cast<int>(channels), static_cast<int>(H), static_cast<int>(W),
-                nullptr
-            );
+                nullptr);
         } else {
             cudaMemsetAsync(v_render_colors_ptr, 0, H * W * channels * sizeof(float), nullptr);
         }
@@ -428,8 +443,7 @@ namespace lfs::training {
                 grad_alpha.ptr<float>(),
                 v_render_alphas_ptr,
                 static_cast<int>(H), static_cast<int>(W),
-                nullptr
-            );
+                nullptr);
         } else {
             cudaMemsetAsync(v_render_alphas_ptr, 0, H * W * sizeof(float), nullptr);
         }
@@ -458,15 +472,15 @@ namespace lfs::training {
             ctx.sh_coeffs.ptr<float>(),
             ctx.sh_degree,
             bg_ptr,
-            nullptr,  // masks
+            nullptr, // masks
             N,
-            1,  // C
+            1, // C
             K,
             ctx.image_width,
             ctx.image_height,
             ctx.tile_size,
             ctx.viewmat_ptr,
-            nullptr,  // viewmats1
+            nullptr, // viewmats1
             ctx.K_ptr,
             ctx.camera_model,
             ctx.eps2d,
@@ -498,7 +512,7 @@ namespace lfs::training {
             v_scales_ptr,
             v_opacities_ptr,
             v_sh_coeffs_ptr,
-            nullptr  // stream
+            nullptr // stream
         );
 
         // Debug: check for errors after gsplat backward
@@ -542,8 +556,7 @@ namespace lfs::training {
             ctx.quats.ptr<float>(),
             raw_quats.ptr<float>(),
             N,
-            nullptr
-        );
+            nullptr);
 
         cudaDeviceSynchronize();
         auto err_quat = cudaGetLastError();
@@ -559,32 +572,28 @@ namespace lfs::training {
             optimizer.get_grad(ParamType::Means).ptr<float>(),
             v_means_ptr,
             N * 3,
-            nullptr
-        );
+            nullptr);
 
         // Scales: [N, 3] -> [N, 3]
         kernels::launch_grad_accumulate(
             optimizer.get_grad(ParamType::Scaling).ptr<float>(),
             v_scales_ptr,
             N * 3,
-            nullptr
-        );
+            nullptr);
 
         // Rotations: [N, 4] -> [N, 4]
         kernels::launch_grad_accumulate(
             optimizer.get_grad(ParamType::Rotation).ptr<float>(),
             v_quats_ptr,
             N * 4,
-            nullptr
-        );
+            nullptr);
 
         // Opacities: [N] -> [N, 1] (same memory layout)
         kernels::launch_grad_accumulate_unsqueeze(
             optimizer.get_grad(ParamType::Opacity).ptr<float>(),
             v_opacities_ptr,
             N,
-            nullptr
-        );
+            nullptr);
 
         // SH coefficients: [N, K, 3] -> sh0 [N, 1, 3] + shN [N, K_dst, 3]
         // K is active SH coeffs, K_dst is the full buffer width (max_sh_degree^2 - 1)
@@ -594,7 +603,7 @@ namespace lfs::training {
             auto shN_grad = optimizer.get_grad(ParamType::ShN);
             if (shN_grad.is_valid() && shN_grad.numel() > 0 && shN_grad.ndim() >= 2) {
                 dst_shN = shN_grad.ptr<float>();
-                K_dst = static_cast<int64_t>(shN_grad.shape()[1]);  // [N, K_dst, 3]
+                K_dst = static_cast<int64_t>(shN_grad.shape()[1]); // [N, K_dst, 3]
             }
         }
 
@@ -610,17 +619,16 @@ namespace lfs::training {
             dst_shN,
             v_sh_coeffs_ptr,
             N,
-            K,      // K_src: active SH coefficients
-            K_dst,  // K_dst: destination buffer width
-            nullptr
-        );
+            K,     // K_src: active SH coefficients
+            K_dst, // K_dst: destination buffer width
+            nullptr);
 
         // Debug: sync and check for errors after SH kernel
         cudaDeviceSynchronize();
         auto err_post = cudaGetLastError();
         if (err_post != cudaSuccess) {
             LOG_ERROR("CUDA error AFTER SH kernel: {} (N={}, K={}, K_dst={}, dst_shN={})",
-                cudaGetErrorString(err_post), N, K, K_dst, (void*)dst_shN);
+                      cudaGetErrorString(err_post), N, K, K_dst, (void*)dst_shN);
         }
 
         // Update densification info if available (shape is [2, N])
@@ -635,8 +643,7 @@ namespace lfs::training {
                 gaussian_model._densification_info.ptr<float>(),
                 v_means_ptr,
                 N,
-                nullptr
-            );
+                nullptr);
 
             cudaDeviceSynchronize();
             auto err_dens = cudaGetLastError();

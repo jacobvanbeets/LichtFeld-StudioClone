@@ -26,9 +26,9 @@ protected:
 
     // Compare tensors between torch and lfs
     void compare_tensors(const torch::Tensor& torch_tensor,
-                        const Tensor& lfs_tensor,
-                        const std::string& name,
-                        float tolerance = 1e-6f) {
+                         const Tensor& lfs_tensor,
+                         const std::string& name,
+                         float tolerance = 1e-6f) {
         auto torch_cpu = torch_tensor.cpu().contiguous();
         auto lfs_cpu = lfs_tensor.cpu();
 
@@ -52,13 +52,13 @@ protected:
                 num_mismatches++;
                 if (num_mismatches <= 5) {
                     spdlog::error("{} mismatch at index {}: torch={:.10f}, lfs={:.10f}, diff={:.10e}",
-                                 name, i, torch_ptr[i], lfs_ptr[i], diff);
+                                  name, i, torch_ptr[i], lfs_ptr[i], diff);
                 }
             }
         }
 
         spdlog::info("{}: max_diff={:.6e}, max_rel_diff={:.6e}, mismatches={}/{}",
-                    name, max_diff, max_rel_diff, num_mismatches, torch_cpu.numel());
+                     name, max_diff, max_rel_diff, num_mismatches, torch_cpu.numel());
 
         EXPECT_LT(max_diff, tolerance)
             << name << " has differences exceeding tolerance";
@@ -76,7 +76,7 @@ TEST_F(MCMCLogitVerificationTest, LogitOperationIdentical) {
     const size_t n = 1000;
 
     // Create test opacities in valid range (0, 1)
-    auto torch_opacities = torch::rand({n}, torch::kCUDA) * 0.98f + 0.01f;  // [0.01, 0.99]
+    auto torch_opacities = torch::rand({n}, torch::kCUDA) * 0.98f + 0.01f; // [0.01, 0.99]
 
     // Convert to lfs tensor
     std::vector<float> opacity_vec;
@@ -108,7 +108,7 @@ TEST_F(MCMCLogitVerificationTest, LogOperationIdentical) {
     const size_t n = 1000;
 
     // Create test scales (positive values)
-    auto torch_scales = torch::rand({n, 3}, torch::kCUDA) * 10.0f + 0.01f;  // [0.01, 10.01]
+    auto torch_scales = torch::rand({n, 3}, torch::kCUDA) * 10.0f + 0.01f; // [0.01, 10.01]
 
     // Convert to lfs tensor
     std::vector<float> scale_vec;
@@ -140,7 +140,7 @@ TEST_F(MCMCLogitVerificationTest, FullOpacityTransformation) {
     const float max_opacity = 1.0f - 1e-7f;
 
     // Create test opacities that need clamping
-    auto torch_opacities = torch::rand({n}, torch::kCUDA) * 1.5f - 0.25f;  // [-0.25, 1.25]
+    auto torch_opacities = torch::rand({n}, torch::kCUDA) * 1.5f - 0.25f; // [-0.25, 1.25]
 
     // Convert to lfs tensor
     std::vector<float> opacity_vec;
@@ -203,13 +203,13 @@ TEST_F(MCMCLogitVerificationTest, EdgeCases) {
 
     // Test specific edge case values
     std::vector<float> edge_values = {
-        0.005f,           // min_opacity
+        0.005f, // min_opacity
         0.01f,
         0.5f,
         0.9f,
         0.99f,
         0.999f,
-        1.0f - 1e-7f,     // max_opacity
+        1.0f - 1e-7f, // max_opacity
     };
 
     for (float val : edge_values) {
@@ -226,7 +226,7 @@ TEST_F(MCMCLogitVerificationTest, EdgeCases) {
         float diff = std::abs(torch_out - lfs_out);
 
         spdlog::info("  opacity={:.10f}: torch_logit={:.10f}, lfs_logit={:.10f}, diff={:.6e}",
-                    val, torch_out, lfs_out, diff);
+                     val, torch_out, lfs_out, diff);
 
         EXPECT_LT(diff, 1e-5f) << "Edge case failed for opacity=" << val;
     }
@@ -306,9 +306,9 @@ TEST_F(MCMCLogitVerificationTest, GetOpacityImplementation) {
     spdlog::info("Sample values:");
     for (int i = 0; i < 5; i++) {
         spdlog::info("  raw={:.6f}: torch_opacity={:.6f}, lfs_opacity={:.6f}",
-                    opacity_raw_vec[i],
-                    torch_cpu.data_ptr<float>()[i],
-                    lfs_cpu.ptr<float>()[i]);
+                     opacity_raw_vec[i],
+                     torch_cpu.data_ptr<float>()[i],
+                     lfs_cpu.ptr<float>()[i]);
     }
 
     spdlog::info("✅ get_opacity() implementation matches!");

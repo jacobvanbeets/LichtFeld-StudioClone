@@ -14,8 +14,8 @@
 #include <cstring>
 #include <cuda_runtime.h>
 #include <curand.h>
-#include <numeric>
 #include <format>
+#include <numeric>
 
 namespace lfs::core {
 
@@ -121,8 +121,7 @@ namespace lfs::core {
                     result.data_,
                     result.shape().dims(),
                     bytes,
-                    dtype_name(result.dtype_)
-                );
+                    dtype_name(result.dtype_));
             } else {
                 // CPU tensor allocation - choose between pinned and regular memory
                 void* ptr = nullptr;
@@ -273,8 +272,7 @@ namespace lfs::core {
                     result.data_,
                     result.shape().dims(),
                     bytes,
-                    dtype_name(result.dtype_)
-                );
+                    dtype_name(result.dtype_));
 
                 if (result.dtype_ == DataType::Float32) {
                     std::vector<float> data(count);
@@ -615,7 +613,7 @@ namespace lfs::core {
         LoadArgs args;
         args.shape = TensorShape({static_cast<size_t>(num_samples)});
         args.device = weights.device();
-        args.dtype = DataType::Int64;  // Must be Int64 for MCMC compatibility (nonzero() returns Int64)
+        args.dtype = DataType::Int64; // Must be Int64 for MCMC compatibility (nonzero() returns Int64)
         args.args = std::pair<void*, bool>{const_cast<void*>(static_cast<const void*>(&weights)), replacement};
         return load(LoadOp::Multinomial, args);
     }
@@ -962,8 +960,8 @@ namespace lfs::core {
                     float val = src[in_idx];
                     switch (op) {
                     case ReduceOp::Sum:
-                    case ReduceOp::Mean: // Mean accumulates like sum, then divides at end
-                        result_val_double += val;  // Use double accumulation
+                    case ReduceOp::Mean:          // Mean accumulates like sum, then divides at end
+                        result_val_double += val; // Use double accumulation
                         break;
                     case ReduceOp::Max:
                         result_val_float = std::max(result_val_float, val);
@@ -1308,10 +1306,10 @@ namespace lfs::core {
         // 4. First tensor must have enough capacity for the total size
         // Check if in-place optimization is possible
         LOG_DEBUG("  In-place check: tensors[0] id={}, data_ptr={}, capacity={}, shape[0]={}, total_needed={}",
-                 tensors[0].id_, tensors[0].data_, tensors[0].capacity_, tensors[0].shape()[0], total_size_along_dim);
+                  tensors[0].id_, tensors[0].data_, tensors[0].capacity_, tensors[0].shape()[0], total_size_along_dim);
         if (tensors.size() > 1) {
             LOG_DEBUG("  tensors[1] id={}, data_ptr={}, capacity={}, shape[0]={}",
-                     tensors[1].id_, tensors[1].data_, tensors[1].capacity_, tensors[1].shape()[0]);
+                      tensors[1].id_, tensors[1].data_, tensors[1].capacity_, tensors[1].shape()[0]);
         }
 
         // IN-PLACE OPTIMIZATION: Reuse pre-allocated capacity when available
@@ -1325,8 +1323,8 @@ namespace lfs::core {
             // IN-PLACE PATH: Reuse first tensor's pre-allocated buffer
             // IMPORTANT: Use logical_size_ (actual current size) not shape_[0] which may be stale after reserve()
             const size_t first_size = (tensors[0].capacity_ > 0 && tensors[0].logical_size_ > 0)
-                                       ? tensors[0].logical_size_
-                                       : first_shape[0];
+                                          ? tensors[0].logical_size_
+                                          : first_shape[0];
             const size_t row_size = tensors[0].numel() / first_shape[0]; // elements per "row" based on CURRENT shape
             const size_t element_size = dtype_size(first_dtype);
 
@@ -1346,12 +1344,12 @@ namespace lfs::core {
             result.device_ = first_device;
             result.dtype_ = first_dtype;
             result.data_ = tensors[0].data_;
-            result.data_owner_ = tensors[0].data_owner_;  // Share ownership
+            result.data_owner_ = tensors[0].data_owner_; // Share ownership
             result.capacity_ = tensors[0].capacity_;
             result.logical_size_ = total_size_along_dim;
-            result.is_view_ = false;  // Not a view, it owns the data (via shared_ptr)
-            result.stream_ = tensors[0].stream_;  // Inherit stream from first tensor
-            result.compute_alignment();  // Compute alignment flags
+            result.is_view_ = false;             // Not a view, it owns the data (via shared_ptr)
+            result.stream_ = tensors[0].stream_; // Inherit stream from first tensor
+            result.compute_alignment();          // Compute alignment flags
             result.id_ = Tensor::next_id_++;
 
             LOG_DEBUG("  Result tensor: id={}, data_ptr={}, capacity={}, logical_size={}",
@@ -1372,7 +1370,7 @@ namespace lfs::core {
                     cudaGetLastError(); // Clear error
                 } else {
                     LOG_DEBUG("  Destination buffer valid: type={}, device={}, devicePtr={}, hostPtr={}",
-                             static_cast<int>(dest_attrs.type), dest_attrs.device, dest_attrs.devicePointer, dest_attrs.hostPointer);
+                              static_cast<int>(dest_attrs.type), dest_attrs.device, dest_attrs.devicePointer, dest_attrs.hostPointer);
                 }
 
                 for (size_t i = 1; i < tensors.size(); ++i) {
@@ -1380,7 +1378,7 @@ namespace lfs::core {
                     const size_t tensor_rows = tensors[i].shape()[0];
                     const void* src_ptr = tensors[i].data_ptr();
                     LOG_DEBUG("  Copying tensor[{}]: shape_[0]={}, numel={}, {} bytes from src={} at offset {}",
-                             i, tensor_rows, tensors[i].numel(), bytes, src_ptr, offset);
+                              i, tensor_rows, tensors[i].numel(), bytes, src_ptr, offset);
 
                     // Validate source buffer
                     cudaPointerAttributes src_attrs;
@@ -1390,7 +1388,7 @@ namespace lfs::core {
                         cudaGetLastError(); // Clear error
                     } else {
                         LOG_DEBUG("  Source buffer valid: type={}, device={}, devicePtr={}",
-                                 static_cast<int>(src_attrs.type), src_attrs.device, src_attrs.devicePointer);
+                                  static_cast<int>(src_attrs.type), src_attrs.device, src_attrs.devicePointer);
                     }
 
                     cudaError_t err = cudaMemcpy(
@@ -1423,7 +1421,7 @@ namespace lfs::core {
             }
 
             LOG_DEBUG("  ← Returning IN-PLACE result: id={}, data_ptr={}, capacity={}",
-                     result.id_, result.data_ptr(), result.capacity_);
+                      result.id_, result.data_ptr(), result.capacity_);
             return result;
         }
 
@@ -1431,7 +1429,7 @@ namespace lfs::core {
         LOG_DEBUG("  → SLOW PATH: Allocating new buffer");
         auto result = Tensor::empty(TensorShape(result_dims), first_device, first_dtype);
         LOG_DEBUG("  Created new tensor: id={}, data_ptr={}, capacity={}",
-                 result.id_, result.data_ptr(), result.capacity_);
+                  result.id_, result.data_ptr(), result.capacity_);
 
         size_t element_size = dtype_size(first_dtype);
 
@@ -1462,7 +1460,7 @@ namespace lfs::core {
             }
 
             LOG_DEBUG("  ← Returning SLOW PATH result: id={}, data_ptr={}, capacity={}",
-                     result.id_, result.data_ptr(), result.capacity_);
+                      result.id_, result.data_ptr(), result.capacity_);
             return result;
         }
 

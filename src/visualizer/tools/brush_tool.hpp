@@ -4,18 +4,20 @@
 
 #pragma once
 
-#include "tool_base.hpp"
 #include "core/tensor.hpp"
+#include "tool_base.hpp"
 #include <glm/glm.hpp>
 #include <memory>
 
 namespace lfs::vis::tools {
 
-    enum class BrushMode { Select, Saturation };
+    enum class BrushMode { Select,
+                           Saturation };
 
     class BrushTool : public ToolBase {
     public:
-        enum class BrushAction { Add, Remove };
+        enum class BrushAction { Add,
+                                 Remove };
 
         BrushTool();
         ~BrushTool() override = default;

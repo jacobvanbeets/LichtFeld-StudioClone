@@ -10,10 +10,9 @@
 namespace gsplat_lfs {
 
     void launch_quats_to_rotmats_kernel(
-        const float* quats,              // [N, 4]
+        const float* quats, // [N, 4]
         int64_t N,
-        float* rotmats,                  // [N, 3, 3]
-        cudaStream_t stream = nullptr
-    );
+        float* rotmats, // [N, 3, 3]
+        cudaStream_t stream = nullptr);
 
 } // namespace gsplat_lfs

@@ -2,20 +2,20 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include "mcmc_kernels.hpp"
 #include "core/tensor.hpp"
+#include "mcmc_kernels.hpp"
+#include <cub/cub.cuh>
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
-#include <cub/cub.cuh>
-#include <thrust/device_vector.h>
-#include <thrust/sort.h>
-#include <thrust/scan.h>
-#include <thrust/adjacent_difference.h>
-#include <thrust/scatter.h>
-#include <thrust/sequence.h>
-#include <thrust/execution_policy.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <thrust/adjacent_difference.h>
+#include <thrust/device_vector.h>
+#include <thrust/execution_policy.h>
+#include <thrust/scan.h>
+#include <thrust/scatter.h>
+#include <thrust/sequence.h>
+#include <thrust/sort.h>
 
 namespace lfs::training::mcmc {
 
@@ -210,7 +210,7 @@ namespace lfs::training::mcmc {
         size_t n_samples,
         size_t sh_rest,
         int opacity_dim,
-        size_t N) {  // Add N parameter for bounds checking
+        size_t N) { // Add N parameter for bounds checking
 
         size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
         if (idx >= n_samples)
@@ -275,7 +275,7 @@ namespace lfs::training::mcmc {
         size_t n_samples,
         size_t sh_rest,
         int opacity_dim,
-        size_t N,  // Add N parameter
+        size_t N, // Add N parameter
         void* stream) {
 
         if (n_samples == 0) {
@@ -311,10 +311,10 @@ namespace lfs::training::mcmc {
     // Performs: clamp(opacity) -> inverse_sigmoid -> log -> optional unsqueeze
     //           log(scales)
     __global__ void compute_raw_values_kernel(
-        const float* __restrict__ opacities,   // [n]
-        const float* __restrict__ scales,      // [n, 3]
-        float* __restrict__ opacity_raw,       // [n] or [n, 1]
-        float* __restrict__ scaling_raw,       // [n, 3]
+        const float* __restrict__ opacities, // [n]
+        const float* __restrict__ scales,    // [n, 3]
+        float* __restrict__ opacity_raw,     // [n] or [n, 1]
+        float* __restrict__ scaling_raw,     // [n, 3]
         size_t n,
         float min_opacity,
         int opacity_dim) {
@@ -331,9 +331,9 @@ namespace lfs::training::mcmc {
 
         // Write opacity (handle both [n] and [n, 1] shapes)
         if (opacity_dim == 1) {
-            opacity_raw[idx] = opacity_raw_val;  // [n, 1] is still indexed linearly
+            opacity_raw[idx] = opacity_raw_val; // [n, 1] is still indexed linearly
         } else {
-            opacity_raw[idx] = opacity_raw_val;  // [n]
+            opacity_raw[idx] = opacity_raw_val; // [n]
         }
 
         // Log of scales (3 values)
@@ -345,8 +345,8 @@ namespace lfs::training::mcmc {
     // Kernel to update scaling and opacity at specific indices (avoids index_put_ which loses capacity)
     __global__ void update_scaling_opacity_kernel(
         const int64_t* __restrict__ indices,
-        const float* __restrict__ new_scaling,      // [n_indices, 3]
-        const float* __restrict__ new_opacity_raw,  // [n_indices] or [n_indices, 1]
+        const float* __restrict__ new_scaling,     // [n_indices, 3]
+        const float* __restrict__ new_opacity_raw, // [n_indices] or [n_indices, 1]
         float* __restrict__ scaling_raw,
         float* __restrict__ opacity_raw,
         size_t n_indices,
@@ -446,7 +446,7 @@ namespace lfs::training::mcmc {
         size_t n_copy,
         size_t sh_rest,
         int opacity_dim,
-        size_t N) {  // Add N parameter for bounds checking
+        size_t N) { // Add N parameter for bounds checking
 
         size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
         if (idx >= n_copy)
@@ -507,7 +507,7 @@ namespace lfs::training::mcmc {
         size_t n_copy,
         size_t sh_rest,
         int opacity_dim,
-        size_t N,  // Add N parameter
+        size_t N, // Add N parameter
         void* stream) {
 
         if (n_copy == 0) {
@@ -647,15 +647,15 @@ namespace lfs::training::mcmc {
 
         // Step 2: Sort indices while tracking original positions
         thrust::sort_by_key(thrust::cuda::par.on(cuda_stream),
-                           sorted_indices.begin(), sorted_indices.end(),
-                           orig_positions.begin());
+                            sorted_indices.begin(), sorted_indices.end(),
+                            orig_positions.begin());
 
         // Step 3: Mark segment boundaries (1 where index changes, 0 otherwise)
         thrust::device_vector<int32_t> head_flags(n_samples);
         thrust::adjacent_difference(thrust::cuda::par.on(cuda_stream),
-                                   sorted_indices.begin(), sorted_indices.end(),
-                                   head_flags.begin(),
-                                   thrust::not_equal_to<int64_t>());
+                                    sorted_indices.begin(), sorted_indices.end(),
+                                    head_flags.begin(),
+                                    thrust::not_equal_to<int64_t>());
         // First element is always a segment head
         if (n_samples > 0) {
             thrust::fill_n(thrust::cuda::par.on(cuda_stream), head_flags.begin(), 1, 1);
@@ -667,21 +667,21 @@ namespace lfs::training::mcmc {
         thrust::device_vector<int32_t> ones(n_samples, 1);
 
         thrust::exclusive_scan_by_key(thrust::cuda::par.on(cuda_stream),
-                                     sorted_indices.begin(), sorted_indices.end(),
-                                     ones.begin(),
-                                     run_positions.begin());
+                                      sorted_indices.begin(), sorted_indices.end(),
+                                      ones.begin(),
+                                      run_positions.begin());
 
         // Step 5: Find the tail of each segment and compute run length
         // Use a kernel to compute the count for each element
         thrust::device_vector<int32_t> run_counts(n_samples);
 
         thrust::transform(thrust::cuda::par.on(cuda_stream),
-                         thrust::make_counting_iterator<int>(0),
-                         thrust::make_counting_iterator<int>(n_samples),
-                         run_counts.begin(),
-                         [sorted_indices_ptr = thrust::raw_pointer_cast(sorted_indices.data()),
-                          run_positions_ptr = thrust::raw_pointer_cast(run_positions.data()),
-                          n_samples] __device__ (int idx) {
+                          thrust::make_counting_iterator<int>(0),
+                          thrust::make_counting_iterator<int>(n_samples),
+                          run_counts.begin(),
+                          [sorted_indices_ptr = thrust::raw_pointer_cast(sorted_indices.data()),
+                           run_positions_ptr = thrust::raw_pointer_cast(run_positions.data()),
+                           n_samples] __device__(int idx) {
                               int64_t my_index = sorted_indices_ptr[idx];
                               int my_pos = run_positions_ptr[idx];
 
@@ -701,9 +701,9 @@ namespace lfs::training::mcmc {
 
         // Step 6: Scatter counts back to original positions
         thrust::scatter(thrust::cuda::par.on(cuda_stream),
-                       run_counts.begin(), run_counts.end(),
-                       orig_positions.begin(),
-                       output_counts);
+                        run_counts.begin(), run_counts.end(),
+                        orig_positions.begin(),
+                        output_counts);
     }
 
     // Fused gather kernel for 2 tensors - replaces 2x index_select
@@ -728,8 +728,10 @@ namespace lfs::training::mcmc {
         // Bounds check - CRITICAL for safety
         if (src_idx < 0 || src_idx >= static_cast<int64_t>(N)) {
             // Zero the output for invalid indices
-            for (size_t i = 0; i < dim_a; ++i) dst_a[idx * dim_a + i] = 0.0f;
-            for (size_t i = 0; i < dim_b; ++i) dst_b[idx * dim_b + i] = 0.0f;
+            for (size_t i = 0; i < dim_a; ++i)
+                dst_a[idx * dim_a + i] = 0.0f;
+            for (size_t i = 0; i < dim_b; ++i)
+                dst_b[idx * dim_b + i] = 0.0f;
             return;
         }
 
@@ -841,9 +843,9 @@ namespace lfs::training::mcmc {
 
     __global__ void multinomial_sample_and_gather_kernel(
         const float* __restrict__ opacities,
-        const float* __restrict__ scaling_raw,  // OPTIMIZATION: Takes raw scaling, applies exp() inline
+        const float* __restrict__ scaling_raw, // OPTIMIZATION: Takes raw scaling, applies exp() inline
         const int64_t* __restrict__ alive_indices,
-        const float* __restrict__ cumsum,  // Pre-computed cumulative sum
+        const float* __restrict__ cumsum, // Pre-computed cumulative sum
         size_t n_alive,
         size_t n_samples,
         float prob_sum,
@@ -894,7 +896,7 @@ namespace lfs::training::mcmc {
 
     void launch_multinomial_sample_and_gather(
         const float* opacities,
-        const float* scaling_raw,  // OPTIMIZATION: Takes raw scaling, kernel applies exp() inline
+        const float* scaling_raw, // OPTIMIZATION: Takes raw scaling, kernel applies exp() inline
         const int64_t* alive_indices,
         size_t n_alive,
         size_t n_samples,
@@ -921,13 +923,12 @@ namespace lfs::training::mcmc {
 
         // Launch block-level reduction
         reduce_opacities_kernel<<<blocks, threads, shared_mem_size, cuda_stream>>>(
-            opacities, alive_indices, n_alive, d_partial_sums, N
-        );
+            opacities, alive_indices, n_alive, d_partial_sums, N);
 
         // Final reduction on CPU (small array)
         std::vector<float> h_partial_sums(blocks);
         cudaMemcpyAsync(h_partial_sums.data(), d_partial_sums, blocks * sizeof(float), cudaMemcpyDeviceToHost, cuda_stream);
-        cudaStreamSynchronize(cuda_stream);  // Wait for copy to complete
+        cudaStreamSynchronize(cuda_stream); // Wait for copy to complete
 
         float prob_sum = 0.0f;
         for (int i = 0; i < blocks; ++i) {
@@ -951,19 +952,19 @@ namespace lfs::training::mcmc {
 
         // Gather alive opacities
         thrust::transform(thrust::cuda::par.on(cuda_stream),
-                         thrust::counting_iterator<int>(0),
-                         thrust::counting_iterator<int>(n_alive),
-                         thrust::device_ptr<float>(alive_probs.ptr<float>()),
-                         [=] __device__ (int i) { return opacities[alive_indices[i]]; });
+                          thrust::counting_iterator<int>(0),
+                          thrust::counting_iterator<int>(n_alive),
+                          thrust::device_ptr<float>(alive_probs.ptr<float>()),
+                          [=] __device__(int i) { return opacities[alive_indices[i]]; });
 
         // Compute cumulative sum using CUB
         void* d_temp_storage = nullptr;
         size_t temp_storage_bytes = 0;
         cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
-                                     alive_probs.ptr<float>(), cumsum_buf.ptr<float>(), n_alive, cuda_stream);
+                                      alive_probs.ptr<float>(), cumsum_buf.ptr<float>(), n_alive, cuda_stream);
         cudaMallocAsync(&d_temp_storage, temp_storage_bytes, cuda_stream);
         cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
-                                     alive_probs.ptr<float>(), cumsum_buf.ptr<float>(), n_alive, cuda_stream);
+                                      alive_probs.ptr<float>(), cumsum_buf.ptr<float>(), n_alive, cuda_stream);
 
         // Launch fused kernel with pre-computed cumsum
         dim3 sample_threads(256);
@@ -973,7 +974,7 @@ namespace lfs::training::mcmc {
             opacities,
             scaling_raw,
             alive_indices,
-            cumsum_buf.ptr<float>(),  // Pass pre-computed cumsum
+            cumsum_buf.ptr<float>(), // Pass pre-computed cumsum
             n_alive,
             n_samples,
             prob_sum,
@@ -981,8 +982,7 @@ namespace lfs::training::mcmc {
             sampled_global_indices,
             sampled_opacities,
             sampled_scales,
-            N
-        );
+            N);
 
         // Cleanup CUB temp storage
         cudaFreeAsync(d_temp_storage, cuda_stream);
@@ -991,8 +991,8 @@ namespace lfs::training::mcmc {
     // Simplified multinomial kernel that samples from ALL N opacities (no alive_indices)
     __global__ void multinomial_sample_all_kernel(
         const float* __restrict__ opacities,
-        const float* __restrict__ scaling_raw,  // OPTIMIZATION: Takes raw scaling, applies exp() inline
-        const float* __restrict__ cumsum,  // Pre-computed cumulative sum
+        const float* __restrict__ scaling_raw, // OPTIMIZATION: Takes raw scaling, applies exp() inline
+        const float* __restrict__ cumsum,      // Pre-computed cumulative sum
         size_t N,
         size_t n_samples,
         float prob_sum,
@@ -1071,7 +1071,7 @@ namespace lfs::training::mcmc {
 
     void launch_multinomial_sample_all(
         const float* opacities,
-        const float* scaling_raw,  // OPTIMIZATION: Takes raw scaling, kernel applies exp() inline
+        const float* scaling_raw, // OPTIMIZATION: Takes raw scaling, kernel applies exp() inline
         size_t N,
         size_t n_samples,
         uint64_t seed,
@@ -1096,13 +1096,12 @@ namespace lfs::training::mcmc {
 
         // Launch block-level reduction
         reduce_all_opacities_kernel<<<blocks, threads, shared_mem_size, cuda_stream>>>(
-            opacities, N, d_partial_sums
-        );
+            opacities, N, d_partial_sums);
 
         // Final reduction on CPU (small array)
         std::vector<float> h_partial_sums(blocks);
         cudaMemcpyAsync(h_partial_sums.data(), d_partial_sums, blocks * sizeof(float), cudaMemcpyDeviceToHost, cuda_stream);
-        cudaStreamSynchronize(cuda_stream);  // Wait for copy to complete
+        cudaStreamSynchronize(cuda_stream); // Wait for copy to complete
 
         float prob_sum = 0.0f;
         for (int i = 0; i < blocks; ++i) {
@@ -1127,10 +1126,10 @@ namespace lfs::training::mcmc {
         void* d_temp_storage = nullptr;
         size_t temp_storage_bytes = 0;
         cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
-                                     opacities, cumsum_buf.ptr<float>(), N, cuda_stream);
+                                      opacities, cumsum_buf.ptr<float>(), N, cuda_stream);
         cudaMallocAsync(&d_temp_storage, temp_storage_bytes, cuda_stream);
         cub::DeviceScan::InclusiveSum(d_temp_storage, temp_storage_bytes,
-                                     opacities, cumsum_buf.ptr<float>(), N, cuda_stream);
+                                      opacities, cumsum_buf.ptr<float>(), N, cuda_stream);
 
         // Launch sampling kernel with pre-computed cumsum
         dim3 sample_threads(256);
@@ -1139,15 +1138,14 @@ namespace lfs::training::mcmc {
         multinomial_sample_all_kernel<<<sample_grid, sample_threads, 0, cuda_stream>>>(
             opacities,
             scaling_raw,
-            cumsum_buf.ptr<float>(),  // Pass pre-computed cumsum
+            cumsum_buf.ptr<float>(), // Pass pre-computed cumsum
             N,
             n_samples,
             prob_sum,
             seed,
             sampled_indices,
             sampled_opacities,
-            sampled_scales
-        );
+            sampled_scales);
 
         // Cleanup CUB temp storage
         cudaFreeAsync(d_temp_storage, cuda_stream);
@@ -1155,8 +1153,8 @@ namespace lfs::training::mcmc {
 
     // Compute rotation magnitude squared kernel (eliminates [N,4] intermediate tensor)
     __global__ void compute_rotation_mag_sq_kernel(
-        const float* rotations,  // [N, 4]
-        float* mag_sq,           // [N]
+        const float* rotations, // [N, 4]
+        float* mag_sq,          // [N]
         size_t N) {
 
         size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -1192,9 +1190,9 @@ namespace lfs::training::mcmc {
 
     // Fused dead mask computation kernel (ZERO intermediate allocations)
     __global__ void compute_dead_mask_kernel(
-        const float* opacities,   // [N]
-        const float* rotations,   // [N, 4]
-        uint8_t* dead_mask,       // [N]
+        const float* opacities, // [N]
+        const float* rotations, // [N, 4]
+        uint8_t* dead_mask,     // [N]
         size_t N,
         float min_opacity) {
 

@@ -13,15 +13,15 @@
 
 namespace lfs::rendering::config {
     __constant__ float3 SELECTION_GROUP_COLORS[MAX_SELECTION_GROUPS] = {
-        {0.0f, 0.604f, 0.733f},   // 0: center marker (cyan)
-        {1.0f, 0.3f, 0.3f},       // 1: red
-        {0.3f, 1.0f, 0.3f},       // 2: green
-        {0.3f, 0.5f, 1.0f},       // 3: blue
-        {1.0f, 1.0f, 0.3f},       // 4: yellow
-        {1.0f, 0.5f, 0.0f},       // 5: orange
-        {0.8f, 0.3f, 1.0f},       // 6: purple
-        {0.3f, 1.0f, 1.0f},       // 7: cyan
-        {1.0f, 0.5f, 0.8f},       // 8: pink
+        {0.0f, 0.604f, 0.733f}, // 0: center marker (cyan)
+        {1.0f, 0.3f, 0.3f},     // 1: red
+        {0.3f, 1.0f, 0.3f},     // 2: green
+        {0.3f, 0.5f, 1.0f},     // 3: blue
+        {1.0f, 1.0f, 0.3f},     // 4: yellow
+        {1.0f, 0.5f, 0.0f},     // 5: orange
+        {0.8f, 0.3f, 1.0f},     // 6: purple
+        {0.3f, 1.0f, 1.0f},     // 7: cyan
+        {1.0f, 0.5f, 0.8f},     // 8: pink
     };
     __constant__ float3 SELECTION_COLOR_PREVIEW = {0.0f, 0.871f, 0.298f};
 
@@ -35,7 +35,7 @@ namespace lfs::rendering::config {
     void setSelectionPreviewColor(const float3 color) {
         cudaMemcpyToSymbol(SELECTION_COLOR_PREVIEW, &color, sizeof(float3));
     }
-}
+} // namespace lfs::rendering::config
 
 // Initialize mean2d buffer with invalid marker values
 __global__ void init_mean2d_kernel(float2* data, int n) {
@@ -51,7 +51,8 @@ __global__ void invalidate_outside_crop_kernel(
     const bool* __restrict__ outside_crop,
     const int n) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
+    if (idx >= n)
+        return;
     if (outside_crop[idx]) {
         screen_positions[idx] = make_float2(-10000.0f, -10000.0f);
     }
@@ -66,7 +67,8 @@ __global__ void copy_screen_positions_kernel(
     float height,
     int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
+    if (idx >= n)
+        return;
 
     float2 pos = mean2d[idx];
     // Flip Y: window_y = height - rasterizer_y
@@ -87,12 +89,14 @@ __global__ void brush_select_kernel(
     int n_primitives) {
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n_primitives) return;
+    if (idx >= n_primitives)
+        return;
 
     float2 pos = screen_positions[idx];
 
     // Skip invalid/off-screen positions (marked with large negative values)
-    if (pos.x < -1000.0f || pos.y < -1000.0f) return;
+    if (pos.x < -1000.0f || pos.y < -1000.0f)
+        return;
 
     float dx = pos.x - mouse_x;
     float dy = pos.y - mouse_y;
@@ -111,7 +115,8 @@ void lfs::rendering::brush_select(
     uint8_t* selection_out,
     int n_primitives) {
 
-    if (n_primitives <= 0) return;
+    if (n_primitives <= 0)
+        return;
 
     constexpr int block_size = 256;
     int grid_size = (n_primitives + block_size - 1) / block_size;
@@ -120,7 +125,7 @@ void lfs::rendering::brush_select(
         screen_positions,
         mouse_x,
         mouse_y,
-        radius * radius,  // Pass squared radius to avoid sqrt in kernel
+        radius * radius, // Pass squared radius to avoid sqrt in kernel
         selection_out,
         n_primitives);
 }
@@ -149,10 +154,12 @@ __global__ void polygon_select_kernel(
     bool* __restrict__ selection,
     const int n) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
+    if (idx >= n)
+        return;
 
     const float2 pos = positions[idx];
-    if (pos.x < -1000.0f) return;  // Invalid position marker
+    if (pos.x < -1000.0f)
+        return; // Invalid position marker
 
     if (point_in_polygon(pos.x, pos.y, polygon, num_verts))
         selection[idx] = true;
@@ -166,10 +173,12 @@ __global__ void polygon_select_mode_kernel(
     const int n,
     const bool add_mode) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
+    if (idx >= n)
+        return;
 
     const float2 pos = positions[idx];
-    if (pos.x < -1000.0f) return;
+    if (pos.x < -1000.0f)
+        return;
 
     if (point_in_polygon(pos.x, pos.y, polygon, num_verts))
         selection[idx] = add_mode;
@@ -181,10 +190,12 @@ __global__ void rect_select_kernel(
     bool* __restrict__ selection,
     const int n) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
+    if (idx >= n)
+        return;
 
     const float2 pos = positions[idx];
-    if (pos.x < -1000.0f) return;
+    if (pos.x < -1000.0f)
+        return;
 
     if (pos.x >= x0 && pos.x <= x1 && pos.y >= y0 && pos.y <= y1)
         selection[idx] = true;
@@ -197,10 +208,12 @@ __global__ void rect_select_mode_kernel(
     const int n,
     const bool add_mode) {
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
+    if (idx >= n)
+        return;
 
     const float2 pos = positions[idx];
-    if (pos.x < -1000.0f) return;
+    if (pos.x < -1000.0f)
+        return;
 
     if (pos.x >= x0 && pos.x <= x1 && pos.y >= y0 && pos.y <= y1)
         selection[idx] = add_mode;
@@ -211,7 +224,8 @@ void lfs::rendering::rect_select(
     const float x0, const float y0, const float x1, const float y1,
     bool* selection,
     const int n_primitives) {
-    if (n_primitives <= 0) return;
+    if (n_primitives <= 0)
+        return;
 
     constexpr int BLOCK_SIZE = 256;
     const int grid = (n_primitives + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -224,7 +238,8 @@ void lfs::rendering::rect_select_mode(
     bool* selection,
     const int n_primitives,
     const bool add_mode) {
-    if (n_primitives <= 0) return;
+    if (n_primitives <= 0)
+        return;
 
     constexpr int BLOCK_SIZE = 256;
     const int grid = (n_primitives + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -241,7 +256,8 @@ void lfs::rendering::polygon_select(
     const int num_vertices,
     bool* selection,
     const int n_primitives) {
-    if (n_primitives <= 0 || num_vertices < 3) return;
+    if (n_primitives <= 0 || num_vertices < 3)
+        return;
 
     constexpr int BLOCK_SIZE = 256;
     const int grid = (n_primitives + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -255,7 +271,8 @@ void lfs::rendering::polygon_select_mode(
     bool* selection,
     const int n_primitives,
     const bool add_mode) {
-    if (n_primitives <= 0 || num_vertices < 3) return;
+    if (n_primitives <= 0 || num_vertices < 3)
+        return;
 
     constexpr int BLOCK_SIZE = 256;
     const int grid = (n_primitives + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -397,7 +414,7 @@ void lfs::rendering::forward(
         brush_active,
         brush_x,
         brush_y,
-        brush_radius * brush_radius,  // Pass squared radius for efficient comparison
+        brush_radius * brush_radius, // Pass squared radius for efficient comparison
         brush_add_mode,
         brush_selection_out,
         brush_saturation_mode,
@@ -420,7 +437,6 @@ void lfs::rendering::forward(
         orthographic,
         ortho_scale);
     CHECK_CUDA(config::debug, "preprocess")
-
 
     // Copy screen positions if requested (for brush tool selection)
     if (screen_positions_out != nullptr) {

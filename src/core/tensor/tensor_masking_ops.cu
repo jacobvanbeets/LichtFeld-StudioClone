@@ -478,7 +478,7 @@ namespace lfs::core::tensor_ops {
 
     // ============= Index Operations =============
     // Templated kernel to support multiple data types (float, int64_t, etc.)
-    template<typename T>
+    template <typename T>
     __global__ void index_select_kernel(const T* in, const int* idx, T* out,
                                         size_t outer, size_t dim_size, size_t inner,
                                         size_t idx_size, int boundary) {
@@ -529,7 +529,7 @@ namespace lfs::core::tensor_ops {
 
         // Use 2D grid for large arrays to avoid exceeding grid dimension limits
         size_t num_blocks = (total + 255) / 256;
-        const size_t max_blocks_x = 65535;  // Safe limit for all CUDA devices
+        const size_t max_blocks_x = 65535; // Safe limit for all CUDA devices
 
         if (num_blocks <= max_blocks_x) {
             index_select_kernel<float><<<num_blocks, 256, 0, stream>>>(
@@ -566,7 +566,7 @@ namespace lfs::core::tensor_ops {
 
         // Use 2D grid for large arrays to avoid exceeding grid dimension limits
         size_t num_blocks = (total + 255) / 256;
-        const size_t max_blocks_x = 65535;  // Safe limit for all CUDA devices
+        const size_t max_blocks_x = 65535; // Safe limit for all CUDA devices
 
         if (num_blocks <= max_blocks_x) {
             index_select_kernel<int64_t><<<num_blocks, 256, 0, stream>>>(
@@ -602,7 +602,7 @@ namespace lfs::core::tensor_ops {
 
         // Use 2D grid for large arrays to avoid exceeding grid dimension limits
         size_t num_blocks = (total + 255) / 256;
-        const size_t max_blocks_x = 65535;  // Safe limit for all CUDA devices
+        const size_t max_blocks_x = 65535; // Safe limit for all CUDA devices
 
         if (num_blocks <= max_blocks_x) {
             index_select_kernel<int32_t><<<num_blocks, 256, 0, stream>>>(
@@ -649,7 +649,7 @@ namespace lfs::core::tensor_ops {
         }
     }
 
-    template<typename T>
+    template <typename T>
     __global__ void gather_kernel(const T* in, const int* idx, T* out,
                                   const size_t* in_shape, const size_t* idx_shape,
                                   size_t in_rank, size_t idx_rank, int dim, size_t total, int boundary) {

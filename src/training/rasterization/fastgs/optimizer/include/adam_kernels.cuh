@@ -26,7 +26,8 @@ namespace fast_lfs::optimizer::kernels::adam {
         const int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
         // Early exit if beyond range
-        if (idx * 4 >= n_elements) return;
+        if (idx * 4 >= n_elements)
+            return;
 
         const float beta1_comp = 1.0f - beta1;
         const float beta2_comp = 1.0f - beta2;
@@ -43,7 +44,7 @@ namespace fast_lfs::optimizer::kernels::adam {
             float4 m2_4 = *reinterpret_cast<float4*>(exp_avg_sq + base_idx);
             float4 p4 = *reinterpret_cast<float4*>(param + base_idx);
 
-            #pragma unroll
+#pragma unroll
             for (int i = 0; i < 4; i++) {
                 float grad = reinterpret_cast<float*>(&grad4)[i];
                 float m1 = reinterpret_cast<float*>(&m1_4)[i];
@@ -63,8 +64,8 @@ namespace fast_lfs::optimizer::kernels::adam {
             *reinterpret_cast<float4*>(exp_avg_sq + base_idx) = m2_4;
             *reinterpret_cast<float4*>(param + base_idx) = p4;
         } else {
-            // Scalar path for tail elements (1-3 remaining elements)
-            #pragma unroll
+// Scalar path for tail elements (1-3 remaining elements)
+#pragma unroll
             for (int i = 0; i < remaining; i++) {
                 const int elem_idx = base_idx + i;
                 const float grad = param_grad[elem_idx];
@@ -113,13 +114,14 @@ namespace fast_lfs::optimizer::kernels::adam {
         const int row_size) {
 
         const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx >= n_indices) return;
+        if (idx >= n_indices)
+            return;
 
         const int64_t row_idx = indices[idx];
         const int64_t row_start = row_idx * static_cast<int64_t>(row_size);
 
-        // Zero out the entire row
-        #pragma unroll 4
+// Zero out the entire row
+#pragma unroll 4
         for (int i = 0; i < row_size; i++) {
             tensor[row_start + i] = 0.0f;
         }

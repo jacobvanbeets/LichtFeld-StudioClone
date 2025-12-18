@@ -403,8 +403,8 @@ namespace lfs::core::tensor_ops {
 
     // Fused int32→float32 strided scatter (avoids intermediate allocation)
     void launch_strided_scatter_int32_to_float32(
-        const void* input,       // Contiguous int32 source
-        void* output,            // Strided float32 destination
+        const void* input, // Contiguous int32 source
+        void* output,      // Strided float32 destination
         const size_t* d_shape,
         const size_t* d_strides,
         size_t rank,

@@ -96,7 +96,7 @@ TEST_F(TensorZeroDimensionTest, IndexPutZeroValuesPreservesTarget) {
 
     // Try to put zero-element values
     auto indices = Tensor::from_vector(std::vector<int>{0}, {1}, Device::CUDA);
-    auto values = Tensor::zeros({1, 0}, Device::CUDA);  // 0 elements
+    auto values = Tensor::zeros({1, 0}, Device::CUDA); // 0 elements
 
     // Should not modify target
     target.index_put_(indices, values);
@@ -123,7 +123,7 @@ TEST_F(TensorZeroDimensionTest, ShDegree0ScenarioOptimizerStateReset) {
         indices_vec[i] = static_cast<int>(i * 10);
     }
     auto split_indices = Tensor::from_vector(indices_vec, {NUM_SPLIT}, Device::CUDA)
-        .to(DataType::Int64);
+                             .to(DataType::Int64);
 
     auto zeros = Tensor::zeros({NUM_SPLIT, 0, 3}, Device::CUDA);
 
@@ -144,7 +144,7 @@ TEST_F(TensorZeroDimensionTest, ShDegree0ScenarioDuplicate) {
         src_indices_vec[i] = static_cast<int>(i * 5);
     }
     auto src_indices = Tensor::from_vector(src_indices_vec, {NUM_DUPLICATE}, Device::CUDA)
-        .to(DataType::Int64);
+                           .to(DataType::Int64);
 
     EXPECT_NO_THROW({
         auto selected = shN.index_select(0, src_indices);
@@ -166,7 +166,7 @@ TEST_F(TensorZeroDimensionTest, ShDegree0ScenarioFillFreeSlots) {
         target_indices_vec[i] = static_cast<int>(i * 10);
     }
     auto target_indices = Tensor::from_vector(target_indices_vec, {NUM_FILL}, Device::CUDA)
-        .to(DataType::Int64);
+                              .to(DataType::Int64);
 
     auto values = Tensor::zeros({NUM_FILL, 0, 3}, Device::CUDA);
 
@@ -185,7 +185,7 @@ TEST_F(TensorZeroDimensionTest, ShDegree0ScenarioRemove) {
         prune_indices_vec[i] = static_cast<int>(i * 20);
     }
     auto prune_indices = Tensor::from_vector(prune_indices_vec, {NUM_PRUNE}, Device::CUDA)
-        .to(DataType::Int64);
+                             .to(DataType::Int64);
 
     auto zeros = Tensor::zeros({NUM_PRUNE, 0, 3}, Device::CUDA);
 
@@ -345,13 +345,14 @@ TEST_F(TensorZeroDimensionTest, StressTestManyOperations) {
             indices_vec[i] = static_cast<int>((i * 7) % size);
         }
         auto indices = Tensor::from_vector(indices_vec, {NUM_UPDATE}, Device::CUDA)
-            .to(DataType::Int64);
+                           .to(DataType::Int64);
 
         auto zeros = Tensor::zeros({NUM_UPDATE, 0, 3}, Device::CUDA);
 
         ASSERT_NO_THROW({
             exp_avg.index_put_(indices, zeros);
             exp_avg_sq.index_put_(indices, zeros);
-        }) << "Failed at iteration " << iter;
+        }) << "Failed at iteration "
+           << iter;
     }
 }

@@ -210,8 +210,7 @@ namespace lfs::rendering {
         const std::vector<float> K_data = {
             camera.focal_x(), 0.0f, camera.center_x(),
             0.0f, camera.focal_y(), camera.center_y(),
-            0.0f, 0.0f, 1.0f
-        };
+            0.0f, 0.0f, 1.0f};
         const Tensor K = Tensor::from_vector(K_data, {3, 3}, lfs::core::Device::CPU).cuda();
 
         auto [image, alpha, depth] = forward_gut_tensor(

@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "core/tensor_debug.hpp"
-#include <cuda_runtime.h>
 #include <cmath>
+#include <cuda_runtime.h>
 #include <limits>
 
 namespace lfs::core::debug {

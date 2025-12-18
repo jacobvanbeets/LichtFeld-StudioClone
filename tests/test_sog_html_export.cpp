@@ -11,22 +11,22 @@
  * 3. K-means clustering (cluster1d) works correctly for SH data
  */
 
-#include <gtest/gtest.h>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <map>
-#include <cmath>
 #include <algorithm>
 #include <archive.h>
 #include <archive_entry.h>
-#include <webp/decode.h>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <gtest/gtest.h>
+#include <map>
 #include <nlohmann/json.hpp>
+#include <sstream>
+#include <vector>
+#include <webp/decode.h>
 
+#include "core/cuda/kernels/kdtree_kmeans.hpp"
 #include "core/sogs.hpp"
 #include "core/tensor.hpp"
-#include "core/cuda/kernels/kdtree_kmeans.hpp"
 #include "io/formats/ply.hpp"
 #include "io/formats/sogs.hpp"
 #include "visualizer/gui/html_viewer_export.hpp"
@@ -41,90 +41,95 @@ using namespace lfs::core;
 
 namespace {
 
-struct WebpImage {
-    std::vector<uint8_t> data;
-    int width = 0;
-    int height = 0;
-};
+    struct WebpImage {
+        std::vector<uint8_t> data;
+        int width = 0;
+        int height = 0;
+    };
 
-std::map<std::string, std::vector<uint8_t>> extract_zip_files(const fs::path& path) {
-    std::map<std::string, std::vector<uint8_t>> files;
-    archive* a = archive_read_new();
-    archive_read_support_format_zip(a);
+    std::map<std::string, std::vector<uint8_t>> extract_zip_files(const fs::path& path) {
+        std::map<std::string, std::vector<uint8_t>> files;
+        archive* a = archive_read_new();
+        archive_read_support_format_zip(a);
 
-    if (archive_read_open_filename(a, path.c_str(), 10240) != ARCHIVE_OK) {
+        if (archive_read_open_filename(a, path.c_str(), 10240) != ARCHIVE_OK) {
+            archive_read_free(a);
+            return files;
+        }
+
+        archive_entry* entry;
+        while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
+            const char* name = archive_entry_pathname(entry);
+            const size_t size = archive_entry_size(entry);
+            std::vector<uint8_t> data(size);
+            archive_read_data(a, data.data(), size);
+            files[name] = std::move(data);
+        }
+
         archive_read_free(a);
         return files;
     }
 
-    archive_entry* entry;
-    while (archive_read_next_header(a, &entry) == ARCHIVE_OK) {
-        const char* name = archive_entry_pathname(entry);
-        const size_t size = archive_entry_size(entry);
-        std::vector<uint8_t> data(size);
-        archive_read_data(a, data.data(), size);
-        files[name] = std::move(data);
-    }
-
-    archive_read_free(a);
-    return files;
-}
-
-WebpImage decode_webp(const std::vector<uint8_t>& data) {
-    WebpImage img;
-    int width, height;
-    if (!WebPGetInfo(data.data(), data.size(), &width, &height)) {
+    WebpImage decode_webp(const std::vector<uint8_t>& data) {
+        WebpImage img;
+        int width, height;
+        if (!WebPGetInfo(data.data(), data.size(), &width, &height)) {
+            return img;
+        }
+        uint8_t* rgba = WebPDecodeRGBA(data.data(), data.size(), &width, &height);
+        if (rgba) {
+            img.width = width;
+            img.height = height;
+            img.data.assign(rgba, rgba + width * height * 4);
+            WebPFree(rgba);
+        }
         return img;
     }
-    uint8_t* rgba = WebPDecodeRGBA(data.data(), data.size(), &width, &height);
-    if (rgba) {
-        img.width = width;
-        img.height = height;
-        img.data.assign(rgba, rgba + width * height * 4);
-        WebPFree(rgba);
+
+    std::string read_file(const fs::path& path) {
+        std::ifstream file(path);
+        if (!file)
+            return "";
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        return buffer.str();
     }
-    return img;
-}
 
-std::string read_file(const fs::path& path) {
-    std::ifstream file(path);
-    if (!file) return "";
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
-}
+    std::vector<uint8_t> base64_decode(const std::string& encoded) {
+        static const std::string CHARS =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::vector<uint8_t> result;
+        result.reserve(encoded.size() * 3 / 4);
 
-std::vector<uint8_t> base64_decode(const std::string& encoded) {
-    static const std::string CHARS =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::vector<uint8_t> result;
-    result.reserve(encoded.size() * 3 / 4);
-
-    uint32_t val = 0;
-    int valb = -8;
-    for (const char c : encoded) {
-        if (c == '=') break;
-        const size_t pos = CHARS.find(c);
-        if (pos == std::string::npos) continue;
-        val = (val << 6) + static_cast<uint32_t>(pos);
-        valb += 6;
-        if (valb >= 0) {
-            result.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
-            valb -= 8;
+        uint32_t val = 0;
+        int valb = -8;
+        for (const char c : encoded) {
+            if (c == '=')
+                break;
+            const size_t pos = CHARS.find(c);
+            if (pos == std::string::npos)
+                continue;
+            val = (val << 6) + static_cast<uint32_t>(pos);
+            valb += 6;
+            if (valb >= 0) {
+                result.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
+                valb -= 8;
+            }
         }
+        return result;
     }
-    return result;
-}
 
-std::string extract_base64_sog(const std::string& html) {
-    const std::string marker = "fetch(\"data:application/octet-stream;base64,";
-    const size_t start = html.find(marker);
-    if (start == std::string::npos) return "";
-    const size_t data_start = start + marker.size();
-    const size_t end = html.find("\")", data_start);
-    if (end == std::string::npos) return "";
-    return html.substr(data_start, end - data_start);
-}
+    std::string extract_base64_sog(const std::string& html) {
+        const std::string marker = "fetch(\"data:application/octet-stream;base64,";
+        const size_t start = html.find(marker);
+        if (start == std::string::npos)
+            return "";
+        const size_t data_start = start + marker.size();
+        const size_t end = html.find("\")", data_start);
+        if (end == std::string::npos)
+            return "";
+        return html.substr(data_start, end - data_start);
+    }
 
 } // anonymous namespace
 
@@ -151,8 +156,7 @@ protected:
         lfs::core::SogWriteOptions options{
             .iterations = 10,
             .use_gpu = true,
-            .output_path = temp_sog_
-        };
+            .output_path = temp_sog_};
         auto result = lfs::core::write_sog(splat_data, options);
         return result.has_value();
     }
@@ -233,10 +237,10 @@ TEST_F(SogExportTest, MetaJsonStructure) {
 
     // Codebooks should be sorted ascending
     for (size_t i = 1; i < scales_cb.size(); ++i) {
-        EXPECT_GE(scales_cb[i], scales_cb[i-1]) << "Scales codebook not sorted at " << i;
+        EXPECT_GE(scales_cb[i], scales_cb[i - 1]) << "Scales codebook not sorted at " << i;
     }
     for (size_t i = 1; i < sh0_cb.size(); ++i) {
-        EXPECT_GE(sh0_cb[i], sh0_cb[i-1]) << "SH0 codebook not sorted at " << i;
+        EXPECT_GE(sh0_cb[i], sh0_cb[i - 1]) << "SH0 codebook not sorted at " << i;
     }
 }
 
@@ -449,11 +453,11 @@ protected:
 
         // Run 1D k-means with 256 clusters
         auto data_tensor = Tensor::from_blob(
-            flat_data.data(),
-            {static_cast<size_t>(total_points), 1},
-            Device::CPU,
-            DataType::Float32
-        ).cuda();
+                               flat_data.data(),
+                               {static_cast<size_t>(total_points), 1},
+                               Device::CPU,
+                               DataType::Float32)
+                               .cuda();
 
         auto [centroids_tensor, labels_tensor] = cuda::kmeans_kdtree(data_tensor, 256, iterations);
 
@@ -510,7 +514,7 @@ TEST_F(Cluster1dTest, CentroidsAreSorted) {
     auto result = run_cluster1d(data.data(), NUM_ROWS, NUM_COLS, 10);
 
     for (int i = 1; i < 256; ++i) {
-        EXPECT_GE(result.centroids[i], result.centroids[i-1])
+        EXPECT_GE(result.centroids[i], result.centroids[i - 1])
             << "Centroids not sorted at index " << i;
     }
 }

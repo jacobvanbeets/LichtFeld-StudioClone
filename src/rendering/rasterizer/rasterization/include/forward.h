@@ -114,4 +114,4 @@ namespace lfs::rendering {
         bool orthographic = false,
         float ortho_scale = 1.0f);
 
-}
+} // namespace lfs::rendering

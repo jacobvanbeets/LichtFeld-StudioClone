@@ -2,9 +2,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "internal/tensor_broadcast.hpp"
+#include "core/logger.hpp"
 #include "internal/tensor_impl.hpp"
 #include "internal/tensor_ops.hpp"
-#include "core/logger.hpp"
 
 namespace lfs::core {
 

@@ -59,61 +59,61 @@
 
 namespace lfs::training {
 
-class IStrategy;
-class BilateralGrid;
+    class IStrategy;
+    class BilateralGrid;
 
-constexpr uint32_t CHECKPOINT_MAGIC = 0x4C464B50;   // "LFKP"
-constexpr uint32_t CHECKPOINT_VERSION = 1;
+    constexpr uint32_t CHECKPOINT_MAGIC = 0x4C464B50; // "LFKP"
+    constexpr uint32_t CHECKPOINT_VERSION = 1;
 
-enum class CheckpointFlags : uint32_t {
-    NONE = 0,
-    HAS_BILATERAL_GRID = 1 << 0,
-};
+    enum class CheckpointFlags : uint32_t {
+        NONE = 0,
+        HAS_BILATERAL_GRID = 1 << 0,
+    };
 
-inline CheckpointFlags operator|(CheckpointFlags a, CheckpointFlags b) {
-    return static_cast<CheckpointFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
-}
+    inline CheckpointFlags operator|(CheckpointFlags a, CheckpointFlags b) {
+        return static_cast<CheckpointFlags>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+    }
 
-inline bool has_flag(CheckpointFlags flags, CheckpointFlags flag) {
-    return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(flag)) != 0;
-}
+    inline bool has_flag(CheckpointFlags flags, CheckpointFlags flag) {
+        return (static_cast<uint32_t>(flags) & static_cast<uint32_t>(flag)) != 0;
+    }
 
-struct CheckpointHeader {
-    uint32_t magic = CHECKPOINT_MAGIC;
-    uint32_t version = CHECKPOINT_VERSION;
-    int32_t iteration = 0;
-    uint32_t num_gaussians = 0;
-    int32_t sh_degree = 0;
-    CheckpointFlags flags = CheckpointFlags::NONE;
-    uint64_t params_json_offset = 0;
-    uint64_t params_json_size = 0;
-};
+    struct CheckpointHeader {
+        uint32_t magic = CHECKPOINT_MAGIC;
+        uint32_t version = CHECKPOINT_VERSION;
+        int32_t iteration = 0;
+        uint32_t num_gaussians = 0;
+        int32_t sh_degree = 0;
+        CheckpointFlags flags = CheckpointFlags::NONE;
+        uint64_t params_json_offset = 0;
+        uint64_t params_json_size = 0;
+    };
 
-/// Save complete training checkpoint (strategy + optional bilateral grid)
-std::expected<void, std::string> save_checkpoint(
-    const std::filesystem::path& path,
-    int iteration,
-    const IStrategy& strategy,
-    const lfs::core::param::TrainingParameters& params,
-    const BilateralGrid* bilateral_grid = nullptr);
+    /// Save complete training checkpoint (strategy + optional bilateral grid)
+    std::expected<void, std::string> save_checkpoint(
+        const std::filesystem::path& path,
+        int iteration,
+        const IStrategy& strategy,
+        const lfs::core::param::TrainingParameters& params,
+        const BilateralGrid* bilateral_grid = nullptr);
 
-/// Load checkpoint header only
-std::expected<CheckpointHeader, std::string> load_checkpoint_header(
-    const std::filesystem::path& path);
+    /// Load checkpoint header only
+    std::expected<CheckpointHeader, std::string> load_checkpoint_header(
+        const std::filesystem::path& path);
 
-/// Load complete training checkpoint (strategy + optional bilateral grid)
-std::expected<int, std::string> load_checkpoint(
-    const std::filesystem::path& path,
-    IStrategy& strategy,
-    lfs::core::param::TrainingParameters& params,
-    BilateralGrid* bilateral_grid = nullptr);
+    /// Load complete training checkpoint (strategy + optional bilateral grid)
+    std::expected<int, std::string> load_checkpoint(
+        const std::filesystem::path& path,
+        IStrategy& strategy,
+        lfs::core::param::TrainingParameters& params,
+        BilateralGrid* bilateral_grid = nullptr);
 
-/// Load only SplatData from checkpoint
-std::expected<lfs::core::SplatData, std::string> load_checkpoint_splat_data(
-    const std::filesystem::path& path);
+    /// Load only SplatData from checkpoint
+    std::expected<lfs::core::SplatData, std::string> load_checkpoint_splat_data(
+        const std::filesystem::path& path);
 
-/// Load only training parameters from checkpoint
-std::expected<lfs::core::param::TrainingParameters, std::string> load_checkpoint_params(
-    const std::filesystem::path& path);
+    /// Load only training parameters from checkpoint
+    std::expected<lfs::core::param::TrainingParameters, std::string> load_checkpoint_params(
+        const std::filesystem::path& path);
 
 } // namespace lfs::training

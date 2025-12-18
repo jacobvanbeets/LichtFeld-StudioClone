@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "mcmc.hpp"
-#include "kernels/mcmc_kernels.hpp"
-#include "strategy_utils.hpp"
 #include "core/logger.hpp"
 #include "core/tensor/internal/memory_pool.hpp"
-#include <cmath>
+#include "kernels/mcmc_kernels.hpp"
+#include "strategy_utils.hpp"
 #include <chrono>
+#include <cmath>
 
 namespace lfs::training {
 
@@ -29,8 +29,7 @@ namespace lfs::training {
         _optimizer->relocate_params_at_indices_gpu(
             param_type,
             sampled_indices.ptr<int64_t>(),
-            sampled_indices.numel()
-        );
+            sampled_indices.numel());
     }
 
     int MCMC::relocate_gs() {
@@ -60,8 +59,7 @@ namespace lfs::training {
                 _splat_data->rotation_raw().ptr<float>(),
                 dead_mask.ptr<uint8_t>(),
                 N,
-                _params->min_opacity
-            );
+                _params->min_opacity);
             dead_indices = dead_mask.nonzero().squeeze(-1);
             n_dead = dead_indices.numel();
         }
@@ -86,7 +84,7 @@ namespace lfs::training {
 
             // Get source tensors (contiguous)
             Tensor opacities_contig = opacities.contiguous();
-            Tensor scaling_raw_contig = _splat_data->scaling_raw().contiguous();  // Pass raw scaling, kernel applies exp()
+            Tensor scaling_raw_contig = _splat_data->scaling_raw().contiguous(); // Pass raw scaling, kernel applies exp()
 
             // Allocate outputs
             sampled_idxs = Tensor::empty({n_dead}, Device::CUDA, DataType::Int64);
@@ -100,7 +98,7 @@ namespace lfs::training {
             // does multinomial sampling + gathering in one pass
             mcmc::launch_multinomial_sample_and_gather(
                 opacities_contig.ptr<float>(),
-                scaling_raw_contig.ptr<float>(),  // Pass raw scaling
+                scaling_raw_contig.ptr<float>(), // Pass raw scaling
                 alive_indices.ptr<int64_t>(),
                 alive_indices.numel(),
                 n_dead,
@@ -108,8 +106,7 @@ namespace lfs::training {
                 sampled_idxs.ptr<int64_t>(),
                 sampled_opacities.ptr<float>(),
                 sampled_scales.ptr<float>(),
-                N
-            );
+                N);
         }
 
         // Count occurrences of each sampled index (how many times each was sampled)
@@ -141,8 +138,7 @@ namespace lfs::training {
                 n_max,
                 new_opacities.ptr<float>(),
                 new_scales.ptr<float>(),
-                sampled_opacities.numel()
-            );
+                sampled_opacities.numel());
         }
 
         // Clamp new opacities and compute raw values
@@ -161,7 +157,7 @@ namespace lfs::training {
         {
             LOG_TIMER("relocate_update_params");
             const int opacity_dim = (_splat_data->opacity_raw().ndim() == 2) ? 1 : 0;
-            const size_t N = _splat_data->means().shape()[0];  // Total number of Gaussians
+            const size_t N = _splat_data->means().shape()[0]; // Total number of Gaussians
 
             // Compute log(scales) for the new scales
             Tensor new_scales_log = new_scales.log();
@@ -176,12 +172,12 @@ namespace lfs::training {
                 _splat_data->opacity_raw().ptr<float>(),
                 sampled_idxs.numel(),
                 opacity_dim,
-                N
-            );
+                N);
 
             // Copy sampled params to dead slots
             const size_t sh_coeffs = (_splat_data->shN().is_valid() && _splat_data->shN().ndim() >= 2)
-                ? _splat_data->shN().shape()[1] : 0;
+                                         ? _splat_data->shN().shape()[1]
+                                         : 0;
             mcmc::launch_copy_gaussian_params(
                 sampled_idxs.ptr<int64_t>(),
                 dead_indices.ptr<int64_t>(),
@@ -194,8 +190,7 @@ namespace lfs::training {
                 dead_indices.numel(),
                 sh_coeffs,
                 opacity_dim,
-                N
-            );
+                N);
         }
 
         // Update optimizer states for all parameters
@@ -247,7 +242,7 @@ namespace lfs::training {
             const size_t N = opacities.numel();
 
             // Get raw scaling and ensure contiguity
-            auto scaling_raw_contig = _splat_data->scaling_raw().contiguous();  // Pass raw scaling, kernel applies exp()
+            auto scaling_raw_contig = _splat_data->scaling_raw().contiguous(); // Pass raw scaling, kernel applies exp()
             auto opacities_contig = opacities.contiguous();
 
             // Allocate output tensors
@@ -261,14 +256,13 @@ namespace lfs::training {
             // Call fused CUDA kernel
             mcmc::launch_multinomial_sample_all(
                 opacities_contig.ptr<float>(),
-                scaling_raw_contig.ptr<float>(),  // Pass raw scaling
+                scaling_raw_contig.ptr<float>(), // Pass raw scaling
                 N,
                 n_new,
                 seed,
                 sampled_idxs.ptr<int64_t>(),
                 sampled_opacities.ptr<float>(),
-                sampled_scales.ptr<float>()
-            );
+                sampled_scales.ptr<float>());
         }
 
         // Count occurrences (ratio starts at 0, add 1 for each occurrence, then add 1 more)
@@ -301,8 +295,7 @@ namespace lfs::training {
                 n_max,
                 new_opacities.ptr<float>(),
                 new_scales.ptr<float>(),
-                sampled_opacities.numel()
-            );
+                sampled_opacities.numel());
         }
 
         // Clamp new opacities and prepare raw values
@@ -333,8 +326,7 @@ namespace lfs::training {
                 _splat_data->opacity_raw().ptr<float>(),
                 sampled_idxs.numel(),
                 opacity_dim,
-                N
-            );
+                N);
         }
 
         // Use add_new_params_gather() to leverage reserved capacity
@@ -401,8 +393,7 @@ namespace lfs::training {
                 n_max,
                 new_opacities.ptr<float>(),
                 new_scales.ptr<float>(),
-                sampled_opacities.numel()
-            );
+                sampled_opacities.numel());
         }
 
         // Clamp new opacities and prepare raw values
@@ -433,8 +424,7 @@ namespace lfs::training {
                 _splat_data->opacity_raw().ptr<float>(),
                 sampled_idxs_i64.numel(),
                 opacity_dim,
-                N
-            );
+                N);
         }
 
         // Use fused append_gather() operation
@@ -481,8 +471,7 @@ namespace lfs::training {
                 _noise_buffer.ptr<float>(),
                 _splat_data->means().ptr<float>(),
                 current_lr,
-                _splat_data->size()
-            );
+                _splat_data->size());
         }
     }
 
@@ -506,7 +495,7 @@ namespace lfs::training {
             int n_added = add_new_gs();
             if (n_added > 0) {
                 LOG_DEBUG("MCMC: Added {} new Gaussians at iteration {} (total: {})",
-                         n_added, iter, _splat_data->size());
+                          n_added, iter, _splat_data->size());
             }
             // Release cached pool memory to avoid bloat (important after add_new_gs)
             lfs::core::CudaMemoryPool::instance().trim_cached_memory();
@@ -594,7 +583,7 @@ namespace lfs::training {
                     auto new_param = Tensor::zeros_direct(param.shape(), capacity);
                     // Copy data from old pool-allocated tensor to new direct tensor
                     cudaMemcpy(new_param.ptr<float>(), param.ptr<float>(),
-                              param.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
+                               param.numel() * sizeof(float), cudaMemcpyDeviceToDevice);
                     // Replace (old pool-allocated tensor gets freed)
                     param = new_param;
                 };
@@ -648,9 +637,9 @@ namespace lfs::training {
     // ===== Serialization =====
 
     namespace {
-        constexpr uint32_t MCMC_MAGIC = 0x4C464D43;  // "LFMC"
+        constexpr uint32_t MCMC_MAGIC = 0x4C464D43; // "LFMC"
         constexpr uint32_t MCMC_VERSION = 1;
-    }
+    } // namespace
 
     void MCMC::serialize(std::ostream& os) const {
         os.write(reinterpret_cast<const char*>(&MCMC_MAGIC), sizeof(MCMC_MAGIC));

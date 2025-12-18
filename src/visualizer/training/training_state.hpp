@@ -15,12 +15,12 @@ namespace lfs::vis {
 
     // Training lifecycle states
     enum class TrainingState : uint8_t {
-        Idle,      // No dataset loaded, no trainer
-        Ready,     // Dataset loaded, trainer initialized, can start
-        Running,   // Training thread active
-        Paused,    // Training paused, can resume or stop
-        Stopping,  // Stop requested, waiting for thread
-        Finished   // Training completed or errored, model preserved
+        Idle,     // No dataset loaded, no trainer
+        Ready,    // Dataset loaded, trainer initialized, can start
+        Running,  // Training thread active
+        Paused,   // Training paused, can resume or stop
+        Stopping, // Stop requested, waiting for thread
+        Finished  // Training completed or errored, model preserved
     };
 
     // Actions that can be performed on the training system
@@ -40,10 +40,10 @@ namespace lfs::vis {
 
     // Result of a finished training session
     enum class FinishReason : uint8_t {
-        None,           // Not finished
-        Completed,      // Reached max iterations
-        UserStopped,    // User requested stop
-        Error           // Error occurred
+        None,        // Not finished
+        Completed,   // Reached max iterations
+        UserStopped, // User requested stop
+        Error        // Error occurred
     };
 
     // Resources that need cleanup
@@ -68,7 +68,7 @@ namespace lfs::vis {
         // State queries
         [[nodiscard]] TrainingState getState() const { return state_.load(std::memory_order_acquire); }
         [[nodiscard]] bool isInState(TrainingState state) const { return getState() == state; }
-        [[nodiscard]] bool isActive() const;  // Running or Paused
+        [[nodiscard]] bool isActive() const; // Running or Paused
         [[nodiscard]] FinishReason getFinishReason() const { return finish_reason_; }
 
         // Action permission checks - call BEFORE attempting action
@@ -108,24 +108,24 @@ namespace lfs::vis {
         static constexpr size_t STATE_COUNT = 6;
         static constexpr std::array<std::array<bool, STATE_COUNT>, STATE_COUNT> TRANSITIONS = {{
             // To:    Idle   Ready  Running Paused Stopping Finished
-            /* Idle */     {false, true,  false, true,  false, false},  // Paused: checkpoint load
-            /* Ready */    {true,  false, true,  false, false, false},
-            /* Running */  {false, false, false, true,  true,  false},
-            /* Paused */   {false, true,  true,  false, true,  false},
-            /* Stopping */ {true,  false, false, false, false, true },
-            /* Finished */ {true,  true,  false, false, false, false},
+            /* Idle */ {false, true, false, true, false, false}, // Paused: checkpoint load
+            /* Ready */ {true, false, true, false, false, false},
+            /* Running */ {false, false, false, true, true, false},
+            /* Paused */ {false, true, true, false, true, false},
+            /* Stopping */ {true, false, false, false, false, true},
+            /* Finished */ {true, true, false, false, false, false},
         }};
 
         // Action permission table: [state][action] = allowed
         static constexpr size_t ACTION_COUNT = static_cast<size_t>(TrainingAction::COUNT);
         static constexpr std::array<std::array<bool, ACTION_COUNT>, STATE_COUNT> PERMISSIONS = {{
             //              Load   LoadCk Start  Pause  Resume Stop   Reset  Clear  DelNode SaveCk
-            /* Idle */     {true,  true,  false, false, false, false, false, true,  true,  false},
-            /* Ready */    {true,  true,  true,  false, false, false, true,  true,  true,  false},
-            /* Running */  {false, false, false, true,  false, true,  false, false, false, true },
-            /* Paused */   {true,  true,  false, false, true,  true,  true,  true,  false, true },
+            /* Idle */ {true, true, false, false, false, false, false, true, true, false},
+            /* Ready */ {true, true, true, false, false, false, true, true, true, false},
+            /* Running */ {false, false, false, true, false, true, false, false, false, true},
+            /* Paused */ {true, true, false, false, true, true, true, true, false, true},
             /* Stopping */ {false, false, false, false, false, false, false, false, false, false},
-            /* Finished */ {true,  true,  false, false, false, false, true,  true,  false, false},
+            /* Finished */ {true, true, false, false, false, false, true, true, false, false},
         }};
     };
 

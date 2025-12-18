@@ -608,19 +608,24 @@ namespace lfs::io {
 
         for (const auto& folder : MASK_FOLDERS) {
             const std::filesystem::path mask_dir = base_path / folder;
-            if (!std::filesystem::exists(mask_dir)) continue;
+            if (!std::filesystem::exists(mask_dir))
+                continue;
 
             if (const auto exact = mask_dir / image_name; std::filesystem::exists(exact))
                 return exact;
 
             for (const auto& ext : MASK_EXTENSIONS) {
-                auto path = mask_dir / stem_path; path += ext;
-                if (std::filesystem::exists(path)) return path;
+                auto path = mask_dir / stem_path;
+                path += ext;
+                if (std::filesystem::exists(path))
+                    return path;
             }
 
             for (const auto& ext : MASK_EXTENSIONS) {
-                auto path = mask_dir / image_name; path += ext;
-                if (std::filesystem::exists(path)) return path;
+                auto path = mask_dir / image_name;
+                path += ext;
+                if (std::filesystem::exists(path))
+                    return path;
             }
         }
         return {};
@@ -794,8 +799,8 @@ namespace lfs::io {
                 focal_y = params[1];
                 center_x = params[2];
                 center_y = params[3];
-                radial_dist = Tensor::from_vector({params[4], params[5], params[8], params[9]}, {4}, Device::CPU);  // k1,k2,k3,k4
-                tangential_dist = Tensor::from_vector({params[6], params[7], params[10], params[11]}, {4}, Device::CPU);  // p1,p2,sx1,sy1
+                radial_dist = Tensor::from_vector({params[4], params[5], params[8], params[9]}, {4}, Device::CPU);       // k1,k2,k3,k4
+                tangential_dist = Tensor::from_vector({params[6], params[7], params[10], params[11]}, {4}, Device::CPU); // p1,p2,sx1,sy1
                 camera_model_type = lfs::core::CameraModelType::THIN_PRISM_FISHEYE;
                 break;
 

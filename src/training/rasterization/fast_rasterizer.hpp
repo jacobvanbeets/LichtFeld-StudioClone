@@ -8,8 +8,8 @@
 #include "core/splat_data.hpp"
 #include "optimizer/adam_optimizer.hpp"
 #include "optimizer/render_output.hpp"
-#include <rasterization_api.h>
 #include <expected>
+#include <rasterization_api.h>
 #include <string>
 
 namespace lfs::training {
@@ -17,7 +17,7 @@ namespace lfs::training {
     struct FastRasterizeContext {
         lfs::core::Tensor image;
         lfs::core::Tensor alpha;
-        lfs::core::Tensor bg_color;  // Saved for alpha gradient computation
+        lfs::core::Tensor bg_color; // Saved for alpha gradient computation
 
         // Gaussian parameters (saved to avoid re-fetching in backward)
         lfs::core::Tensor means;
@@ -43,10 +43,10 @@ namespace lfs::training {
         float far_plane;
 
         // Tile information (for tile-based training)
-        int tile_x_offset = 0;     // Horizontal offset of this tile
-        int tile_y_offset = 0;     // Vertical offset of this tile
-        int tile_width = 0;         // Width of this tile (0 = full image)
-        int tile_height = 0;        // Height of this tile (0 = full image)
+        int tile_x_offset = 0; // Horizontal offset of this tile
+        int tile_y_offset = 0; // Vertical offset of this tile
+        int tile_width = 0;    // Width of this tile (0 = full image)
+        int tile_height = 0;   // Height of this tile (0 = full image)
     };
 
     // Explicit forward pass - returns render output and context for backward

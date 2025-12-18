@@ -70,7 +70,8 @@ namespace lfs::vis::input {
         const char* home = getenv("HOME");
         if (!home) {
             struct passwd* pw = getpwuid(getuid());
-            if (pw) home = pw->pw_dir;
+            if (pw)
+                home = pw->pw_dir;
         }
         if (home) {
             config_dir = std::filesystem::path(home) / ".config" / "LichtFeldStudio" / "input_profiles";
@@ -84,7 +85,7 @@ namespace lfs::vis::input {
     bool InputBindings::saveProfileToFile(const std::filesystem::path& path) const {
         using json = nlohmann::json;
 
-        constexpr int PROFILE_VERSION = 2;  // Version 2 adds tool mode
+        constexpr int PROFILE_VERSION = 2; // Version 2 adds tool mode
 
         json j;
         j["name"] = current_profile_name_;
@@ -117,7 +118,8 @@ namespace lfs::vis::input {
                     b["button"] = static_cast<int>(trigger.button);
                     b["modifiers"] = trigger.modifiers;
                 }
-            }, binding.trigger);
+            },
+                       binding.trigger);
 
             bindings_array.push_back(b);
         }
@@ -274,7 +276,8 @@ namespace lfs::vis::input {
             using T = std::decay_t<decltype(t)>;
 
             std::string result = getModifierString(t.modifiers);
-            if (!result.empty()) result += "+";
+            if (!result.empty())
+                result += "+";
 
             if constexpr (std::is_same_v<T, KeyTrigger>) {
                 return result + getKeyName(t.key);
@@ -290,12 +293,14 @@ namespace lfs::vis::input {
                 return result + getMouseButtonName(t.button) + " Drag";
             }
             return "Unknown";
-        }, *trigger);
+        },
+                          *trigger);
     }
 
     int InputBindings::getKeyForAction(Action action, ToolMode mode) const {
         const auto trigger = getTriggerForAction(action, mode);
-        if (!trigger) return -1;
+        if (!trigger)
+            return -1;
 
         if (const auto* key_trigger = std::get_if<KeyTrigger>(&*trigger)) {
             return key_trigger->key;
@@ -343,7 +348,8 @@ namespace lfs::vis::input {
                 } else if constexpr (std::is_same_v<T, MouseDragTrigger>) {
                     drag_map_[{binding.mode, t.button, t.modifiers}] = binding.action;
                 }
-            }, binding.trigger);
+            },
+                       binding.trigger);
         }
     }
 
@@ -353,7 +359,11 @@ namespace lfs::vis::input {
         profile.description = "Default LichtFeld Studio controls";
 
         // Base bindings - will be duplicated for each tool mode
-        struct BaseBind { InputTrigger trigger; Action action; const char* desc; };
+        struct BaseBind {
+            InputTrigger trigger;
+            Action action;
+            const char* desc;
+        };
         std::vector<BaseBind> base = {
             // Camera
             {MouseDragTrigger{MouseButton::MIDDLE, MODIFIER_NONE}, Action::CAMERA_ORBIT, "Orbit"},
@@ -414,8 +424,14 @@ namespace lfs::vis::input {
         };
 
         constexpr ToolMode ALL_MODES[] = {
-            ToolMode::GLOBAL, ToolMode::SELECTION, ToolMode::BRUSH, ToolMode::ALIGN,
-            ToolMode::CROP_BOX, ToolMode::TRANSLATE, ToolMode::ROTATE, ToolMode::SCALE,
+            ToolMode::GLOBAL,
+            ToolMode::SELECTION,
+            ToolMode::BRUSH,
+            ToolMode::ALIGN,
+            ToolMode::CROP_BOX,
+            ToolMode::TRANSLATE,
+            ToolMode::ROTATE,
+            ToolMode::SCALE,
         };
 
         for (const auto mode : ALL_MODES) {
@@ -426,7 +442,10 @@ namespace lfs::vis::input {
 
         // Node picking only for transform modes (not selection/cropbox/brush/align)
         constexpr ToolMode NODE_PICK_MODES[] = {
-            ToolMode::GLOBAL, ToolMode::TRANSLATE, ToolMode::ROTATE, ToolMode::SCALE,
+            ToolMode::GLOBAL,
+            ToolMode::TRANSLATE,
+            ToolMode::ROTATE,
+            ToolMode::SCALE,
         };
 
         for (const auto mode : NODE_PICK_MODES) {
@@ -436,14 +455,20 @@ namespace lfs::vis::input {
 
         // Delete key: GLOBAL/transform modes delete node, SELECTION/BRUSH delete Gaussians
         constexpr ToolMode DELETE_NODE_MODES[] = {
-            ToolMode::GLOBAL, ToolMode::TRANSLATE, ToolMode::ROTATE, ToolMode::SCALE,
+            ToolMode::GLOBAL,
+            ToolMode::TRANSLATE,
+            ToolMode::ROTATE,
+            ToolMode::SCALE,
         };
         for (const auto mode : DELETE_NODE_MODES) {
             profile.bindings.push_back({mode, KeyTrigger{GLFW_KEY_DELETE, MODIFIER_NONE}, Action::DELETE_NODE, "Delete node"});
         }
 
         constexpr ToolMode DELETE_GAUSSIANS_MODES[] = {
-            ToolMode::SELECTION, ToolMode::BRUSH, ToolMode::ALIGN, ToolMode::CROP_BOX,
+            ToolMode::SELECTION,
+            ToolMode::BRUSH,
+            ToolMode::ALIGN,
+            ToolMode::CROP_BOX,
         };
         for (const auto mode : DELETE_GAUSSIANS_MODES) {
             profile.bindings.push_back({mode, KeyTrigger{GLFW_KEY_DELETE, MODIFIER_NONE}, Action::DELETE_SELECTED, "Delete Gaussians"});
@@ -620,15 +645,18 @@ namespace lfs::vis::input {
             result += "Ctrl";
         }
         if (modifiers & MODIFIER_ALT) {
-            if (!result.empty()) result += "+";
+            if (!result.empty())
+                result += "+";
             result += "Alt";
         }
         if (modifiers & MODIFIER_SHIFT) {
-            if (!result.empty()) result += "+";
+            if (!result.empty())
+                result += "+";
             result += "Shift";
         }
         if (modifiers & MODIFIER_SUPER) {
-            if (!result.empty()) result += "+";
+            if (!result.empty())
+                result += "+";
             result += "Super";
         }
         return result;

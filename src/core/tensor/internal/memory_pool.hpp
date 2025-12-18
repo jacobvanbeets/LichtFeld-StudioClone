@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include "allocation_profiler.hpp"
 #include "core/logger.hpp"
 #include "gpu_arena_allocator.hpp"
-#include "allocation_profiler.hpp"
 #include <cuda_runtime.h>
 #include <memory>
 #include <mutex>
@@ -181,16 +181,19 @@ namespace lfs::core {
                 // Track allocation sizes
                 static std::atomic<int> alloc_count{0};
                 static std::atomic<size_t> total_bytes_allocated{0};
-                static std::atomic<int> small_allocs{0};   // < 1 MB
-                static std::atomic<int> medium_allocs{0};  // 1-100 MB
-                static std::atomic<int> large_allocs{0};   // 100MB-1GB
+                static std::atomic<int> small_allocs{0};  // < 1 MB
+                static std::atomic<int> medium_allocs{0}; // 1-100 MB
+                static std::atomic<int> large_allocs{0};  // 100MB-1GB
 
                 alloc_count++;
                 total_bytes_allocated += bytes;
 
-                if (bytes < (1 << 20)) small_allocs++;
-                else if (bytes < (100 << 20)) medium_allocs++;
-                else large_allocs++;
+                if (bytes < (1 << 20))
+                    small_allocs++;
+                else if (bytes < (100 << 20))
+                    medium_allocs++;
+                else
+                    large_allocs++;
 
                 if (alloc_count % 2000 == 0) {
                     // Print allocation profiling report every 2k allocations

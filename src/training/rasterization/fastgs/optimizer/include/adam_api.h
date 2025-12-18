@@ -23,7 +23,7 @@ namespace fast_lfs::optimizer {
     // Batched zero operation for MCMC relocation (much faster than CPU loop)
     void zero_rows_at_indices(
         float* tensor,
-        const int64_t* indices_device,  // Must be on device!
+        const int64_t* indices_device, // Must be on device!
         const int n_indices,
         const int row_size);
 

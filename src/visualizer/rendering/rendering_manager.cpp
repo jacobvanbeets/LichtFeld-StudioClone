@@ -13,11 +13,11 @@
 #include "rendering/rasterizer/rasterization/include/rasterization_config.h"
 #include "rendering/rendering.hpp"
 #include "scene/scene_manager.hpp"
-#include "training/training_manager.hpp"
 #include "training/trainer.hpp"
+#include "training/training_manager.hpp"
 #include <cuda_runtime.h>
-#include <shared_mutex>
 #include <glad/glad.h>
+#include <shared_mutex>
 #include <stdexcept>
 
 namespace lfs::vis {
@@ -346,7 +346,9 @@ namespace lfs::vis {
             cached_source_point_cloud_ = nullptr;
             render_texture_valid_ = false;
             gt_texture_cache_.clear();
-            if (engine_) { engine_->clearFrustumCache(); }
+            if (engine_) {
+                engine_->clearFrustumCache();
+            }
             current_camera_id_ = -1;
             last_model_ptr_ = 0;
             markDirty();
@@ -619,7 +621,8 @@ namespace lfs::vis {
             .brush_saturation_amount = brush_saturation_amount_,
             .selection_mode_rings = (selection_mode_ == lfs::rendering::SelectionMode::Rings),
             .selected_node_mask = (settings_.desaturate_unselected || getSelectionFlashIntensity() > 0.0f)
-                ? std::move(scene_state.selected_node_mask) : std::vector<bool>{},
+                                      ? std::move(scene_state.selected_node_mask)
+                                      : std::vector<bool>{},
             .desaturate_unselected = settings_.desaturate_unselected,
             .selection_flash_intensity = getSelectionFlashIntensity(),
             .hovered_depth_id = nullptr,
@@ -644,7 +647,8 @@ namespace lfs::vis {
         if (settings_.use_crop_box || settings_.show_crop_box) {
             const auto& cropboxes = scene_state.cropboxes;
             const size_t idx = (scene_state.selected_cropbox_index >= 0)
-                ? static_cast<size_t>(scene_state.selected_cropbox_index) : 0;
+                                   ? static_cast<size_t>(scene_state.selected_cropbox_index)
+                                   : 0;
 
             if (idx < cropboxes.size() && cropboxes[idx].data) {
                 const auto& cb = cropboxes[idx];
@@ -795,8 +799,7 @@ namespace lfs::vis {
         // Set viewport region with scissor clipping (Y flipped for OpenGL)
         if (context.viewport_region) {
             const GLint x = static_cast<GLint>(context.viewport_region->x);
-            const GLint y = context.viewport.frameBufferSize.y
-                          - static_cast<GLint>(context.viewport_region->y + context.viewport_region->height);
+            const GLint y = context.viewport.frameBufferSize.y - static_cast<GLint>(context.viewport_region->y + context.viewport_region->height);
             const GLsizei w = static_cast<GLsizei>(context.viewport_region->width);
             const GLsizei h = static_cast<GLsizei>(context.viewport_region->height);
             glViewport(x, y, w, h);
@@ -811,9 +814,7 @@ namespace lfs::vis {
             const glm::ivec2 render_size = current_size;
 
             if (context.viewport_region) {
-                const int gl_y = context.viewport.frameBufferSize.y
-                               - static_cast<int>(context.viewport_region->y)
-                               - static_cast<int>(context.viewport_region->height);
+                const int gl_y = context.viewport.frameBufferSize.y - static_cast<int>(context.viewport_region->y) - static_cast<int>(context.viewport_region->height);
                 viewport_pos = glm::ivec2(static_cast<int>(context.viewport_region->x), gl_y);
             }
 
@@ -884,9 +885,7 @@ namespace lfs::vis {
             if (render_texture_valid_) {
                 glm::ivec2 viewport_pos(0, 0);
                 if (context.viewport_region) {
-                    const int gl_y = context.viewport.frameBufferSize.y
-                                   - static_cast<int>(context.viewport_region->y)
-                                   - static_cast<int>(context.viewport_region->height);
+                    const int gl_y = context.viewport.frameBufferSize.y - static_cast<int>(context.viewport_region->y) - static_cast<int>(context.viewport_region->height);
                     viewport_pos = glm::ivec2(static_cast<int>(context.viewport_region->x), gl_y);
                 }
 
@@ -918,14 +917,15 @@ namespace lfs::vis {
 
                 // Apply cropbox filter (GPU-accelerated, cached)
                 for (const auto& cb : scene_state.cropboxes) {
-                    if (!cb.data || (!cb.data->enabled && !settings_.show_crop_box)) continue;
+                    if (!cb.data || (!cb.data->enabled && !settings_.show_crop_box))
+                        continue;
 
                     const bool cache_valid = cached_filtered_point_cloud_ &&
-                        cached_source_point_cloud_ == scene_state.point_cloud &&
-                        cached_cropbox_transform_ == cb.local_transform &&
-                        cached_cropbox_min_ == cb.data->min &&
-                        cached_cropbox_max_ == cb.data->max &&
-                        cached_cropbox_inverse_ == cb.data->inverse;
+                                             cached_source_point_cloud_ == scene_state.point_cloud &&
+                                             cached_cropbox_transform_ == cb.local_transform &&
+                                             cached_cropbox_min_ == cb.data->min &&
+                                             cached_cropbox_max_ == cb.data->max &&
+                                             cached_cropbox_inverse_ == cb.data->inverse;
 
                     if (!cache_valid) {
                         const auto& means = scene_state.point_cloud->means;
@@ -935,11 +935,11 @@ namespace lfs::vis {
                         const auto device = means.device();
 
                         // GLM column-major -> row-major for tensor matmul
-                        const auto transform = lfs::core::Tensor::from_vector({
-                            m[0][0], m[1][0], m[2][0], m[3][0],
-                            m[0][1], m[1][1], m[2][1], m[3][1],
-                            m[0][2], m[1][2], m[2][2], m[3][2],
-                            m[0][3], m[1][3], m[2][3], m[3][3]}, {4, 4}, device);
+                        const auto transform = lfs::core::Tensor::from_vector({m[0][0], m[1][0], m[2][0], m[3][0],
+                                                                               m[0][1], m[1][1], m[2][1], m[3][1],
+                                                                               m[0][2], m[1][2], m[2][2], m[3][2],
+                                                                               m[0][3], m[1][3], m[2][3], m[3][3]},
+                                                                              {4, 4}, device);
 
                         // Transform and filter on GPU
                         const auto ones = lfs::core::Tensor::ones({num_points, 1}, device);
@@ -952,7 +952,8 @@ namespace lfs::vis {
                         auto mask = (x >= cb.data->min.x) && (x <= cb.data->max.x) &&
                                     (y >= cb.data->min.y) && (y <= cb.data->max.y) &&
                                     (z >= cb.data->min.z) && (z <= cb.data->max.z);
-                        if (cb.data->inverse) mask = mask.logical_not();
+                        if (cb.data->inverse)
+                            mask = mask.logical_not();
 
                         const auto indices = mask.nonzero().squeeze(1);
                         if (indices.size(0) > 0) {
@@ -1031,9 +1032,7 @@ namespace lfs::vis {
 
                     glm::ivec2 viewport_pos(0, 0);
                     if (context.viewport_region) {
-                        const int gl_y = context.viewport.frameBufferSize.y
-                                       - static_cast<int>(context.viewport_region->y)
-                                       - static_cast<int>(context.viewport_region->height);
+                        const int gl_y = context.viewport.frameBufferSize.y - static_cast<int>(context.viewport_region->y) - static_cast<int>(context.viewport_region->height);
                         viewport_pos = glm::ivec2(static_cast<int>(context.viewport_region->x), gl_y);
                     }
 
@@ -1249,7 +1248,8 @@ namespace lfs::vis {
             const NodeId selected_cropbox_id = context.scene_manager->getSelectedNodeCropBoxId();
 
             for (const auto& cb : visible_cropboxes) {
-                if (!cb.data) continue;
+                if (!cb.data)
+                    continue;
 
                 const lfs::rendering::BoundingBox box{
                     .min = cb.data->min,
@@ -1257,7 +1257,8 @@ namespace lfs::vis {
                     .transform = glm::inverse(cb.world_transform)};
 
                 const glm::vec3 base_color = cb.data->inverse
-                    ? glm::vec3(1.0f, 0.2f, 0.2f) : cb.data->color;
+                                                 ? glm::vec3(1.0f, 0.2f, 0.2f)
+                                                 : cb.data->color;
                 const bool is_selected = (cb.node_id == selected_cropbox_id);
                 const float flash = is_selected ? cb.data->flash_intensity : 0.0f;
                 constexpr float FLASH_LINE_BOOST = 4.0f;
@@ -1290,15 +1291,15 @@ namespace lfs::vis {
             if (animation_active) {
                 const auto remaining_ms = static_cast<int>((PIVOT_DURATION_SEC - time_since_set) * 1000.0f);
                 setPivotAnimationEndTime(std::chrono::steady_clock::now() +
-                    std::chrono::milliseconds(remaining_ms));
+                                         std::chrono::milliseconds(remaining_ms));
             }
 
             if (settings_.show_pivot || animation_active) {
-                const float opacity = settings_.show_pivot ? 1.0f :
-                    1.0f - std::clamp(time_since_set / PIVOT_DURATION_SEC, 0.0f, 1.0f);
+                const float opacity = settings_.show_pivot ? 1.0f : 1.0f - std::clamp(time_since_set / PIVOT_DURATION_SEC, 0.0f, 1.0f);
 
                 if (auto result = engine_->renderPivot(viewport, context.viewport.camera.getPivot(),
-                                                       PIVOT_SIZE_PX, opacity); !result) {
+                                                       PIVOT_SIZE_PX, opacity);
+                    !result) {
                     LOG_WARN("Pivot render failed: {}", result.error());
                 }
             }
@@ -1408,7 +1409,8 @@ namespace lfs::vis {
             if (const auto result = engine_->renderGrid(
                     viewport,
                     static_cast<lfs::rendering::GridPlane>(settings_.grid_plane),
-                    settings_.grid_opacity); !result) {
+                    settings_.grid_opacity);
+                !result) {
                 LOG_WARN("Grid render failed: {}", result.error());
             }
         }
@@ -1453,8 +1455,8 @@ namespace lfs::vis {
     }
 
     void RenderingManager::setBrushState(const bool active, const float x, const float y, const float radius,
-                                          const bool add_mode, lfs::core::Tensor* selection_tensor,
-                                          const bool saturation_mode, const float saturation_amount) {
+                                         const bool add_mode, lfs::core::Tensor* selection_tensor,
+                                         const bool saturation_mode, const float saturation_amount) {
         brush_active_ = active;
         brush_x_ = x;
         brush_y_ = y;
@@ -1480,13 +1482,16 @@ namespace lfs::vis {
     }
 
     void RenderingManager::adjustSaturation(const float mouse_x, const float mouse_y, const float radius,
-                                             const float saturation_delta, lfs::core::Tensor& sh0_tensor) {
+                                            const float saturation_delta, lfs::core::Tensor& sh0_tensor) {
         const auto& screen_pos = cached_result_.screen_positions;
-        if (!screen_pos || !screen_pos->is_valid()) return;
-        if (!sh0_tensor.is_valid() || sh0_tensor.device() != lfs::core::Device::CUDA) return;
+        if (!screen_pos || !screen_pos->is_valid())
+            return;
+        if (!sh0_tensor.is_valid() || sh0_tensor.device() != lfs::core::Device::CUDA)
+            return;
 
         const int num_gaussians = static_cast<int>(screen_pos->size(0));
-        if (num_gaussians == 0) return;
+        if (num_gaussians == 0)
+            return;
 
         lfs::launchAdjustSaturation(
             sh0_tensor.ptr<float>(),

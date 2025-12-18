@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "core/splat_data_transform.hpp"
+#include "core/logger.hpp"
 #include "core/point_cloud.hpp"
 #include "core/splat_data.hpp"
-#include "core/logger.hpp"
 #include "geometry/bounding_box.hpp"
 
 #include <algorithm>
@@ -121,8 +121,8 @@ namespace lfs::core {
 
         // Use full mat4 if available (preserves scale), otherwise fall back to EuclideanTransform
         const glm::mat4 world_to_bbox_matrix = bounding_box.hasFullTransform()
-            ? bounding_box.getworld2BBoxMat4()
-            : bounding_box.getworld2BBox().toMat4();
+                                                   ? bounding_box.getworld2BBoxMat4()
+                                                   : bounding_box.getworld2BBox().toMat4();
 
         const std::vector<float> transform_data = {
             world_to_bbox_matrix[0][0], world_to_bbox_matrix[1][0], world_to_bbox_matrix[2][0], world_to_bbox_matrix[3][0],
@@ -185,8 +185,8 @@ namespace lfs::core {
         auto cropped_means = splat_data._means.index_select(0, indices).contiguous();
         auto cropped_sh0 = splat_data._sh0.index_select(0, indices).contiguous();
         Tensor cropped_shN = splat_data._shN.is_valid()
-            ? splat_data._shN.index_select(0, indices).contiguous()
-            : Tensor{};
+                                 ? splat_data._shN.index_select(0, indices).contiguous()
+                                 : Tensor{};
         auto cropped_scaling = splat_data._scaling.index_select(0, indices).contiguous();
         auto cropped_rotation = splat_data._rotation.index_select(0, indices).contiguous();
         auto cropped_opacity = splat_data._opacity.index_select(0, indices).contiguous();
@@ -381,19 +381,27 @@ namespace lfs::core {
     }
 
     SplatData extract_by_mask(const SplatData& splat_data, const Tensor& mask) {
-        if (!splat_data._means.is_valid() || splat_data._means.size(0) == 0) { return SplatData(); }
-        if (!mask.is_valid() || mask.size(0) != splat_data._means.size(0)) { return SplatData(); }
+        if (!splat_data._means.is_valid() || splat_data._means.size(0) == 0) {
+            return SplatData();
+        }
+        if (!mask.is_valid() || mask.size(0) != splat_data._means.size(0)) {
+            return SplatData();
+        }
 
         const auto selection_mask = mask.to(DataType::Bool);
         const int count = selection_mask.sum_scalar();
-        if (count == 0) { return SplatData(); }
+        if (count == 0) {
+            return SplatData();
+        }
 
         auto indices = selection_mask.nonzero();
-        if (indices.ndim() == 2) { indices = indices.squeeze(1); }
+        if (indices.ndim() == 2) {
+            indices = indices.squeeze(1);
+        }
 
         Tensor shN_selected = splat_data._shN.is_valid()
-            ? splat_data._shN.index_select(0, indices).contiguous()
-            : Tensor{};
+                                  ? splat_data._shN.index_select(0, indices).contiguous()
+                                  : Tensor{};
 
         SplatData result(
             splat_data._max_sh_degree,

@@ -12,9 +12,9 @@
 #include <fstream>
 #include <future>
 #include <glad/glad.h>
-#include <imgui.h>
 #include <stdexcept>
 #include <thread>
+#include <imgui.h>
 
 namespace lfs::vis::gui {
 
@@ -33,25 +33,30 @@ namespace lfs::vis::gui {
         constexpr uint16_t FOCAL_LENGTH = 0xA404;
         constexpr uint16_t FOCAL_LENGTH_35MM = 0xA405;
         constexpr uint16_t LENS_MODEL = 0xA434;
-    }
+    } // namespace exif_tags
 
     ExifData parseExifData(const std::filesystem::path& path) {
         ExifData result;
 
         std::string ext = path.extension().string();
-        for (char& c : ext) c = static_cast<char>(std::tolower(c));
-        if (ext != ".jpg" && ext != ".jpeg") return result;
+        for (char& c : ext)
+            c = static_cast<char>(std::tolower(c));
+        if (ext != ".jpg" && ext != ".jpeg")
+            return result;
 
         std::ifstream file(path, std::ios::binary);
-        if (!file) return result;
+        if (!file)
+            return result;
 
         uint8_t buf[2];
         file.read(reinterpret_cast<char*>(buf), 2);
-        if (buf[0] != 0xFF || buf[1] != 0xD8) return result;
+        if (buf[0] != 0xFF || buf[1] != 0xD8)
+            return result;
 
         while (file) {
             file.read(reinterpret_cast<char*>(buf), 2);
-            if (buf[0] != 0xFF) break;
+            if (buf[0] != 0xFF)
+                break;
 
             if (buf[1] == 0xE1) {
                 uint8_t len_buf[2];
@@ -61,21 +66,26 @@ namespace lfs::vis::gui {
                 std::vector<uint8_t> segment(segment_len - 2);
                 file.read(reinterpret_cast<char*>(segment.data()), segment.size());
 
-                if (segment.size() < 14 || std::memcmp(segment.data(), "Exif\0\0", 6) != 0) continue;
+                if (segment.size() < 14 || std::memcmp(segment.data(), "Exif\0\0", 6) != 0)
+                    continue;
 
                 const uint8_t* const tiff = segment.data() + 6;
                 const size_t tiff_size = segment.size() - 6;
                 const bool big_endian = (tiff[0] == 'M' && tiff[1] == 'M');
-                if (!big_endian && !(tiff[0] == 'I' && tiff[1] == 'I')) continue;
+                if (!big_endian && !(tiff[0] == 'I' && tiff[1] == 'I'))
+                    continue;
 
                 const auto read16 = [big_endian, tiff, tiff_size](const size_t offset) -> uint16_t {
-                    if (offset + 2 > tiff_size) return 0;
-                    if (big_endian) return (tiff[offset] << 8) | tiff[offset + 1];
+                    if (offset + 2 > tiff_size)
+                        return 0;
+                    if (big_endian)
+                        return (tiff[offset] << 8) | tiff[offset + 1];
                     return tiff[offset] | (tiff[offset + 1] << 8);
                 };
 
                 const auto read32 = [big_endian, tiff, tiff_size](const size_t offset) -> uint32_t {
-                    if (offset + 4 > tiff_size) return 0;
+                    if (offset + 4 > tiff_size)
+                        return 0;
                     if (big_endian)
                         return (tiff[offset] << 24) | (tiff[offset + 1] << 16) |
                                (tiff[offset + 2] << 8) | tiff[offset + 3];
@@ -84,9 +94,11 @@ namespace lfs::vis::gui {
                 };
 
                 const auto read_string = [tiff, tiff_size](const size_t offset, const size_t count) {
-                    if (offset + count > tiff_size) return std::string{};
+                    if (offset + count > tiff_size)
+                        return std::string{};
                     std::string s(reinterpret_cast<const char*>(tiff + offset), count);
-                    while (!s.empty() && (s.back() == '\0' || s.back() == ' ')) s.pop_back();
+                    while (!s.empty() && (s.back() == '\0' || s.back() == ' '))
+                        s.pop_back();
                     return s;
                 };
 
@@ -95,12 +107,14 @@ namespace lfs::vis::gui {
                 };
 
                 const uint32_t ifd0_offset = read32(4);
-                if (ifd0_offset + 2 > tiff_size) continue;
+                if (ifd0_offset + 2 > tiff_size)
+                    continue;
 
                 uint32_t exif_ifd_offset = 0;
 
                 const auto parse_ifd = [&](const uint32_t ifd_offset, const bool is_exif_ifd) {
-                    if (ifd_offset + 2 > tiff_size) return;
+                    if (ifd_offset + 2 > tiff_size)
+                        return;
                     const uint16_t num_entries = read16(ifd_offset);
                     size_t entry_offset = ifd_offset + 2;
 
@@ -111,11 +125,15 @@ namespace lfs::vis::gui {
                         uint32_t value_offset = entry_offset + 8;
 
                         size_t data_size = count;
-                        if (type == 3) data_size *= 2;
-                        else if (type == 4) data_size *= 4;
-                        else if (type == 5) data_size *= 8;
+                        if (type == 3)
+                            data_size *= 2;
+                        else if (type == 4)
+                            data_size *= 4;
+                        else if (type == 5)
+                            data_size *= 8;
 
-                        if (data_size > 4) value_offset = read32(entry_offset + 8);
+                        if (data_size > 4)
+                            value_offset = read32(entry_offset + 8);
 
                         switch (tag) {
                         case exif_tags::MAKE:
@@ -143,8 +161,8 @@ namespace lfs::vis::gui {
                                 const auto [num, den] = read_rational(value_offset);
                                 if (den > 0) {
                                     result.exposure_time = (num == 1)
-                                        ? std::format("1/{}s", den)
-                                        : std::format("{:.1f}s", static_cast<double>(num) / den);
+                                                               ? std::format("1/{}s", den)
+                                                               : std::format("{:.1f}s", static_cast<double>(num) / den);
                                 }
                             }
                             break;
@@ -180,7 +198,8 @@ namespace lfs::vis::gui {
                 };
 
                 parse_ifd(ifd0_offset, false);
-                if (exif_ifd_offset > 0) parse_ifd(exif_ifd_offset, true);
+                if (exif_ifd_offset > 0)
+                    parse_ifd(exif_ifd_offset, true);
 
                 result.valid = !result.camera_make.empty() || !result.camera_model.empty() ||
                                !result.exposure_time.empty() || !result.f_number.empty();
@@ -654,11 +673,11 @@ namespace lfs::vis::gui {
             return;
         }
         if (!next_texture_ && is_loading_) {
-            return;  // Skip if no preload and currently loading
+            return; // Skip if no preload and currently loading
         }
 
         current_index_++;
-        previous_texture_ = std::move(current_texture_);  // Keep old texture in GPU memory
+        previous_texture_ = std::move(current_texture_); // Keep old texture in GPU memory
 
         if (next_texture_) {
             current_texture_ = std::move(next_texture_);
@@ -671,8 +690,10 @@ namespace lfs::vis::gui {
     }
 
     void ImagePreview::previousImage() {
-        if (image_paths_.empty() || current_index_ == 0) return;
-        if (!prev_texture_ && is_loading_) return;
+        if (image_paths_.empty() || current_index_ == 0)
+            return;
+        if (!prev_texture_ && is_loading_)
+            return;
 
         --current_index_;
         previous_texture_ = std::move(current_texture_);
@@ -688,7 +709,8 @@ namespace lfs::vis::gui {
     }
 
     void ImagePreview::goToImage(const size_t index) {
-        if (index >= image_paths_.size()) return;
+        if (index >= image_paths_.size())
+            return;
 
         current_index_ = index;
         zoom_ = 1.0f;
@@ -741,10 +763,10 @@ namespace lfs::vis::gui {
                                                   ImGuiWindowFlags_MenuBar;
 
         const std::string title = image_paths_.empty()
-            ? "Image Preview###ImagePreview"
-            : std::format("Image Preview - {}/{} - {}###ImagePreview",
-                          current_index_ + 1, image_paths_.size(),
-                          image_paths_[current_index_].filename().string());
+                                      ? "Image Preview###ImagePreview"
+                                      : std::format("Image Preview - {}/{} - {}###ImagePreview",
+                                                    current_index_ + 1, image_paths_.size(),
+                                                    image_paths_[current_index_].filename().string());
 
         if (focus_on_next_frame_) {
             ImGui::SetNextWindowFocus();
@@ -857,8 +879,10 @@ namespace lfs::vis::gui {
             const auto& path = image_paths_[current_index_];
             const std::string filename = path.filename().string();
             std::string ext = path.extension().string();
-            if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
-            for (char& c : ext) c = static_cast<char>(std::toupper(c));
+            if (!ext.empty() && ext[0] == '.')
+                ext = ext.substr(1);
+            for (char& c : ext)
+                c = static_cast<char>(std::toupper(c));
 
             // File info section
             ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "FILE");
@@ -891,7 +915,7 @@ namespace lfs::vis::gui {
             ImGui::Separator();
             ImGui::Text("Dimensions: %dx%d", current_texture_->width, current_texture_->height);
             ImGui::Text("Megapixels: %.1f MP",
-                (current_texture_->width * current_texture_->height) / 1e6);
+                        (current_texture_->width * current_texture_->height) / 1e6);
 
             // Infer channels from extension
             const char* channels = "RGB (3)";
@@ -909,11 +933,16 @@ namespace lfs::vis::gui {
             const float aspect = static_cast<float>(current_texture_->width) /
                                  static_cast<float>(current_texture_->height);
             const char* aspect_name = "Custom";
-            if (std::abs(aspect - 16.0f/9.0f) < 0.01f) aspect_name = "16:9";
-            else if (std::abs(aspect - 4.0f/3.0f) < 0.01f) aspect_name = "4:3";
-            else if (std::abs(aspect - 3.0f/2.0f) < 0.01f) aspect_name = "3:2";
-            else if (std::abs(aspect - 1.0f) < 0.01f) aspect_name = "1:1";
-            else if (std::abs(aspect - 21.0f/9.0f) < 0.02f) aspect_name = "21:9";
+            if (std::abs(aspect - 16.0f / 9.0f) < 0.01f)
+                aspect_name = "16:9";
+            else if (std::abs(aspect - 4.0f / 3.0f) < 0.01f)
+                aspect_name = "4:3";
+            else if (std::abs(aspect - 3.0f / 2.0f) < 0.01f)
+                aspect_name = "3:2";
+            else if (std::abs(aspect - 1.0f) < 0.01f)
+                aspect_name = "1:1";
+            else if (std::abs(aspect - 21.0f / 9.0f) < 0.02f)
+                aspect_name = "21:9";
             ImGui::Text("Aspect Ratio: %s (%.2f)", aspect_name, aspect);
 
             // EXIF section (only for JPEG files with valid EXIF)
@@ -931,9 +960,11 @@ namespace lfs::vis::gui {
 
                 if (!current_exif_.camera_make.empty() || !current_exif_.camera_model.empty()) {
                     std::string camera;
-                    if (!current_exif_.camera_make.empty()) camera = current_exif_.camera_make;
+                    if (!current_exif_.camera_make.empty())
+                        camera = current_exif_.camera_make;
                     if (!current_exif_.camera_model.empty()) {
-                        if (!camera.empty()) camera += " ";
+                        if (!camera.empty())
+                            camera += " ";
                         camera += current_exif_.camera_model;
                     }
                     ImGui::Text("Camera: %s", camera.c_str());

@@ -4,17 +4,17 @@
 
 #pragma once
 
+#include "checkpoint.hpp"
 #include "components/bilateral_grid.hpp"
 #include "components/sparsity_optimizer.hpp"
-#include "checkpoint.hpp"
+#include "core/camera.hpp"
 #include "core/parameters.hpp"
+#include "core/tensor.hpp"
 #include "dataset.hpp"
 #include "metrics/metrics.hpp"
 #include "optimizer/scheduler.hpp"
 #include "progress.hpp"
 #include "strategies/istrategy.hpp"
-#include "core/camera.hpp"
-#include "core/tensor.hpp"
 #include <atomic>
 #include <expected>
 #include <memory>
@@ -187,8 +187,8 @@ namespace lfs::training {
         void save_ply(const std::filesystem::path& save_path, int iter_num, bool join_threads = true);
 
         // Member variables
-        lfs::vis::Scene* scene_ = nullptr;  // Non-owning pointer to Scene (new mode)
-        std::shared_ptr<CameraDataset> base_dataset_;  // Legacy mode only - source cameras
+        lfs::vis::Scene* scene_ = nullptr;            // Non-owning pointer to Scene (new mode)
+        std::shared_ptr<CameraDataset> base_dataset_; // Legacy mode only - source cameras
         std::shared_ptr<CameraDataset> train_dataset_;
         std::shared_ptr<CameraDataset> val_dataset_;
         std::unique_ptr<IStrategy> strategy_;

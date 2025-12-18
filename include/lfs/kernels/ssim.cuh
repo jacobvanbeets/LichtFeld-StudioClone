@@ -9,97 +9,97 @@
 
 namespace lfs::training::kernels {
 
-// Pre-allocated workspace for SSIM computation (eliminates 120GB allocation churn)
-struct SSIMWorkspace {
-    // Forward pass buffers
-    lfs::core::Tensor ssim_map;         // [N, C, H, W]
-    lfs::core::Tensor dm_dmu1;          // [N, C, H, W]
-    lfs::core::Tensor dm_dsigma1_sq;    // [N, C, H, W]
-    lfs::core::Tensor dm_dsigma12;      // [N, C, H, W]
+    // Pre-allocated workspace for SSIM computation (eliminates 120GB allocation churn)
+    struct SSIMWorkspace {
+        // Forward pass buffers
+        lfs::core::Tensor ssim_map;      // [N, C, H, W]
+        lfs::core::Tensor dm_dmu1;       // [N, C, H, W]
+        lfs::core::Tensor dm_dsigma1_sq; // [N, C, H, W]
+        lfs::core::Tensor dm_dsigma12;   // [N, C, H, W]
 
-    // Backward pass buffers
-    lfs::core::Tensor dL_dmap;          // [N, C, H, W]
-    lfs::core::Tensor dL_dimg1;         // [N, C, H, W]
+        // Backward pass buffers
+        lfs::core::Tensor dL_dmap;  // [N, C, H, W]
+        lfs::core::Tensor dL_dimg1; // [N, C, H, W]
 
-    // Cropped buffer for efficient mean computation (avoids .contiguous() allocation)
-    lfs::core::Tensor ssim_map_cropped; // [N, C, H-10, W-10] contiguous buffer
+        // Cropped buffer for efficient mean computation (avoids .contiguous() allocation)
+        lfs::core::Tensor ssim_map_cropped; // [N, C, H-10, W-10] contiguous buffer
 
-    // Track allocated size
-    std::vector<size_t> allocated_shape;
+        // Track allocated size
+        std::vector<size_t> allocated_shape;
 
-    // Resize workspace if needed (only reallocates if shape changed)
-    void ensure_size(const std::vector<size_t>& shape) {
-        if (allocated_shape != shape) {
-            lfs::core::TensorShape tshape(shape);
-            ssim_map = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
-            dm_dmu1 = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
-            dm_dsigma1_sq = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
-            dm_dsigma12 = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
-            dL_dmap = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
-            dL_dimg1 = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
+        // Resize workspace if needed (only reallocates if shape changed)
+        void ensure_size(const std::vector<size_t>& shape) {
+            if (allocated_shape != shape) {
+                lfs::core::TensorShape tshape(shape);
+                ssim_map = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
+                dm_dmu1 = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
+                dm_dsigma1_sq = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
+                dm_dsigma12 = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
+                dL_dmap = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
+                dL_dimg1 = lfs::core::Tensor::empty(tshape, lfs::core::Device::CUDA);
 
-            // Allocate cropped buffer (10 pixels smaller in H and W for valid padding)
-            if (shape.size() == 4 && shape[2] > 10 && shape[3] > 10) {
-                std::vector<size_t> cropped_shape = {shape[0], shape[1], shape[2] - 10, shape[3] - 10};
-                ssim_map_cropped = lfs::core::Tensor::empty(lfs::core::TensorShape(cropped_shape), lfs::core::Device::CUDA);
+                // Allocate cropped buffer (10 pixels smaller in H and W for valid padding)
+                if (shape.size() == 4 && shape[2] > 10 && shape[3] > 10) {
+                    std::vector<size_t> cropped_shape = {shape[0], shape[1], shape[2] - 10, shape[3] - 10};
+                    ssim_map_cropped = lfs::core::Tensor::empty(lfs::core::TensorShape(cropped_shape), lfs::core::Device::CUDA);
+                }
+
+                allocated_shape = shape;
             }
-
-            allocated_shape = shape;
         }
-    }
-};
+    };
 
-// Context for manual SSIM forward/backward (like RasterizeContext)
-struct SSIMContext {
-    lfs::core::Tensor img1;
-    lfs::core::Tensor img2;
-    lfs::core::Tensor dm_dmu1;
-    lfs::core::Tensor dm_dsigma1_sq;
-    lfs::core::Tensor dm_dsigma12;
-    int original_h;
-    int original_w;
-    bool apply_valid_padding;
-};
+    // Context for manual SSIM forward/backward (like RasterizeContext)
+    struct SSIMContext {
+        lfs::core::Tensor img1;
+        lfs::core::Tensor img2;
+        lfs::core::Tensor dm_dmu1;
+        lfs::core::Tensor dm_dsigma1_sq;
+        lfs::core::Tensor dm_dsigma12;
+        int original_h;
+        int original_w;
+        bool apply_valid_padding;
+    };
 
-std::pair<lfs::core::Tensor, SSIMContext> ssim_forward(
-    const lfs::core::Tensor& img1,
-    const lfs::core::Tensor& img2,
-    bool apply_valid_padding = true);
+    std::pair<lfs::core::Tensor, SSIMContext> ssim_forward(
+        const lfs::core::Tensor& img1,
+        const lfs::core::Tensor& img2,
+        bool apply_valid_padding = true);
 
-// Optimized version with pre-allocated workspace (eliminates allocation churn)
-std::pair<lfs::core::Tensor, SSIMContext> ssim_forward(
-    const lfs::core::Tensor& img1,
-    const lfs::core::Tensor& img2,
-    SSIMWorkspace& workspace,
-    bool apply_valid_padding = true);
+    // Optimized version with pre-allocated workspace (eliminates allocation churn)
+    std::pair<lfs::core::Tensor, SSIMContext> ssim_forward(
+        const lfs::core::Tensor& img1,
+        const lfs::core::Tensor& img2,
+        SSIMWorkspace& workspace,
+        bool apply_valid_padding = true);
 
-// Per-pixel SSIM map result for masked loss computation
-struct SSIMMapResult {
-    lfs::core::Tensor ssim_map;   // [N, C, H, W]
-    lfs::core::Tensor ssim_value; // Mean SSIM scalar
-    SSIMContext ctx;
-};
+    // Per-pixel SSIM map result for masked loss computation
+    struct SSIMMapResult {
+        lfs::core::Tensor ssim_map;   // [N, C, H, W]
+        lfs::core::Tensor ssim_value; // Mean SSIM scalar
+        SSIMContext ctx;
+    };
 
-// Returns per-pixel SSIM map (same padding when apply_valid_padding=false)
-SSIMMapResult ssim_forward_map(
-    const lfs::core::Tensor& img1,
-    const lfs::core::Tensor& img2,
-    bool apply_valid_padding = false);
+    // Returns per-pixel SSIM map (same padding when apply_valid_padding=false)
+    SSIMMapResult ssim_forward_map(
+        const lfs::core::Tensor& img1,
+        const lfs::core::Tensor& img2,
+        bool apply_valid_padding = false);
 
-// Manual SSIM backward (no autograd) - computes gradient w.r.t. img1
-lfs::core::Tensor ssim_backward(
-    const SSIMContext& ctx,
-    float grad_loss);  // Gradient of loss w.r.t. SSIM value (scalar)
+    // Manual SSIM backward (no autograd) - computes gradient w.r.t. img1
+    lfs::core::Tensor ssim_backward(
+        const SSIMContext& ctx,
+        float grad_loss); // Gradient of loss w.r.t. SSIM value (scalar)
 
-// Optimized version with pre-allocated workspace
-lfs::core::Tensor ssim_backward(
-    const SSIMContext& ctx,
-    SSIMWorkspace& workspace,
-    float grad_loss);
+    // Optimized version with pre-allocated workspace
+    lfs::core::Tensor ssim_backward(
+        const SSIMContext& ctx,
+        SSIMWorkspace& workspace,
+        float grad_loss);
 
-// Per-pixel gradient version for masked SSIM (d(loss)/d(ssim_map) per pixel)
-lfs::core::Tensor ssim_backward_with_grad_map(
-    const SSIMContext& ctx,
-    const lfs::core::Tensor& dL_dmap);  // [N, C, H, W] per-pixel gradient
+    // Per-pixel gradient version for masked SSIM (d(loss)/d(ssim_map) per pixel)
+    lfs::core::Tensor ssim_backward_with_grad_map(
+        const SSIMContext& ctx,
+        const lfs::core::Tensor& dL_dmap); // [N, C, H, W] per-pixel gradient
 
 } // namespace lfs::training::kernels

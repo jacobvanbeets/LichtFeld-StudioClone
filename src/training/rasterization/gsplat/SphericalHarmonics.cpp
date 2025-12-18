@@ -2,9 +2,9 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "SphericalHarmonics.h"
 #include "Common.h"
 #include "Ops.h"
-#include "SphericalHarmonics.h"
 
 #include <cuda_runtime.h>
 
@@ -18,8 +18,7 @@ namespace gsplat_lfs {
         int64_t total_elements,
         int32_t K,
         float* colors,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         if (total_elements == 0) {
             return;
         }
@@ -28,8 +27,7 @@ namespace gsplat_lfs {
             degrees_to_use,
             dirs, coeffs, masks,
             total_elements, K,
-            colors, stream
-        );
+            colors, stream);
     }
 
     void spherical_harmonics_bwd(
@@ -43,8 +41,7 @@ namespace gsplat_lfs {
         bool compute_v_dirs,
         float* v_coeffs,
         float* v_dirs,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         if (total_elements == 0) {
             return;
         }
@@ -54,8 +51,7 @@ namespace gsplat_lfs {
             dirs, coeffs, masks, v_colors,
             total_elements, K,
             compute_v_dirs,
-            v_coeffs, v_dirs, stream
-        );
+            v_coeffs, v_dirs, stream);
     }
 
 } // namespace gsplat_lfs

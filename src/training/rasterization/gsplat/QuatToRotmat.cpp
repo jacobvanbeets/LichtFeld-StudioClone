@@ -2,9 +2,9 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "QuatToRotmat.h"
 #include "Common.h"
 #include "Ops.h"
-#include "QuatToRotmat.h"
 
 #include <cuda_runtime.h>
 
@@ -14,8 +14,7 @@ namespace gsplat_lfs {
         const float* quats,
         int64_t N,
         float* rotmats,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         GSPLAT_CHECK_CUDA_PTR(quats, "quats");
         GSPLAT_CHECK_CUDA_PTR(rotmats, "rotmats");
 

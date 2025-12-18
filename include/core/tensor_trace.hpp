@@ -44,53 +44,59 @@ namespace lfs::core::debug {
         }
 
         void push(const char* op, const Tensor& input, const std::source_location& loc) {
-            if (!should_trace(input)) return;
+            if (!should_trace(input))
+                return;
             std::lock_guard lock(mutex_);
             stack_.push_back({op, input.name(), input.shape().str(), "",
-                             extract_filename(loc.file_name()), static_cast<int>(loc.line()),
-                             0.0f, static_cast<int>(stack_.size())});
+                              extract_filename(loc.file_name()), static_cast<int>(loc.line()),
+                              0.0f, static_cast<int>(stack_.size())});
             start_times_.push_back(clock::now());
         }
 
         void push(const char* op, const Tensor& in1, const Tensor& in2, const std::source_location& loc) {
-            if (!should_trace(in1, in2)) return;
+            if (!should_trace(in1, in2))
+                return;
             std::lock_guard lock(mutex_);
             const std::string name = in1.is_tracked() ? in1.name() : in2.name();
             const std::string shapes = in1.shape().str() + ", " + in2.shape().str();
             stack_.push_back({op, name, shapes, "",
-                             extract_filename(loc.file_name()), static_cast<int>(loc.line()),
-                             0.0f, static_cast<int>(stack_.size())});
+                              extract_filename(loc.file_name()), static_cast<int>(loc.line()),
+                              0.0f, static_cast<int>(stack_.size())});
             start_times_.push_back(clock::now());
         }
 
         void push(const char* op, const TensorShape& shape, const std::source_location& loc) {
-            if (!enabled_) return;
+            if (!enabled_)
+                return;
             std::lock_guard lock(mutex_);
             stack_.push_back({op, "", shape.str(), "",
-                             extract_filename(loc.file_name()), static_cast<int>(loc.line()),
-                             0.0f, static_cast<int>(stack_.size())});
+                              extract_filename(loc.file_name()), static_cast<int>(loc.line()),
+                              0.0f, static_cast<int>(stack_.size())});
             start_times_.push_back(clock::now());
         }
 
         void push(const char* op, const TensorShape& in1, const TensorShape& in2, const std::source_location& loc) {
-            if (!enabled_) return;
+            if (!enabled_)
+                return;
             std::lock_guard lock(mutex_);
             const std::string shapes = in1.str() + ", " + in2.str();
             stack_.push_back({op, "", shapes, "",
-                             extract_filename(loc.file_name()), static_cast<int>(loc.line()),
-                             0.0f, static_cast<int>(stack_.size())});
+                              extract_filename(loc.file_name()), static_cast<int>(loc.line()),
+                              0.0f, static_cast<int>(stack_.size())});
             start_times_.push_back(clock::now());
         }
 
         void pop(const TensorShape& output_shape) {
             std::lock_guard lock(mutex_);
-            if (stack_.empty()) return;
+            if (stack_.empty())
+                return;
             finalize_record(output_shape.str());
         }
 
         void pop() {
             std::lock_guard lock(mutex_);
-            if (stack_.empty()) return;
+            if (stack_.empty())
+                return;
             finalize_record("");
         }
 
@@ -163,34 +169,46 @@ namespace lfs::core::debug {
     public:
         OpTraceGuard(const char* op, const Tensor& input,
                      const std::source_location loc = std::source_location::current())
-            : tracer_(TensorOpTracer::instance()), active_(tracer_.should_trace(input)) {
-            if (active_) tracer_.push(op, input, loc);
+            : tracer_(TensorOpTracer::instance()),
+              active_(tracer_.should_trace(input)) {
+            if (active_)
+                tracer_.push(op, input, loc);
         }
 
         OpTraceGuard(const char* op, const Tensor& in1, const Tensor& in2,
                      const std::source_location loc = std::source_location::current())
-            : tracer_(TensorOpTracer::instance()), active_(tracer_.should_trace(in1, in2)) {
-            if (active_) tracer_.push(op, in1, in2, loc);
+            : tracer_(TensorOpTracer::instance()),
+              active_(tracer_.should_trace(in1, in2)) {
+            if (active_)
+                tracer_.push(op, in1, in2, loc);
         }
 
         OpTraceGuard(const char* op, const TensorShape& shape,
                      const std::source_location loc = std::source_location::current())
-            : tracer_(TensorOpTracer::instance()), active_(tracer_.is_enabled()) {
-            if (active_) tracer_.push(op, shape, loc);
+            : tracer_(TensorOpTracer::instance()),
+              active_(tracer_.is_enabled()) {
+            if (active_)
+                tracer_.push(op, shape, loc);
         }
 
         OpTraceGuard(const char* op, const TensorShape& in1, const TensorShape& in2,
                      const std::source_location loc = std::source_location::current())
-            : tracer_(TensorOpTracer::instance()), active_(tracer_.is_enabled()) {
-            if (active_) tracer_.push(op, in1, in2, loc);
+            : tracer_(TensorOpTracer::instance()),
+              active_(tracer_.is_enabled()) {
+            if (active_)
+                tracer_.push(op, in1, in2, loc);
         }
 
         void set_output(const TensorShape& shape) {
-            if (active_) { has_output_ = true; output_shape_ = shape; }
+            if (active_) {
+                has_output_ = true;
+                output_shape_ = shape;
+            }
         }
 
         ~OpTraceGuard() {
-            if (!active_) return;
+            if (!active_)
+                return;
             has_output_ ? tracer_.pop(output_shape_) : tracer_.pop();
         }
 
@@ -204,15 +222,15 @@ namespace lfs::core::debug {
 } // namespace lfs::core::debug
 
 #ifdef TENSOR_OP_TRACING
-    #define TRACE_OP(name, shape) lfs::core::debug::OpTraceGuard _trace_guard_##__LINE__(name, shape)
-    #define TRACE_OP2(name, s1, s2) lfs::core::debug::OpTraceGuard _trace_guard_##__LINE__(name, s1, s2)
-    #define TRACE_OP_OUTPUT(shape) _trace_guard_##__LINE__.set_output(shape)
-    #define TRACE_PRINT_STACK() lfs::core::debug::TensorOpTracer::instance().print_stack()
-    #define TRACE_PRINT_HISTORY(n) lfs::core::debug::TensorOpTracer::instance().print_history(n)
+#define TRACE_OP(name, shape)   lfs::core::debug::OpTraceGuard _trace_guard_##__LINE__(name, shape)
+#define TRACE_OP2(name, s1, s2) lfs::core::debug::OpTraceGuard _trace_guard_##__LINE__(name, s1, s2)
+#define TRACE_OP_OUTPUT(shape)  _trace_guard_##__LINE__.set_output(shape)
+#define TRACE_PRINT_STACK()     lfs::core::debug::TensorOpTracer::instance().print_stack()
+#define TRACE_PRINT_HISTORY(n)  lfs::core::debug::TensorOpTracer::instance().print_history(n)
 #else
-    #define TRACE_OP(name, shape) ((void)0)
-    #define TRACE_OP2(name, s1, s2) ((void)0)
-    #define TRACE_OP_OUTPUT(shape) ((void)0)
-    #define TRACE_PRINT_STACK() ((void)0)
-    #define TRACE_PRINT_HISTORY(n) ((void)0)
+#define TRACE_OP(name, shape)   ((void)0)
+#define TRACE_OP2(name, s1, s2) ((void)0)
+#define TRACE_OP_OUTPUT(shape)  ((void)0)
+#define TRACE_PRINT_STACK()     ((void)0)
+#define TRACE_PRINT_HISTORY(n)  ((void)0)
 #endif

@@ -12,17 +12,18 @@ namespace lfs::training {
     // If accumulate=true: grad_opacities += result
     // If accumulate=false: grad_opacities = result (overwrites)
     __global__ void admm_backward_fused_kernel(
-        float* __restrict__ grad_opacities,       // Output: gradients [N]
-        const float* __restrict__ opa_sigmoid,     // Input: sigmoid(opacities) [N]
-        const float* __restrict__ z,               // Input: ADMM auxiliary variable [N]
-        const float* __restrict__ u,               // Input: ADMM dual variable [N]
-        float rho,                                  // ADMM penalty parameter
-        float grad_loss,                            // Gradient from upstream
-        size_t n,                                   // Number of elements
-        bool accumulate                             // Whether to accumulate or overwrite
+        float* __restrict__ grad_opacities,    // Output: gradients [N]
+        const float* __restrict__ opa_sigmoid, // Input: sigmoid(opacities) [N]
+        const float* __restrict__ z,           // Input: ADMM auxiliary variable [N]
+        const float* __restrict__ u,           // Input: ADMM dual variable [N]
+        float rho,                             // ADMM penalty parameter
+        float grad_loss,                       // Gradient from upstream
+        size_t n,                              // Number of elements
+        bool accumulate                        // Whether to accumulate or overwrite
     ) {
         const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx >= n) return;
+        if (idx >= n)
+            return;
 
         // Load values
         const float opa = opa_sigmoid[idx];
@@ -55,14 +56,12 @@ namespace lfs::training {
         float rho,
         float grad_loss,
         size_t n,
-        bool accumulate
-    ) {
+        bool accumulate) {
         const int threads = 256;
         const int blocks = (n + threads - 1) / threads;
 
         admm_backward_fused_kernel<<<blocks, threads>>>(
-            grad_opacities, opa_sigmoid, z, u, rho, grad_loss, n, accumulate
-        );
+            grad_opacities, opa_sigmoid, z, u, rho, grad_loss, n, accumulate);
     }
 
 } // namespace lfs::training

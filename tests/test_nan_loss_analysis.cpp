@@ -4,144 +4,149 @@
 // NaN loss bug analysis tests using crash dump data
 // These tests analyze tensor values to identify the source of numerical instability
 
-#include <gtest/gtest.h>
-#include <filesystem>
-#include <fstream>
-#include <cmath>
-#include <algorithm>
-#include <vector>
+#include "core/cuda/memory_arena.hpp"
+#include "core/logger.hpp"
 #include "core/tensor.hpp"
 #include "core/tensor/internal/tensor_serialization.hpp"
-#include "core/logger.hpp"
 #include "rasterization/fastgs/rasterization/include/rasterization_api.h"
-#include "core/cuda/memory_arena.hpp"
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <gtest/gtest.h>
+#include <vector>
 
 using namespace lfs::core;
 
 namespace {
 
-// Crash dump paths - these are developer dumps, test skips if not found
-const std::vector<std::string> CRASH_DUMP_PATHS = {
-    "crash_dump_20251211_181320_944",  // NaN at iteration 50434
-    "crash_dump_20251211_173951_611",  // NaN at iteration 30863
-};
+    // Crash dump paths - these are developer dumps, test skips if not found
+    const std::vector<std::string> CRASH_DUMP_PATHS = {
+        "crash_dump_20251211_181320_944", // NaN at iteration 50434
+        "crash_dump_20251211_173951_611", // NaN at iteration 30863
+    };
 
-constexpr int TILE_SIZE = 16;
-constexpr float DEGENERATE_QUAT_THRESHOLD = 1e-8f;
-constexpr float EXTREME_SCALE_THRESHOLD = 20.0f;  // exp(2*20) = huge variance
-constexpr float TINY_SCALE_THRESHOLD = -20.0f;    // exp(2*-20) = tiny variance
+    constexpr int TILE_SIZE = 16;
+    constexpr float DEGENERATE_QUAT_THRESHOLD = 1e-8f;
+    constexpr float EXTREME_SCALE_THRESHOLD = 20.0f; // exp(2*20) = huge variance
+    constexpr float TINY_SCALE_THRESHOLD = -20.0f;   // exp(2*-20) = tiny variance
 
-struct CrashParams {
-    int n_primitives = 0;
-    int active_sh_bases = 0;
-    int total_bases_sh_rest = 0;
-    int width = 0;
-    int height = 0;
-    float fx = 0.0f;
-    float fy = 0.0f;
-    float cx = 0.0f;
-    float cy = 0.0f;
-    float near_plane = 0.0f;
-    float far_plane = 0.0f;
-    std::string error;
-    int iteration = 0;
+    struct CrashParams {
+        int n_primitives = 0;
+        int active_sh_bases = 0;
+        int total_bases_sh_rest = 0;
+        int width = 0;
+        int height = 0;
+        float fx = 0.0f;
+        float fy = 0.0f;
+        float cx = 0.0f;
+        float cy = 0.0f;
+        float near_plane = 0.0f;
+        float far_plane = 0.0f;
+        std::string error;
+        int iteration = 0;
 
-    static CrashParams load(const std::string& path) {
-        CrashParams params;
-        std::ifstream file(path);
-        if (!file) return params;
+        static CrashParams load(const std::string& path) {
+            CrashParams params;
+            std::ifstream file(path);
+            if (!file)
+                return params;
 
-        std::string line;
-        while (std::getline(file, line)) {
-            auto parse_int = [&](const char* key, int& value) {
-                const std::string pattern = std::string("\"") + key + "\":";
-                if (const auto pos = line.find(pattern); pos != std::string::npos) {
-                    value = std::stoi(line.substr(line.find(':', pos) + 1));
-                }
-            };
-            auto parse_float = [&](const char* key, float& value) {
-                const std::string pattern = std::string("\"") + key + "\":";
-                if (const auto pos = line.find(pattern); pos != std::string::npos) {
-                    value = std::stof(line.substr(line.find(':', pos) + 1));
-                }
-            };
-            auto parse_string = [&](const char* key, std::string& value) {
-                const std::string pattern = std::string("\"") + key + "\": \"";
-                if (const auto pos = line.find(pattern); pos != std::string::npos) {
-                    const auto start = line.find(": \"", pos) + 3;
-                    const auto end = line.rfind('"');
-                    if (end > start) value = line.substr(start, end - start);
-                }
-            };
+            std::string line;
+            while (std::getline(file, line)) {
+                auto parse_int = [&](const char* key, int& value) {
+                    const std::string pattern = std::string("\"") + key + "\":";
+                    if (const auto pos = line.find(pattern); pos != std::string::npos) {
+                        value = std::stoi(line.substr(line.find(':', pos) + 1));
+                    }
+                };
+                auto parse_float = [&](const char* key, float& value) {
+                    const std::string pattern = std::string("\"") + key + "\":";
+                    if (const auto pos = line.find(pattern); pos != std::string::npos) {
+                        value = std::stof(line.substr(line.find(':', pos) + 1));
+                    }
+                };
+                auto parse_string = [&](const char* key, std::string& value) {
+                    const std::string pattern = std::string("\"") + key + "\": \"";
+                    if (const auto pos = line.find(pattern); pos != std::string::npos) {
+                        const auto start = line.find(": \"", pos) + 3;
+                        const auto end = line.rfind('"');
+                        if (end > start)
+                            value = line.substr(start, end - start);
+                    }
+                };
 
-            parse_int("n_primitives", params.n_primitives);
-            parse_int("active_sh_bases", params.active_sh_bases);
-            parse_int("total_bases_sh_rest", params.total_bases_sh_rest);
-            parse_int("width", params.width);
-            parse_int("height", params.height);
-            parse_float("fx", params.fx);
-            parse_float("fy", params.fy);
-            parse_float("cx", params.cx);
-            parse_float("cy", params.cy);
-            parse_float("near_plane", params.near_plane);
-            parse_float("far_plane", params.far_plane);
-            parse_string("error", params.error);
+                parse_int("n_primitives", params.n_primitives);
+                parse_int("active_sh_bases", params.active_sh_bases);
+                parse_int("total_bases_sh_rest", params.total_bases_sh_rest);
+                parse_int("width", params.width);
+                parse_int("height", params.height);
+                parse_float("fx", params.fx);
+                parse_float("fy", params.fy);
+                parse_float("cx", params.cx);
+                parse_float("cy", params.cy);
+                parse_float("near_plane", params.near_plane);
+                parse_float("far_plane", params.far_plane);
+                parse_string("error", params.error);
 
-            // Extract iteration from error message
-            if (!params.error.empty()) {
-                auto pos = params.error.find("iteration ");
-                if (pos != std::string::npos) {
-                    params.iteration = std::stoi(params.error.substr(pos + 10));
+                // Extract iteration from error message
+                if (!params.error.empty()) {
+                    auto pos = params.error.find("iteration ");
+                    if (pos != std::string::npos) {
+                        params.iteration = std::stoi(params.error.substr(pos + 10));
+                    }
                 }
             }
+            return params;
         }
-        return params;
-    }
-};
+    };
 
-struct TensorStats {
-    float min = std::numeric_limits<float>::max();
-    float max = std::numeric_limits<float>::lowest();
-    double sum = 0.0;
-    double sum_sq = 0.0;
-    int nan_count = 0;
-    int inf_count = 0;
-    int neg_inf_count = 0;
-    size_t total = 0;
+    struct TensorStats {
+        float min = std::numeric_limits<float>::max();
+        float max = std::numeric_limits<float>::lowest();
+        double sum = 0.0;
+        double sum_sq = 0.0;
+        int nan_count = 0;
+        int inf_count = 0;
+        int neg_inf_count = 0;
+        size_t total = 0;
 
-    void update(const float v) {
-        ++total;
-        if (std::isnan(v)) {
-            ++nan_count;
-        } else if (std::isinf(v)) {
-            if (v > 0) ++inf_count;
-            else ++neg_inf_count;
-        } else {
-            min = std::min(min, v);
-            max = std::max(max, v);
-            sum += v;
-            sum_sq += static_cast<double>(v) * v;
+        void update(const float v) {
+            ++total;
+            if (std::isnan(v)) {
+                ++nan_count;
+            } else if (std::isinf(v)) {
+                if (v > 0)
+                    ++inf_count;
+                else
+                    ++neg_inf_count;
+            } else {
+                min = std::min(min, v);
+                max = std::max(max, v);
+                sum += v;
+                sum_sq += static_cast<double>(v) * v;
+            }
         }
-    }
 
-    float mean() const {
-        const size_t valid = total - nan_count - inf_count - neg_inf_count;
-        return valid > 0 ? static_cast<float>(sum / valid) : 0.0f;
-    }
+        float mean() const {
+            const size_t valid = total - nan_count - inf_count - neg_inf_count;
+            return valid > 0 ? static_cast<float>(sum / valid) : 0.0f;
+        }
 
-    float std_dev() const {
-        const size_t valid = total - nan_count - inf_count - neg_inf_count;
-        if (valid < 2) return 0.0f;
-        const double var = (sum_sq - sum * sum / valid) / (valid - 1);
-        return static_cast<float>(std::sqrt(std::max(0.0, var)));
-    }
+        float std_dev() const {
+            const size_t valid = total - nan_count - inf_count - neg_inf_count;
+            if (valid < 2)
+                return 0.0f;
+            const double var = (sum_sq - sum * sum / valid) / (valid - 1);
+            return static_cast<float>(std::sqrt(std::max(0.0, var)));
+        }
 
-    bool has_invalid() const { return nan_count > 0 || inf_count > 0 || neg_inf_count > 0; }
-};
+        bool has_invalid() const { return nan_count > 0 || inf_count > 0 || neg_inf_count > 0; }
+    };
 
-inline int div_up(const int a, const int b) { return (a + b - 1) / b; }
+    inline int div_up(const int a, const int b) { return (a + b - 1) / b; }
 
-}  // namespace
+} // namespace
 
 class NaNLossAnalysisTest : public ::testing::TestWithParam<std::string> {
 protected:
@@ -252,8 +257,10 @@ TEST_P(NaNLossAnalysisTest, AnalyzeScaleDistribution) {
         if (std::isfinite(v)) {
             max_scale = std::max(max_scale, v);
             min_scale = std::min(min_scale, v);
-            if (v > EXTREME_SCALE_THRESHOLD) ++extreme_large;
-            if (v < TINY_SCALE_THRESHOLD) ++extreme_small;
+            if (v > EXTREME_SCALE_THRESHOLD)
+                ++extreme_large;
+            if (v < TINY_SCALE_THRESHOLD)
+                ++extreme_small;
         }
     }
 
@@ -300,7 +307,7 @@ TEST_P(NaNLossAnalysisTest, AnalyzeQuaternionDistribution) {
             continue;
         }
 
-        const float norm_sq = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
+        const float norm_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
         min_norm_sq = std::min(min_norm_sq, norm_sq);
         max_norm_sq = std::max(max_norm_sq, norm_sq);
 
@@ -340,15 +347,17 @@ TEST_P(NaNLossAnalysisTest, AnalyzeOpacityDistribution) {
     auto sigmoid = [](float x) { return 1.0f / (1.0f + std::exp(-x)); };
 
     TensorStats stats;
-    int saturated_high = 0;  // opacity > 0.999
-    int saturated_low = 0;   // opacity < 0.001
+    int saturated_high = 0; // opacity > 0.999
+    int saturated_low = 0;  // opacity < 0.001
 
     for (size_t i = 0; i < n; ++i) {
         stats.update(data[i]);
         if (std::isfinite(data[i])) {
             float opacity = sigmoid(data[i]);
-            if (opacity > 0.999f) ++saturated_high;
-            if (opacity < 0.001f) ++saturated_low;
+            if (opacity > 0.999f)
+                ++saturated_high;
+            if (opacity < 0.001f)
+                ++saturated_low;
         }
     }
 
@@ -400,9 +409,12 @@ TEST_P(NaNLossAnalysisTest, AnalyzePositionDistribution) {
         const float z = data[i * 3 + 2];
 
         if (std::isfinite(x) && std::isfinite(y) && std::isfinite(z)) {
-            min_x = std::min(min_x, x); max_x = std::max(max_x, x);
-            min_y = std::min(min_y, y); max_y = std::max(max_y, y);
-            min_z = std::min(min_z, z); max_z = std::max(max_z, z);
+            min_x = std::min(min_x, x);
+            max_x = std::max(max_x, x);
+            min_y = std::min(min_y, y);
+            max_y = std::max(max_y, y);
+            min_z = std::min(min_z, z);
+            max_z = std::max(max_z, z);
         }
     }
 
@@ -449,7 +461,7 @@ TEST_P(NaNLossAnalysisTest, CheckForwardOutputForNaN) {
         }
 
         // This is expected to potentially have NaN based on the crash
-        EXPECT_TRUE(true);  // Don't fail - we're analyzing
+        EXPECT_TRUE(true); // Don't fail - we're analyzing
 
     } catch (const std::exception& e) {
         LOG_ERROR("Forward threw exception: {}", e.what());
@@ -482,7 +494,7 @@ TEST_P(NaNLossAnalysisTest, FindProblematicGaussians) {
 
         // Check for NaN in any parameter
         for (int j = 0; j < 3; ++j) {
-            if (!std::isfinite(means_data[i*3+j])) {
+            if (!std::isfinite(means_data[i * 3 + j])) {
                 problematic = true;
                 reason += "NaN/Inf position; ";
                 break;
@@ -490,11 +502,11 @@ TEST_P(NaNLossAnalysisTest, FindProblematicGaussians) {
         }
 
         for (int j = 0; j < 3; ++j) {
-            if (!std::isfinite(scales_data[i*3+j])) {
+            if (!std::isfinite(scales_data[i * 3 + j])) {
                 problematic = true;
                 reason += "NaN/Inf scale; ";
                 break;
-            } else if (scales_data[i*3+j] > EXTREME_SCALE_THRESHOLD) {
+            } else if (scales_data[i * 3 + j] > EXTREME_SCALE_THRESHOLD) {
                 problematic = true;
                 reason += "extreme scale; ";
                 break;
@@ -504,12 +516,12 @@ TEST_P(NaNLossAnalysisTest, FindProblematicGaussians) {
         // Check quaternion
         float norm_sq = 0;
         for (int j = 0; j < 4; ++j) {
-            if (!std::isfinite(rot_data[i*4+j])) {
+            if (!std::isfinite(rot_data[i * 4 + j])) {
                 problematic = true;
                 reason += "NaN/Inf rotation; ";
                 break;
             }
-            norm_sq += rot_data[i*4+j] * rot_data[i*4+j];
+            norm_sq += rot_data[i * 4 + j] * rot_data[i * 4 + j];
         }
         if (norm_sq < DEGENERATE_QUAT_THRESHOLD) {
             problematic = true;
@@ -524,11 +536,11 @@ TEST_P(NaNLossAnalysisTest, FindProblematicGaussians) {
         if (problematic) {
             LOG_WARN("Gaussian {}: {}", i, reason);
             LOG_INFO("  pos=({:.4f}, {:.4f}, {:.4f})",
-                     means_data[i*3], means_data[i*3+1], means_data[i*3+2]);
+                     means_data[i * 3], means_data[i * 3 + 1], means_data[i * 3 + 2]);
             LOG_INFO("  scale=({:.4f}, {:.4f}, {:.4f})",
-                     scales_data[i*3], scales_data[i*3+1], scales_data[i*3+2]);
+                     scales_data[i * 3], scales_data[i * 3 + 1], scales_data[i * 3 + 2]);
             LOG_INFO("  rot=({:.4f}, {:.4f}, {:.4f}, {:.4f}), norm^2={:.2e}",
-                     rot_data[i*4], rot_data[i*4+1], rot_data[i*4+2], rot_data[i*4+3], norm_sq);
+                     rot_data[i * 4], rot_data[i * 4 + 1], rot_data[i * 4 + 2], rot_data[i * 4 + 3], norm_sq);
             LOG_INFO("  raw_opacity={:.4f}, opacity={:.6f}",
                      opac_data[i], sigmoid(opac_data[i]));
             ++problematic_count;
@@ -581,5 +593,4 @@ INSTANTIATE_TEST_SUITE_P(
         std::replace(name.begin(), name.end(), '/', '_');
         std::replace(name.begin(), name.end(), '.', '_');
         return name;
-    }
-);
+    });

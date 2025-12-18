@@ -125,8 +125,8 @@ namespace lfs::io {
         const int width = static_cast<int>(std::ceil(std::sqrt(num_splats) / 4.0)) * 4;
         const int height = static_cast<int>(std::ceil(static_cast<double>(num_splats) / width / 4.0)) * 4;
         const size_t sog_estimate = static_cast<size_t>(width * height * 4 * 5 * 0.4);
-        const size_t base64_estimate = (sog_estimate * 4) / 3 + 4;  // Base64 is 4/3 larger
-        const size_t html_template_size = 51200;  // ~50KB for HTML/CSS/JS
+        const size_t base64_estimate = (sog_estimate * 4) / 3 + 4; // Base64 is 4/3 larger
+        const size_t html_template_size = 51200;                   // ~50KB for HTML/CSS/JS
         const size_t estimated_size = base64_estimate + html_template_size;
 
         // Check disk space for output file
@@ -154,8 +154,8 @@ namespace lfs::io {
         if (auto result = save_sog(splat_data, sog_options); !result) {
             // Propagate the SOG error with context
             return make_error(result.error().code,
-                std::format("Failed to create SOG for HTML export: {}", result.error().message),
-                options.output_path);
+                              std::format("Failed to create SOG for HTML export: {}", result.error().message),
+                              options.output_path);
         }
 
         if (options.progress_callback) {
@@ -164,11 +164,11 @@ namespace lfs::io {
 
         const auto sog_data = read_file_binary(temp_sog);
         std::error_code ec;
-        std::filesystem::remove(temp_sog, ec);  // Best effort cleanup
+        std::filesystem::remove(temp_sog, ec); // Best effort cleanup
 
         if (sog_data.empty()) {
             return make_error(ErrorCode::READ_FAILURE,
-                "Failed to read temporary SOG file", temp_sog);
+                              "Failed to read temporary SOG file", temp_sog);
         }
 
         const auto base64_data = base64_encode(sog_data);
@@ -182,13 +182,13 @@ namespace lfs::io {
         std::ofstream out(options.output_path);
         if (!out) {
             return make_error(ErrorCode::WRITE_FAILURE,
-                "Failed to open output file for writing", options.output_path);
+                              "Failed to open output file for writing", options.output_path);
         }
         out << html;
 
         if (!out.good()) {
             return make_error(ErrorCode::WRITE_FAILURE,
-                "Failed to write HTML content (possibly disk full)", options.output_path);
+                              "Failed to write HTML content (possibly disk full)", options.output_path);
         }
         out.close();
 

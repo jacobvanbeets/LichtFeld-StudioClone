@@ -56,7 +56,10 @@ namespace lfs::vis::gui {
 
         struct Thumbnail {
             unsigned int texture = 0;
-            enum class State { PENDING, LOADING, READY, FAILED } state = State::PENDING;
+            enum class State { PENDING,
+                               LOADING,
+                               READY,
+                               FAILED } state = State::PENDING;
             std::future<std::vector<uint8_t>> download_future;
         };
 

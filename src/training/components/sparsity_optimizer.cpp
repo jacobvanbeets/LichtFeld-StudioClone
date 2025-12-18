@@ -3,8 +3,8 @@
 
 #include "sparsity_optimizer.hpp"
 #include "core/logger.hpp"
-#include <format>
 #include <cuda_runtime.h>
+#include <format>
 
 namespace lfs::training {
 
@@ -17,8 +17,7 @@ namespace lfs::training {
         float rho,
         float grad_loss,
         size_t n,
-        bool accumulate
-    );
+        bool accumulate);
 
     ADMMSparsityOptimizer::ADMMSparsityOptimizer(const Config& config)
         : config_(config) {
@@ -87,8 +86,7 @@ namespace lfs::training {
                 .z_ptr = z_.template ptr<const float>(),
                 .u_ptr = u_.template ptr<const float>(),
                 .n = static_cast<size_t>(opacities.numel()),
-                .rho = config_.init_rho
-            };
+                .rho = config_.init_rho};
 
             return std::make_pair(std::move(loss_tensor), ctx);
         } catch (const std::exception& e) {
@@ -99,8 +97,8 @@ namespace lfs::training {
 
     std::expected<void, std::string>
     ADMMSparsityOptimizer::compute_loss_backward(const SparsityLossContext& ctx,
-                                                float grad_loss,
-                                                lfs::core::Tensor& grad_opacities) {
+                                                 float grad_loss,
+                                                 lfs::core::Tensor& grad_opacities) {
         try {
             // Use FUSED CUDA KERNEL for maximum performance
             // Computes: grad_opacities = rho * (opa - z + u) * opa * (1 - opa) * grad_loss
@@ -113,14 +111,14 @@ namespace lfs::training {
             // Launch fused kernel via wrapper function
             // Note: Use accumulate=true in production if other losses contribute gradients
             launch_admm_backward_fused(
-                grad_opacities.ptr<float>(),     // Output: gradients
-                ctx.opa_sigmoid_ptr,              // Input: sigmoid(opacities)
-                ctx.z_ptr,                        // Input: ADMM auxiliary variable
-                ctx.u_ptr,                        // Input: ADMM dual variable
-                ctx.rho,                          // ADMM penalty parameter
-                grad_loss,                        // Gradient from upstream
-                n,                                // Number of elements
-                true                              // accumulate: add to existing grads
+                grad_opacities.ptr<float>(), // Output: gradients
+                ctx.opa_sigmoid_ptr,         // Input: sigmoid(opacities)
+                ctx.z_ptr,                   // Input: ADMM auxiliary variable
+                ctx.u_ptr,                   // Input: ADMM dual variable
+                ctx.rho,                     // ADMM penalty parameter
+                grad_loss,                   // Gradient from upstream
+                n,                           // Number of elements
+                true                         // accumulate: add to existing grads
             );
 
             // Check for kernel errors

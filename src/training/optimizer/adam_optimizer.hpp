@@ -30,23 +30,23 @@ namespace lfs::training {
 
     struct AdamConfig {
         float lr = 1e-3f;
-        double beta1 = 0.9;      // Must be double to match legacy precision
+        double beta1 = 0.9; // Must be double to match legacy precision
         double beta2 = 0.999;
-        double eps = 1e-15;      // Tuned for 3DGS (PyTorch default is 1e-8)
+        double eps = 1e-15; // Tuned for 3DGS (PyTorch default is 1e-8)
 
-        std::unordered_map<std::string, double> param_lrs;  // Per-parameter LRs (double for precision)
+        std::unordered_map<std::string, double> param_lrs; // Per-parameter LRs (double for precision)
 
-        float growth_factor = 1.5f;   // Capacity growth factor
-        size_t initial_capacity = 0;  // Pre-allocation size (0 = auto)
+        float growth_factor = 1.5f;  // Capacity growth factor
+        size_t initial_capacity = 0; // Pre-allocation size (0 = auto)
     };
 
     struct AdamParamState {
-        lfs::core::Tensor grad;        // Gradient (transient)
-        lfs::core::Tensor exp_avg;     // First moment (m)
-        lfs::core::Tensor exp_avg_sq;  // Second moment (v)
+        lfs::core::Tensor grad;       // Gradient (transient)
+        lfs::core::Tensor exp_avg;    // First moment (m)
+        lfs::core::Tensor exp_avg_sq; // Second moment (v)
         int64_t step_count = 0;
-        size_t capacity = 0;           // Allocated capacity
-        size_t size = 0;               // Used size
+        size_t capacity = 0; // Allocated capacity
+        size_t size = 0;     // Used size
     };
 
     enum class ParamType {

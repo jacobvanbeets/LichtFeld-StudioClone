@@ -1,27 +1,27 @@
 /* Test MCMC-style memory usage with large tensors and profiling */
 
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
 #include <cuda_runtime.h>
+#include <gtest/gtest.h>
 
 using namespace lfs::core;
 
 namespace {
 
-// Helper to get GPU memory info
-struct MemoryInfo {
-    size_t free_bytes;
-    size_t total_bytes;
-    size_t used_bytes() const { return total_bytes - free_bytes; }
-    double used_gb() const { return used_bytes() / (1024.0 * 1024.0 * 1024.0); }
-    double free_gb() const { return free_bytes / (1024.0 * 1024.0 * 1024.0); }
-};
+    // Helper to get GPU memory info
+    struct MemoryInfo {
+        size_t free_bytes;
+        size_t total_bytes;
+        size_t used_bytes() const { return total_bytes - free_bytes; }
+        double used_gb() const { return used_bytes() / (1024.0 * 1024.0 * 1024.0); }
+        double free_gb() const { return free_bytes / (1024.0 * 1024.0 * 1024.0); }
+    };
 
-MemoryInfo get_memory_info() {
-    MemoryInfo info;
-    cudaMemGetInfo(&info.free_bytes, &info.total_bytes);
-    return info;
-}
+    MemoryInfo get_memory_info() {
+        MemoryInfo info;
+        cudaMemGetInfo(&info.free_bytes, &info.total_bytes);
+        return info;
+    }
 
 } // anonymous namespace
 
@@ -34,7 +34,7 @@ TEST(TensorMCMCMemoryProfile, LargeVectorReserveAndGrow) {
 
     // Start with 100k Gaussians
     const size_t initial_size = 100000;
-    const size_t max_capacity = 4000000;  // 4M max capacity like in MCMC
+    const size_t max_capacity = 4000000; // 4M max capacity like in MCMC
 
     printf("\nCreating tensors for %zu initial Gaussians (reserving for %zu)...\n",
            initial_size, max_capacity);
@@ -44,7 +44,7 @@ TEST(TensorMCMCMemoryProfile, LargeVectorReserveAndGrow) {
     Tensor scales = Tensor::ones({initial_size, 3}, Device::CUDA, DataType::Float32);
     Tensor rotations = Tensor::zeros({initial_size, 4}, Device::CUDA, DataType::Float32);
     Tensor opacities = Tensor::ones({initial_size, 1}, Device::CUDA, DataType::Float32);
-    Tensor features = Tensor::zeros({initial_size, 15, 3}, Device::CUDA, DataType::Float32);  // SH features
+    Tensor features = Tensor::zeros({initial_size, 15, 3}, Device::CUDA, DataType::Float32); // SH features
 
     auto mem_after_create = get_memory_info();
     printf("After creation: %.2f GB used (+%.2f GB), %.2f GB free\n",
@@ -71,7 +71,7 @@ TEST(TensorMCMCMemoryProfile, LargeVectorReserveAndGrow) {
     // Simulate MCMC growth: add 500k Gaussians in chunks
     printf("\nSimulating MCMC growth by adding 500k Gaussians in 10k chunks...\n");
     const size_t chunk_size = 10000;
-    const size_t num_chunks = 50;  // 50 * 10k = 500k
+    const size_t num_chunks = 50; // 50 * 10k = 500k
 
     size_t current_size = initial_size;
     for (size_t i = 0; i < num_chunks; i++) {

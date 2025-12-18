@@ -40,8 +40,8 @@ TEST_F(ActivationGradientsTest, SigmoidGradient) {
     // Backward: grad_raw = grad_activated * sigmoid'(raw)
     //         = grad_activated * sigmoid(raw) * (1 - sigmoid(raw))
     auto activated_manual = torch::sigmoid(opacity_raw).squeeze(-1);
-    auto sigmoid_val = torch::sigmoid(opacity_raw);  // [n_points, 1]
-    auto sigmoid_derivative = sigmoid_val * (1.0f - sigmoid_val);  // [n_points, 1]
+    auto sigmoid_val = torch::sigmoid(opacity_raw);               // [n_points, 1]
+    auto sigmoid_derivative = sigmoid_val * (1.0f - sigmoid_val); // [n_points, 1]
 
     // grad_activated is [n_points], need to unsqueeze to [n_points, 1] for broadcasting
     auto grad_raw_manual = grad_activated.unsqueeze(-1) * sigmoid_derivative;
@@ -91,7 +91,7 @@ TEST_F(ActivationGradientsTest, ExpGradient) {
 
 // Test normalize activation gradient
 TEST_F(ActivationGradientsTest, NormalizeGradient) {
-    const float tolerance = 1e-5f;  // Slightly higher tolerance for normalize
+    const float tolerance = 1e-5f; // Slightly higher tolerance for normalize
 
     auto rotation_raw = torch::randn({n_points, 4}, torch::kFloat32).cuda();
 
@@ -100,7 +100,7 @@ TEST_F(ActivationGradientsTest, NormalizeGradient) {
     rotation_raw_auto.set_requires_grad(true);
 
     auto activated_auto = torch::nn::functional::normalize(rotation_raw_auto,
-        torch::nn::functional::NormalizeFuncOptions().dim(-1));
+                                                           torch::nn::functional::NormalizeFuncOptions().dim(-1));
     auto grad_activated = torch::randn_like(activated_auto);
 
     activated_auto.backward(grad_activated);
@@ -110,11 +110,11 @@ TEST_F(ActivationGradientsTest, NormalizeGradient) {
     // Forward: activated = raw / ||raw||
     // Backward: This is complex, involves Jacobian of normalization
     // Formula: grad_raw = (grad_activated - (grad_activated · activated) * activated) / ||raw||
-    auto norm = rotation_raw.norm(2, -1, true);  // [n_points, 1]
+    auto norm = rotation_raw.norm(2, -1, true); // [n_points, 1]
     auto activated_manual = rotation_raw / norm;
 
     // Compute dot product: grad_activated · activated
-    auto dot_product = (grad_activated * activated_manual).sum(-1, true);  // [n_points, 1]
+    auto dot_product = (grad_activated * activated_manual).sum(-1, true); // [n_points, 1]
 
     // Apply chain rule
     auto grad_raw_manual = (grad_activated - dot_product * activated_manual) / norm;
@@ -134,7 +134,7 @@ TEST_F(ActivationGradientsTest, CatGradient) {
     const float tolerance = 1e-7f;
 
     int sh0_size = 1;
-    int shN_size = 0;  // For degree 0
+    int shN_size = 0; // For degree 0
 
     auto sh0 = torch::randn({n_points, sh0_size, 3}, torch::kFloat32).cuda();
     auto shN = torch::zeros({n_points, shN_size, 3}, torch::kFloat32).cuda();
@@ -215,7 +215,7 @@ TEST_F(ActivationGradientsTest, FullPipelineGradient) {
     auto opacity_activated_auto = torch::sigmoid(opacity_auto).squeeze(-1);
     auto scaling_activated_auto = torch::exp(scaling_auto);
     auto rotation_activated_auto = torch::nn::functional::normalize(rotation_auto,
-        torch::nn::functional::NormalizeFuncOptions().dim(-1));
+                                                                    torch::nn::functional::NormalizeFuncOptions().dim(-1));
     auto sh_activated_auto = torch::cat({sh0_auto, shN_auto}, 1);
 
     // Simulate gradients from gsplat backward
@@ -229,8 +229,7 @@ TEST_F(ActivationGradientsTest, FullPipelineGradient) {
     torch::autograd::backward(
         {means_activated_auto, opacity_activated_auto, scaling_activated_auto,
          rotation_activated_auto, sh_activated_auto},
-        {grad_means, grad_opacity, grad_scaling, grad_rotation, grad_sh}
-    );
+        {grad_means, grad_opacity, grad_scaling, grad_rotation, grad_sh});
 
     auto grad_means_auto = means_auto.grad();
     auto grad_opacity_auto = opacity_auto.grad();

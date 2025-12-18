@@ -6,12 +6,12 @@
 
 namespace lfs::core {
 
-enum class CameraModelType {
-    PINHOLE = 0,
-    ORTHO = 1,
-    FISHEYE = 2,
-    EQUIRECTANGULAR = 3,
-    THIN_PRISM_FISHEYE = 4
-};
+    enum class CameraModelType {
+        PINHOLE = 0,
+        ORTHO = 1,
+        FISHEYE = 2,
+        EQUIRECTANGULAR = 3,
+        THIN_PRISM_FISHEYE = 4
+    };
 
 } // namespace lfs::core

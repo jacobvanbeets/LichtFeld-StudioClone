@@ -3,12 +3,12 @@
 
 #include "core/logger.hpp"
 #include "core/pinned_memory_allocator.hpp"
-#include <cstdlib>
 #include "core/tensor/internal/memory_pool.hpp"
+#include <c10/cuda/CUDACachingAllocator.h>
+#include <cstdlib>
+#include <cuda_runtime.h>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
-#include <c10/cuda/CUDACachingAllocator.h>
-#include <cuda_runtime.h>
 
 // Custom event listener to clean GPU memory before AND after each test
 class MemoryCleanupListener : public ::testing::EmptyTestEventListener {
@@ -48,7 +48,7 @@ private:
 
         // Final sync
         cudaDeviceSynchronize();
-        cudaGetLastError();  // Clear any remaining errors
+        cudaGetLastError(); // Clear any remaining errors
     }
 
 public:
@@ -66,12 +66,18 @@ int main(int argc, char** argv) {
     auto log_level = lfs::core::LogLevel::Info;
     if (const char* env = std::getenv("LOG_LEVEL")) {
         std::string level(env);
-        if (level == "trace") log_level = lfs::core::LogLevel::Trace;
-        else if (level == "debug") log_level = lfs::core::LogLevel::Debug;
-        else if (level == "info") log_level = lfs::core::LogLevel::Info;
-        else if (level == "perf") log_level = lfs::core::LogLevel::Performance;
-        else if (level == "warn") log_level = lfs::core::LogLevel::Warn;
-        else if (level == "error") log_level = lfs::core::LogLevel::Error;
+        if (level == "trace")
+            log_level = lfs::core::LogLevel::Trace;
+        else if (level == "debug")
+            log_level = lfs::core::LogLevel::Debug;
+        else if (level == "info")
+            log_level = lfs::core::LogLevel::Info;
+        else if (level == "perf")
+            log_level = lfs::core::LogLevel::Performance;
+        else if (level == "warn")
+            log_level = lfs::core::LogLevel::Warn;
+        else if (level == "error")
+            log_level = lfs::core::LogLevel::Error;
     }
     lfs::core::Logger::get().init(log_level);
 

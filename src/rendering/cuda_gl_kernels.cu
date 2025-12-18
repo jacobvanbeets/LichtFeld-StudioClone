@@ -78,11 +78,13 @@ namespace lfs {
         const int num_gaussians) {
 
         const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx >= num_gaussians) return;
+        if (idx >= num_gaussians)
+            return;
 
         const float dx = screen_positions[idx * 2 + 0] - brush_x;
         const float dy = screen_positions[idx * 2 + 1] - brush_y;
-        if (dx * dx + dy * dy > brush_radius_sq) return;
+        if (dx * dx + dy * dy > brush_radius_sq)
+            return;
 
         // SH to RGB: color = SH_C0 * sh + 0.5
         const float r = SH_C0 * sh0[idx * 3 + 0] + 0.5f;
@@ -114,7 +116,8 @@ namespace lfs {
         const int num_gaussians,
         cudaStream_t stream) {
 
-        if (num_gaussians <= 0) return;
+        if (num_gaussians <= 0)
+            return;
 
         constexpr int threads = 256;
         const int blocks = (num_gaussians + threads - 1) / threads;

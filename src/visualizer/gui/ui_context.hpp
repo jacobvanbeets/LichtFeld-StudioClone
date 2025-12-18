@@ -23,7 +23,7 @@ namespace lfs::vis {
             ImFont* regular = nullptr;
             ImFont* bold = nullptr;
             ImFont* heading = nullptr;
-            ImFont* small_font = nullptr;  // Avoid Windows macro collision
+            ImFont* small_font = nullptr; // Avoid Windows macro collision
             ImFont* section = nullptr;
         };
 

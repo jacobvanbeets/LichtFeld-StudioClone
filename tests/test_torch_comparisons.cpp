@@ -1,9 +1,9 @@
 /* Test to prove whether LibTorch explodes with naive split implementation */
-#include <torch/torch.h>
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 #include <iostream>
+#include <torch/torch.h>
 
 void print_memory_usage(const std::string& label) {
     // Get CUDA device memory info
@@ -47,7 +47,7 @@ TEST(LibTorchNaiveSplit, ExplodesLikeCustomTensor) {
     std::cout << "If LibTorch also explodes, the issue is ALGORITHMIC (too many intermediates)" << std::endl;
     std::cout << "If LibTorch doesn't explode, the issue is our Tensor implementation" << std::endl;
 
-    const int N = 10000000;  // 10M Gaussians
+    const int N = 10000000; // 10M Gaussians
     const int split_size = 2;
 
     print_memory_usage("BEFORE allocation");
@@ -56,7 +56,7 @@ TEST(LibTorchNaiveSplit, ExplodesLikeCustomTensor) {
     auto means = torch::randn({N, 3}, torch::TensorOptions().device(torch::kCUDA));
     auto scales3d = torch::randn({N, 3}, torch::TensorOptions().device(torch::kCUDA));
     auto rotation = torch::zeros({N, 4}, torch::TensorOptions().device(torch::kCUDA));
-    rotation.slice(1, 0, 1).fill_(1.0f);  // w=1
+    rotation.slice(1, 0, 1).fill_(1.0f); // w=1
     auto sh = torch::randn({N, 48}, torch::TensorOptions().device(torch::kCUDA));
     auto opacity = torch::randn({N, 1}, torch::TensorOptions().device(torch::kCUDA));
 
@@ -64,7 +64,7 @@ TEST(LibTorchNaiveSplit, ExplodesLikeCustomTensor) {
 
     // Create selection mask (select ~99.998% for split, like the test)
     auto is_split = torch::ones({N}, torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA));
-    is_split.slice(0, 0, 2).fill_(false);  // Leave 2 not split
+    is_split.slice(0, 0, 2).fill_(false); // Leave 2 not split
 
     // Get indices
     auto sampled_idxs = is_split.nonzero().squeeze(-1);
@@ -86,7 +86,7 @@ TEST(LibTorchNaiveSplit, ExplodesLikeCustomTensor) {
     auto sampled_means = means.index_select(0, sampled_idxs);
     auto sampled_scales = scales3d.index_select(0, sampled_idxs);
     auto sampled_quats = rotation.index_select(0, sampled_idxs);
-    auto sampled_sh = sh.index_select(0, sampled_idxs);  // 1.79 GB!
+    auto sampled_sh = sh.index_select(0, sampled_idxs); // 1.79 GB!
     auto sampled_opacity = opacity.index_select(0, sampled_idxs);
 
     print_memory_usage("AFTER index_select all params");
@@ -102,15 +102,15 @@ TEST(LibTorchNaiveSplit, ExplodesLikeCustomTensor) {
 
     // 3. Build rotation matrix element by element (like custom Tensor does)
     std::cout << "3. Building rotation matrix elements..." << std::endl;
-    auto r00 = (1.0f - 2.0f * (y*y + z*z)).squeeze(-1);
-    auto r01 = (2.0f * (x*y - w*z)).squeeze(-1);
-    auto r02 = (2.0f * (x*z + w*y)).squeeze(-1);
-    auto r10 = (2.0f * (x*y + w*z)).squeeze(-1);
-    auto r11 = (1.0f - 2.0f * (x*x + z*z)).squeeze(-1);
-    auto r12 = (2.0f * (y*z - w*x)).squeeze(-1);
-    auto r20 = (2.0f * (x*z - w*y)).squeeze(-1);
-    auto r21 = (2.0f * (y*z + w*x)).squeeze(-1);
-    auto r22 = (1.0f - 2.0f * (x*x + y*y)).squeeze(-1);
+    auto r00 = (1.0f - 2.0f * (y * y + z * z)).squeeze(-1);
+    auto r01 = (2.0f * (x * y - w * z)).squeeze(-1);
+    auto r02 = (2.0f * (x * z + w * y)).squeeze(-1);
+    auto r10 = (2.0f * (x * y + w * z)).squeeze(-1);
+    auto r11 = (1.0f - 2.0f * (x * x + z * z)).squeeze(-1);
+    auto r12 = (2.0f * (y * z - w * x)).squeeze(-1);
+    auto r20 = (2.0f * (x * z - w * y)).squeeze(-1);
+    auto r21 = (2.0f * (y * z + w * x)).squeeze(-1);
+    auto r22 = (1.0f - 2.0f * (x * x + y * y)).squeeze(-1);
 
     print_memory_usage("AFTER rotation matrix elements");
 
@@ -154,7 +154,7 @@ TEST(LibTorchNaiveSplit, ExplodesLikeCustomTensor) {
     std::vector<torch::Tensor> quats_vec(split_size, sampled_quats);
     auto samples_quats = torch::cat(quats_vec, 0);
 
-    std::vector<torch::Tensor> sh_vec(split_size, sampled_sh);  // 3.58 GB!
+    std::vector<torch::Tensor> sh_vec(split_size, sampled_sh); // 3.58 GB!
     auto samples_sh = torch::cat(sh_vec, 0);
 
     std::vector<torch::Tensor> opacity_vec(split_size, sampled_opacity);
@@ -191,19 +191,19 @@ TEST(LibTorchNaiveSplit, ExplodesLikeCustomTensor) {
     // Update sh (THE BIG ONE - should cause OOM if algorithm is the issue)
     std::cout << "  Updating sh (THE BIG ONE - 1.79 GB sampled + 3.58 GB split)..." << std::endl;
     {
-        auto sampled_param = sh.index_select(0, sampled_idxs);  // 1.79 GB
+        auto sampled_param = sh.index_select(0, sampled_idxs); // 1.79 GB
         print_memory_usage("    AFTER sampled_sh");
 
-        std::vector<torch::Tensor> vec(split_size, sampled_param);  // Still 1.79 GB (shared)
+        std::vector<torch::Tensor> vec(split_size, sampled_param); // Still 1.79 GB (shared)
         print_memory_usage("    AFTER vec creation");
 
-        auto split_param = torch::cat(vec, 0);  // 3.58 GB!
+        auto split_param = torch::cat(vec, 0); // 3.58 GB!
         print_memory_usage("    AFTER split_sh cat");
 
         auto rest_param = sh.index_select(0, rest_idxs);
         print_memory_usage("    AFTER rest_sh");
 
-        auto result_sh = torch::cat({rest_param, split_param}, 0);  // 3.58 GB final!
+        auto result_sh = torch::cat({rest_param, split_param}, 0); // 3.58 GB final!
         print_memory_usage("    AFTER result_sh cat (CRITICAL POINT)");
 
         // If we get here without OOM, LibTorch handles it better!
@@ -219,11 +219,11 @@ TEST(LibTorchNaiveSplit, ExplodesLikeCustomTensor) {
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
 #include "kernels/densification_kernels.hpp"
-#include <torch/torch.h>
 #include <cmath>
+#include <gtest/gtest.h>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 using namespace lfs::training::kernels;
@@ -236,7 +236,7 @@ protected:
 
     // Helper: Compare Tensor with torch::Tensor
     void expect_tensors_near(const Tensor& our_tensor, const torch::Tensor& torch_tensor,
-                            const std::string& name, float tol = 1e-5f) {
+                             const std::string& name, float tol = 1e-5f) {
         auto our_cpu = our_tensor.to(Device::CPU);
         auto torch_cpu = torch_tensor.cpu();
 
@@ -288,15 +288,15 @@ protected:
         auto y = sampled_rotations.select(1, 2);
         auto z = sampled_rotations.select(1, 3);
 
-        auto r00 = 1.0f - 2.0f * (y*y + z*z);
-        auto r01 = 2.0f * (x*y - w*z);
-        auto r02 = 2.0f * (x*z + w*y);
-        auto r10 = 2.0f * (x*y + w*z);
-        auto r11 = 1.0f - 2.0f * (x*x + z*z);
-        auto r12 = 2.0f * (y*z - w*x);
-        auto r20 = 2.0f * (x*z - w*y);
-        auto r21 = 2.0f * (y*z + w*x);
-        auto r22 = 1.0f - 2.0f * (x*x + y*y);
+        auto r00 = 1.0f - 2.0f * (y * y + z * z);
+        auto r01 = 2.0f * (x * y - w * z);
+        auto r02 = 2.0f * (x * z + w * y);
+        auto r10 = 2.0f * (x * y + w * z);
+        auto r11 = 1.0f - 2.0f * (x * x + z * z);
+        auto r12 = 2.0f * (y * z - w * x);
+        auto r20 = 2.0f * (x * z - w * y);
+        auto r21 = 2.0f * (y * z + w * x);
+        auto r22 = 1.0f - 2.0f * (x * x + y * y);
 
         // Stack to [N, 3, 3]
         auto row0 = torch::stack({r00, r01, r02}, 1);
@@ -313,11 +313,11 @@ protected:
         std::vector<torch::Tensor> split_positions;
         for (int s = 0; s < 2; ++s) {
             // Scale random noise
-            auto noise_s = random_noise[s];  // [num_split, 3]
-            auto scaled_noise = exp_scales * noise_s;  // [num_split, 3]
+            auto noise_s = random_noise[s];           // [num_split, 3]
+            auto scaled_noise = exp_scales * noise_s; // [num_split, 3]
 
             // Matrix multiply: rotmats @ scaled_noise
-            auto offset = torch::bmm(rotmats, scaled_noise.unsqueeze(-1)).squeeze(-1);  // [num_split, 3]
+            auto offset = torch::bmm(rotmats, scaled_noise.unsqueeze(-1)).squeeze(-1); // [num_split, 3]
 
             // Position: original + offset (each copy has different offset from different random noise)
             auto new_pos = sampled_positions + offset;
@@ -548,13 +548,13 @@ TEST_F(SplitKernelVsTorchTest, DISABLED_RevisedOpacity_CompareWithTorch) {
     // The opacity formula is the key difference here
     expect_tensors_near(opacities_out, torch_result.opacities, "revised_opacities", 1e-5f);
 }
-#endif  // End of disabled split kernel tests
+#endif // End of disabled split kernel tests
 
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
+#include <gtest/gtest.h>
 #include <torch/torch.h>
 
 using namespace lfs::core;
@@ -697,7 +697,7 @@ TEST_F(TensorFillVsTorchTest, TransposedTensor_CUDA) {
 
 TEST_F(TensorFillVsTorchTest, StressTest_LargeSlicedTensor_CUDA) {
     // Simulate the rotation quaternion case from the bug
-    const int N = 10000000;  // 10M Gaussians
+    const int N = 10000000; // 10M Gaussians
 
     std::cout << "Creating large tensors (" << N << " x 4)..." << std::endl;
     auto our_tensor = Tensor::zeros({N, 4}, Device::CUDA);
@@ -746,7 +746,7 @@ TEST_F(TensorFillVsTorchTest, Int32Dtype_Sliced_CUDA) {
     auto torch_tensor = torch::zeros({100, 3}, torch::device(torch::kCUDA).dtype(torch::kInt32));
 
     // Fill middle column with int value
-    our_tensor.slice(1, 1, 2).fill_(42.0f);  // Will be cast to int
+    our_tensor.slice(1, 1, 2).fill_(42.0f); // Will be cast to int
     torch_tensor.slice(1, 1, 2).fill_(42);
 
     auto our_cpu = our_tensor.to(Device::CPU);

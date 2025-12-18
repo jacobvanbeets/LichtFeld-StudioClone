@@ -2,10 +2,10 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "core/cuda/memory_arena.hpp"
 #include "forward.h"
 #include "rasterization_api_tensor.h"
 #include "rasterization_config.h"
-#include "core/cuda/memory_arena.hpp"
 #include <algorithm>
 #include <functional>
 #include <stdexcept>
@@ -107,7 +107,7 @@ namespace lfs::rendering {
         auto& arena = lfs::core::GlobalArenaManager::instance().get_arena();
         arena.set_rendering_active(true);
         arena.wait_for_training();
-        uint64_t frame_id = arena.begin_frame(true);  // true = from_rendering
+        uint64_t frame_id = arena.begin_frame(true); // true = from_rendering
         auto arena_allocator = arena.get_allocator(frame_id);
 
         const std::function<char*(size_t)> per_primitive_buffers_func = arena_allocator;
@@ -148,13 +148,14 @@ namespace lfs::rendering {
         float2* screen_positions_ptr = nullptr;
         if (screen_positions_out != nullptr) {
             *screen_positions_out = Tensor::empty({static_cast<size_t>(n_primitives), 2},
-                                                   lfs::core::Device::CUDA, lfs::core::DataType::Float32);
+                                                  lfs::core::Device::CUDA, lfs::core::DataType::Float32);
             screen_positions_ptr = reinterpret_cast<float2*>(screen_positions_out->ptr<float>());
         }
 
         // Preview selection tensor (used by rectangle/lasso/polygon modes regardless of brush_active)
         bool* const brush_selection_ptr = (brush_selection_out && brush_selection_out->is_valid())
-            ? brush_selection_out->ptr<bool>() : nullptr;
+                                              ? brush_selection_out->ptr<bool>()
+                                              : nullptr;
 
         // Prepare crop box parameters
         const float* crop_box_transform_ptr = nullptr;
@@ -204,10 +205,11 @@ namespace lfs::rendering {
             // vector<bool> is not contiguous, convert to uint8_t
             std::vector<uint8_t> mask_data(num_selected_nodes);
             std::transform(selected_node_mask.begin(), selected_node_mask.end(),
-                          mask_data.begin(), [](bool b) { return b ? 1 : 0; });
+                           mask_data.begin(), [](bool b) { return b ? 1 : 0; });
             selected_node_mask_tensor = Tensor::from_blob(
-                mask_data.data(), {static_cast<size_t>(num_selected_nodes)},
-                lfs::core::Device::CPU, lfs::core::DataType::UInt8).cuda();
+                                            mask_data.data(), {static_cast<size_t>(num_selected_nodes)},
+                                            lfs::core::Device::CPU, lfs::core::DataType::UInt8)
+                                            .cuda();
             selected_node_mask_ptr = reinterpret_cast<const bool*>(selected_node_mask_tensor.ptr<uint8_t>());
         }
 
@@ -272,7 +274,7 @@ namespace lfs::rendering {
             orthographic,
             ortho_scale);
 
-        arena.end_frame(frame_id, true);  // true = from_rendering
+        arena.end_frame(frame_id, true); // true = from_rendering
         arena.set_rendering_active(false);
 
         return {std::move(image), std::move(alpha), std::move(depth)};
@@ -285,7 +287,8 @@ namespace lfs::rendering {
         float radius,
         Tensor& selection_out) {
 
-        if (!screen_positions.is_valid() || screen_positions.size(0) == 0) return;
+        if (!screen_positions.is_valid() || screen_positions.size(0) == 0)
+            return;
 
         int n_primitives = static_cast<int>(screen_positions.size(0));
 
@@ -302,8 +305,10 @@ namespace lfs::rendering {
         const Tensor& positions,
         const Tensor& polygon,
         Tensor& selection) {
-        if (!positions.is_valid() || positions.size(0) == 0) return;
-        if (!polygon.is_valid() || polygon.size(0) < 3) return;
+        if (!positions.is_valid() || positions.size(0) == 0)
+            return;
+        if (!polygon.is_valid() || polygon.size(0) < 3)
+            return;
 
         polygon_select(
             reinterpret_cast<const float2*>(positions.ptr<float>()),
@@ -317,7 +322,8 @@ namespace lfs::rendering {
         const Tensor& positions,
         const float x0, const float y0, const float x1, const float y1,
         Tensor& selection) {
-        if (!positions.is_valid() || positions.size(0) == 0) return;
+        if (!positions.is_valid() || positions.size(0) == 0)
+            return;
 
         rect_select(
             reinterpret_cast<const float2*>(positions.ptr<float>()),
@@ -331,7 +337,8 @@ namespace lfs::rendering {
         const float x0, const float y0, const float x1, const float y1,
         Tensor& selection,
         const bool add_mode) {
-        if (!positions.is_valid() || positions.size(0) == 0) return;
+        if (!positions.is_valid() || positions.size(0) == 0)
+            return;
 
         rect_select_mode(
             reinterpret_cast<const float2*>(positions.ptr<float>()),
@@ -346,8 +353,10 @@ namespace lfs::rendering {
         const Tensor& polygon,
         Tensor& selection,
         const bool add_mode) {
-        if (!positions.is_valid() || positions.size(0) == 0) return;
-        if (!polygon.is_valid() || polygon.size(0) < 3) return;
+        if (!positions.is_valid() || positions.size(0) == 0)
+            return;
+        if (!polygon.is_valid() || polygon.size(0) < 3)
+            return;
 
         polygon_select_mode(
             reinterpret_cast<const float2*>(positions.ptr<float>()),
@@ -370,7 +379,8 @@ namespace lfs::rendering {
         const int target_node) {
 
         const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx >= n) return;
+        if (idx >= n)
+            return;
 
         const uint8_t existing_group = existing ? existing[idx] : 0;
         const bool selected = cumulative[idx];
@@ -407,18 +417,21 @@ namespace lfs::rendering {
         const Tensor* transform_indices,
         const int target_node_index) {
 
-        if (!cumulative_selection.is_valid() || cumulative_selection.size(0) == 0) return;
+        if (!cumulative_selection.is_valid() || cumulative_selection.size(0) == 0)
+            return;
 
         const int n = static_cast<int>(cumulative_selection.size(0));
         constexpr int BLOCK_SIZE = 256;
         const int grid_size = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
         const uint8_t* existing_ptr = (existing_mask.is_valid() && existing_mask.numel() == static_cast<size_t>(n))
-            ? existing_mask.ptr<uint8_t>() : nullptr;
+                                          ? existing_mask.ptr<uint8_t>()
+                                          : nullptr;
 
         const int* node_indices_ptr = (transform_indices && transform_indices->is_valid() &&
                                        transform_indices->numel() == static_cast<size_t>(n))
-            ? transform_indices->ptr<int>() : nullptr;
+                                          ? transform_indices->ptr<int>()
+                                          : nullptr;
 
         apply_selection_group_kernel<<<grid_size, BLOCK_SIZE>>>(
             cumulative_selection.ptr<bool>(),
@@ -445,7 +458,7 @@ namespace lfs::rendering {
             }
             return tensor.cuda();
         }
-    }
+    } // namespace
 
     __global__ void apply_selection_group_mask_kernel(
         const bool* __restrict__ cumulative,
@@ -461,7 +474,8 @@ namespace lfs::rendering {
         const bool replace_mode) {
 
         const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx >= n) return;
+        if (idx >= n)
+            return;
 
         const uint8_t existing_group = existing ? existing[idx] : 0;
 
@@ -511,17 +525,23 @@ namespace lfs::rendering {
         const std::vector<bool>& valid_nodes,
         const bool replace_mode) {
 
-        if (!cumulative_selection.is_valid() || cumulative_selection.size(0) == 0) return;
-        if (valid_nodes.empty()) return;
+        if (!cumulative_selection.is_valid() || cumulative_selection.size(0) == 0)
+            return;
+        if (valid_nodes.empty())
+            return;
 
         const int n = static_cast<int>(cumulative_selection.size(0));
         const int num_nodes = static_cast<int>(valid_nodes.size());
 
         const uint8_t* const existing_ptr = (existing_mask.is_valid() &&
-            existing_mask.numel() == static_cast<size_t>(n)) ? existing_mask.ptr<uint8_t>() : nullptr;
+                                             existing_mask.numel() == static_cast<size_t>(n))
+                                                ? existing_mask.ptr<uint8_t>()
+                                                : nullptr;
 
         const int* const node_indices_ptr = (transform_indices && transform_indices->is_valid() &&
-            transform_indices->numel() == static_cast<size_t>(n)) ? transform_indices->ptr<int>() : nullptr;
+                                             transform_indices->numel() == static_cast<size_t>(n))
+                                                ? transform_indices->ptr<int>()
+                                                : nullptr;
 
         const Tensor valid_nodes_gpu = upload_bool_mask(valid_nodes);
         const int grid_size = (n + KERNEL_BLOCK_SIZE - 1) / KERNEL_BLOCK_SIZE;
@@ -547,7 +567,8 @@ namespace lfs::rendering {
         const int target_node) {
 
         const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx >= n) return;
+        if (idx >= n)
+            return;
 
         if (node_indices[idx] != target_node) {
             selection[idx] = false;
@@ -559,11 +580,14 @@ namespace lfs::rendering {
         const Tensor& transform_indices,
         const int target_node_index) {
 
-        if (!selection.is_valid() || !transform_indices.is_valid()) return;
-        if (target_node_index < 0) return;
+        if (!selection.is_valid() || !transform_indices.is_valid())
+            return;
+        if (target_node_index < 0)
+            return;
 
         const int n = static_cast<int>(selection.size(0));
-        if (transform_indices.numel() != static_cast<size_t>(n)) return;
+        if (transform_indices.numel() != static_cast<size_t>(n))
+            return;
 
         constexpr int BLOCK_SIZE = 256;
         const int grid_size = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -583,7 +607,8 @@ namespace lfs::rendering {
         const int num_nodes) {
 
         const int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx >= n) return;
+        if (idx >= n)
+            return;
 
         const int node_idx = node_indices[idx];
         if (node_idx < 0 || node_idx >= num_nodes || !valid_nodes[node_idx]) {
@@ -596,11 +621,14 @@ namespace lfs::rendering {
         const Tensor& transform_indices,
         const std::vector<bool>& valid_nodes) {
 
-        if (!selection.is_valid() || !transform_indices.is_valid()) return;
-        if (valid_nodes.empty()) return;
+        if (!selection.is_valid() || !transform_indices.is_valid())
+            return;
+        if (valid_nodes.empty())
+            return;
 
         const int n = static_cast<int>(selection.size(0));
-        if (transform_indices.numel() != static_cast<size_t>(n)) return;
+        if (transform_indices.numel() != static_cast<size_t>(n))
+            return;
 
         const int num_nodes = static_cast<int>(valid_nodes.size());
         const Tensor valid_nodes_gpu = upload_bool_mask(valid_nodes);
@@ -658,8 +686,8 @@ namespace lfs::rendering {
 
         // Concatenate SH coefficients [N, K, 3]
         const Tensor sh_coeffs = (sh_rest.numel() > 0 && num_sh_coeffs > 1)
-            ? Tensor::cat({sh0, sh_rest}, 1).contiguous()
-            : sh0.contiguous();
+                                     ? Tensor::cat({sh0, sh_rest}, 1).contiguous()
+                                     : sh0.contiguous();
 
         // Contiguous copies
         const Tensor means_c = means.contiguous();

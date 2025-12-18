@@ -13,11 +13,11 @@
  * - SSIM map masking (like legacy fused_ssim_map)
  */
 
-#include "core/tensor.hpp"
 #include "core/parameters.hpp"
+#include "core/tensor.hpp"
 #include "lfs/kernels/ssim.cuh"
-#include <gtest/gtest.h>
 #include <cmath>
+#include <gtest/gtest.h>
 
 using namespace lfs::core;
 
@@ -63,9 +63,9 @@ protected:
         for (int h = 0; h < H; ++h) {
             for (int w = 0; w < W; ++w) {
                 // Radial gradient from center
-                float dy = (h - H/2.0f) / (H/2.0f);
-                float dx = (w - W/2.0f) / (W/2.0f);
-                float dist = std::sqrt(dx*dx + dy*dy);
+                float dy = (h - H / 2.0f) / (H / 2.0f);
+                float dx = (w - W / 2.0f) / (W / 2.0f);
+                float dist = std::sqrt(dx * dx + dy * dy);
                 mask_data[h * W + w] = std::max(0.0f, 1.0f - dist);
             }
         }
@@ -81,8 +81,8 @@ TEST_F(MaskLossTest, OpacityPenaltyFormula) {
     constexpr float POWER = 2.0f;
 
     // Create uniform alpha and binary mask
-    auto alpha = Tensor::full({H, W}, 0.5f, Device::CUDA);  // 50% opacity everywhere
-    auto mask = create_binary_mask(H, W, 0.25f);  // 25% is object
+    auto alpha = Tensor::full({H, W}, 0.5f, Device::CUDA); // 50% opacity everywhere
+    auto mask = create_binary_mask(H, W, 0.25f);           // 25% is object
 
     // Compute inverted mask
     auto ones = Tensor::full({H, W}, 1.0f, Device::CUDA);
@@ -112,7 +112,7 @@ TEST_F(MaskLossTest, OpacityPenaltyZeroForFullMask) {
     constexpr float WEIGHT = 100.0f;
 
     auto alpha = Tensor::full({H, W}, 1.0f, Device::CUDA);
-    auto mask = Tensor::ones({H, W}, Device::CUDA);  // Full object coverage
+    auto mask = Tensor::ones({H, W}, Device::CUDA); // Full object coverage
 
     auto ones = Tensor::full({H, W}, 1.0f, Device::CUDA);
     auto inverted_mask = ones - mask;
@@ -144,7 +144,7 @@ TEST_F(MaskLossTest, OpacityPenaltyIncreasesWithBackgroundAlpha) {
     float penalty_high = (alpha_high * penalty_weight_map).mean().item<float>() * WEIGHT;
 
     EXPECT_GT(penalty_high, penalty_low);
-    EXPECT_NEAR(penalty_high / penalty_low, 9.0f, 0.5f);  // Should be ~9x
+    EXPECT_NEAR(penalty_high / penalty_low, 9.0f, 0.5f); // Should be ~9x
 }
 
 // Test power falloff behavior
@@ -196,7 +196,7 @@ TEST_F(MaskLossTest, MaskedL1Loss) {
 
     float loss_val = masked_l1.item<float>();
     EXPECT_GT(loss_val, 0.0f);
-    EXPECT_LT(loss_val, 1.0f);  // Should be reasonable for random images
+    EXPECT_LT(loss_val, 1.0f); // Should be reasonable for random images
 }
 
 // Test that masked L1 only considers object regions
@@ -354,7 +354,7 @@ TEST_F(MaskLossTest, AlphaConsistentLoss) {
 
     float loss_val = alpha_loss.item<float>();
     EXPECT_GT(loss_val, 0.0f);
-    EXPECT_LT(loss_val, ALPHA_WEIGHT);  // Max L1 diff is 1.0
+    EXPECT_LT(loss_val, ALPHA_WEIGHT); // Max L1 diff is 1.0
 }
 
 // Test SSIM map forward function returns per-pixel SSIM
@@ -413,7 +413,7 @@ TEST_F(MaskLossTest, MaskedSSIMComputation) {
 
     // Get SSIM map
     auto result = lfs::training::kernels::ssim_forward_map(rendered, gt, false);
-    auto ssim_map_3d = result.ssim_map.squeeze(0);  // [C, H, W]
+    auto ssim_map_3d = result.ssim_map.squeeze(0); // [C, H, W]
 
     // Expand mask to [C, H, W]
     auto mask_expanded = mask_2d.unsqueeze(0).expand({C, H, W});
@@ -448,7 +448,7 @@ TEST_F(MaskLossTest, MaskedSSIMIgnoresBackground) {
     auto modified = base.clone();
 
     // Create mask where center is object (1.0), edges are background (0.0)
-    auto mask_2d = create_binary_mask(H, W, 0.25f);  // 25% is object
+    auto mask_2d = create_binary_mask(H, W, 0.25f); // 25% is object
     auto mask_expanded = mask_2d.unsqueeze(0).expand({C, H, W});
     auto mask_sum = mask_expanded.sum() + EPSILON;
 
@@ -496,7 +496,7 @@ TEST_F(MaskLossTest, FullMaskedLossComputation) {
 
     float loss_val = combined_loss.item<float>();
     EXPECT_GT(loss_val, 0.0f);
-    EXPECT_LT(loss_val, 2.0f);  // Reasonable bound
+    EXPECT_LT(loss_val, 2.0f); // Reasonable bound
 
     // Verify components add up correctly
     float l1_val = masked_l1.item<float>() * (1.0f - LAMBDA_DSSIM);
@@ -542,7 +542,8 @@ TEST_F(MaskLossTest, MaskedSSIMGradientNumerical) {
                 minus_cpu.ptr<float>()[idx] = rendered_data[idx] - DELTA;
 
                 const float numerical = (compute_loss(plus_cpu.to(Device::CUDA)) -
-                                         compute_loss(minus_cpu.to(Device::CUDA))) / (2.0f * DELTA);
+                                         compute_loss(minus_cpu.to(Device::CUDA))) /
+                                        (2.0f * DELTA);
                 const float analytical = analytical_data[idx];
                 const float denom = std::max(std::abs(numerical), std::abs(analytical));
                 if (denom > 1e-5f) {

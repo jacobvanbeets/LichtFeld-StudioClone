@@ -1013,7 +1013,6 @@ struct EquirectangularCameraModel : BaseCameraModel<EquirectangularCameraModel> 
 
     Parameters parameters;
 
-
     inline __device__ auto camera_ray_to_image_point(glm::fvec3 const& cam_ray, float margin_factor) const -> typename Base::ImagePointReturn {
         auto azimuth = std::atan2(cam_ray.x, cam_ray.z);
         auto elevation = std::asin(cam_ray.y / length(cam_ray));
@@ -1050,13 +1049,14 @@ struct ThinPrismFisheyeCameraModel
     struct Parameters : Base::Parameters {
         std::array<float, 2> principal_point;
         std::array<float, 2> focal_length;
-        std::array<float, 4> radial_coeffs = {0.f};      // k1, k2, k3, k4
-        std::array<float, 4> thin_prism_coeffs = {0.f};  // p1, p2, sx1, sy1
+        std::array<float, 4> radial_coeffs = {0.f};     // k1, k2, k3, k4
+        std::array<float, 4> thin_prism_coeffs = {0.f}; // p1, p2, sx1, sy1
     };
 
     __host__ __device__ ThinPrismFisheyeCameraModel(
         Parameters const& parameters, float min_2d_norm = 1e-6f)
-        : parameters(parameters), min_2d_norm(min_2d_norm) {
+        : parameters(parameters),
+          min_2d_norm(min_2d_norm) {
         auto const& [k1, k2, k3, k4] = parameters.radial_coeffs;
         forward_poly_odd = {1.f, k1, k2, k3, k4};
         dforward_poly_even = {1, 3 * k1, 5 * k2, 7 * k3, 9 * k4};
@@ -1088,8 +1088,8 @@ struct ThinPrismFisheyeCameraModel
         }
 
         max_angle = min(max_angle,
-            max(max_radius_pixels / parameters.focal_length[0],
-                max_radius_pixels / parameters.focal_length[1]));
+                        max(max_radius_pixels / parameters.focal_length[0],
+                            max_radius_pixels / parameters.focal_length[1]));
 
         auto const max_normalized_dist = std::max(
             parameters.resolution[0] / 2.f / parameters.focal_length[0],
@@ -1146,7 +1146,7 @@ struct ThinPrismFisheyeCameraModel
 
     inline __device__ CameraRay image_point_to_camera_ray(glm::fvec2 image_point) const {
         auto uv = (image_point - glm::fvec2{parameters.principal_point[0],
-                                             parameters.principal_point[1]}) /
+                                            parameters.principal_point[1]}) /
                   glm::fvec2{parameters.focal_length[0], parameters.focal_length[1]};
 
         // Iteratively remove tangential and thin prism distortion

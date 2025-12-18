@@ -4,11 +4,11 @@
 
 // Compare PLY loaded directly vs PLY roundtripped through SPZ using reference implementation
 
-#include <iostream>
+#include "load-spz.h"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include "load-spz.h"
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -57,56 +57,56 @@ int main(int argc, char* argv[]) {
 
         // Position
         std::cout << "Position:\n";
-        std::cout << "  PLY: [" << from_ply.positions[i*3+0] << ", "
-                  << from_ply.positions[i*3+1] << ", "
-                  << from_ply.positions[i*3+2] << "]\n";
-        std::cout << "  SPZ: [" << from_spz.positions[i*3+0] << ", "
-                  << from_spz.positions[i*3+1] << ", "
-                  << from_spz.positions[i*3+2] << "]\n";
+        std::cout << "  PLY: [" << from_ply.positions[i * 3 + 0] << ", "
+                  << from_ply.positions[i * 3 + 1] << ", "
+                  << from_ply.positions[i * 3 + 2] << "]\n";
+        std::cout << "  SPZ: [" << from_spz.positions[i * 3 + 0] << ", "
+                  << from_spz.positions[i * 3 + 1] << ", "
+                  << from_spz.positions[i * 3 + 2] << "]\n";
 
         // Rotation (xyzw in both)
         std::cout << "Rotation (xyzw):\n";
-        std::cout << "  PLY: [" << from_ply.rotations[i*4+0] << ", "
-                  << from_ply.rotations[i*4+1] << ", "
-                  << from_ply.rotations[i*4+2] << ", "
-                  << from_ply.rotations[i*4+3] << "]\n";
-        std::cout << "  SPZ: [" << from_spz.rotations[i*4+0] << ", "
-                  << from_spz.rotations[i*4+1] << ", "
-                  << from_spz.rotations[i*4+2] << ", "
-                  << from_spz.rotations[i*4+3] << "]\n";
+        std::cout << "  PLY: [" << from_ply.rotations[i * 4 + 0] << ", "
+                  << from_ply.rotations[i * 4 + 1] << ", "
+                  << from_ply.rotations[i * 4 + 2] << ", "
+                  << from_ply.rotations[i * 4 + 3] << "]\n";
+        std::cout << "  SPZ: [" << from_spz.rotations[i * 4 + 0] << ", "
+                  << from_spz.rotations[i * 4 + 1] << ", "
+                  << from_spz.rotations[i * 4 + 2] << ", "
+                  << from_spz.rotations[i * 4 + 3] << "]\n";
 
         // SH DC
         std::cout << "Color (SH DC):\n";
-        std::cout << "  PLY: [" << from_ply.colors[i*3+0] << ", "
-                  << from_ply.colors[i*3+1] << ", "
-                  << from_ply.colors[i*3+2] << "]\n";
-        std::cout << "  SPZ: [" << from_spz.colors[i*3+0] << ", "
-                  << from_spz.colors[i*3+1] << ", "
-                  << from_spz.colors[i*3+2] << "]\n";
+        std::cout << "  PLY: [" << from_ply.colors[i * 3 + 0] << ", "
+                  << from_ply.colors[i * 3 + 1] << ", "
+                  << from_ply.colors[i * 3 + 2] << "]\n";
+        std::cout << "  SPZ: [" << from_spz.colors[i * 3 + 0] << ", "
+                  << from_spz.colors[i * 3 + 1] << ", "
+                  << from_spz.colors[i * 3 + 2] << "]\n";
 
         // Higher order SH (first few)
         if (from_ply.shDegree > 0) {
             int sh_dim = 0;
-            switch(from_ply.shDegree) {
-                case 1: sh_dim = 3; break;
-                case 2: sh_dim = 8; break;
-                case 3: sh_dim = 15; break;
+            switch (from_ply.shDegree) {
+            case 1: sh_dim = 3; break;
+            case 2: sh_dim = 8; break;
+            case 3: sh_dim = 15; break;
             }
 
             std::cout << "SH coeff 0 (of " << sh_dim << "):\n";
             size_t idx = i * sh_dim * 3;
-            std::cout << "  PLY: [" << from_ply.sh[idx+0] << ", "
-                      << from_ply.sh[idx+1] << ", " << from_ply.sh[idx+2] << "]\n";
-            std::cout << "  SPZ: [" << from_spz.sh[idx+0] << ", "
-                      << from_spz.sh[idx+1] << ", " << from_spz.sh[idx+2] << "]\n";
+            std::cout << "  PLY: [" << from_ply.sh[idx + 0] << ", "
+                      << from_ply.sh[idx + 1] << ", " << from_ply.sh[idx + 2] << "]\n";
+            std::cout << "  SPZ: [" << from_spz.sh[idx + 0] << ", "
+                      << from_spz.sh[idx + 1] << ", " << from_spz.sh[idx + 2] << "]\n";
 
             if (sh_dim > 1) {
                 std::cout << "SH coeff 1:\n";
                 idx += 3;
-                std::cout << "  PLY: [" << from_ply.sh[idx+0] << ", "
-                          << from_ply.sh[idx+1] << ", " << from_ply.sh[idx+2] << "]\n";
-                std::cout << "  SPZ: [" << from_spz.sh[idx+0] << ", "
-                          << from_spz.sh[idx+1] << ", " << from_spz.sh[idx+2] << "]\n";
+                std::cout << "  PLY: [" << from_ply.sh[idx + 0] << ", "
+                          << from_ply.sh[idx + 1] << ", " << from_ply.sh[idx + 2] << "]\n";
+                std::cout << "  SPZ: [" << from_spz.sh[idx + 0] << ", "
+                          << from_spz.sh[idx + 1] << ", " << from_spz.sh[idx + 2] << "]\n";
             }
         }
     }

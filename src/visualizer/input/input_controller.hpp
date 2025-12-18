@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "core/services.hpp"
 #include "core/events.hpp"
+#include "core/services.hpp"
 #include "input/input_bindings.hpp"
 #include "input/input_types.hpp"
 #include "internal/viewport.hpp"
@@ -73,7 +73,7 @@ namespace lfs::vis {
         // Check if continuous input is active (WASD keys or camera drag)
         [[nodiscard]] bool isContinuousInputActive() const {
             const bool movement_active = keys_movement_[0] || keys_movement_[1] || keys_movement_[2] ||
-                                        keys_movement_[3] || keys_movement_[4] || keys_movement_[5];
+                                         keys_movement_[3] || keys_movement_[4] || keys_movement_[5];
             const bool camera_drag = drag_mode_ == DragMode::Orbit ||
                                      drag_mode_ == DragMode::Pan ||
                                      drag_mode_ == DragMode::Rotate;
@@ -171,7 +171,7 @@ namespace lfs::vis {
         bool key_r_pressed_ = false;
         bool key_ctrl_pressed_ = false;
         bool key_alt_pressed_ = false;
-        bool keys_movement_[6] = {false, false, false, false, false, false};  // fwd, left, back, right, down, up
+        bool keys_movement_[6] = {false, false, false, false, false, false}; // fwd, left, back, right, down, up
 
         // Cached movement key bindings (refreshed when bindings change)
         struct MovementKeys {

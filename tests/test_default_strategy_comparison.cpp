@@ -5,13 +5,13 @@
 // These tests verify that the LibTorch-free implementation produces
 // mathematically equivalent results to the reference implementation
 
-#include "training/strategies/default_strategy.hpp"
 #include "core/logger.hpp"
 #include "core/parameters.hpp"
 #include "core/point_cloud.hpp"
 #include "core/splat_data.hpp"
-#include <gtest/gtest.h>
+#include "training/strategies/default_strategy.hpp"
 #include <cmath>
+#include <gtest/gtest.h>
 
 using namespace lfs::training;
 using namespace lfs::core;
@@ -24,10 +24,10 @@ static SplatData create_test_splat_data(int n_gaussians = 100) {
     std::vector<float> scaling_data(n_gaussians * 3, -2.0f);
     std::vector<float> rotation_data(n_gaussians * 4);
     for (int i = 0; i < n_gaussians; ++i) {
-        rotation_data[i * 4 + 0] = 1.0f;  // w
-        rotation_data[i * 4 + 1] = 0.0f;  // x
-        rotation_data[i * 4 + 2] = 0.0f;  // y
-        rotation_data[i * 4 + 3] = 0.0f;  // z
+        rotation_data[i * 4 + 0] = 1.0f; // w
+        rotation_data[i * 4 + 1] = 0.0f; // x
+        rotation_data[i * 4 + 2] = 0.0f; // y
+        rotation_data[i * 4 + 3] = 0.0f; // z
     }
     std::vector<float> opacity_data(n_gaussians, 0.5f);
 
@@ -50,7 +50,7 @@ TEST(DefaultStrategyComparisonTest, SplitOpacityFormula_RevisedMode) {
     std::vector<float> opacity_values = {-3.0f, -1.0f, 0.0f, 1.0f, 3.0f};
     for (size_t i = 0; i < opacity_values.size(); ++i) {
         std::vector<float> single_val = {opacity_values[i]};
-        splat_data.opacity_raw().slice(0, i, i+1) =
+        splat_data.opacity_raw().slice(0, i, i + 1) =
             Tensor::from_vector(single_val, TensorShape({1, 1}), Device::CUDA);
     }
 
@@ -65,7 +65,7 @@ TEST(DefaultStrategyComparisonTest, SplitOpacityFormula_RevisedMode) {
     auto is_split = Tensor::ones_bool({10}, Device::CPU);
     auto mask_ptr = is_split.ptr<unsigned char>();
     for (int i = 0; i < 10; ++i) {
-        mask_ptr[i] = (i < 5) ? 1 : 0;  // Split first 5
+        mask_ptr[i] = (i < 5) ? 1 : 0; // Split first 5
     }
     is_split = is_split.to(Device::CUDA);
 
@@ -124,7 +124,7 @@ TEST(DefaultStrategyComparisonTest, QuaternionToRotationMatrix) {
 // Test reset_opacity formula: clamp to logit(2 * prune_opacity)
 TEST(DefaultStrategyComparisonTest, ResetOpacityFormula) {
     float prune_opacity = 0.01f;
-    float threshold = 2.0f * prune_opacity;  // 0.02
+    float threshold = 2.0f * prune_opacity; // 0.02
     float expected_logit = std::log(threshold / (1.0f - threshold));
 
     // Verify formula matches reference
@@ -148,9 +148,12 @@ TEST(DefaultStrategyComparisonTest, GrowGaussians_GradientThreshold) {
     for (float grad : grad_values) {
         bool should_grow = grad > opt_params.grad_threshold;
 
-        if (grad == 0.0001f) EXPECT_FALSE(should_grow);
-        if (grad == 0.0002f) EXPECT_FALSE(should_grow);  // Equal, not greater
-        if (grad == 0.0003f) EXPECT_TRUE(should_grow);
+        if (grad == 0.0001f)
+            EXPECT_FALSE(should_grow);
+        if (grad == 0.0002f)
+            EXPECT_FALSE(should_grow); // Equal, not greater
+        if (grad == 0.0003f)
+            EXPECT_TRUE(should_grow);
     }
 }
 
@@ -163,7 +166,7 @@ TEST(DefaultStrategyComparisonTest, GrowGaussians_ScaleThreshold) {
     for (size_t i = 0; i < scale_values.size(); ++i) {
         std::vector<float> scale_vec = {scale_values[i], scale_values[i], scale_values[i]};
         auto scale_tensor = Tensor::from_vector(scale_vec, TensorShape({1, 3}), Device::CUDA);
-        splat_data.scaling_raw().slice(0, i, i+1) = scale_tensor.log();
+        splat_data.scaling_raw().slice(0, i, i + 1) = scale_tensor.log();
     }
 
     DefaultStrategy strategy(splat_data);
@@ -174,16 +177,20 @@ TEST(DefaultStrategyComparisonTest, GrowGaussians_ScaleThreshold) {
     strategy.initialize(opt_params);
 
     float scene_scale = 1.0f;
-    float threshold = opt_params.grow_scale3d * scene_scale;  // 2.0
+    float threshold = opt_params.grow_scale3d * scene_scale; // 2.0
 
     // Test decision logic
     for (float max_scale : scale_values) {
         bool is_small = max_scale <= threshold;
 
-        if (max_scale == 0.5f) EXPECT_TRUE(is_small);   // Should duplicate
-        if (max_scale == 1.0f) EXPECT_TRUE(is_small);   // Should duplicate
-        if (max_scale == 1.5f) EXPECT_TRUE(is_small);   // Should duplicate
-        if (max_scale == 2.5f) EXPECT_FALSE(is_small);  // Should split
+        if (max_scale == 0.5f)
+            EXPECT_TRUE(is_small); // Should duplicate
+        if (max_scale == 1.0f)
+            EXPECT_TRUE(is_small); // Should duplicate
+        if (max_scale == 1.5f)
+            EXPECT_TRUE(is_small); // Should duplicate
+        if (max_scale == 2.5f)
+            EXPECT_FALSE(is_small); // Should split
     }
 }
 
@@ -196,7 +203,7 @@ TEST(DefaultStrategyComparisonTest, PruneGaussians_OpacityThreshold) {
     for (size_t i = 0; i < opacity_values.size(); ++i) {
         float logit_val = std::log(opacity_values[i] / (1.0f - opacity_values[i]));
         std::vector<float> single_val = {logit_val};
-        splat_data.opacity_raw().slice(0, i, i+1) =
+        splat_data.opacity_raw().slice(0, i, i + 1) =
             Tensor::from_vector(single_val, TensorShape({1, 1}), Device::CUDA);
     }
 
@@ -211,10 +218,14 @@ TEST(DefaultStrategyComparisonTest, PruneGaussians_OpacityThreshold) {
     for (size_t i = 0; i < opacity_values.size(); ++i) {
         bool should_prune = opacity_values[i] < opt_params.prune_opacity;
 
-        if (i == 0) EXPECT_TRUE(should_prune);   // 0.001 < 0.005
-        if (i == 1) EXPECT_FALSE(should_prune);  // 0.005 == 0.005
-        if (i == 2) EXPECT_FALSE(should_prune);  // 0.01 > 0.005
-        if (i == 3) EXPECT_FALSE(should_prune);  // 0.1 > 0.005
+        if (i == 0)
+            EXPECT_TRUE(should_prune); // 0.001 < 0.005
+        if (i == 1)
+            EXPECT_FALSE(should_prune); // 0.005 == 0.005
+        if (i == 2)
+            EXPECT_FALSE(should_prune); // 0.01 > 0.005
+        if (i == 3)
+            EXPECT_FALSE(should_prune); // 0.1 > 0.005
     }
 }
 
@@ -232,13 +243,13 @@ TEST(DefaultStrategyComparisonTest, IsRefiningLogic) {
     strategy.initialize(opt_params);
 
     // Test various iterations
-    EXPECT_FALSE(strategy.is_refining(400));   // Before start_refine
-    EXPECT_FALSE(strategy.is_refining(500));   // Equal to start_refine, not greater
-    EXPECT_TRUE(strategy.is_refining(600));    // 600 > 500, 600 % 100 == 0, 600 % 3000 >= 500
-    EXPECT_FALSE(strategy.is_refining(650));   // 650 % 100 != 0
-    EXPECT_TRUE(strategy.is_refining(700));    // 700 > 500, 700 % 100 == 0
-    EXPECT_FALSE(strategy.is_refining(3100));  // 3100 % 3000 = 100 < 500 (pause period)
-    EXPECT_TRUE(strategy.is_refining(3500));   // 3500 % 3000 = 500 >= 500 (after pause)
+    EXPECT_FALSE(strategy.is_refining(400));  // Before start_refine
+    EXPECT_FALSE(strategy.is_refining(500));  // Equal to start_refine, not greater
+    EXPECT_TRUE(strategy.is_refining(600));   // 600 > 500, 600 % 100 == 0, 600 % 3000 >= 500
+    EXPECT_FALSE(strategy.is_refining(650));  // 650 % 100 != 0
+    EXPECT_TRUE(strategy.is_refining(700));   // 700 > 500, 700 % 100 == 0
+    EXPECT_FALSE(strategy.is_refining(3100)); // 3100 % 3000 = 100 < 500 (pause period)
+    EXPECT_TRUE(strategy.is_refining(3500));  // 3500 % 3000 = 500 >= 500 (after pause)
 }
 
 // Test parameter count preservation through duplicate

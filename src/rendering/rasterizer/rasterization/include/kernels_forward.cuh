@@ -55,9 +55,9 @@ namespace lfs::rendering::kernels::forward {
         const float cy,
         const float near_, // near and far are macros in windowns
         const float far_,
-        const float* model_transforms,      // Array of 4x4 transforms (row-major), one per node
-        const int* transform_indices,       // Per-Gaussian index into transforms array [N]
-        const int num_transforms,           // Number of transforms in array
+        const float* model_transforms, // Array of 4x4 transforms (row-major), one per node
+        const int* transform_indices,  // Per-Gaussian index into transforms array [N]
+        const int num_transforms,      // Number of transforms in array
         const uint8_t* selection_mask,
         const bool brush_active,
         const float brush_x,
@@ -106,7 +106,8 @@ namespace lfs::rendering::kernels::forward {
         bool has_transform = false;
         if (model_transforms != nullptr && num_transforms > 0) {
             const int transform_idx = transform_indices != nullptr
-                ? min(max(transform_indices[primitive_idx], 0), num_transforms - 1) : 0;
+                                          ? min(max(transform_indices[primitive_idx], 0), num_transforms - 1)
+                                          : 0;
             const float* const m = model_transforms + transform_idx * 16;
             has_transform = m[0] != 1.0f || m[5] != 1.0f || m[10] != 1.0f ||
                             m[1] != 0.0f || m[2] != 0.0f || m[3] != 0.0f ||
@@ -150,7 +151,8 @@ namespace lfs::rendering::kernels::forward {
             const bool inside = dx >= dmin.x && dx <= dmax.x &&
                                 dy >= dmin.y && dy <= dmax.y &&
                                 dz >= dmin.z && dz <= dmax.z;
-            if (!inside) outside_crop = true;
+            if (!inside)
+                outside_crop = true;
         }
 
         // Mark unselected nodes for desaturation
@@ -213,8 +215,7 @@ namespace lfs::rendering::kernels::forward {
             const mat3x3 cov_full = {
                 cov3d.m11, cov3d.m12, cov3d.m13,
                 cov3d.m12, cov3d.m22, cov3d.m23,
-                cov3d.m13, cov3d.m23, cov3d.m33
-            };
+                cov3d.m13, cov3d.m23, cov3d.m33};
 
             // Compute M * cov (3x3 * 3x3)
             const mat3x3 m_cov = {
@@ -226,8 +227,7 @@ namespace lfs::rendering::kernels::forward {
                 model_rot.m21 * cov_full.m13 + model_rot.m22 * cov_full.m23 + model_rot.m23 * cov_full.m33,
                 model_rot.m31 * cov_full.m11 + model_rot.m32 * cov_full.m21 + model_rot.m33 * cov_full.m31,
                 model_rot.m31 * cov_full.m12 + model_rot.m32 * cov_full.m22 + model_rot.m33 * cov_full.m32,
-                model_rot.m31 * cov_full.m13 + model_rot.m32 * cov_full.m23 + model_rot.m33 * cov_full.m33
-            };
+                model_rot.m31 * cov_full.m13 + model_rot.m32 * cov_full.m23 + model_rot.m33 * cov_full.m33};
 
             // Compute (M * cov) * M^T - result is symmetric, only compute upper triangle
             cov3d = {
@@ -236,8 +236,7 @@ namespace lfs::rendering::kernels::forward {
                 m_cov.m11 * model_rot.m31 + m_cov.m12 * model_rot.m32 + m_cov.m13 * model_rot.m33,
                 m_cov.m21 * model_rot.m21 + m_cov.m22 * model_rot.m22 + m_cov.m23 * model_rot.m23,
                 m_cov.m21 * model_rot.m31 + m_cov.m22 * model_rot.m32 + m_cov.m23 * model_rot.m33,
-                m_cov.m31 * model_rot.m31 + m_cov.m32 * model_rot.m32 + m_cov.m33 * model_rot.m33
-            };
+                m_cov.m31 * model_rot.m31 + m_cov.m32 * model_rot.m32 + m_cov.m33 * model_rot.m33};
         }
 
         // Camera-space position
@@ -248,8 +247,8 @@ namespace lfs::rendering::kernels::forward {
 
         // EWA splatting: project 3D Gaussian to 2D
         const auto proj = orthographic
-            ? kernels::project_orthographic(cam_x, cam_y, cx, cy, ortho_scale, w2c_r1, w2c_r2)
-            : kernels::project_perspective(cam_x, cam_y, depth, fx, fy, cx, cy, w, h, w2c_r1, w2c_r2, w2c_r3);
+                              ? kernels::project_orthographic(cam_x, cam_y, cx, cy, ortho_scale, w2c_r1, w2c_r2)
+                              : kernels::project_perspective(cam_x, cam_y, depth, fx, fy, cx, cy, w, h, w2c_r1, w2c_r2, w2c_r3);
         const float2 mean2d = proj.mean2d;
         float3 cov2d = kernels::project_cov3d(proj.jw_r1, proj.jw_r2, cov3d);
         cov2d.x += config::dilation;
@@ -575,7 +574,7 @@ namespace lfs::rendering::kernels::forward {
         __shared__ uint collected_primitive_idx[config::block_size_blend];
         // initialize local storage
         float3 color_pixel = make_float3(0.0f);
-        float depth_pixel = 1e10f;  // Median depth (at 50% accumulated alpha)
+        float depth_pixel = 1e10f; // Median depth (at 50% accumulated alpha)
         float accumulated_alpha = 0.0f;
         float transmittance = 1.0f;
         bool done = !inside;

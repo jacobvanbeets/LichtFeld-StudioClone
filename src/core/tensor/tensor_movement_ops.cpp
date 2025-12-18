@@ -1,10 +1,10 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "core/logger.hpp"
 #include "internal/tensor_broadcast.hpp"
 #include "internal/tensor_impl.hpp"
 #include "internal/tensor_ops.hpp"
-#include "core/logger.hpp"
 #include <algorithm>
 #include <numeric>
 
@@ -117,8 +117,8 @@ namespace lfs::core {
                 if (dim1 < 0 || dim1 >= static_cast<int>(shape_.rank()) ||
                     dim2 < 0 || dim2 >= static_cast<int>(shape_.rank())) {
                     LOG_ERROR("Invalid transpose dimensions: trying to transpose dims ({}, {}) but tensor has rank {} with shape [{}]",
-                             pair->first, pair->second, shape_.rank(),
-                             shape_.rank() > 0 ? std::to_string(shape_[0]) : "empty");
+                              pair->first, pair->second, shape_.rank(),
+                              shape_.rank() > 0 ? std::to_string(shape_[0]) : "empty");
                     for (size_t i = 1; i < shape_.rank(); ++i) {
                         LOG_ERROR("  dim[{}] = {}", i, shape_[i]);
                     }

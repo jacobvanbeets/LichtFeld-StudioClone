@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "core/logger.hpp"
-#include "rendering_engine_impl.hpp"
 #include "rendering/rendering.hpp"
+#include "rendering_engine_impl.hpp"
 #include "viewport_gizmo.hpp"
 
 namespace lfs::rendering {

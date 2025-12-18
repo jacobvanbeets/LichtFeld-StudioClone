@@ -26,7 +26,8 @@ namespace lfs::io {
             std::filesystem::path temp_base;
 #ifdef _WIN32
             const char* temp = std::getenv("TEMP");
-            if (!temp) temp = std::getenv("TMP");
+            if (!temp)
+                temp = std::getenv("TMP");
             temp_base = temp ? temp : "C:/Temp";
 #else
             temp_base = "/tmp";

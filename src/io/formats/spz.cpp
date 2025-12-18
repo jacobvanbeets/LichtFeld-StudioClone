@@ -19,7 +19,7 @@ namespace lfs::io {
     namespace {
         // SH coefficient count per degree: 0->0, 1->3, 2->8, 3->15
         constexpr int SH_COEFFS_FOR_DEGREE[] = {0, 3, 8, 15};
-        constexpr float SCENE_SCALE = 0.5f;  // Match PLY loader
+        constexpr float SCENE_SCALE = 0.5f; // Match PLY loader
 
         SplatData convert_from_spz(const spz::GaussianCloud& cloud) {
             const auto num_points = static_cast<size_t>(cloud.numPoints);
@@ -51,10 +51,10 @@ namespace lfs::io {
 
             // Rotation: SPZ xyzw -> SplatData wxyz
             for (size_t i = 0; i < num_points; ++i) {
-                rotation_ptr[i * 4 + 0] = cloud.rotations[i * 4 + 3];  // w
-                rotation_ptr[i * 4 + 1] = cloud.rotations[i * 4 + 0];  // x
-                rotation_ptr[i * 4 + 2] = cloud.rotations[i * 4 + 1];  // y
-                rotation_ptr[i * 4 + 3] = cloud.rotations[i * 4 + 2];  // z
+                rotation_ptr[i * 4 + 0] = cloud.rotations[i * 4 + 3]; // w
+                rotation_ptr[i * 4 + 1] = cloud.rotations[i * 4 + 0]; // x
+                rotation_ptr[i * 4 + 2] = cloud.rotations[i * 4 + 1]; // y
+                rotation_ptr[i * 4 + 3] = cloud.rotations[i * 4 + 2]; // z
             }
 
             for (size_t i = 0; i < num_points; ++i) {
@@ -73,8 +73,7 @@ namespace lfs::io {
                 std::move(scaling),
                 std::move(rotation),
                 std::move(opacity),
-                SCENE_SCALE
-            );
+                SCENE_SCALE);
         }
 
         spz::GaussianCloud convert_to_spz(const SplatData& splat) {
@@ -111,10 +110,10 @@ namespace lfs::io {
 
             // Rotation: SplatData wxyz -> SPZ xyzw
             for (int i = 0; i < num_points; ++i) {
-                cloud.rotations[i * 4 + 0] = rotation_ptr[i * 4 + 1];  // x
-                cloud.rotations[i * 4 + 1] = rotation_ptr[i * 4 + 2];  // y
-                cloud.rotations[i * 4 + 2] = rotation_ptr[i * 4 + 3];  // z
-                cloud.rotations[i * 4 + 3] = rotation_ptr[i * 4 + 0];  // w
+                cloud.rotations[i * 4 + 0] = rotation_ptr[i * 4 + 1]; // x
+                cloud.rotations[i * 4 + 1] = rotation_ptr[i * 4 + 2]; // y
+                cloud.rotations[i * 4 + 2] = rotation_ptr[i * 4 + 3]; // z
+                cloud.rotations[i * 4 + 3] = rotation_ptr[i * 4 + 0]; // w
             }
 
             for (int i = 0; i < num_points; ++i) {
@@ -153,7 +152,7 @@ namespace lfs::io {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::high_resolution_clock::now() - start);
         LOG_INFO("SPZ loaded: {} gaussians with SH degree {} in {}ms",
-            splat.size(), splat.get_max_sh_degree(), elapsed.count());
+                 splat.size(), splat.get_max_sh_degree(), elapsed.count());
 
         return splat;
     }
@@ -171,7 +170,7 @@ namespace lfs::io {
 
         if (!spz::saveSpz(cloud, pack_options, options.output_path.string())) {
             return make_error(ErrorCode::WRITE_FAILURE,
-                "Failed to write SPZ file", options.output_path);
+                              "Failed to write SPZ file", options.output_path);
         }
 
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -180,9 +179,9 @@ namespace lfs::io {
         // Get file size
         auto file_size = std::filesystem::file_size(options.output_path);
         LOG_INFO("SPZ saved: {} gaussians, {:.1f} MB in {}ms",
-            splat_data.size(),
-            static_cast<double>(file_size) / (1024.0 * 1024.0),
-            elapsed.count());
+                 splat_data.size(),
+                 static_cast<double>(file_size) / (1024.0 * 1024.0),
+                 elapsed.count());
 
         return {};
     }

@@ -6,12 +6,12 @@
 #include "command/command_history.hpp"
 #include "command/commands/saturation_command.hpp"
 #include "command/commands/selection_command.hpp"
+#include "core/splat_data.hpp"
+#include "core/tensor.hpp"
 #include "internal/viewport.hpp"
 #include "rendering/rendering_manager.hpp"
 #include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
-#include "core/splat_data.hpp"
-#include "core/tensor.hpp"
 #include <imgui.h>
 
 namespace lfs::vis::tools {
@@ -37,8 +37,9 @@ namespace lfs::vis::tools {
     }
 
     void BrushTool::renderUI([[maybe_unused]] const lfs::vis::gui::UIContext& ui_ctx,
-                              [[maybe_unused]] bool* p_open) {
-        if (!isEnabled() || ImGui::GetIO().WantCaptureMouse) return;
+                             [[maybe_unused]] bool* p_open) {
+        if (!isEnabled() || ImGui::GetIO().WantCaptureMouse)
+            return;
 
         const auto& t = theme();
         ImDrawList* const draw_list = ImGui::GetForegroundDrawList();
@@ -46,8 +47,8 @@ namespace lfs::vis::tools {
 
         // Selection mode uses primary color, saturation uses warning (orange)
         const ImU32 brush_color = (current_mode_ == BrushMode::Select)
-            ? t.selection_border_u32()
-            : t.polygon_vertex_u32();
+                                      ? t.selection_border_u32()
+                                      : t.polygon_vertex_u32();
 
         draw_list->AddCircle(mouse_pos, brush_radius_, brush_color, 32, 2.0f);
         draw_list->AddCircleFilled(mouse_pos, 3.0f, brush_color);
@@ -71,8 +72,9 @@ namespace lfs::vis::tools {
     }
 
     bool BrushTool::handleMouseButton(int button, int action, int mods, double x, double y,
-                                       const ToolContext& ctx) {
-        if (!isEnabled() || button != GLFW_MOUSE_BUTTON_LEFT) return false;
+                                      const ToolContext& ctx) {
+        if (!isEnabled() || button != GLFW_MOUSE_BUTTON_LEFT)
+            return false;
 
         if (action == GLFW_PRESS) {
             const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0;
@@ -80,7 +82,8 @@ namespace lfs::vis::tools {
 
             if (current_mode_ == BrushMode::Select) {
                 // No modifier = allow navigation
-                if (!shift && !ctrl) return false;
+                if (!shift && !ctrl)
+                    return false;
                 const BrushAction action_type = ctrl ? BrushAction::Remove : BrushAction::Add;
                 beginStroke(x, y, action_type, false, ctx);
                 updateSelectionAtPoint(x, y, ctx);
@@ -88,7 +91,8 @@ namespace lfs::vis::tools {
             }
             if (current_mode_ == BrushMode::Saturation) {
                 // No modifier = allow navigation
-                if (!shift && !ctrl) return false;
+                if (!shift && !ctrl)
+                    return false;
                 beginSaturationStroke(x, y, ctx);
                 updateSaturationAtPoint(x, y, ctx);
                 return true;
@@ -108,7 +112,8 @@ namespace lfs::vis::tools {
     }
 
     bool BrushTool::handleMouseMove(double x, double y, const ToolContext& ctx) {
-        if (!isEnabled()) return false;
+        if (!isEnabled())
+            return false;
 
         last_mouse_pos_ = glm::vec2(static_cast<float>(x), static_cast<float>(y));
 
@@ -129,8 +134,9 @@ namespace lfs::vis::tools {
     }
 
     bool BrushTool::handleScroll([[maybe_unused]] double x_offset, double y_offset,
-                                  int mods, const ToolContext& ctx) {
-        if (!isEnabled()) return false;
+                                 int mods, const ToolContext& ctx) {
+        if (!isEnabled())
+            return false;
 
         const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0;
         const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
@@ -146,7 +152,7 @@ namespace lfs::vis::tools {
                 ctx.requestRender();
                 return true;
             }
-            return false;  // Let other handlers deal with Alt+scroll
+            return false; // Let other handlers deal with Alt+scroll
         }
 
         // Ctrl or Shift or painting: adjust brush radius
@@ -161,7 +167,8 @@ namespace lfs::vis::tools {
     }
 
     bool BrushTool::handleKeyPress(int key, [[maybe_unused]] int mods, [[maybe_unused]] const ToolContext& ctx) {
-        if (!isEnabled()) return false;
+        if (!isEnabled())
+            return false;
 
         // B key cycles through brush modes
         if (key == GLFW_KEY_B) {
@@ -184,21 +191,24 @@ namespace lfs::vis::tools {
             auto* const rm = tool_context_->getRenderingManager();
             if (rm) {
                 rm->setOutputScreenPositions(enabled);
-                if (enabled) rm->markDirty();
+                if (enabled)
+                    rm->markDirty();
             }
         }
     }
 
     void BrushTool::beginStroke([[maybe_unused]] double x, [[maybe_unused]] double y,
-                                 BrushAction action, bool clear_existing, const ToolContext& ctx) {
+                                BrushAction action, bool clear_existing, const ToolContext& ctx) {
         is_painting_ = true;
         current_action_ = action;
 
         auto* const sm = ctx.getSceneManager();
-        if (!sm) return;
+        if (!sm)
+            return;
 
         const size_t num_gaussians = sm->getScene().getTotalGaussianCount();
-        if (num_gaussians == 0) return;
+        if (num_gaussians == 0)
+            return;
 
         auto existing = sm->getScene().getSelectionMask();
         if (existing && existing->is_valid()) {
@@ -257,19 +267,22 @@ namespace lfs::vis::tools {
     }
 
     void BrushTool::beginSaturationStroke([[maybe_unused]] double x, [[maybe_unused]] double y,
-                                           const ToolContext& ctx) {
+                                          const ToolContext& ctx) {
         is_painting_ = true;
 
         auto* const sm = ctx.getSceneManager();
-        if (!sm) return;
+        if (!sm)
+            return;
 
         // Get the first visible node and store its SH0 for undo
         auto visible_nodes = sm->getScene().getVisibleNodes();
-        if (visible_nodes.empty()) return;
+        if (visible_nodes.empty())
+            return;
 
         saturation_node_name_ = visible_nodes[0]->name;
         auto* mutable_node = sm->getScene().getMutableNode(saturation_node_name_);
-        if (!mutable_node || !mutable_node->model) return;
+        if (!mutable_node || !mutable_node->model)
+            return;
 
         const auto& sh0 = mutable_node->model->sh0();
         if (sh0.is_valid()) {
@@ -316,17 +329,21 @@ namespace lfs::vis::tools {
     void BrushTool::updateSaturationAtPoint(double x, double y, const ToolContext& ctx) {
         auto* const rm = ctx.getRenderingManager();
         auto* const sm = ctx.getSceneManager();
-        if (!rm || !sm) return;
+        if (!rm || !sm)
+            return;
 
         // Get the first visible node's SplatData (for now, single model support)
         auto visible_nodes = sm->getScene().getVisibleNodes();
-        if (visible_nodes.empty()) return;
+        if (visible_nodes.empty())
+            return;
 
         auto* mutable_node = sm->getScene().getMutableNode(visible_nodes[0]->name);
-        if (!mutable_node || !mutable_node->model) return;
+        if (!mutable_node || !mutable_node->model)
+            return;
 
         auto& sh0 = mutable_node->model->sh0();
-        if (!sh0.is_valid()) return;
+        if (!sh0.is_valid())
+            return;
 
         // Convert screen coords to image coords
         const auto& bounds = ctx.getViewportBounds();
@@ -357,7 +374,8 @@ namespace lfs::vis::tools {
 
     void BrushTool::clearSelection(const ToolContext& ctx) {
         auto* const sm = ctx.getSceneManager();
-        if (sm) sm->getScene().clearSelection();
+        if (sm)
+            sm->getScene().clearSelection();
 
         cumulative_selection_ = lfs::core::Tensor();
         ctx.requestRender();
@@ -365,7 +383,8 @@ namespace lfs::vis::tools {
 
     void BrushTool::updateSelectionAtPoint(double x, double y, const ToolContext& ctx) {
         auto* const rm = ctx.getRenderingManager();
-        if (!rm) return;
+        if (!rm)
+            return;
 
         const auto& bounds = ctx.getViewportBounds();
         const auto& viewport = ctx.getViewport();
@@ -389,7 +408,8 @@ namespace lfs::vis::tools {
 
     void BrushTool::updateBrushPreview(double x, double y, const ToolContext& ctx) {
         auto* const rm = ctx.getRenderingManager();
-        if (!rm) return;
+        if (!rm)
+            return;
 
         const auto& bounds = ctx.getViewportBounds();
         const auto& viewport = ctx.getViewport();

@@ -131,13 +131,13 @@ namespace {
 
             // Mask-related arguments
             ::args::MapFlag<std::string, lfs::core::param::MaskMode> mask_mode(parser, "mask_mode",
-                "Mask mode: none, segment, ignore, alpha_consistent (default: none)",
-                {"mask-mode"},
-                std::unordered_map<std::string, lfs::core::param::MaskMode>{
-                    {"none", lfs::core::param::MaskMode::None},
-                    {"segment", lfs::core::param::MaskMode::Segment},
-                    {"ignore", lfs::core::param::MaskMode::Ignore},
-                    {"alpha_consistent", lfs::core::param::MaskMode::AlphaConsistent}});
+                                                                               "Mask mode: none, segment, ignore, alpha_consistent (default: none)",
+                                                                               {"mask-mode"},
+                                                                               std::unordered_map<std::string, lfs::core::param::MaskMode>{
+                                                                                   {"none", lfs::core::param::MaskMode::None},
+                                                                                   {"segment", lfs::core::param::MaskMode::Segment},
+                                                                                   {"ignore", lfs::core::param::MaskMode::Ignore},
+                                                                                   {"alpha_consistent", lfs::core::param::MaskMode::AlphaConsistent}});
             ::args::Flag invert_masks(parser, "invert_masks", "Invert mask values (swap object/background)", {"invert-masks"});
 
             ::args::MapFlag<std::string, int> resize_factor(parser, "resize_factor",
@@ -560,19 +560,24 @@ namespace {
 
     std::optional<lfs::core::param::OutputFormat> parseFormat(const std::string& str) {
         using lfs::core::param::OutputFormat;
-        if (str == "ply" || str == ".ply") return OutputFormat::PLY;
-        if (str == "sog" || str == ".sog") return OutputFormat::SOG;
-        if (str == "spz" || str == ".spz") return OutputFormat::SPZ;
-        if (str == "html" || str == ".html") return OutputFormat::HTML;
+        if (str == "ply" || str == ".ply")
+            return OutputFormat::PLY;
+        if (str == "sog" || str == ".sog")
+            return OutputFormat::SOG;
+        if (str == "spz" || str == ".spz")
+            return OutputFormat::SPZ;
+        if (str == "html" || str == ".html")
+            return OutputFormat::HTML;
         return std::nullopt;
     }
-}
+} // namespace
 
 std::expected<lfs::core::args::ParsedArgs, std::string>
 lfs::core::args::parse_args(int argc, const char* const argv[]) {
     if (argc < 2 || std::string_view(argv[1]) != "convert") {
         auto result = parse_args_and_params(argc, argv);
-        if (!result) return std::unexpected(result.error());
+        if (!result)
+            return std::unexpected(result.error());
         return TrainingMode{std::move(*result)};
     }
 
@@ -615,8 +620,10 @@ lfs::core::args::parse_args(int argc, const char* const argv[]) {
         return std::unexpected("SH degree must be -1 (keep) or 0-3");
     }
 
-    if (output) params.output_path = ::args::get(output);
-    if (sog_iter) params.sog_iterations = ::args::get(sog_iter);
+    if (output)
+        params.output_path = ::args::get(output);
+    if (sog_iter)
+        params.sog_iterations = ::args::get(sog_iter);
     params.overwrite = overwrite;
 
     if (format) {

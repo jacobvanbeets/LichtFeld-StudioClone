@@ -87,7 +87,8 @@ namespace lfs::training {
         auto now = std::chrono::system_clock::now();
         auto time_t = std::chrono::system_clock::to_time_t(now);
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now.time_since_epoch()) % 1000;
+                      now.time_since_epoch()) %
+                  1000;
 
         char time_buf[64];
         std::strftime(time_buf, sizeof(time_buf), "%Y%m%d_%H%M%S", std::localtime(&time_t));
@@ -106,14 +107,22 @@ namespace lfs::training {
             // Dump tensors as binary .tensor files
             // Each file contains: header + shape dims + raw float32 data
             // Tensors are copied to CPU before saving if they're on CUDA
-            if (means.is_valid()) core::save_tensor(means, dump_dir + "/means.tensor");              // [N, 3]
-            if (raw_scales.is_valid()) core::save_tensor(raw_scales, dump_dir + "/raw_scales.tensor");   // [N, 3]
-            if (raw_rotations.is_valid()) core::save_tensor(raw_rotations, dump_dir + "/raw_rotations.tensor"); // [N, 4]
-            if (raw_opacities.is_valid()) core::save_tensor(raw_opacities, dump_dir + "/raw_opacities.tensor"); // [N, 1]
-            if (sh0.is_valid()) core::save_tensor(sh0, dump_dir + "/sh0.tensor");                    // [N, 3]
-            if (shN.is_valid()) core::save_tensor(shN, dump_dir + "/shN.tensor");                    // [N, K, 3]
-            if (w2c.is_valid()) core::save_tensor(w2c, dump_dir + "/w2c.tensor");                    // [1, 4, 4]
-            if (cam_position.is_valid()) core::save_tensor(cam_position, dump_dir + "/cam_position.tensor"); // [3]
+            if (means.is_valid())
+                core::save_tensor(means, dump_dir + "/means.tensor"); // [N, 3]
+            if (raw_scales.is_valid())
+                core::save_tensor(raw_scales, dump_dir + "/raw_scales.tensor"); // [N, 3]
+            if (raw_rotations.is_valid())
+                core::save_tensor(raw_rotations, dump_dir + "/raw_rotations.tensor"); // [N, 4]
+            if (raw_opacities.is_valid())
+                core::save_tensor(raw_opacities, dump_dir + "/raw_opacities.tensor"); // [N, 1]
+            if (sh0.is_valid())
+                core::save_tensor(sh0, dump_dir + "/sh0.tensor"); // [N, 3]
+            if (shN.is_valid())
+                core::save_tensor(shN, dump_dir + "/shN.tensor"); // [N, K, 3]
+            if (w2c.is_valid())
+                core::save_tensor(w2c, dump_dir + "/w2c.tensor"); // [1, 4, 4]
+            if (cam_position.is_valid())
+                core::save_tensor(cam_position, dump_dir + "/cam_position.tensor"); // [3]
 
             // Dump scalar parameters to params.json
             // This is a human-readable JSON file containing:
@@ -141,22 +150,28 @@ namespace lfs::training {
                 params_file << "  \"near_plane\": " << near_plane << ",\n";
                 params_file << "  \"far_plane\": " << far_plane << ",\n";
                 params_file << "  \"means_shape\": [" << means.shape()[0];
-                for (size_t i = 1; i < means.ndim(); ++i) params_file << ", " << means.shape()[i];
+                for (size_t i = 1; i < means.ndim(); ++i)
+                    params_file << ", " << means.shape()[i];
                 params_file << "],\n";
                 params_file << "  \"raw_scales_shape\": [" << raw_scales.shape()[0];
-                for (size_t i = 1; i < raw_scales.ndim(); ++i) params_file << ", " << raw_scales.shape()[i];
+                for (size_t i = 1; i < raw_scales.ndim(); ++i)
+                    params_file << ", " << raw_scales.shape()[i];
                 params_file << "],\n";
                 params_file << "  \"raw_rotations_shape\": [" << raw_rotations.shape()[0];
-                for (size_t i = 1; i < raw_rotations.ndim(); ++i) params_file << ", " << raw_rotations.shape()[i];
+                for (size_t i = 1; i < raw_rotations.ndim(); ++i)
+                    params_file << ", " << raw_rotations.shape()[i];
                 params_file << "],\n";
                 params_file << "  \"raw_opacities_shape\": [" << raw_opacities.shape()[0];
-                for (size_t i = 1; i < raw_opacities.ndim(); ++i) params_file << ", " << raw_opacities.shape()[i];
+                for (size_t i = 1; i < raw_opacities.ndim(); ++i)
+                    params_file << ", " << raw_opacities.shape()[i];
                 params_file << "],\n";
                 params_file << "  \"sh0_shape\": [" << sh0.shape()[0];
-                for (size_t i = 1; i < sh0.ndim(); ++i) params_file << ", " << sh0.shape()[i];
+                for (size_t i = 1; i < sh0.ndim(); ++i)
+                    params_file << ", " << sh0.shape()[i];
                 params_file << "],\n";
                 params_file << "  \"shN_shape\": [" << shN.shape()[0];
-                for (size_t i = 1; i < shN.ndim(); ++i) params_file << ", " << shN.shape()[i];
+                for (size_t i = 1; i < shN.ndim(); ++i)
+                    params_file << ", " << shN.shape()[i];
                 params_file << "]\n";
                 params_file << "}\n";
             }
@@ -191,12 +206,12 @@ namespace lfs::training {
         const float cy_adjusted = cy - static_cast<float>(tile_y_offset);
 
         // Get Gaussian parameters
-        auto &means = gaussian_model.means();
-        auto &raw_opacities = gaussian_model.opacity_raw();
-        auto &raw_scales = gaussian_model.scaling_raw();
-        auto &raw_rotations = gaussian_model.rotation_raw();
-        auto &sh0 = gaussian_model.sh0();
-        auto &shN = gaussian_model.shN();
+        auto& means = gaussian_model.means();
+        auto& raw_opacities = gaussian_model.opacity_raw();
+        auto& raw_scales = gaussian_model.scaling_raw();
+        auto& raw_rotations = gaussian_model.rotation_raw();
+        auto& sh0 = gaussian_model.sh0();
+        auto& shN = gaussian_model.shN();
 
         const int sh_degree = gaussian_model.get_active_sh_degree();
         const int active_sh_bases = (sh_degree + 1) * (sh_degree + 1);
@@ -210,7 +225,8 @@ namespace lfs::training {
 
         const int n_primitives = static_cast<int>(means.shape()[0]);
         const int total_bases_sh_rest = (shN.is_valid() && shN.ndim() >= 2)
-            ? static_cast<int>(shN.shape()[1]) : 0;
+                                            ? static_cast<int>(shN.shape()[1])
+                                            : 0;
 
         // Pre-allocate output tensors (reused across iterations)
         thread_local core::Tensor image;
@@ -250,8 +266,8 @@ namespace lfs::training {
                 height,
                 fx,
                 fy,
-                cx_adjusted,  // Use adjusted cx for tile offset
-                cy_adjusted,  // Use adjusted cy for tile offset
+                cx_adjusted, // Use adjusted cx for tile offset
+                cy_adjusted, // Use adjusted cy for tile offset
                 near_plane,
                 far_plane);
         } catch (const std::exception& e) {
@@ -277,7 +293,7 @@ namespace lfs::training {
                 cy_adjusted,
                 near_plane,
                 far_plane);
-            throw;  // Re-throw after dumping
+            throw; // Re-throw after dumping
         } catch (...) {
             // Handle non-std::exception crashes
             dump_crash_data(
@@ -301,7 +317,7 @@ namespace lfs::training {
                 cy_adjusted,
                 near_plane,
                 far_plane);
-            throw;  // Re-throw after dumping
+            throw; // Re-throw after dumping
         }
 
         // Check if forward failed due to OOM
@@ -321,7 +337,7 @@ namespace lfs::training {
             output_image.ptr<float>(),
             height,
             width,
-            nullptr  // default stream
+            nullptr // default stream
         );
 
         render_output.image = output_image;
@@ -333,7 +349,7 @@ namespace lfs::training {
         FastRasterizeContext ctx;
         ctx.image = image;
         ctx.alpha = alpha;
-        ctx.bg_color = bg_color;  // Save bg_color for alpha gradient
+        ctx.bg_color = bg_color; // Save bg_color for alpha gradient
 
         // Save parameters (avoid re-fetching in backward)
         ctx.means = means;
@@ -354,8 +370,8 @@ namespace lfs::training {
         ctx.height = height;
         ctx.focal_x = fx;
         ctx.focal_y = fy;
-        ctx.center_x = cx_adjusted;  // Store adjusted cx for backward
-        ctx.center_y = cy_adjusted;  // Store adjusted cy for backward
+        ctx.center_x = cx_adjusted; // Store adjusted cx for backward
+        ctx.center_y = cy_adjusted; // Store adjusted cy for backward
         ctx.near_plane = near_plane;
         ctx.far_plane = far_plane;
 
@@ -399,8 +415,7 @@ namespace lfs::training {
             grad_alpha.ptr<float>(),
             H, W,
             is_chw_layout,
-            nullptr
-        );
+            nullptr);
 
         if (grad_alpha_extra.is_valid() && grad_alpha_extra.numel() > 0) {
             grad_alpha = grad_alpha + grad_alpha_extra;
@@ -409,7 +424,7 @@ namespace lfs::training {
         const int n_primitives = static_cast<int>(ctx.means.shape()[0]);
         // densification_info has shape [2, N]
         const bool update_densification_info = gaussian_model._densification_info.ndim() == 2 &&
-                                                gaussian_model._densification_info.shape()[1] >= static_cast<size_t>(n_primitives);
+                                               gaussian_model._densification_info.shape()[1] >= static_cast<size_t>(n_primitives);
 
         // Get gradient pointers from optimizer
         auto backward_result = fast_lfs::rasterization::backward_raw(

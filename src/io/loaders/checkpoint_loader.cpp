@@ -32,12 +32,12 @@ namespace lfs::io {
         // Validate file exists
         if (!std::filesystem::exists(path)) {
             return make_error(ErrorCode::PATH_NOT_FOUND,
-                "Checkpoint file does not exist", path);
+                              "Checkpoint file does not exist", path);
         }
 
         if (!std::filesystem::is_regular_file(path)) {
             return make_error(ErrorCode::NOT_A_FILE,
-                "Path is not a regular file", path);
+                              "Path is not a regular file", path);
         }
 
         // Validation only mode
@@ -47,7 +47,7 @@ namespace lfs::io {
             auto header_result = loadHeader(path);
             if (!header_result) {
                 return make_error(ErrorCode::INVALID_HEADER,
-                    std::format("Invalid checkpoint: {}", header_result.error()), path);
+                                  std::format("Invalid checkpoint: {}", header_result.error()), path);
             }
 
             if (options.progress) {
@@ -74,7 +74,7 @@ namespace lfs::io {
         auto splat_result = lfs::training::load_checkpoint_splat_data(path);
         if (!splat_result) {
             return make_error(ErrorCode::CORRUPTED_DATA,
-                std::format("Failed to load checkpoint: {}", splat_result.error()), path);
+                              std::format("Failed to load checkpoint: {}", splat_result.error()), path);
         }
 
         if (options.progress) {

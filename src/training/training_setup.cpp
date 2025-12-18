@@ -18,7 +18,8 @@ namespace lfs::training {
         constexpr size_t SH_CHANNELS = 3;
 
         void truncateSHDegree(lfs::core::SplatData& splat, const int target_degree) {
-            if (target_degree < 0 || target_degree >= splat.get_max_sh_degree()) return;
+            if (target_degree < 0 || target_degree >= splat.get_max_sh_degree())
+                return;
 
             if (target_degree == 0) {
                 splat.shN() = lfs::core::Tensor{};
@@ -117,7 +118,7 @@ namespace lfs::training {
                         auto pc_result = lfs::io::load_ply_point_cloud(init_file);
                         if (!pc_result) {
                             return std::unexpected(std::format("Failed to load '{}': {}",
-                                params.init_path.value(), pc_result.error()));
+                                                               params.init_path.value(), pc_result.error()));
                         }
 
                         // Use scene_center from loader (camera centroid) for correct scene_scale
@@ -140,7 +141,7 @@ namespace lfs::training {
 
                         if (!load_result) {
                             return std::unexpected(std::format("Failed to load '{}': {}",
-                                params.init_path.value(), load_result.error().format()));
+                                                               params.init_path.value(), load_result.error().format()));
                         }
 
                         try {
@@ -205,11 +206,11 @@ namespace lfs::training {
 
                 // Add individual training camera nodes (with mask_path if available)
                 for (size_t i = 0; i < cameras.size(); ++i) {
-                    if (!enable_eval || (i % test_every) != 0) {  // Training camera (all if no eval)
+                    if (!enable_eval || (i % test_every) != 0) { // Training camera (all if no eval)
                         scene.addCamera(cameras[i]->image_name(), train_cameras_id,
-                                       static_cast<int>(i), cameras[i]->uid(),
-                                       cameras[i]->image_path().string(),
-                                       cameras[i]->mask_path().string());
+                                        static_cast<int>(i), cameras[i]->uid(),
+                                        cameras[i]->image_path().string(),
+                                        cameras[i]->mask_path().string());
                     }
                 }
 
@@ -222,11 +223,11 @@ namespace lfs::training {
 
                     // Add individual validation camera nodes (with mask_path if available)
                     for (size_t i = 0; i < cameras.size(); ++i) {
-                        if ((i % test_every) == 0) {  // Validation camera
+                        if ((i % test_every) == 0) { // Validation camera
                             scene.addCamera(cameras[i]->image_name(), val_cameras_id,
-                                           static_cast<int>(i), cameras[i]->uid(),
-                                           cameras[i]->image_path().string(),
-                                           cameras[i]->mask_path().string());
+                                            static_cast<int>(i), cameras[i]->uid(),
+                                            cameras[i]->image_path().string(),
+                                            cameras[i]->mask_path().string());
                         }
                     }
                 }
@@ -308,7 +309,8 @@ namespace lfs::training {
                                   local.y >= cropbox_data->min.y && local.y <= cropbox_data->max.y &&
                                   local.z >= cropbox_data->min.z && local.z <= cropbox_data->max.z;
 
-                    if (cropbox_data->inverse) inside = !inside;
+                    if (cropbox_data->inverse)
+                        inside = !inside;
 
                     if (inside) {
                         filtered_means.push_back(means_ptr[i * 3]);

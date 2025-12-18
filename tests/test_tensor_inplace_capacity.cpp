@@ -14,9 +14,9 @@
  * the pre-allocated capacity. This caused training failures during densification.
  */
 
-#include <gtest/gtest.h>
-#include <core/tensor.hpp>
 #include <cmath>
+#include <core/tensor.hpp>
+#include <gtest/gtest.h>
 
 using namespace lfs::core;
 
@@ -45,7 +45,7 @@ protected:
 
     // Helper to verify capacity is preserved after an operation
     void verifyCapacityPreserved(const Tensor& tensor, size_t expected_capacity,
-                                  const std::string& operation_name) {
+                                 const std::string& operation_name) {
         EXPECT_EQ(tensor.capacity(), expected_capacity)
             << operation_name << " destroyed capacity! "
             << "Expected: " << expected_capacity << ", Got: " << tensor.capacity();
@@ -558,4 +558,3 @@ TEST_F(TensorInplaceCapacityTest, REGRESSION_IndexPut_ThenAppendZeros) {
     EXPECT_EQ(means.shape()[0], n_gaussians + 10);
     EXPECT_EQ(means.capacity(), max_capacity);
 }
-

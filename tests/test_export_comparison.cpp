@@ -5,10 +5,10 @@
 // Compare our SPZ export with reference implementation export
 // Tests: PLY -> Our export -> SPZ vs PLY -> Reference export -> SPZ
 
-#include <iostream>
+#include "load-spz.h"
 #include <cmath>
 #include <filesystem>
-#include "load-spz.h"
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -63,29 +63,29 @@ int main(int argc, char* argv[]) {
 
         // Position
         std::cout << "Position:\n";
-        std::cout << "  Ours: [" << our_cloud.positions[i*3+0] << ", "
-                  << our_cloud.positions[i*3+1] << ", "
-                  << our_cloud.positions[i*3+2] << "]\n";
-        std::cout << "  Ref:  [" << ref_cloud.positions[i*3+0] << ", "
-                  << ref_cloud.positions[i*3+1] << ", "
-                  << ref_cloud.positions[i*3+2] << "]\n";
+        std::cout << "  Ours: [" << our_cloud.positions[i * 3 + 0] << ", "
+                  << our_cloud.positions[i * 3 + 1] << ", "
+                  << our_cloud.positions[i * 3 + 2] << "]\n";
+        std::cout << "  Ref:  [" << ref_cloud.positions[i * 3 + 0] << ", "
+                  << ref_cloud.positions[i * 3 + 1] << ", "
+                  << ref_cloud.positions[i * 3 + 2] << "]\n";
 
         // Rotation
         std::cout << "Rotation (xyzw):\n";
-        std::cout << "  Ours: [" << our_cloud.rotations[i*4+0] << ", "
-                  << our_cloud.rotations[i*4+1] << ", "
-                  << our_cloud.rotations[i*4+2] << ", "
-                  << our_cloud.rotations[i*4+3] << "]\n";
-        std::cout << "  Ref:  [" << ref_cloud.rotations[i*4+0] << ", "
-                  << ref_cloud.rotations[i*4+1] << ", "
-                  << ref_cloud.rotations[i*4+2] << ", "
-                  << ref_cloud.rotations[i*4+3] << "]\n";
+        std::cout << "  Ours: [" << our_cloud.rotations[i * 4 + 0] << ", "
+                  << our_cloud.rotations[i * 4 + 1] << ", "
+                  << our_cloud.rotations[i * 4 + 2] << ", "
+                  << our_cloud.rotations[i * 4 + 3] << "]\n";
+        std::cout << "  Ref:  [" << ref_cloud.rotations[i * 4 + 0] << ", "
+                  << ref_cloud.rotations[i * 4 + 1] << ", "
+                  << ref_cloud.rotations[i * 4 + 2] << ", "
+                  << ref_cloud.rotations[i * 4 + 3] << "]\n";
 
         // Check if quaternions are equivalent (q and -q represent same rotation)
         bool quat_match = true;
         float dot = 0;
         for (int j = 0; j < 4; ++j) {
-            dot += our_cloud.rotations[i*4+j] * ref_cloud.rotations[i*4+j];
+            dot += our_cloud.rotations[i * 4 + j] * ref_cloud.rotations[i * 4 + j];
         }
         if (std::abs(std::abs(dot) - 1.0f) > 0.01f) {
             std::cout << "  WARNING: Quaternions may differ! dot=" << dot << "\n";
@@ -95,32 +95,32 @@ int main(int argc, char* argv[]) {
 
         // SH DC
         std::cout << "Color (SH DC):\n";
-        std::cout << "  Ours: [" << our_cloud.colors[i*3+0] << ", "
-                  << our_cloud.colors[i*3+1] << ", "
-                  << our_cloud.colors[i*3+2] << "]\n";
-        std::cout << "  Ref:  [" << ref_cloud.colors[i*3+0] << ", "
-                  << ref_cloud.colors[i*3+1] << ", "
-                  << ref_cloud.colors[i*3+2] << "]\n";
+        std::cout << "  Ours: [" << our_cloud.colors[i * 3 + 0] << ", "
+                  << our_cloud.colors[i * 3 + 1] << ", "
+                  << our_cloud.colors[i * 3 + 2] << "]\n";
+        std::cout << "  Ref:  [" << ref_cloud.colors[i * 3 + 0] << ", "
+                  << ref_cloud.colors[i * 3 + 1] << ", "
+                  << ref_cloud.colors[i * 3 + 2] << "]\n";
 
         // SH coefficients
         if (our_cloud.shDegree > 0) {
             int sh_dim = 0;
-            switch(our_cloud.shDegree) {
-                case 1: sh_dim = 3; break;
-                case 2: sh_dim = 8; break;
-                case 3: sh_dim = 15; break;
+            switch (our_cloud.shDegree) {
+            case 1: sh_dim = 3; break;
+            case 2: sh_dim = 8; break;
+            case 3: sh_dim = 15; break;
             }
 
             std::cout << "SH coeff 0:\n";
             size_t idx = i * sh_dim * 3;
-            std::cout << "  Ours: [" << our_cloud.sh[idx+0] << ", "
-                      << our_cloud.sh[idx+1] << ", " << our_cloud.sh[idx+2] << "]\n";
-            std::cout << "  Ref:  [" << ref_cloud.sh[idx+0] << ", "
-                      << ref_cloud.sh[idx+1] << ", " << ref_cloud.sh[idx+2] << "]\n";
+            std::cout << "  Ours: [" << our_cloud.sh[idx + 0] << ", "
+                      << our_cloud.sh[idx + 1] << ", " << our_cloud.sh[idx + 2] << "]\n";
+            std::cout << "  Ref:  [" << ref_cloud.sh[idx + 0] << ", "
+                      << ref_cloud.sh[idx + 1] << ", " << ref_cloud.sh[idx + 2] << "]\n";
 
             // Check for mismatch
             for (int c = 0; c < 3; ++c) {
-                if (std::abs(our_cloud.sh[idx+c] - ref_cloud.sh[idx+c]) > 0.01f) {
+                if (std::abs(our_cloud.sh[idx + c] - ref_cloud.sh[idx + c]) > 0.01f) {
                     std::cout << "  WARNING: SH coeff 0 channel " << c << " differs!\n";
                     errors++;
                 }

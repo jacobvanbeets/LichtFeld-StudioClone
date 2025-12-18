@@ -54,8 +54,7 @@ namespace lfs::core::debug {
             const Tensor& analytical_grad,
             const float eps = DEFAULT_EPS,
             const float rtol = DEFAULT_RTOL,
-            const float atol = DEFAULT_ATOL
-        ) {
+            const float atol = DEFAULT_ATOL) {
             GradientCheckResult result;
 
             if (input.dtype() != DataType::Float32) {
@@ -85,14 +84,16 @@ namespace lfs::core::debug {
                 input_data[i] = orig + eps;
                 Tensor input_plus = input.device() == Device::CUDA ? input_cpu.cuda() : input_cpu;
                 Tensor out_plus = forward(input_plus);
-                if (out_plus.numel() > 1) out_plus = out_plus.sum();
+                if (out_plus.numel() > 1)
+                    out_plus = out_plus.sum();
                 const float f_plus = out_plus.cpu().ptr<float>()[0];
 
                 // f(x - eps)
                 input_data[i] = orig - eps;
                 Tensor input_minus = input.device() == Device::CUDA ? input_cpu.cuda() : input_cpu;
                 Tensor out_minus = forward(input_minus);
-                if (out_minus.numel() > 1) out_minus = out_minus.sum();
+                if (out_minus.numel() > 1)
+                    out_minus = out_minus.sum();
                 const float f_minus = out_minus.cpu().ptr<float>()[0];
 
                 // Restore
@@ -133,8 +134,7 @@ namespace lfs::core::debug {
             const size_t num_samples = DEFAULT_SAMPLES,
             const float eps = DEFAULT_EPS,
             const float rtol = DEFAULT_RTOL,
-            const float atol = DEFAULT_ATOL
-        ) {
+            const float atol = DEFAULT_ATOL) {
             if (input.numel() <= num_samples) {
                 return check(forward, input, analytical_grad, eps, rtol, atol);
             }
@@ -170,13 +170,15 @@ namespace lfs::core::debug {
                 input_data[i] = orig + eps;
                 Tensor input_plus = input.device() == Device::CUDA ? input_cpu.cuda() : input_cpu;
                 Tensor out_plus = forward(input_plus);
-                if (out_plus.numel() > 1) out_plus = out_plus.sum();
+                if (out_plus.numel() > 1)
+                    out_plus = out_plus.sum();
                 const float f_plus = out_plus.cpu().ptr<float>()[0];
 
                 input_data[i] = orig - eps;
                 Tensor input_minus = input.device() == Device::CUDA ? input_cpu.cuda() : input_cpu;
                 Tensor out_minus = forward(input_minus);
-                if (out_minus.numel() > 1) out_minus = out_minus.sum();
+                if (out_minus.numel() > 1)
+                    out_minus = out_minus.sum();
                 const float f_minus = out_minus.cpu().ptr<float>()[0];
 
                 input_data[i] = orig;
@@ -202,18 +204,18 @@ namespace lfs::core::debug {
 } // namespace lfs::core::debug
 
 // Convenience macro for gradient checking
-#define CHECK_GRADIENT(forward_fn, input, analytical_grad) \
-    do { \
-        auto _result = lfs::core::debug::GradientChecker::check(forward_fn, input, analytical_grad); \
-        if (!_result.passed) { \
+#define CHECK_GRADIENT(forward_fn, input, analytical_grad)                                            \
+    do {                                                                                              \
+        auto _result = lfs::core::debug::GradientChecker::check(forward_fn, input, analytical_grad);  \
+        if (!_result.passed) {                                                                        \
             LOG_WARN("Gradient check failed at {}:{} - {}", __FILE__, __LINE__, _result.to_string()); \
-        } \
-    } while(0)
+        }                                                                                             \
+    } while (0)
 
-#define CHECK_GRADIENT_SAMPLED(forward_fn, input, analytical_grad, samples) \
-    do { \
+#define CHECK_GRADIENT_SAMPLED(forward_fn, input, analytical_grad, samples)                                           \
+    do {                                                                                                              \
         auto _result = lfs::core::debug::GradientChecker::check_sampled(forward_fn, input, analytical_grad, samples); \
-        if (!_result.passed) { \
-            LOG_WARN("Gradient check failed at {}:{} - {}", __FILE__, __LINE__, _result.to_string()); \
-        } \
-    } while(0)
+        if (!_result.passed) {                                                                                        \
+            LOG_WARN("Gradient check failed at {}:{} - {}", __FILE__, __LINE__, _result.to_string());                 \
+        }                                                                                                             \
+    } while (0)

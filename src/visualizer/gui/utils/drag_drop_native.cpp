@@ -7,20 +7,20 @@
 
 // Platform detection and native includes
 #ifdef _WIN32
-    #define GLFW_EXPOSE_NATIVE_WIN32
-    #include <GLFW/glfw3.h>
-    #include <GLFW/glfw3native.h>
-    #include <oleidl.h>
-    #include <shellapi.h>
-    #include <shlobj.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+#include <oleidl.h>
+#include <shellapi.h>
+#include <shlobj.h>
 #elif defined(__linux__)
-    #define GLFW_EXPOSE_NATIVE_X11
-    #include <GLFW/glfw3.h>
-    #include <GLFW/glfw3native.h>
-    #include <X11/Xlib.h>
-    #include <X11/Xatom.h>
+#define GLFW_EXPOSE_NATIVE_X11
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
 #else
-    #include <GLFW/glfw3.h>
+#include <GLFW/glfw3.h>
 #endif
 
 namespace lfs::vis::gui {
@@ -49,28 +49,34 @@ namespace lfs::vis::gui {
 
         ULONG STDMETHODCALLTYPE Release() override {
             ULONG count = --ref_count_;
-            if (count == 0) delete this;
+            if (count == 0)
+                delete this;
             return count;
         }
 
         // IDropTarget
         HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* pDataObj, DWORD grfKeyState,
                                             POINTL pt, DWORD* pdwEffect) override {
-            (void)pDataObj; (void)grfKeyState; (void)pt;
+            (void)pDataObj;
+            (void)grfKeyState;
+            (void)pt;
             *pdwEffect = DROPEFFECT_COPY;
-            if (owner_) owner_->setDragHovering(true);
+            if (owner_)
+                owner_->setDragHovering(true);
             return S_OK;
         }
 
         HRESULT STDMETHODCALLTYPE DragOver(DWORD grfKeyState, POINTL pt,
                                            DWORD* pdwEffect) override {
-            (void)grfKeyState; (void)pt;
+            (void)grfKeyState;
+            (void)pt;
             *pdwEffect = DROPEFFECT_COPY;
             return S_OK;
         }
 
         HRESULT STDMETHODCALLTYPE DragLeave() override {
-            if (owner_) owner_->setDragHovering(false);
+            if (owner_)
+                owner_->setDragHovering(false);
             return S_OK;
         }
 
@@ -79,8 +85,8 @@ namespace lfs::vis::gui {
             *pdwEffect = DROPEFFECT_COPY;
 
             std::vector<std::string> paths;
-            constexpr FORMATETC FMT = { CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
-            STGMEDIUM stg = { TYMED_HGLOBAL };
+            constexpr FORMATETC FMT = {CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+            STGMEDIUM stg = {TYMED_HGLOBAL};
 
             if (SUCCEEDED(pDataObj->GetData(const_cast<FORMATETC*>(&FMT), &stg))) {
                 if (const HDROP hdrop = static_cast<HDROP>(GlobalLock(stg.hGlobal))) {
@@ -88,11 +94,13 @@ namespace lfs::vis::gui {
                     paths.reserve(count);
                     for (UINT i = 0; i < count; ++i) {
                         const UINT len = DragQueryFileW(hdrop, i, nullptr, 0);
-                        if (len == 0) continue;
+                        if (len == 0)
+                            continue;
                         std::wstring wpath(len + 1, L'\0');
                         DragQueryFileW(hdrop, i, wpath.data(), len + 1);
                         const int utf8_len = WideCharToMultiByte(CP_UTF8, 0, wpath.c_str(), -1, nullptr, 0, nullptr, nullptr);
-                        if (utf8_len <= 0) continue;
+                        if (utf8_len <= 0)
+                            continue;
                         std::string utf8_path(utf8_len - 1, '\0');
                         WideCharToMultiByte(CP_UTF8, 0, wpath.c_str(), -1, utf8_path.data(), utf8_len, nullptr, nullptr);
                         paths.push_back(std::move(utf8_path));
@@ -104,7 +112,8 @@ namespace lfs::vis::gui {
 
             if (owner_) {
                 owner_->setDragHovering(false);
-                if (!paths.empty()) owner_->handleFileDrop(paths);
+                if (!paths.empty())
+                    owner_->handleFileDrop(paths);
             }
             return S_OK;
         }
@@ -121,7 +130,8 @@ namespace lfs::vis::gui {
     };
 
     bool NativeDragDrop::init(GLFWwindow* window) {
-        if (initialized_) return true;
+        if (initialized_)
+            return true;
         window_ = window;
 
         platform_data_ = new PlatformData();
@@ -159,7 +169,8 @@ namespace lfs::vis::gui {
     }
 
     void NativeDragDrop::shutdown() {
-        if (!initialized_) return;
+        if (!initialized_)
+            return;
 
         if (platform_data_) {
             if (platform_data_->hwnd) {
@@ -207,7 +218,8 @@ namespace lfs::vis::gui {
     };
 
     bool NativeDragDrop::init(GLFWwindow* window) {
-        if (initialized_) return true;
+        if (initialized_)
+            return true;
         window_ = window;
 
         platform_data_ = new PlatformData();
@@ -238,7 +250,8 @@ namespace lfs::vis::gui {
     }
 
     void NativeDragDrop::shutdown() {
-        if (!initialized_) return;
+        if (!initialized_)
+            return;
 
         if (platform_data_) {
             delete platform_data_;
@@ -250,15 +263,18 @@ namespace lfs::vis::gui {
     }
 
     void NativeDragDrop::pollEvents() {
-        if (!initialized_ || !platform_data_) return;
+        if (!initialized_ || !platform_data_)
+            return;
 
         Display* const dpy = platform_data_->display;
-        if (XPending(dpy) <= 0) return;
+        if (XPending(dpy) <= 0)
+            return;
 
         // Peek only - GLFW handles full XDnD protocol
         XEvent event;
         XPeekEvent(dpy, &event);
-        if (event.type != ClientMessage) return;
+        if (event.type != ClientMessage)
+            return;
 
         const XClientMessageEvent& cm = event.xclient;
         const Atom msg_type = cm.message_type;
@@ -266,8 +282,7 @@ namespace lfs::vis::gui {
         if (msg_type == platform_data_->xdnd_enter && !drag_hovering_) {
             platform_data_->source_window = static_cast<Window>(cm.data.l[0]);
             setDragHovering(true);
-        } else if ((msg_type == platform_data_->xdnd_leave || msg_type == platform_data_->xdnd_drop)
-                   && drag_hovering_) {
+        } else if ((msg_type == platform_data_->xdnd_leave || msg_type == platform_data_->xdnd_drop) && drag_hovering_) {
             setDragHovering(false);
             platform_data_->source_window = 0;
         }
@@ -294,16 +309,17 @@ namespace lfs::vis::gui {
 
 #endif
 
-// ============================================================================
-// Common Implementation
-// ============================================================================
+    // ============================================================================
+    // Common Implementation
+    // ============================================================================
 
     NativeDragDrop::~NativeDragDrop() {
         shutdown();
     }
 
     void NativeDragDrop::setDragHovering(bool hovering) {
-        if (drag_hovering_ == hovering) return;
+        if (drag_hovering_ == hovering)
+            return;
 
         drag_hovering_ = hovering;
 

@@ -1,9 +1,9 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
 #include <cuda_runtime.h>
+#include <gtest/gtest.h>
 
 using namespace lfs::core;
 
@@ -89,8 +89,8 @@ TEST_F(TensorSlicingSafetyTest, SlicePtrBehavior) {
     float* full_ptr = full.ptr<float>();
 
     // Create slice starting at different offsets
-    Tensor slice1 = full.slice(0, 0, 500);    // [0:500]
-    Tensor slice2 = full.slice(0, 100, 600);  // [100:600]
+    Tensor slice1 = full.slice(0, 0, 500);   // [0:500]
+    Tensor slice2 = full.slice(0, 100, 600); // [100:600]
 
     float* slice1_ptr = slice1.ptr<float>();
     float* slice2_ptr = slice2.ptr<float>();
@@ -109,8 +109,8 @@ TEST_F(TensorSlicingSafetyTest, SlicePtrBehavior) {
     // which gives it exactly the first 54k elements.
 
     std::cout << "Tensor.ptr() returns OFFSET pointer (slice starts at offset)" << std::endl;
-    EXPECT_EQ(slice1_ptr, full_ptr);  // Slice at offset 0 points to base
-    EXPECT_EQ(slice2_ptr, full_ptr + (100 * 3));  // Slice at offset 100 points to base+offset
+    EXPECT_EQ(slice1_ptr, full_ptr);             // Slice at offset 0 points to base
+    EXPECT_EQ(slice2_ptr, full_ptr + (100 * 3)); // Slice at offset 100 points to base+offset
 }
 
 /**
@@ -162,7 +162,7 @@ TEST_F(TensorSlicingSafetyTest, MultipleSlicesShareBuffer) {
     slice1.fill_(10.0f);
 
     // Verify slice2's overlapping region [250:500] is modified
-    Tensor overlap = slice2.slice(0, 0, 250);  // First 250 of slice2 = [250:500] of full
+    Tensor overlap = slice2.slice(0, 0, 250); // First 250 of slice2 = [250:500] of full
     float overlap_val;
     cudaMemcpy(&overlap_val, overlap.ptr<float>(), sizeof(float), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
@@ -177,11 +177,11 @@ TEST_F(TensorSlicingSafetyTest, MultipleSlicesShareBuffer) {
 TEST_F(TensorSlicingSafetyTest, SlicingDifferentShapes) {
     // Test various shapes used in Gaussian Splatting
     std::vector<std::vector<size_t>> shapes = {
-        {1000, 3},      // means: [N, 3]
-        {1000, 1, 3},   // sh0: [N, 1, 3]
-        {1000, 15, 3},  // shN: [N, 15, 3]
-        {1000, 4},      // rotations: [N, 4]
-        {1000, 1},      // opacity: [N, 1]
+        {1000, 3},     // means: [N, 3]
+        {1000, 1, 3},  // sh0: [N, 1, 3]
+        {1000, 15, 3}, // shN: [N, 15, 3]
+        {1000, 4},     // rotations: [N, 4]
+        {1000, 1},     // opacity: [N, 1]
     };
 
     for (const auto& shape : shapes) {
@@ -209,7 +209,7 @@ TEST_F(TensorSlicingSafetyTest, SliceOutOfBounds) {
     // Attempt to slice beyond bounds
     // Should either clamp or throw - verify it doesn't crash
     EXPECT_NO_THROW({
-        Tensor slice = full.slice(0, 0, 2000);  // end > size
+        Tensor slice = full.slice(0, 0, 2000); // end > size
         // If it succeeds, verify it clamped to actual size
         EXPECT_LE(slice.shape()[0], N);
     }) << "Slicing out of bounds should not crash!";
@@ -219,7 +219,7 @@ TEST_F(TensorSlicingSafetyTest, SliceOutOfBounds) {
  * Test 8: Performance test - verify slicing is O(1)
  */
 TEST_F(TensorSlicingSafetyTest, SlicingIsConstantTime) {
-    const size_t N = 4000000;  // 4M Gaussians
+    const size_t N = 4000000; // 4M Gaussians
     Tensor full = Tensor::zeros({N, 3}, Device::CUDA);
 
     // Time multiple slice operations
@@ -229,7 +229,7 @@ TEST_F(TensorSlicingSafetyTest, SlicingIsConstantTime) {
         Tensor slice = full.slice(0, 0, N / 2);
         // Access shape to prevent optimization
         volatile size_t s = slice.shape()[0];
-        (void)s;  // Suppress unused variable warning
+        (void)s; // Suppress unused variable warning
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -301,8 +301,7 @@ TEST_F(TensorSlicingSafetyTest, SimulateMCMCGrowth) {
         // Simulate adding new Gaussians (5% growth)
         size_t n_new = std::min(
             static_cast<size_t>(current_size * 0.05),
-            MAX_CAP - current_size
-        );
+            MAX_CAP - current_size);
         current_size += n_new;
 
         // Create new view with grown size
@@ -314,7 +313,7 @@ TEST_F(TensorSlicingSafetyTest, SimulateMCMCGrowth) {
     size_t free_after;
     cudaMemGetInfo(&free_after, &total);
 
-    const size_t tolerance = 1024 * 1024;  // 1MB
+    const size_t tolerance = 1024 * 1024; // 1MB
     EXPECT_NEAR(free_after, free_before, tolerance)
         << "Memory allocated during growth! Not using pre-allocated buffer correctly.";
 }

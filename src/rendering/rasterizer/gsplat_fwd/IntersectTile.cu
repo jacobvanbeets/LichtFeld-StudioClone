@@ -2,11 +2,11 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <cooperative_groups.h>
-#include <cuda_runtime.h>
-#include <cub/cub.cuh>
 #include <cmath>
+#include <cooperative_groups.h>
 #include <cstdio>
+#include <cub/cub.cuh>
+#include <cuda_runtime.h>
 
 #include "Common.h"
 #include "Intersect.h"
@@ -34,8 +34,7 @@ namespace gsplat_fwd {
         const uint32_t tile_n_bits,
         int32_t* __restrict__ tiles_per_gauss,
         int64_t* __restrict__ isect_ids,
-        int32_t* __restrict__ flatten_ids
-    ) {
+        int32_t* __restrict__ flatten_ids) {
         uint32_t idx = cg::this_grid().thread_rank();
         bool first_pass = cum_tiles_per_gauss == nullptr;
         if (idx >= (packed ? nnz : C * N)) {
@@ -109,8 +108,7 @@ namespace gsplat_fwd {
         int32_t* tiles_per_gauss,
         int64_t* isect_ids,
         int32_t* flatten_ids,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         int64_t n_elements = packed ? nnz : C * N;
 
         uint32_t n_tiles = tile_width * tile_height;
@@ -130,8 +128,7 @@ namespace gsplat_fwd {
             means2d, radii, depths,
             cum_tiles_per_gauss,
             tile_size, tile_width, tile_height, tile_n_bits,
-            tiles_per_gauss, isect_ids, flatten_ids
-        );
+            tiles_per_gauss, isect_ids, flatten_ids);
     }
 
     __global__ void intersect_offset_kernel(
@@ -140,8 +137,7 @@ namespace gsplat_fwd {
         const uint32_t C,
         const uint32_t n_tiles,
         const uint32_t tile_n_bits,
-        int32_t* __restrict__ offsets
-    ) {
+        int32_t* __restrict__ offsets) {
         uint32_t idx = cg::this_grid().thread_rank();
         if (idx >= n_isects)
             return;
@@ -180,8 +176,7 @@ namespace gsplat_fwd {
         uint32_t tile_width,
         uint32_t tile_height,
         int32_t* offsets,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         if (n_isects == 0) {
             cudaMemsetAsync(offsets, 0, C * tile_height * tile_width * sizeof(int32_t), stream);
             return;
@@ -194,8 +189,7 @@ namespace gsplat_fwd {
         uint32_t tile_n_bits = static_cast<uint32_t>(floor(log2(n_tiles))) + 1;
 
         intersect_offset_kernel<<<grid, threads, 0, stream>>>(
-            n_isects, isect_ids, C, n_tiles, tile_n_bits, offsets
-        );
+            n_isects, isect_ids, C, n_tiles, tile_n_bits, offsets);
     }
 
     void radix_sort_double_buffer(
@@ -206,8 +200,7 @@ namespace gsplat_fwd {
         int32_t* flatten_ids,
         int64_t* isect_ids_sorted,
         int32_t* flatten_ids_sorted,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         if (n_isects <= 0) {
             return;
         }
@@ -222,17 +215,16 @@ namespace gsplat_fwd {
             n_isects,
             0,
             32 + tile_n_bits + cam_n_bits,
-            stream
-        );
+            stream);
 
         // Copy results to sorted buffers if needed
         if (d_keys.selector == 0) {
             cudaMemcpyAsync(isect_ids_sorted, isect_ids,
-                           n_isects * sizeof(int64_t), cudaMemcpyDeviceToDevice, stream);
+                            n_isects * sizeof(int64_t), cudaMemcpyDeviceToDevice, stream);
         }
         if (d_values.selector == 0) {
             cudaMemcpyAsync(flatten_ids_sorted, flatten_ids,
-                           n_isects * sizeof(int32_t), cudaMemcpyDeviceToDevice, stream);
+                            n_isects * sizeof(int32_t), cudaMemcpyDeviceToDevice, stream);
         }
     }
 

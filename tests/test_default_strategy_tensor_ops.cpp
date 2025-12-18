@@ -6,135 +6,135 @@
 
 #include "core/tensor.hpp"
 #include <gtest/gtest.h>
-#include <torch/torch.h>
 #include <random>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 
 namespace {
 
-// Convert lfs::core::Tensor to torch::Tensor for comparison
-torch::Tensor to_torch(const Tensor& t) {
-    if (!t.is_valid()) {
-        return torch::Tensor();
-    }
-    auto cpu_tensor = t.to(Device::CPU);
-    std::vector<int64_t> sizes;
-    for (size_t i = 0; i < t.ndim(); ++i) {
-        sizes.push_back(static_cast<int64_t>(t.shape()[i]));
-    }
-
-    torch::Tensor result;
-    if (t.dtype() == DataType::Float32) {
-        auto ptr = cpu_tensor.ptr<float>();
-        result = torch::from_blob(const_cast<float*>(ptr), sizes, torch::kFloat32).clone();
-    } else if (t.dtype() == DataType::Bool) {
-        auto ptr = cpu_tensor.ptr<unsigned char>();
-        result = torch::from_blob(const_cast<unsigned char*>(ptr), sizes, torch::kUInt8).clone().to(torch::kBool);
-    } else if (t.dtype() == DataType::Int32) {
-        auto ptr = cpu_tensor.ptr<int32_t>();
-        result = torch::from_blob(const_cast<int32_t*>(ptr), sizes, torch::kInt32).clone();
-    } else if (t.dtype() == DataType::Int64) {
-        auto ptr = cpu_tensor.ptr<int64_t>();
-        result = torch::from_blob(const_cast<int64_t*>(ptr), sizes, torch::kInt64).clone();
-    }
-    return result.cuda();
-}
-
-// Convert torch::Tensor to lfs::core::Tensor
-Tensor from_torch(const torch::Tensor& t) {
-    if (!t.defined()) {
-        return Tensor();
-    }
-    auto cpu_t = t.cpu().contiguous();
-    std::vector<size_t> shape;
-    for (int64_t i = 0; i < cpu_t.dim(); ++i) {
-        shape.push_back(static_cast<size_t>(cpu_t.size(i)));
-    }
-
-    if (cpu_t.dtype() == torch::kFloat32) {
-        std::vector<float> data(cpu_t.data_ptr<float>(),
-                                cpu_t.data_ptr<float>() + cpu_t.numel());
-        return Tensor::from_vector(data, TensorShape(shape), Device::CUDA);
-    } else if (cpu_t.dtype() == torch::kBool) {
-        auto uint8_tensor = cpu_t.to(torch::kUInt8);
-        auto result = Tensor::zeros_bool(TensorShape(shape), Device::CPU);
-        auto ptr = result.ptr<unsigned char>();
-        std::copy(uint8_tensor.data_ptr<uint8_t>(),
-                  uint8_tensor.data_ptr<uint8_t>() + uint8_tensor.numel(), ptr);
-        return result.to(Device::CUDA);
-    } else if (cpu_t.dtype() == torch::kInt64) {
-        // Convert int64 to int32 (Tensor::from_vector doesn't support int64)
-        auto int64_ptr = cpu_t.data_ptr<int64_t>();
-        std::vector<int> data(cpu_t.numel());
-        for (int64_t i = 0; i < cpu_t.numel(); ++i) {
-            data[i] = static_cast<int>(int64_ptr[i]);
+    // Convert lfs::core::Tensor to torch::Tensor for comparison
+    torch::Tensor to_torch(const Tensor& t) {
+        if (!t.is_valid()) {
+            return torch::Tensor();
         }
-        auto result = Tensor::from_vector(data, TensorShape(shape), Device::CUDA);
-        return result.to(DataType::Int64);  // Convert back to int64 on GPU
-    } else if (cpu_t.dtype() == torch::kInt32) {
-        std::vector<int32_t> data(cpu_t.data_ptr<int32_t>(),
-                                   cpu_t.data_ptr<int32_t>() + cpu_t.numel());
-        return Tensor::from_vector(data, TensorShape(shape), Device::CUDA);
-    }
-    throw std::runtime_error("Unsupported dtype in from_torch");
-}
-
-// Compare tensors for equality within tolerance
-bool tensors_close(const Tensor& lfs, const torch::Tensor& torch_ref,
-                   float rtol = 1e-5f, float atol = 1e-6f,
-                   const std::string& msg = "") {
-    auto lfs_torch = to_torch(lfs);
-
-    if (lfs_torch.sizes() != torch_ref.sizes()) {
-        std::cout << msg << " Shape mismatch: [";
-        for (int i = 0; i < lfs_torch.dim(); ++i) {
-            std::cout << lfs_torch.size(i) << (i < lfs_torch.dim() - 1 ? ", " : "");
+        auto cpu_tensor = t.to(Device::CPU);
+        std::vector<int64_t> sizes;
+        for (size_t i = 0; i < t.ndim(); ++i) {
+            sizes.push_back(static_cast<int64_t>(t.shape()[i]));
         }
-        std::cout << "] vs [";
-        for (int i = 0; i < torch_ref.dim(); ++i) {
-            std::cout << torch_ref.size(i) << (i < torch_ref.dim() - 1 ? ", " : "");
+
+        torch::Tensor result;
+        if (t.dtype() == DataType::Float32) {
+            auto ptr = cpu_tensor.ptr<float>();
+            result = torch::from_blob(const_cast<float*>(ptr), sizes, torch::kFloat32).clone();
+        } else if (t.dtype() == DataType::Bool) {
+            auto ptr = cpu_tensor.ptr<unsigned char>();
+            result = torch::from_blob(const_cast<unsigned char*>(ptr), sizes, torch::kUInt8).clone().to(torch::kBool);
+        } else if (t.dtype() == DataType::Int32) {
+            auto ptr = cpu_tensor.ptr<int32_t>();
+            result = torch::from_blob(const_cast<int32_t*>(ptr), sizes, torch::kInt32).clone();
+        } else if (t.dtype() == DataType::Int64) {
+            auto ptr = cpu_tensor.ptr<int64_t>();
+            result = torch::from_blob(const_cast<int64_t*>(ptr), sizes, torch::kInt64).clone();
         }
-        std::cout << "]" << std::endl;
-        return false;
+        return result.cuda();
     }
 
-    // Handle bool tensors
-    if (torch_ref.dtype() == torch::kBool) {
-        auto lfs_bool = lfs_torch.to(torch::kBool);
-        auto match = (lfs_bool == torch_ref).all().item<bool>();
-        if (!match) {
-            auto diff_count = (~(lfs_bool == torch_ref)).sum().item<int64_t>();
-            std::cout << msg << " Bool tensor mismatch: " << diff_count << " elements differ" << std::endl;
+    // Convert torch::Tensor to lfs::core::Tensor
+    Tensor from_torch(const torch::Tensor& t) {
+        if (!t.defined()) {
+            return Tensor();
         }
-        return match;
-    }
-
-    // Handle int tensors
-    if (torch_ref.dtype() == torch::kInt64 || torch_ref.dtype() == torch::kInt32) {
-        auto match = (lfs_torch == torch_ref).all().item<bool>();
-        if (!match) {
-            auto diff_count = (~(lfs_torch == torch_ref)).sum().item<int64_t>();
-            std::cout << msg << " Int tensor mismatch: " << diff_count << " elements differ" << std::endl;
+        auto cpu_t = t.cpu().contiguous();
+        std::vector<size_t> shape;
+        for (int64_t i = 0; i < cpu_t.dim(); ++i) {
+            shape.push_back(static_cast<size_t>(cpu_t.size(i)));
         }
-        return match;
+
+        if (cpu_t.dtype() == torch::kFloat32) {
+            std::vector<float> data(cpu_t.data_ptr<float>(),
+                                    cpu_t.data_ptr<float>() + cpu_t.numel());
+            return Tensor::from_vector(data, TensorShape(shape), Device::CUDA);
+        } else if (cpu_t.dtype() == torch::kBool) {
+            auto uint8_tensor = cpu_t.to(torch::kUInt8);
+            auto result = Tensor::zeros_bool(TensorShape(shape), Device::CPU);
+            auto ptr = result.ptr<unsigned char>();
+            std::copy(uint8_tensor.data_ptr<uint8_t>(),
+                      uint8_tensor.data_ptr<uint8_t>() + uint8_tensor.numel(), ptr);
+            return result.to(Device::CUDA);
+        } else if (cpu_t.dtype() == torch::kInt64) {
+            // Convert int64 to int32 (Tensor::from_vector doesn't support int64)
+            auto int64_ptr = cpu_t.data_ptr<int64_t>();
+            std::vector<int> data(cpu_t.numel());
+            for (int64_t i = 0; i < cpu_t.numel(); ++i) {
+                data[i] = static_cast<int>(int64_ptr[i]);
+            }
+            auto result = Tensor::from_vector(data, TensorShape(shape), Device::CUDA);
+            return result.to(DataType::Int64); // Convert back to int64 on GPU
+        } else if (cpu_t.dtype() == torch::kInt32) {
+            std::vector<int32_t> data(cpu_t.data_ptr<int32_t>(),
+                                      cpu_t.data_ptr<int32_t>() + cpu_t.numel());
+            return Tensor::from_vector(data, TensorShape(shape), Device::CUDA);
+        }
+        throw std::runtime_error("Unsupported dtype in from_torch");
     }
 
-    // Float comparison
-    auto diff = torch::abs(lfs_torch.to(torch::kFloat32) - torch_ref.to(torch::kFloat32));
-    auto threshold = atol + rtol * torch::abs(torch_ref.to(torch::kFloat32));
-    auto close = diff <= threshold;
-    auto all_close = close.all().item<bool>();
+    // Compare tensors for equality within tolerance
+    bool tensors_close(const Tensor& lfs, const torch::Tensor& torch_ref,
+                       float rtol = 1e-5f, float atol = 1e-6f,
+                       const std::string& msg = "") {
+        auto lfs_torch = to_torch(lfs);
 
-    if (!all_close) {
-        auto max_diff = diff.max().item<float>();
-        auto mean_diff = diff.mean().item<float>();
-        auto num_bad = (~close).sum().item<int64_t>();
-        std::cout << msg << " Float mismatch: " << num_bad << " elements, max_diff=" << max_diff
-                  << ", mean_diff=" << mean_diff << std::endl;
+        if (lfs_torch.sizes() != torch_ref.sizes()) {
+            std::cout << msg << " Shape mismatch: [";
+            for (int i = 0; i < lfs_torch.dim(); ++i) {
+                std::cout << lfs_torch.size(i) << (i < lfs_torch.dim() - 1 ? ", " : "");
+            }
+            std::cout << "] vs [";
+            for (int i = 0; i < torch_ref.dim(); ++i) {
+                std::cout << torch_ref.size(i) << (i < torch_ref.dim() - 1 ? ", " : "");
+            }
+            std::cout << "]" << std::endl;
+            return false;
+        }
+
+        // Handle bool tensors
+        if (torch_ref.dtype() == torch::kBool) {
+            auto lfs_bool = lfs_torch.to(torch::kBool);
+            auto match = (lfs_bool == torch_ref).all().item<bool>();
+            if (!match) {
+                auto diff_count = (~(lfs_bool == torch_ref)).sum().item<int64_t>();
+                std::cout << msg << " Bool tensor mismatch: " << diff_count << " elements differ" << std::endl;
+            }
+            return match;
+        }
+
+        // Handle int tensors
+        if (torch_ref.dtype() == torch::kInt64 || torch_ref.dtype() == torch::kInt32) {
+            auto match = (lfs_torch == torch_ref).all().item<bool>();
+            if (!match) {
+                auto diff_count = (~(lfs_torch == torch_ref)).sum().item<int64_t>();
+                std::cout << msg << " Int tensor mismatch: " << diff_count << " elements differ" << std::endl;
+            }
+            return match;
+        }
+
+        // Float comparison
+        auto diff = torch::abs(lfs_torch.to(torch::kFloat32) - torch_ref.to(torch::kFloat32));
+        auto threshold = atol + rtol * torch::abs(torch_ref.to(torch::kFloat32));
+        auto close = diff <= threshold;
+        auto all_close = close.all().item<bool>();
+
+        if (!all_close) {
+            auto max_diff = diff.max().item<float>();
+            auto mean_diff = diff.mean().item<float>();
+            auto num_bad = (~close).sum().item<int64_t>();
+            std::cout << msg << " Float mismatch: " << num_bad << " elements, max_diff=" << max_diff
+                      << ", mean_diff=" << mean_diff << std::endl;
+        }
+        return all_close;
     }
-    return all_close;
-}
 
 } // anonymous namespace
 
@@ -205,7 +205,7 @@ TEST_F(DefaultStrategyTensorOpsTest, Randn_ShapeMatch) {
     // Statistical properties should be similar (mean ~0, std ~1)
     auto lfs_mean = to_torch(lfs_randn).mean().item<float>();
     auto lfs_std = to_torch(lfs_randn).std().item<float>();
-    EXPECT_NEAR(lfs_mean, 0.0f, 0.3f);  // Loose bound for random
+    EXPECT_NEAR(lfs_mean, 0.0f, 0.3f); // Loose bound for random
     EXPECT_NEAR(lfs_std, 1.0f, 0.3f);
 }
 
@@ -214,7 +214,7 @@ TEST_F(DefaultStrategyTensorOpsTest, FromVector_Int) {
     std::vector<int> data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
     auto lfs_tensor = Tensor::from_vector(data, TensorShape({10}), Device::CUDA);
     auto torch_tensor = torch::tensor(std::vector<int64_t>(data.begin(), data.end()),
-                                       torch::TensorOptions().dtype(torch::kInt32).device(torch::kCUDA));
+                                      torch::TensorOptions().dtype(torch::kInt32).device(torch::kCUDA));
 
     auto lfs_torch = to_torch(lfs_tensor);
     EXPECT_TRUE((lfs_torch.to(torch::kInt64) == torch_tensor.to(torch::kInt64)).all().item<bool>());
@@ -231,7 +231,8 @@ TEST_F(DefaultStrategyTensorOpsTest, NonzeroSqueeze_BasicPattern) {
 
     std::vector<bool> mask_data = {true, false, true, false, false, true, true, false};
     auto torch_mask = torch::tensor(std::vector<int8_t>{1, 0, 1, 0, 0, 1, 1, 0},
-                                     torch::kCUDA).to(torch::kBool);
+                                    torch::kCUDA)
+                          .to(torch::kBool);
     auto lfs_mask = from_torch(torch_mask);
 
     auto torch_indices = torch_mask.nonzero().squeeze(-1);
@@ -639,7 +640,7 @@ TEST_F(DefaultStrategyTensorOpsTest, AppendGather_Basic) {
     auto lfs_indices = from_torch(torch_indices);
 
     // Reserve capacity for appending (required for in-place operations)
-    lfs_data.reserve(20);  // Reserve space for 10 + some extra
+    lfs_data.reserve(20); // Reserve space for 10 + some extra
 
     // Simulate append_gather: gather and concat
     auto torch_gathered = torch_data.index_select(0, torch_indices);
@@ -648,7 +649,7 @@ TEST_F(DefaultStrategyTensorOpsTest, AppendGather_Basic) {
     lfs_data.append_gather(lfs_indices);
 
     EXPECT_TRUE(tensors_close(lfs_data, torch_result, 1e-5f, 1e-6f, "AppendGather_Basic"));
-    EXPECT_EQ(lfs_data.shape()[0], 13);  // 10 + 3
+    EXPECT_EQ(lfs_data.shape()[0], 13); // 10 + 3
 }
 
 TEST_F(DefaultStrategyTensorOpsTest, AppendZeros_Basic) {
@@ -829,10 +830,10 @@ TEST_F(DefaultStrategyTensorOpsTest, GrowGsCapEnforcement_Full) {
     torch::manual_seed(321);
     int current_n = 100;
     int max_cap = 110;
-    int available = max_cap - current_n;  // 10
+    int available = max_cap - current_n; // 10
 
     auto torch_is_duplicated = torch::randint(0, 2, {current_n},
-        torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA));
+                                              torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA));
 
     auto lfs_is_duplicated = from_torch(torch_is_duplicated);
 
@@ -874,7 +875,7 @@ TEST_F(DefaultStrategyTensorOpsTest, FillFreeSlotsPattern) {
 
     auto torch_data = torch::randn({static_cast<int64_t>(current_size), 3}, torch::kCUDA);
     auto torch_free_mask = torch::randint(0, 2, {static_cast<int64_t>(capacity)},
-        torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA));
+                                          torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA));
     auto torch_new_data = torch::randn({20, 3}, torch::kCUDA);
 
     auto lfs_data = from_torch(torch_data);
@@ -928,7 +929,7 @@ TEST_F(DefaultStrategyTensorOpsTest, ActiveCountPattern) {
     size_t current_size = 150;
 
     auto torch_free_mask = torch::randint(0, 2, {static_cast<int64_t>(capacity)},
-        torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA));
+                                          torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA));
     auto lfs_free_mask = from_torch(torch_free_mask);
 
     auto torch_active_region = torch_free_mask.slice(0, 0, current_size);
@@ -954,7 +955,7 @@ TEST_F(DefaultStrategyTensorOpsTest, GetActiveIndicesPattern) {
     size_t current_size = 100;
 
     auto torch_free_mask = torch::randint(0, 2, {static_cast<int64_t>(current_size)},
-        torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA));
+                                          torch::TensorOptions().dtype(torch::kBool).device(torch::kCUDA));
     auto lfs_free_mask = from_torch(torch_free_mask);
 
     auto torch_is_active = ~torch_free_mask;
@@ -1022,14 +1023,14 @@ TEST_F(DefaultStrategyTensorOpsTest, DensificationInfo_FullGrowGsPattern) {
 
     // Densification info [2, N]
     auto torch_dens_info = torch::zeros({2, N}, torch::kCUDA);
-    torch_dens_info[0] = torch::randint(1, 50, {N}, torch::kCUDA).to(torch::kFloat32);  // counts
-    torch_dens_info[1] = torch::rand({N}, torch::kCUDA) * 0.05f;  // grad norms
+    torch_dens_info[0] = torch::randint(1, 50, {N}, torch::kCUDA).to(torch::kFloat32); // counts
+    torch_dens_info[1] = torch::rand({N}, torch::kCUDA) * 0.05f;                       // grad norms
 
     // Scales [N, 3]
     auto torch_scales = torch::randn({N, 3}, torch::kCUDA);
 
     // Free mask [N]
-    auto torch_free_mask = torch::randint(0, 10, {N}, torch::kCUDA) == 0;  // ~10% free
+    auto torch_free_mask = torch::randint(0, 10, {N}, torch::kCUDA) == 0; // ~10% free
 
     float grad_threshold = 0.002f;
     float scale_threshold = 1.0f;
@@ -1106,14 +1107,14 @@ TEST_F(DefaultStrategyTensorOpsTest, Pruning_CompletePruneGsChain) {
     const int N = 100000;
 
     // Create test data
-    auto torch_opacity = torch::randn({N}, torch::kCUDA);  // raw logit opacity
+    auto torch_opacity = torch::randn({N}, torch::kCUDA); // raw logit opacity
     auto torch_rotation = torch::randn({N, 4}, torch::kCUDA);
     auto torch_scales = torch::randn({N, 3}, torch::kCUDA);
-    auto torch_free_mask = torch::randint(0, 20, {N}, torch::kCUDA) == 0;  // ~5% free
+    auto torch_free_mask = torch::randint(0, 20, {N}, torch::kCUDA) == 0; // ~5% free
 
     // Set some rotations to near-zero (should be pruned)
     torch_rotation.index_put_({torch::arange(0, 100, torch::kCUDA)},
-                               torch::zeros({100, 4}, torch::kCUDA));
+                              torch::zeros({100, 4}, torch::kCUDA));
 
     float prune_opacity = 0.01f;
     float prune_scale = 2.0f;
@@ -1257,7 +1258,7 @@ TEST_F(DefaultStrategyTensorOpsTest, Pruning_LargeScale) {
 
     auto torch_opacity = torch::randn({N}, torch::kCUDA);
     auto torch_rotation = torch::randn({N, 4}, torch::kCUDA);
-    auto torch_free_mask = torch::randint(0, 50, {N}, torch::kCUDA) == 0;  // ~2% free
+    auto torch_free_mask = torch::randint(0, 50, {N}, torch::kCUDA) == 0; // ~2% free
 
     float prune_opacity = 0.01f;
 
@@ -1345,10 +1346,10 @@ TEST_F(DefaultStrategyTensorOpsTest, Split_AppendZerosThenIndexPut) {
         new_indices_vec[i] = original_size + i;
     }
     auto torch_new_indices = torch::tensor(std::vector<int64_t>(new_indices_vec.begin(), new_indices_vec.end()),
-                                            torch::kCUDA);
+                                           torch::kCUDA);
     auto lfs_new_indices = Tensor::from_vector(new_indices_vec,
-                                                TensorShape({static_cast<size_t>(n_remaining)}),
-                                                Device::CUDA);
+                                               TensorShape({static_cast<size_t>(n_remaining)}),
+                                               Device::CUDA);
 
     // Torch: cat then index_put (equivalent to append_zeros + index_put)
     auto torch_zeros = torch::zeros({n_remaining, 3}, torch::kCUDA);
@@ -1378,7 +1379,7 @@ TEST_F(DefaultStrategyTensorOpsTest, GrowGs_FullMaskCalculation) {
     auto torch_numer = torch::rand({N}, torch::kCUDA) * 0.01f;
     auto torch_denom = torch::randint(0, 10, {N}, torch::kCUDA).to(torch::kFloat32);
     auto torch_scales = torch::randn({N, 3}, torch::kCUDA);
-    auto torch_free_mask = torch::randint(0, 5, {N}, torch::kCUDA) == 0;  // ~20% free
+    auto torch_free_mask = torch::randint(0, 5, {N}, torch::kCUDA) == 0; // ~20% free
 
     float grad_threshold = 0.002f;
     float scale_threshold = 1.0f;
@@ -1437,7 +1438,7 @@ TEST_F(DefaultStrategyTensorOpsTest, PruneGs_FullMaskCalculation) {
     auto torch_opacity = torch::randn({N}, torch::kCUDA);
     auto torch_rotation = torch::randn({N, 4}, torch::kCUDA);
     auto torch_scales = torch::randn({N, 3}, torch::kCUDA);
-    auto torch_free_mask = torch::randint(0, 10, {N}, torch::kCUDA) == 0;  // ~10% free
+    auto torch_free_mask = torch::randint(0, 10, {N}, torch::kCUDA) == 0; // ~10% free
 
     float opacity_threshold = 0.01f;
     float scale_threshold = 2.0f;
@@ -1486,7 +1487,7 @@ TEST_F(DefaultStrategyTensorOpsTest, Remove_ZeroRotationAndOptimizerState) {
     auto torch_rotation = torch::randn({N, 4}, torch::kCUDA);
     auto torch_exp_avg = torch::randn({N, 3}, torch::kCUDA);
     auto torch_exp_avg_sq = torch::randn({N, 3}, torch::kCUDA).abs();
-    auto torch_is_prune = torch::randint(0, 5, {N}, torch::kCUDA) == 0;  // ~20% prune
+    auto torch_is_prune = torch::randint(0, 5, {N}, torch::kCUDA) == 0; // ~20% prune
 
     auto lfs_rotation = from_torch(torch_rotation);
     auto lfs_exp_avg = from_torch(torch_exp_avg);
@@ -1530,7 +1531,7 @@ TEST_F(DefaultStrategyTensorOpsTest, ResetOpacity_ClampAndZero) {
     torch::manual_seed(42);
     const int N = 10000;
 
-    auto torch_opacity = torch::randn({N}, torch::kCUDA) * 5.0f;  // Wide range
+    auto torch_opacity = torch::randn({N}, torch::kCUDA) * 5.0f; // Wide range
     auto torch_exp_avg = torch::randn({N}, torch::kCUDA);
     auto torch_exp_avg_sq = torch::randn({N}, torch::kCUDA).abs();
 
@@ -1564,9 +1565,9 @@ TEST_F(DefaultStrategyTensorOpsTest, MaxCapEnforcement_LimitMaskBySlice) {
     torch::manual_seed(42);
     const int N = 10000;
     const int max_cap = 10500;
-    const int available = max_cap - N;  // 500
+    const int available = max_cap - N; // 500
 
-    auto torch_is_duplicated = torch::randint(0, 5, {N}, torch::kCUDA) == 0;  // ~20% = 2000
+    auto torch_is_duplicated = torch::randint(0, 5, {N}, torch::kCUDA) == 0; // ~20% = 2000
     auto lfs_is_duplicated = from_torch(torch_is_duplicated);
 
     auto torch_indices = torch_is_duplicated.nonzero().squeeze(-1);
@@ -1703,4 +1704,3 @@ TEST_F(DefaultStrategyTensorOpsTest, LargeScale_IndexPut) {
     auto zeroed = lfs_torch.index({torch_indices});
     EXPECT_TRUE((zeroed == 0).all().item<bool>()) << "Some indexed rows were not zeroed";
 }
-

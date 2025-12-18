@@ -283,8 +283,8 @@ namespace lfs::core {
         // capacity_ is the number of "rows" (dim 0) that can fit in the allocated buffer
         // logical_size_ is the current logical number of rows (same as shape_[0])
         // When capacity_ > 0, the buffer is larger than needed to allow in-place growth
-        size_t capacity_ = 0;      // Reserved capacity along dimension 0 (0 = no reservation)
-        size_t logical_size_ = 0;  // Logical size along dimension 0 (same as shape_[0])
+        size_t capacity_ = 0;     // Reserved capacity along dimension 0 (0 = no reservation)
+        size_t logical_size_ = 0; // Logical size along dimension 0 (same as shape_[0])
 
         // Cached alignment flags (computed once on allocation)
         bool is_aligned_16_ = false;  // 16-byte alignment for float4 vectorization
@@ -299,7 +299,7 @@ namespace lfs::core {
 
         // Debug tracking - when true, operations on this tensor are logged
         bool tracked_ = false;
-        std::string name_;  // Optional name for identification in traces
+        std::string name_; // Optional name for identification in traces
 
         // Compute alignment flags for vectorization
         void compute_alignment() {
@@ -872,13 +872,19 @@ namespace lfs::core {
 
         // Debug tracking - mark tensor to trace all operations it's involved in
         bool is_tracked() const { return tracked_; }
-        Tensor& set_tracked(bool tracked = true) { tracked_ = tracked; return *this; }
-        Tensor& track() { return set_tracked(true); }  // Convenience alias
+        Tensor& set_tracked(bool tracked = true) {
+            tracked_ = tracked;
+            return *this;
+        }
+        Tensor& track() { return set_tracked(true); } // Convenience alias
         Tensor& untrack() { return set_tracked(false); }
 
         // Optional name for identifying tensors in traces
         const std::string& name() const { return name_; }
-        Tensor& set_name(std::string name) { name_ = std::move(name); return *this; }
+        Tensor& set_name(std::string name) {
+            name_ = std::move(name);
+            return *this;
+        }
 
         size_t size(size_t dim) const {
             if (!is_valid())
@@ -995,26 +1001,28 @@ namespace lfs::core {
 
         // ============= UNARY OPERATIONS (LAZY EVALUATION) =============
         // Macro to define unary operations with lazy evaluation via expression templates
-#define LFS_DEFINE_UNARY_OP(name, op_type)                                           \
-        Tensor name() const {                                                        \
-            if (!is_valid() || numel() == 0) {                                       \
-                if (!is_valid()) return Tensor();                                    \
-                return Tensor::empty(shape_, device_, dtype_);                       \
-            }                                                                        \
-            return UnaryExpr<TensorLeaf, ops::op_type>(                              \
-                TensorLeaf(*this), ops::op_type{}, shape_, device_, dtype_);         \
-        }
+#define LFS_DEFINE_UNARY_OP(name, op_type)                               \
+    Tensor name() const {                                                \
+        if (!is_valid() || numel() == 0) {                               \
+            if (!is_valid())                                             \
+                return Tensor();                                         \
+            return Tensor::empty(shape_, device_, dtype_);               \
+        }                                                                \
+        return UnaryExpr<TensorLeaf, ops::op_type>(                      \
+            TensorLeaf(*this), ops::op_type{}, shape_, device_, dtype_); \
+    }
 
         // Macro for unary ops that return Bool dtype (isnan, isinf, etc.)
-#define LFS_DEFINE_UNARY_OP_BOOL(name, op_type)                                      \
-        Tensor name() const {                                                        \
-            if (!is_valid() || numel() == 0) {                                       \
-                if (!is_valid()) return Tensor();                                    \
-                return Tensor::empty(shape_, device_, DataType::Bool);               \
-            }                                                                        \
-            return UnaryExpr<TensorLeaf, ops::op_type>(                              \
-                TensorLeaf(*this), ops::op_type{}, shape_, device_, DataType::Bool); \
-        }
+#define LFS_DEFINE_UNARY_OP_BOOL(name, op_type)                                  \
+    Tensor name() const {                                                        \
+        if (!is_valid() || numel() == 0) {                                       \
+            if (!is_valid())                                                     \
+                return Tensor();                                                 \
+            return Tensor::empty(shape_, device_, DataType::Bool);               \
+        }                                                                        \
+        return UnaryExpr<TensorLeaf, ops::op_type>(                              \
+            TensorLeaf(*this), ops::op_type{}, shape_, device_, DataType::Bool); \
+    }
 
         // Arithmetic unary operations
         LFS_DEFINE_UNARY_OP(neg, neg_op)
@@ -1111,17 +1119,18 @@ namespace lfs::core {
         }
 
         // Macro for scalar binary operations (lazy evaluation with scalar_right_op)
-#define LFS_DEFINE_SCALAR_BINARY_OP(name, op_type)                                               \
-        template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>>              \
-        Tensor name(const T& other) const {                                                      \
-            if (!is_valid() || numel() == 0) {                                                   \
-                if (!is_valid()) return Tensor();                                                \
-                return Tensor::empty(shape_, device_, dtype_);                                   \
-            }                                                                                    \
-            return UnaryExpr<TensorLeaf, ops::scalar_right_op<ops::op_type, float>>(             \
-                TensorLeaf(*this), ops::scalar_right_op<ops::op_type, float>(static_cast<float>(other)), \
-                shape_, device_, dtype_);                                                        \
-        }
+#define LFS_DEFINE_SCALAR_BINARY_OP(name, op_type)                                                   \
+    template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>>                      \
+    Tensor name(const T& other) const {                                                              \
+        if (!is_valid() || numel() == 0) {                                                           \
+            if (!is_valid())                                                                         \
+                return Tensor();                                                                     \
+            return Tensor::empty(shape_, device_, dtype_);                                           \
+        }                                                                                            \
+        return UnaryExpr<TensorLeaf, ops::scalar_right_op<ops::op_type, float>>(                     \
+            TensorLeaf(*this), ops::scalar_right_op<ops::op_type, float>(static_cast<float>(other)), \
+            shape_, device_, dtype_);                                                                \
+    }
 
         LFS_DEFINE_SCALAR_BINARY_OP(add, add_op)
         LFS_DEFINE_SCALAR_BINARY_OP(sub, sub_op)
@@ -1162,17 +1171,18 @@ namespace lfs::core {
         }
 
         // Macro for scalar comparison operations (return Bool dtype)
-#define LFS_DEFINE_SCALAR_CMP_OP(name, op_type)                                                  \
-        template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>>              \
-        Tensor name(const T& other) const {                                                      \
-            if (!is_valid() || numel() == 0) {                                                   \
-                if (!is_valid()) return Tensor();                                                \
-                return Tensor::empty(shape_, device_, DataType::Bool);                           \
-            }                                                                                    \
-            return UnaryExpr<TensorLeaf, ops::scalar_right_op<ops::op_type, float>>(             \
-                TensorLeaf(*this), ops::scalar_right_op<ops::op_type, float>(static_cast<float>(other)), \
-                shape_, device_, DataType::Bool);                                                \
-        }
+#define LFS_DEFINE_SCALAR_CMP_OP(name, op_type)                                                      \
+    template <typename T, typename = std::enable_if_t<std::is_arithmetic_v<T>>>                      \
+    Tensor name(const T& other) const {                                                              \
+        if (!is_valid() || numel() == 0) {                                                           \
+            if (!is_valid())                                                                         \
+                return Tensor();                                                                     \
+            return Tensor::empty(shape_, device_, DataType::Bool);                                   \
+        }                                                                                            \
+        return UnaryExpr<TensorLeaf, ops::scalar_right_op<ops::op_type, float>>(                     \
+            TensorLeaf(*this), ops::scalar_right_op<ops::op_type, float>(static_cast<float>(other)), \
+            shape_, device_, DataType::Bool);                                                        \
+    }
 
         LFS_DEFINE_SCALAR_CMP_OP(eq, equal_op)
         LFS_DEFINE_SCALAR_CMP_OP(ne, not_equal_op)
@@ -1644,7 +1654,7 @@ namespace lfs::core {
         // Other in-place operations
         Tensor& zero_();
         Tensor& fill_(float value);
-        Tensor& fill_(float value, cudaStream_t stream);  // Stream-aware version (no sync)
+        Tensor& fill_(float value, cudaStream_t stream); // Stream-aware version (no sync)
         Tensor& copy_from(const Tensor& other);
         Tensor& copy_(const Tensor& src) { return copy_from(src); }
         Tensor& uniform_(float low = 0.0f, float high = 1.0f);

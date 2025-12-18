@@ -3,8 +3,8 @@
 
 // Include internal memory pool header for stress testing
 // This allows us to properly release cached memory when testing for leaks
-#include "core/tensor/internal/memory_pool.hpp"
 #include "core/tensor.hpp"
+#include "core/tensor/internal/memory_pool.hpp"
 #include <algorithm>
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <chrono>

@@ -18,72 +18,74 @@ namespace lfs::vis {
         const auto state_idx = static_cast<size_t>(getState());
         const auto action_idx = static_cast<size_t>(action);
 
-        if (action_idx >= ACTION_COUNT) return false;
+        if (action_idx >= ACTION_COUNT)
+            return false;
         return PERMISSIONS[state_idx][action_idx];
     }
 
     std::string_view TrainingStateMachine::getActionBlockedReason(TrainingAction action) const {
-        if (canPerform(action)) return "";
+        if (canPerform(action))
+            return "";
 
         const auto state = getState();
 
         switch (action) {
-            case TrainingAction::LoadDataset:
-            case TrainingAction::LoadCheckpoint:
-                if (state == TrainingState::Running)
-                    return "Cannot load while training is running. Pause or stop first.";
-                if (state == TrainingState::Stopping)
-                    return "Cannot load while training is stopping. Wait for completion.";
-                break;
+        case TrainingAction::LoadDataset:
+        case TrainingAction::LoadCheckpoint:
+            if (state == TrainingState::Running)
+                return "Cannot load while training is running. Pause or stop first.";
+            if (state == TrainingState::Stopping)
+                return "Cannot load while training is stopping. Wait for completion.";
+            break;
 
-            case TrainingAction::Start:
-                if (state == TrainingState::Idle)
-                    return "No dataset loaded. Load a dataset first.";
-                if (state == TrainingState::Running)
-                    return "Training is already running.";
-                if (state == TrainingState::Paused)
-                    return "Training is paused. Use resume instead.";
-                if (state == TrainingState::Finished)
-                    return "Training finished. Reset to train again.";
-                break;
+        case TrainingAction::Start:
+            if (state == TrainingState::Idle)
+                return "No dataset loaded. Load a dataset first.";
+            if (state == TrainingState::Running)
+                return "Training is already running.";
+            if (state == TrainingState::Paused)
+                return "Training is paused. Use resume instead.";
+            if (state == TrainingState::Finished)
+                return "Training finished. Reset to train again.";
+            break;
 
-            case TrainingAction::Pause:
-                if (state != TrainingState::Running)
-                    return "Can only pause while training is running.";
-                break;
+        case TrainingAction::Pause:
+            if (state != TrainingState::Running)
+                return "Can only pause while training is running.";
+            break;
 
-            case TrainingAction::Resume:
-                if (state != TrainingState::Paused)
-                    return "Can only resume from paused state.";
-                break;
+        case TrainingAction::Resume:
+            if (state != TrainingState::Paused)
+                return "Can only resume from paused state.";
+            break;
 
-            case TrainingAction::Stop:
-                if (!isActive())
-                    return "Training is not active.";
-                break;
+        case TrainingAction::Stop:
+            if (!isActive())
+                return "Training is not active.";
+            break;
 
-            case TrainingAction::Reset:
-                if (state == TrainingState::Running)
-                    return "Cannot reset while training is running. Stop first.";
-                if (state == TrainingState::Idle)
-                    return "Nothing to reset.";
-                break;
+        case TrainingAction::Reset:
+            if (state == TrainingState::Running)
+                return "Cannot reset while training is running. Stop first.";
+            if (state == TrainingState::Idle)
+                return "Nothing to reset.";
+            break;
 
-            case TrainingAction::ClearScene:
-            case TrainingAction::DeleteTrainingNode:
-                if (state == TrainingState::Running)
-                    return "Cannot modify scene while training is running.";
-                if (state == TrainingState::Stopping)
-                    return "Cannot modify scene while training is stopping.";
-                break;
+        case TrainingAction::ClearScene:
+        case TrainingAction::DeleteTrainingNode:
+            if (state == TrainingState::Running)
+                return "Cannot modify scene while training is running.";
+            if (state == TrainingState::Stopping)
+                return "Cannot modify scene while training is stopping.";
+            break;
 
-            case TrainingAction::SaveCheckpoint:
-                if (!isActive())
-                    return "Can only save checkpoint during active training.";
-                break;
+        case TrainingAction::SaveCheckpoint:
+            if (!isActive())
+                return "Can only save checkpoint during active training.";
+            break;
 
-            default:
-                break;
+        default:
+            break;
         }
 
         return "Action not allowed in current state.";
@@ -136,7 +138,8 @@ namespace lfs::vis {
         const auto from_idx = static_cast<size_t>(from);
         const auto to_idx = static_cast<size_t>(to);
 
-        if (from_idx >= STATE_COUNT || to_idx >= STATE_COUNT) return false;
+        if (from_idx >= STATE_COUNT || to_idx >= STATE_COUNT)
+            return false;
         return TRANSITIONS[from_idx][to_idx];
     }
 
@@ -152,29 +155,29 @@ namespace lfs::vis {
 
     std::string_view TrainingStateMachine::stateName(TrainingState state) {
         switch (state) {
-            case TrainingState::Idle: return "Idle";
-            case TrainingState::Ready: return "Ready";
-            case TrainingState::Running: return "Running";
-            case TrainingState::Paused: return "Paused";
-            case TrainingState::Stopping: return "Stopping";
-            case TrainingState::Finished: return "Finished";
+        case TrainingState::Idle: return "Idle";
+        case TrainingState::Ready: return "Ready";
+        case TrainingState::Running: return "Running";
+        case TrainingState::Paused: return "Paused";
+        case TrainingState::Stopping: return "Stopping";
+        case TrainingState::Finished: return "Finished";
         }
         return "Unknown";
     }
 
     std::string_view TrainingStateMachine::actionName(TrainingAction action) {
         switch (action) {
-            case TrainingAction::LoadDataset: return "LoadDataset";
-            case TrainingAction::LoadCheckpoint: return "LoadCheckpoint";
-            case TrainingAction::Start: return "Start";
-            case TrainingAction::Pause: return "Pause";
-            case TrainingAction::Resume: return "Resume";
-            case TrainingAction::Stop: return "Stop";
-            case TrainingAction::Reset: return "Reset";
-            case TrainingAction::ClearScene: return "ClearScene";
-            case TrainingAction::DeleteTrainingNode: return "DeleteTrainingNode";
-            case TrainingAction::SaveCheckpoint: return "SaveCheckpoint";
-            case TrainingAction::COUNT: return "Invalid";
+        case TrainingAction::LoadDataset: return "LoadDataset";
+        case TrainingAction::LoadCheckpoint: return "LoadCheckpoint";
+        case TrainingAction::Start: return "Start";
+        case TrainingAction::Pause: return "Pause";
+        case TrainingAction::Resume: return "Resume";
+        case TrainingAction::Stop: return "Stop";
+        case TrainingAction::Reset: return "Reset";
+        case TrainingAction::ClearScene: return "ClearScene";
+        case TrainingAction::DeleteTrainingNode: return "DeleteTrainingNode";
+        case TrainingAction::SaveCheckpoint: return "SaveCheckpoint";
+        case TrainingAction::COUNT: return "Invalid";
         }
         return "Unknown";
     }

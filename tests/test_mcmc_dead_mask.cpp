@@ -2,10 +2,10 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
-#include <torch/torch.h>
+#include <gtest/gtest.h>
 #include <random>
+#include <torch/torch.h>
 #include <vector>
 
 using namespace lfs::core;
@@ -24,7 +24,7 @@ using namespace lfs::core;
 class MCMCDeadMaskTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        min_opacity = 0.005f;  // Default from MCMC params
+        min_opacity = 0.005f; // Default from MCMC params
         rot_threshold = 1e-8f;
     }
 
@@ -40,7 +40,7 @@ protected:
 
     // Helper: Verify mask correctness
     void verify_dead_mask(const Tensor& opacities, const Tensor& rot_mag_sq,
-                         const Tensor& dead_mask, float min_opacity) {
+                          const Tensor& dead_mask, float min_opacity) {
         auto opacities_cpu = opacities.cpu();
         auto rot_mag_sq_cpu = rot_mag_sq.cpu();
         auto mask_cpu = dead_mask.cpu();
@@ -54,7 +54,7 @@ protected:
 
         for (size_t i = 0; i < opacity_vec.size(); ++i) {
             bool expected = (opacity_vec[i] <= min_opacity) || (rot_vec[i] < rot_threshold);
-            bool actual = mask_vec[i] > 0.5f;  // bool mask is stored as float
+            bool actual = mask_vec[i] > 0.5f; // bool mask is stored as float
 
             if (expected != actual) {
                 FAIL() << "Mask mismatch at index " << i
@@ -81,16 +81,16 @@ TEST_F(MCMCDeadMaskTest, BasicFunctionality) {
     auto rotations_cpu = rotations.cpu();
 
     auto opacity_vec = opacities_cpu.to_vector();
-    opacity_vec[0] = 0.0f;      // Dead by opacity
-    opacity_vec[1] = 0.001f;    // Dead by opacity
-    opacity_vec[2] = 0.005f;    // Dead by opacity (exactly at threshold)
-    opacity_vec[3] = 0.006f;    // Alive (above threshold)
-    opacity_vec[4] = 0.5f;      // Alive
-    opacity_vec[5] = 1.0f;      // Alive
-    opacity_vec[6] = 0.5f;      // Will be dead by rotation
-    opacity_vec[7] = 0.5f;      // Will be dead by rotation
-    opacity_vec[8] = 0.5f;      // Alive (rot at threshold)
-    opacity_vec[9] = 0.5f;      // Alive
+    opacity_vec[0] = 0.0f;   // Dead by opacity
+    opacity_vec[1] = 0.001f; // Dead by opacity
+    opacity_vec[2] = 0.005f; // Dead by opacity (exactly at threshold)
+    opacity_vec[3] = 0.006f; // Alive (above threshold)
+    opacity_vec[4] = 0.5f;   // Alive
+    opacity_vec[5] = 1.0f;   // Alive
+    opacity_vec[6] = 0.5f;   // Will be dead by rotation
+    opacity_vec[7] = 0.5f;   // Will be dead by rotation
+    opacity_vec[8] = 0.5f;   // Alive (rot at threshold)
+    opacity_vec[9] = 0.5f;   // Alive
 
     // Set back
     opacities = Tensor::from_vector(opacity_vec, {static_cast<size_t>(N)}, Device::CUDA);
@@ -98,16 +98,16 @@ TEST_F(MCMCDeadMaskTest, BasicFunctionality) {
     // Set rotation magnitudes
     auto rot_mag_sq = Tensor::ones({static_cast<size_t>(N)}, Device::CUDA);
     auto rot_mag_vec = rot_mag_sq.cpu().to_vector();
-    rot_mag_vec[0] = 1.0f;    // Alive (already dead by opacity)
-    rot_mag_vec[1] = 1.0f;    // Alive (already dead by opacity)
-    rot_mag_vec[2] = 1.0f;    // Alive (already dead by opacity)
-    rot_mag_vec[3] = 1.0f;    // Alive
-    rot_mag_vec[4] = 1.0f;    // Alive
-    rot_mag_vec[5] = 1.0f;    // Alive
-    rot_mag_vec[6] = 1e-9f;   // Dead (< 1e-8)
-    rot_mag_vec[7] = 1e-9f;   // Dead (< 1e-8)
-    rot_mag_vec[8] = 1e-8f;   // Alive (exactly at threshold, not <)
-    rot_mag_vec[9] = 1e-7f;   // Alive
+    rot_mag_vec[0] = 1.0f;  // Alive (already dead by opacity)
+    rot_mag_vec[1] = 1.0f;  // Alive (already dead by opacity)
+    rot_mag_vec[2] = 1.0f;  // Alive (already dead by opacity)
+    rot_mag_vec[3] = 1.0f;  // Alive
+    rot_mag_vec[4] = 1.0f;  // Alive
+    rot_mag_vec[5] = 1.0f;  // Alive
+    rot_mag_vec[6] = 1e-9f; // Dead (< 1e-8)
+    rot_mag_vec[7] = 1e-9f; // Dead (< 1e-8)
+    rot_mag_vec[8] = 1e-8f; // Alive (exactly at threshold, not <)
+    rot_mag_vec[9] = 1e-7f; // Alive
 
     rot_mag_sq = Tensor::from_vector(rot_mag_vec, {static_cast<size_t>(N)}, Device::CUDA);
 
@@ -129,19 +129,19 @@ TEST_F(MCMCDeadMaskTest, BoundaryConditions) {
     auto rot_mag_sq = Tensor::ones({static_cast<size_t>(N)}, Device::CUDA);
 
     auto opacity_vec = opacities.cpu().to_vector();
-    opacity_vec[0] = min_opacity - 1e-6f;  // Dead (<= threshold)
-    opacity_vec[1] = min_opacity;          // Dead (exactly at threshold)
-    opacity_vec[2] = min_opacity + 1e-6f;  // Alive (above threshold)
-    opacity_vec[3] = 0.5f;                 // Alive
-    opacity_vec[4] = 0.5f;                 // Alive
-    opacity_vec[5] = 0.5f;                 // Alive
+    opacity_vec[0] = min_opacity - 1e-6f; // Dead (<= threshold)
+    opacity_vec[1] = min_opacity;         // Dead (exactly at threshold)
+    opacity_vec[2] = min_opacity + 1e-6f; // Alive (above threshold)
+    opacity_vec[3] = 0.5f;                // Alive
+    opacity_vec[4] = 0.5f;                // Alive
+    opacity_vec[5] = 0.5f;                // Alive
 
     opacities = Tensor::from_vector(opacity_vec, {static_cast<size_t>(N)}, Device::CUDA);
 
     auto rot_vec = rot_mag_sq.cpu().to_vector();
-    rot_vec[0] = 1.0f;                 // Alive (already dead by opacity)
-    rot_vec[1] = 1.0f;                 // Alive (already dead by opacity)
-    rot_vec[2] = 1.0f;                 // Alive
+    rot_vec[0] = 1.0f;                  // Alive (already dead by opacity)
+    rot_vec[1] = 1.0f;                  // Alive (already dead by opacity)
+    rot_vec[2] = 1.0f;                  // Alive
     rot_vec[3] = rot_threshold - 1e-9f; // Dead (< threshold)
     rot_vec[4] = rot_threshold;         // Alive (exactly at threshold, not <)
     rot_vec[5] = rot_threshold + 1e-9f; // Alive (above threshold)
@@ -207,7 +207,7 @@ TEST_F(MCMCDeadMaskTest, AllAlive) {
 }
 
 TEST_F(MCMCDeadMaskTest, StressTestLarge) {
-    constexpr int N = 1000000;  // 1M Gaussians
+    constexpr int N = 1000000; // 1M Gaussians
 
     // Random opacities and rotation magnitudes
     auto opacities = Tensor::rand({static_cast<size_t>(N)}, Device::CUDA);
@@ -269,9 +269,9 @@ TEST_F(MCMCDeadMaskTest, NonzeroIndicesMatch) {
     std::vector<int> expected_dead_indices;
     for (int i = 0; i < N; ++i) {
         if (i % 5 == 0) {
-            opacity_vec[i] = 0.01f;  // Alive
+            opacity_vec[i] = 0.01f; // Alive
         } else {
-            opacity_vec[i] = 0.0f;   // Dead
+            opacity_vec[i] = 0.0f; // Dead
             expected_dead_indices.push_back(i);
         }
     }
@@ -315,12 +315,12 @@ TEST_F(MCMCDeadMaskTest, RatiosBasicOccurrenceCounting) {
     auto ratios_vec = ratios_cpu.to_vector_int();
 
     ASSERT_EQ(ratios_vec.size(), sampled.size());
-    EXPECT_EQ(static_cast<int>(ratios_vec[0]), 3);  // Index 0 appears twice, starts at 1 -> 1+2=3
-    EXPECT_EQ(static_cast<int>(ratios_vec[1]), 4);  // Index 1 appears 3 times -> 1+3=4
-    EXPECT_EQ(static_cast<int>(ratios_vec[2]), 2);  // Index 2 appears once -> 1+1=2
-    EXPECT_EQ(static_cast<int>(ratios_vec[3]), 4);  // Index 1 again
-    EXPECT_EQ(static_cast<int>(ratios_vec[4]), 3);  // Index 0 again
-    EXPECT_EQ(static_cast<int>(ratios_vec[5]), 4);  // Index 1 again
+    EXPECT_EQ(static_cast<int>(ratios_vec[0]), 3); // Index 0 appears twice, starts at 1 -> 1+2=3
+    EXPECT_EQ(static_cast<int>(ratios_vec[1]), 4); // Index 1 appears 3 times -> 1+3=4
+    EXPECT_EQ(static_cast<int>(ratios_vec[2]), 2); // Index 2 appears once -> 1+1=2
+    EXPECT_EQ(static_cast<int>(ratios_vec[3]), 4); // Index 1 again
+    EXPECT_EQ(static_cast<int>(ratios_vec[4]), 3); // Index 0 again
+    EXPECT_EQ(static_cast<int>(ratios_vec[5]), 4); // Index 1 again
 }
 
 TEST_F(MCMCDeadMaskTest, RatiosAllUnique) {
@@ -377,15 +377,17 @@ TEST_F(MCMCDeadMaskTest, RatiosAllSameIndex) {
 TEST_F(MCMCDeadMaskTest, RatiosClampingBehavior) {
     // Test clamping to [1, n_max]
     constexpr int N = 100;
-    constexpr int n_max = 10;  // Small n_max to trigger clamping
+    constexpr int n_max = 10; // Small n_max to trigger clamping
 
     auto opacities = Tensor::ones({static_cast<size_t>(N)}, Device::CUDA);
 
     // Create samples where index 0 appears many times (will exceed n_max)
     std::vector<int> sampled;
-    for (int i = 0; i < 20; ++i) sampled.push_back(0);  // Index 0: 20 times
-    for (int i = 0; i < 5; ++i) sampled.push_back(1);   // Index 1: 5 times
-    sampled.push_back(2);  // Index 2: once
+    for (int i = 0; i < 20; ++i)
+        sampled.push_back(0); // Index 0: 20 times
+    for (int i = 0; i < 5; ++i)
+        sampled.push_back(1); // Index 1: 5 times
+    sampled.push_back(2);     // Index 2: once
 
     auto sampled_idxs = Tensor::from_vector(sampled, TensorShape{sampled.size()}, Device::CUDA);
 
@@ -430,7 +432,7 @@ TEST_F(MCMCDeadMaskTest, RatiosRealisticMCMCScenario) {
     std::map<int, int> expected_counts;
     for (size_t i = 0; i < num_samples; ++i) {
         if (i % 10 == 0) {
-            sampled[i] = 42;  // Hot spot index
+            sampled[i] = 42; // Hot spot index
         } else {
             sampled[i] = dist(rng);
         }
@@ -508,7 +510,7 @@ TEST_F(MCMCDeadMaskTest, RatiosEdgeCaseEmptySamples) {
 
     auto opacities = Tensor::ones({static_cast<size_t>(N)}, Device::CUDA);
 
-    std::vector<int> sampled;  // Empty
+    std::vector<int> sampled; // Empty
     auto sampled_idxs = Tensor::from_vector(sampled, TensorShape{sampled.size()}, Device::CUDA);
 
     auto ratios = Tensor::ones_like(opacities, DataType::Int32);
@@ -550,15 +552,17 @@ TEST_F(MCMCDeadMaskTest, DeadMaskCalculation_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto opacities_torch = torch::from_blob(
-        opacity_data.data(),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().cuda();
+                               opacity_data.data(),
+                               {static_cast<long>(N)},
+                               torch::kFloat32)
+                               .clone()
+                               .cuda();
     auto rot_mag_sq_torch = torch::from_blob(
-        rot_mag_sq_data.data(),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().cuda();
+                                rot_mag_sq_data.data(),
+                                {static_cast<long>(N)},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
     auto dead_mask_torch = (opacities_torch <= min_opacity).logical_or(rot_mag_sq_torch < rot_threshold);
     auto result_torch_tensor = dead_mask_torch.cpu();
 
@@ -579,14 +583,14 @@ TEST_F(MCMCDeadMaskTest, RotationMagnitudeSquared_LibTorchComparison) {
     // Compare rotation magnitude calculation: (rotations * rotations).sum(-1)
 
     std::vector<float> quaternions = {
-        1.0f, 0.0f, 0.0f, 0.0f,        // Unit quaternion
-        0.5f, 0.5f, 0.5f, 0.5f,        // Normalized
-        2.0f, 0.0f, 0.0f, 0.0f,        // Scaled
-        1.0f, 1.0f, 1.0f, 1.0f,        // All ones
-        1e-5f, 1e-5f, 1e-5f, 1e-5f,    // Very small
-        0.7071f, 0.7071f, 0.0f, 0.0f,  // Random
-        3.16e-5f, 0.0f, 0.0f, 0.0f,    // Near threshold
-        -1.0f, 1.0f, -1.0f, 1.0f,      // Negative values
+        1.0f, 0.0f, 0.0f, 0.0f,       // Unit quaternion
+        0.5f, 0.5f, 0.5f, 0.5f,       // Normalized
+        2.0f, 0.0f, 0.0f, 0.0f,       // Scaled
+        1.0f, 1.0f, 1.0f, 1.0f,       // All ones
+        1e-5f, 1e-5f, 1e-5f, 1e-5f,   // Very small
+        0.7071f, 0.7071f, 0.0f, 0.0f, // Random
+        3.16e-5f, 0.0f, 0.0f, 0.0f,   // Near threshold
+        -1.0f, 1.0f, -1.0f, 1.0f,     // Negative values
     };
 
     const size_t N = quaternions.size() / 4;
@@ -598,10 +602,11 @@ TEST_F(MCMCDeadMaskTest, RotationMagnitudeSquared_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto rotation_torch = torch::from_blob(
-        quaternions.data(),
-        {static_cast<long>(N), 4},
-        torch::kFloat32
-    ).clone().cuda();
+                              quaternions.data(),
+                              {static_cast<long>(N), 4},
+                              torch::kFloat32)
+                              .clone()
+                              .cuda();
     auto rot_mag_sq_torch = (rotation_torch * rotation_torch).sum(-1);
     auto result_torch_tensor = rot_mag_sq_torch.cpu();
 
@@ -634,15 +639,19 @@ TEST_F(MCMCDeadMaskTest, LogicalOr_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto mask1_torch = torch::from_blob(
-        mask1_data.data(),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().to(torch::kBool).cuda();
+                           mask1_data.data(),
+                           {static_cast<long>(N)},
+                           torch::kFloat32)
+                           .clone()
+                           .to(torch::kBool)
+                           .cuda();
     auto mask2_torch = torch::from_blob(
-        mask2_data.data(),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().to(torch::kBool).cuda();
+                           mask2_data.data(),
+                           {static_cast<long>(N)},
+                           torch::kFloat32)
+                           .clone()
+                           .to(torch::kBool)
+                           .cuda();
     auto result_torch = mask1_torch.logical_or(mask2_torch);
     auto result_torch_tensor = result_torch.cpu();
 
@@ -667,8 +676,7 @@ TEST_F(MCMCDeadMaskTest, ComparisonOperators_LibTorchComparison) {
 
     std::vector<float> values = {
         0.0f, 0.004f, 0.005f, 0.005f + 1e-7f, 0.01f,
-        1e-9f, 1e-8f, 1e-8f + 1e-10f, 1e-7f, 1.0f
-    };
+        1e-9f, 1e-8f, 1e-8f + 1e-10f, 1e-7f, 1.0f};
     const size_t N = values.size();
 
     // Test <= operator with min_opacity threshold
@@ -680,10 +688,11 @@ TEST_F(MCMCDeadMaskTest, ComparisonOperators_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto tensor_torch = torch::from_blob(
-            values.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().cuda();
+                                values.data(),
+                                {static_cast<long>(N)},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto result_torch = tensor_torch <= min_opacity;
         auto result_torch_tensor = result_torch.cpu();
 
@@ -709,10 +718,11 @@ TEST_F(MCMCDeadMaskTest, ComparisonOperators_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto tensor_torch = torch::from_blob(
-            values.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().cuda();
+                                values.data(),
+                                {static_cast<long>(N)},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto result_torch = tensor_torch < rot_threshold;
         auto result_torch_tensor = result_torch.cpu();
 
@@ -746,10 +756,12 @@ TEST_F(MCMCDeadMaskTest, IndexAddInt32_LibTorchComparison) {
     // ========== LibTorch ==========
     auto base_torch = torch::ones({static_cast<long>(N)}, torch::kInt32).cuda();
     auto indices_torch = torch::from_blob(
-        sampled_indices.data(),
-        {static_cast<long>(sampled_indices.size())},
-        torch::kInt32
-    ).clone().to(torch::kInt64).cuda();
+                             sampled_indices.data(),
+                             {static_cast<long>(sampled_indices.size())},
+                             torch::kInt32)
+                             .clone()
+                             .to(torch::kInt64)
+                             .cuda();
     auto values_torch = torch::ones({static_cast<long>(sampled_indices.size())}, torch::kInt32).cuda();
     auto result_torch = base_torch.index_add_(0, indices_torch, values_torch);
     auto result_torch_tensor = result_torch.cpu();
@@ -786,10 +798,12 @@ TEST_F(MCMCDeadMaskTest, ClampInt32_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto tensor_torch = torch::from_blob(
-        values_float.data(),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().to(torch::kInt32).cuda();
+                            values_float.data(),
+                            {static_cast<long>(N)},
+                            torch::kFloat32)
+                            .clone()
+                            .to(torch::kInt32)
+                            .cuda();
     auto result_torch = tensor_torch.clamp(1, n_max);
     auto result_torch_tensor = result_torch.cpu();
 

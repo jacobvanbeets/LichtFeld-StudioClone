@@ -150,4 +150,4 @@ namespace fast_lfs::rasterization {
         }
     };
 
-} // namespace fast_gs::rasterization
+} // namespace fast_lfs::rasterization

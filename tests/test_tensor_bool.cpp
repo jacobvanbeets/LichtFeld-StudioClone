@@ -1,8 +1,8 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
+#include <gtest/gtest.h>
 #include <vector>
 
 using namespace lfs::core;
@@ -16,11 +16,11 @@ TEST(TensorBoolTest, Int32ToBoolConversion) {
     std::vector<int32_t> int_vec = {0, 1, 0, 1, 1};
     auto int_tensor = Tensor::from_vector(int_vec, TensorShape({5}), Device::CUDA);
     auto bool_tensor = int_tensor.to(DataType::Bool);
-    
+
     // Convert back to int32 to verify
     auto back_to_int = bool_tensor.to(DataType::Int32);
     auto result_vec = back_to_int.cpu().to_vector();
-    
+
     EXPECT_EQ(result_vec.size(), 5);
     EXPECT_FLOAT_EQ(result_vec[0], 0.0f);
     EXPECT_FLOAT_EQ(result_vec[1], 1.0f);
@@ -45,24 +45,24 @@ TEST(TensorBoolTest, BoolTensorSum) {
 TEST(TensorBoolTest, BoolZerosThenFill) {
     // Create bool zeros then try to fill
     auto bool_zeros = Tensor::zeros({10}, Device::CUDA, DataType::Bool);
-    
+
     // Try to fill a slice with true
     bool_zeros.slice(0, 2, 7).fill_(true);
-    
+
     // Check result
     auto result = bool_zeros.to(DataType::Int32).cpu().to_vector();
-    
+
     EXPECT_EQ(result.size(), 10);
-    EXPECT_FLOAT_EQ(result[0], 0.0f);  // Before slice
-    EXPECT_FLOAT_EQ(result[1], 0.0f);  // Before slice
-    EXPECT_FLOAT_EQ(result[2], 1.0f);  // In slice
-    EXPECT_FLOAT_EQ(result[3], 1.0f);  // In slice
-    EXPECT_FLOAT_EQ(result[4], 1.0f);  // In slice
-    EXPECT_FLOAT_EQ(result[5], 1.0f);  // In slice
-    EXPECT_FLOAT_EQ(result[6], 1.0f);  // In slice
-    EXPECT_FLOAT_EQ(result[7], 0.0f);  // After slice
-    EXPECT_FLOAT_EQ(result[8], 0.0f);  // After slice
-    EXPECT_FLOAT_EQ(result[9], 0.0f);  // After slice
+    EXPECT_FLOAT_EQ(result[0], 0.0f); // Before slice
+    EXPECT_FLOAT_EQ(result[1], 0.0f); // Before slice
+    EXPECT_FLOAT_EQ(result[2], 1.0f); // In slice
+    EXPECT_FLOAT_EQ(result[3], 1.0f); // In slice
+    EXPECT_FLOAT_EQ(result[4], 1.0f); // In slice
+    EXPECT_FLOAT_EQ(result[5], 1.0f); // In slice
+    EXPECT_FLOAT_EQ(result[6], 1.0f); // In slice
+    EXPECT_FLOAT_EQ(result[7], 0.0f); // After slice
+    EXPECT_FLOAT_EQ(result[8], 0.0f); // After slice
+    EXPECT_FLOAT_EQ(result[9], 0.0f); // After slice
 }
 
 TEST(TensorBoolTest, BoolVectorDirectCreation) {
@@ -85,52 +85,52 @@ TEST(TensorBoolTest, LogicalNot) {
     std::vector<int32_t> int_vec = {0, 1, 0, 1, 1};
     auto int_tensor = Tensor::from_vector(int_vec, TensorShape({5}), Device::CUDA);
     auto bool_tensor = int_tensor.to(DataType::Bool);
-    
+
     auto bool_not = bool_tensor.logical_not();
     auto result = bool_not.to(DataType::Int32).cpu().to_vector();
-    
+
     EXPECT_EQ(result.size(), 5);
-    EXPECT_FLOAT_EQ(result[0], 1.0f);  // NOT 0 = 1
-    EXPECT_FLOAT_EQ(result[1], 0.0f);  // NOT 1 = 0
-    EXPECT_FLOAT_EQ(result[2], 1.0f);  // NOT 0 = 1
-    EXPECT_FLOAT_EQ(result[3], 0.0f);  // NOT 1 = 0
-    EXPECT_FLOAT_EQ(result[4], 0.0f);  // NOT 1 = 0
+    EXPECT_FLOAT_EQ(result[0], 1.0f); // NOT 0 = 1
+    EXPECT_FLOAT_EQ(result[1], 0.0f); // NOT 1 = 0
+    EXPECT_FLOAT_EQ(result[2], 1.0f); // NOT 0 = 1
+    EXPECT_FLOAT_EQ(result[3], 0.0f); // NOT 1 = 0
+    EXPECT_FLOAT_EQ(result[4], 0.0f); // NOT 1 = 0
 }
 
 TEST(TensorBoolTest, LogicalOr) {
     // Test logical_or operation
     std::vector<int32_t> vec1 = {0, 1, 0, 1};
     std::vector<int32_t> vec2 = {0, 0, 1, 1};
-    
+
     auto tensor1 = Tensor::from_vector(vec1, TensorShape({4}), Device::CUDA).to(DataType::Bool);
     auto tensor2 = Tensor::from_vector(vec2, TensorShape({4}), Device::CUDA).to(DataType::Bool);
-    
+
     auto result_tensor = tensor1.logical_or(tensor2);
     auto result = result_tensor.to(DataType::Int32).cpu().to_vector();
-    
+
     EXPECT_EQ(result.size(), 4);
-    EXPECT_FLOAT_EQ(result[0], 0.0f);  // 0 OR 0 = 0
-    EXPECT_FLOAT_EQ(result[1], 1.0f);  // 1 OR 0 = 1
-    EXPECT_FLOAT_EQ(result[2], 1.0f);  // 0 OR 1 = 1
-    EXPECT_FLOAT_EQ(result[3], 1.0f);  // 1 OR 1 = 1
+    EXPECT_FLOAT_EQ(result[0], 0.0f); // 0 OR 0 = 0
+    EXPECT_FLOAT_EQ(result[1], 1.0f); // 1 OR 0 = 1
+    EXPECT_FLOAT_EQ(result[2], 1.0f); // 0 OR 1 = 1
+    EXPECT_FLOAT_EQ(result[3], 1.0f); // 1 OR 1 = 1
 }
 
 TEST(TensorBoolTest, LogicalAnd) {
     // Test logical_and operation
     std::vector<int32_t> vec1 = {0, 1, 0, 1};
     std::vector<int32_t> vec2 = {0, 0, 1, 1};
-    
+
     auto tensor1 = Tensor::from_vector(vec1, TensorShape({4}), Device::CUDA).to(DataType::Bool);
     auto tensor2 = Tensor::from_vector(vec2, TensorShape({4}), Device::CUDA).to(DataType::Bool);
-    
+
     auto result_tensor = tensor1.logical_and(tensor2);
     auto result = result_tensor.to(DataType::Int32).cpu().to_vector();
-    
+
     EXPECT_EQ(result.size(), 4);
-    EXPECT_FLOAT_EQ(result[0], 0.0f);  // 0 AND 0 = 0
-    EXPECT_FLOAT_EQ(result[1], 0.0f);  // 1 AND 0 = 0
-    EXPECT_FLOAT_EQ(result[2], 0.0f);  // 0 AND 1 = 0
-    EXPECT_FLOAT_EQ(result[3], 1.0f);  // 1 AND 1 = 1
+    EXPECT_FLOAT_EQ(result[0], 0.0f); // 0 AND 0 = 0
+    EXPECT_FLOAT_EQ(result[1], 0.0f); // 1 AND 0 = 0
+    EXPECT_FLOAT_EQ(result[2], 0.0f); // 0 AND 1 = 0
+    EXPECT_FLOAT_EQ(result[3], 1.0f); // 1 AND 1 = 1
 }
 
 TEST(TensorBoolTest, NonzeroOnBoolTensor) {
@@ -138,16 +138,16 @@ TEST(TensorBoolTest, NonzeroOnBoolTensor) {
     std::vector<int32_t> int_vec = {0, 1, 0, 1, 1, 0, 1};
     auto int_tensor = Tensor::from_vector(int_vec, TensorShape({7}), Device::CUDA);
     auto bool_tensor = int_tensor.to(DataType::Bool);
-    
+
     auto indices = bool_tensor.nonzero();
-    
+
     // Should return a 2D tensor of shape [num_nonzero, 1] for 1D input
     EXPECT_EQ(indices.ndim(), 2);
-    
+
     // Squeeze to get 1D indices
     auto indices_1d = indices.squeeze(-1);
     auto result = indices_1d.cpu().to_vector();
-    
+
     // Should find indices: 1, 3, 4, 6
     EXPECT_EQ(result.size(), 4);
     EXPECT_FLOAT_EQ(result[0], 1.0f);
@@ -159,7 +159,7 @@ TEST(TensorBoolTest, NonzeroOnBoolTensor) {
 TEST(TensorBoolTest, BoolIndexing) {
     // Test using bool tensor for indexing
     auto data = Tensor::from_vector(std::vector<float>{10.0f, 20.0f, 30.0f, 40.0f, 50.0f},
-                                     TensorShape({5}), Device::CUDA);
+                                    TensorShape({5}), Device::CUDA);
 
     std::vector<int32_t> mask_vec = {1, 0, 1, 0, 1};
     auto mask_int = Tensor::from_vector(mask_vec, TensorShape({5}), Device::CUDA);
@@ -180,18 +180,18 @@ TEST(TensorBoolTest, BoolComparisonResult) {
     // Test that comparison operations return proper bool tensors
     auto tensor = Tensor::from_vector(std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
                                       TensorShape({5}), Device::CUDA);
-    
-    auto mask = tensor > 3.0f;  // Should be bool tensor
-    
+
+    auto mask = tensor > 3.0f; // Should be bool tensor
+
     // Convert to int to check
     auto result = mask.to(DataType::Int32).cpu().to_vector();
-    
+
     EXPECT_EQ(result.size(), 5);
-    EXPECT_FLOAT_EQ(result[0], 0.0f);  // 1 > 3 = false
-    EXPECT_FLOAT_EQ(result[1], 0.0f);  // 2 > 3 = false
-    EXPECT_FLOAT_EQ(result[2], 0.0f);  // 3 > 3 = false
-    EXPECT_FLOAT_EQ(result[3], 1.0f);  // 4 > 3 = true
-    EXPECT_FLOAT_EQ(result[4], 1.0f);  // 5 > 3 = true
+    EXPECT_FLOAT_EQ(result[0], 0.0f); // 1 > 3 = false
+    EXPECT_FLOAT_EQ(result[1], 0.0f); // 2 > 3 = false
+    EXPECT_FLOAT_EQ(result[2], 0.0f); // 3 > 3 = false
+    EXPECT_FLOAT_EQ(result[3], 1.0f); // 4 > 3 = true
+    EXPECT_FLOAT_EQ(result[4], 1.0f); // 5 > 3 = true
 }
 
 TEST(TensorBoolTest, MCMCRemoveGaussiansScenario) {
@@ -242,7 +242,7 @@ TEST(BoolReductionKernel, SumScalarMixed) {
     // Create tensor with mixed true/false
     std::vector<int32_t> int_vec(10000, 1);
     for (int i = 0; i < 5000; i++) {
-        int_vec[i] = 0;  // First half false
+        int_vec[i] = 0; // First half false
     }
 
     auto int_tensor = Tensor::from_vector(int_vec, TensorShape({10000}), Device::CUDA);
@@ -263,7 +263,7 @@ TEST(BoolReductionKernel, MeanOperation) {
     // Mean on Bool: convert to Int32 first for meaningful result
     std::vector<int32_t> int_vec(1000, 1);
     for (int i = 0; i < 500; i++) {
-        int_vec[i] = 0;  // First half false
+        int_vec[i] = 0; // First half false
     }
 
     auto int_tensor = Tensor::from_vector(int_vec, TensorShape({1000}), Device::CUDA);
@@ -283,7 +283,7 @@ TEST(BoolReductionKernel, MaxOperation) {
     EXPECT_EQ(max_false.item<int>(), 0) << "Max of all false should be 0";
 
     std::vector<int32_t> int_vec(1000, 0);
-    int_vec[500] = 1;  // Set one to true
+    int_vec[500] = 1; // Set one to true
     auto int_tensor = Tensor::from_vector(int_vec, TensorShape({1000}), Device::CUDA);
     auto t_some_true = int_tensor.to(DataType::Bool);
 
@@ -298,7 +298,7 @@ TEST(BoolReductionKernel, MinOperation) {
     EXPECT_EQ(min_true.item<int>(), 1) << "Min of all true should be 1";
 
     std::vector<int32_t> int_vec(1000, 1);
-    int_vec[500] = 0;  // Set one to false
+    int_vec[500] = 0; // Set one to false
     auto int_tensor = Tensor::from_vector(int_vec, TensorShape({1000}), Device::CUDA);
     auto t_some_false = int_tensor.to(DataType::Bool);
 
@@ -308,8 +308,8 @@ TEST(BoolReductionKernel, MinOperation) {
 
 TEST(BoolReductionKernel, ComparisonResultSum) {
     // Test that comparison results can be summed correctly
-    auto t = Tensor::arange(0, 100, 1);  // Creates Float32 tensor on CUDA by default
-    auto mask = t > 50.0f;  // Should create Bool tensor
+    auto t = Tensor::arange(0, 100, 1); // Creates Float32 tensor on CUDA by default
+    auto mask = t > 50.0f;              // Should create Bool tensor
 
     EXPECT_EQ(mask.dtype(), DataType::Bool);
 
@@ -330,7 +330,7 @@ TEST(BoolReductionKernel, ZerosTensorBugFix) {
 
 TEST(BoolReductionKernel, DensificationNumDuplicatesBugFix) {
     // Exact scenario from densification where num_duplicates was corrupted
-    const int N = 5000000;  // 5M elements
+    const int N = 5000000; // 5M elements
 
     // Create all-zeros bool tensor (simulating no duplicates)
     auto zeros = Tensor::zeros({N}, Device::CUDA, DataType::Bool);
@@ -354,4 +354,3 @@ TEST(BoolReductionKernel, DirectSumWithoutConversion) {
 
     EXPECT_EQ(sum, 5) << "Should directly sum Bool tensor to count True values";
 }
-

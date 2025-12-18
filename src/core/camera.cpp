@@ -247,7 +247,7 @@ namespace lfs::core {
         lfs::io::LoadParams params{
             .resize_factor = resize_factor,
             .max_width = max_width,
-            .cuda_stream = _stream  // Use camera's CUDA stream
+            .cuda_stream = _stream // Use camera's CUDA stream
         };
 
         auto image = loader.load_cached_image(_image_path, params);
@@ -302,14 +302,14 @@ namespace lfs::core {
 
             if (_image_width > _image_height) {
                 _image_width = max_width;
-                _image_height = (old_height * max_width) / old_width;  // Fixed: Use old_width
+                _image_height = (old_height * max_width) / old_width; // Fixed: Use old_width
                 LOG_DEBUG("load_image_size(): Resized {}x{} → {}x{} (limited by max_width={})",
-                         old_width, old_height, _image_width, _image_height, max_width);
+                          old_width, old_height, _image_width, _image_height, max_width);
             } else {
                 _image_height = max_width;
-                _image_width = (old_width * max_width) / old_height;  // Fixed: Use old_height
+                _image_width = (old_width * max_width) / old_height; // Fixed: Use old_height
                 LOG_DEBUG("load_image_size(): Resized {}x{} → {}x{} (limited by max_width={})",
-                         old_width, old_height, _image_width, _image_height, max_width);
+                          old_width, old_height, _image_width, _image_height, max_width);
             }
         }
 
@@ -362,8 +362,7 @@ namespace lfs::core {
         const lfs::io::LoadParams params{
             .resize_factor = resize_factor,
             .max_width = max_width,
-            .cuda_stream = _stream
-        };
+            .cuda_stream = _stream};
 
         auto mask = loader.load_cached_image(_mask_path, params);
 

@@ -8,10 +8,10 @@
  * Tests are organized by category and include known issues from sparsity optimizer debugging.
  */
 
-#include <gtest/gtest.h>
-#include <cuda_runtime.h>
-#include <torch/torch.h>
 #include "core/tensor.hpp"
+#include <cuda_runtime.h>
+#include <gtest/gtest.h>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 
@@ -183,7 +183,8 @@ TEST_F(IndexPutBugsTest, IndexPutMultipleValues) {
     auto t_vec = t.to_vector();
     int count_ones = 0;
     for (float v : t_vec) {
-        if (v == 1.0f) count_ones++;
+        if (v == 1.0f)
+            count_ones++;
     }
 
     EXPECT_EQ(count_ones, 4) << "KNOWN BUG: index_put_ may not set all values correctly. Expected 4, got " << count_ones;
@@ -255,12 +256,12 @@ TEST_F(ItemTypeSafetyTest, ItemIntFromInt64) {
 
 TEST_F(ItemTypeSafetyTest, ItemWrongSize) {
     // KNOWN BUG: Extracting larger type from smaller tensor element
-    auto bool_t = Tensor::ones_bool({1}, Device::CUDA);  // 1 byte
+    auto bool_t = Tensor::ones_bool({1}, Device::CUDA); // 1 byte
 
     // This should fail but might succeed with garbage
     bool has_error = false;
     try {
-        int value = bool_t.item<int>();  // Trying to read 4 bytes
+        int value = bool_t.item<int>(); // Trying to read 4 bytes
         std::cerr << "WARNING: item<int>() from Bool succeeded with value: " << value << std::endl;
     } catch (...) {
         has_error = true;
@@ -397,7 +398,7 @@ TEST_F(ExpressionTemplateEdgeCasesTest, BoolInExpressions) {
     EXPECT_EQ(result_tensor.dtype(), DataType::Float32);
 
     auto values = result_tensor.cpu().to_vector();
-    EXPECT_FLOAT_EQ(values[0], 3.0f);  // 1 (bool) + 2 (float) = 3
+    EXPECT_FLOAT_EQ(values[0], 3.0f); // 1 (bool) + 2 (float) = 3
 }
 
 // ============================================================================
@@ -624,7 +625,7 @@ TEST_F(ComparisonBugsTest, ComparisonWithScalar) {
     EXPECT_EQ(gt5.dtype(), DataType::Bool);
 
     int count = gt5.to(DataType::Int32).sum().template item<int>();
-    EXPECT_EQ(count, 4);  // 6, 7, 8, 9
+    EXPECT_EQ(count, 4); // 6, 7, 8, 9
 }
 
 TEST_F(ComparisonBugsTest, BoolComparison) {
@@ -636,5 +637,5 @@ TEST_F(ComparisonBugsTest, BoolComparison) {
     EXPECT_EQ(eq.dtype(), DataType::Bool);
 
     auto count = eq.to(DataType::Int32).sum().template item<int>();
-    EXPECT_EQ(count, 0);  // None should match
+    EXPECT_EQ(count, 0); // None should match
 }

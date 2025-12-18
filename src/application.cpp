@@ -6,9 +6,9 @@
 #include "core/argument_parser.hpp"
 #include "core/logger.hpp"
 #include "core/tensor/internal/memory_pool.hpp"
-#include "training/training_setup.hpp"
 #include "training/trainer.hpp"
-#include "visualizer/scene/scene.hpp"  // Scene for unified data storage
+#include "training/training_setup.hpp"
+#include "visualizer/scene/scene.hpp" // Scene for unified data storage
 #include "visualizer/visualizer.hpp"
 #include <cstring>
 #ifdef WIN32

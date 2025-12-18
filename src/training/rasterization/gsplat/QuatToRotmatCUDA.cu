@@ -42,11 +42,10 @@ namespace gsplat_lfs {
     }
 
     void launch_quats_to_rotmats_kernel(
-        const float* quats,     // [N, 4]
+        const float* quats, // [N, 4]
         int64_t N,
-        float* rotmats,         // [N, 3, 3]
-        cudaStream_t stream
-    ) {
+        float* rotmats, // [N, 3, 3]
+        cudaStream_t stream) {
         int64_t n_elements = N;
         dim3 threads(256);
         dim3 grid((n_elements + threads.x - 1) / threads.x);

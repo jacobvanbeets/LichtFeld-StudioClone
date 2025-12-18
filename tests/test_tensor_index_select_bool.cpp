@@ -1,45 +1,48 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "core/tensor.hpp"
 #include <gtest/gtest.h>
 #include <torch/torch.h>
-#include "core/tensor.hpp"
 
 using namespace lfs::core;
 
 namespace {
 
-void compare_tensors(const Tensor& lfs, const torch::Tensor& ref, const std::string& ctx = "") {
-    const auto torch_cpu = ref.cpu().contiguous();
-    const auto lfs_cpu = lfs.cpu();
+    void compare_tensors(const Tensor& lfs, const torch::Tensor& ref, const std::string& ctx = "") {
+        const auto torch_cpu = ref.cpu().contiguous();
+        const auto lfs_cpu = lfs.cpu();
 
-    ASSERT_EQ(lfs_cpu.ndim(), static_cast<size_t>(torch_cpu.dim())) << ctx;
-    for (size_t i = 0; i < lfs_cpu.ndim(); ++i) {
-        ASSERT_EQ(lfs_cpu.size(i), static_cast<size_t>(torch_cpu.size(i))) << ctx;
+        ASSERT_EQ(lfs_cpu.ndim(), static_cast<size_t>(torch_cpu.dim())) << ctx;
+        for (size_t i = 0; i < lfs_cpu.ndim(); ++i) {
+            ASSERT_EQ(lfs_cpu.size(i), static_cast<size_t>(torch_cpu.size(i))) << ctx;
+        }
+        if (lfs_cpu.numel() == 0)
+            return;
+
+        const auto* lfs_ptr = lfs_cpu.ptr<float>();
+        const auto torch_flat = torch_cpu.flatten();
+        const auto acc = torch_flat.accessor<float, 1>();
+        for (size_t i = 0; i < lfs_cpu.numel(); ++i) {
+            EXPECT_FLOAT_EQ(lfs_ptr[i], acc[i]) << ctx << " at " << i;
+        }
     }
-    if (lfs_cpu.numel() == 0) return;
 
-    const auto* lfs_ptr = lfs_cpu.ptr<float>();
-    const auto torch_flat = torch_cpu.flatten();
-    const auto acc = torch_flat.accessor<float, 1>();
-    for (size_t i = 0; i < lfs_cpu.numel(); ++i) {
-        EXPECT_FLOAT_EQ(lfs_ptr[i], acc[i]) << ctx << " at " << i;
+    torch::Tensor to_torch_bool(const std::vector<bool>& v) {
+        auto t = torch::zeros({static_cast<int64_t>(v.size())}, torch::kUInt8);
+        auto* p = t.data_ptr<uint8_t>();
+        for (size_t i = 0; i < v.size(); ++i)
+            p[i] = v[i] ? 1 : 0;
+        return t.to(torch::kBool);
     }
-}
 
-torch::Tensor to_torch_bool(const std::vector<bool>& v) {
-    auto t = torch::zeros({static_cast<int64_t>(v.size())}, torch::kUInt8);
-    auto* p = t.data_ptr<uint8_t>();
-    for (size_t i = 0; i < v.size(); ++i) p[i] = v[i] ? 1 : 0;
-    return t.to(torch::kBool);
-}
-
-Tensor make_bool_mask(const std::vector<bool>& v, Device dev = Device::CUDA) {
-    auto m = Tensor::zeros({v.size()}, Device::CPU, DataType::Bool);
-    auto* p = m.ptr<bool>();
-    for (size_t i = 0; i < v.size(); ++i) p[i] = v[i];
-    return dev == Device::CUDA ? m.cuda() : m;
-}
+    Tensor make_bool_mask(const std::vector<bool>& v, Device dev = Device::CUDA) {
+        auto m = Tensor::zeros({v.size()}, Device::CPU, DataType::Bool);
+        auto* p = m.ptr<bool>();
+        for (size_t i = 0; i < v.size(); ++i)
+            p[i] = v[i];
+        return dev == Device::CUDA ? m.cuda() : m;
+    }
 
 } // namespace
 
@@ -120,7 +123,10 @@ TEST_F(TensorIndexSelectBoolTest, LargeScale) {
     auto deleted = Tensor::zeros({N}, Device::CPU, DataType::Bool);
     auto* p = deleted.ptr<bool>();
     size_t num_del = 0;
-    for (size_t i = 0; i < N; i += 10) { p[i] = true; ++num_del; }
+    for (size_t i = 0; i < N; i += 10) {
+        p[i] = true;
+        ++num_del;
+    }
 
     const auto keep = deleted.cuda().logical_not();
     const auto result = data.index_select(0, keep);
@@ -190,7 +196,8 @@ TEST_F(TensorIndexSelectBoolTest, VsTorch_LogicalNot) {
 
     auto lfs_del = Tensor::zeros({10}, Device::CPU, DataType::Bool);
     auto* p = lfs_del.ptr<bool>();
-    for (size_t i = 0; i < 10; ++i) p[i] = dv[i];
+    for (size_t i = 0; i < 10; ++i)
+        p[i] = dv[i];
     const auto lfs_keep = lfs_del.cuda().logical_not();
 
     const auto t_idx = torch::nonzero(t_keep).flatten().to(torch::kLong);
@@ -219,7 +226,8 @@ TEST_F(TensorIndexSelectBoolTest, VsTorch_LargeRandom) {
 
     std::vector<bool> mv(N);
     std::srand(42);
-    for (int64_t i = 0; i < N; ++i) mv[i] = (std::rand() % 100) < 30;
+    for (int64_t i = 0; i < N; ++i)
+        mv[i] = (std::rand() % 100) < 30;
 
     const auto t_mask = to_torch_bool(mv).cuda();
     const auto lfs_mask = make_bool_mask(mv);

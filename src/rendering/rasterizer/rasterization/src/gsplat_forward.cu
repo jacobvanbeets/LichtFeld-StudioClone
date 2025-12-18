@@ -2,10 +2,10 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include "gsplat_forward.h"
 #include "core/cuda/memory_arena.hpp"
-#include "gsplat_fwd/Ops.h"
+#include "gsplat_forward.h"
 #include "gsplat_fwd/Common.h"
+#include "gsplat_fwd/Ops.h"
 
 namespace lfs::rendering {
 
@@ -21,7 +21,7 @@ namespace lfs::rendering {
         constexpr size_t align(const size_t size) {
             return (size + MEMORY_ALIGNMENT - 1) & ~(MEMORY_ALIGNMENT - 1);
         }
-    }
+    } // namespace
 
     void gsplat_forward_gut(
         const float* means,
@@ -58,7 +58,7 @@ namespace lfs::rendering {
         const uint32_t W = image_width;
         const uint32_t tile_height = (H + TILE_SIZE - 1) / TILE_SIZE;
         const uint32_t tile_width = (W + TILE_SIZE - 1) / TILE_SIZE;
-        constexpr uint32_t CHANNELS = 3;  // RGB only for viewer
+        constexpr uint32_t CHANNELS = 3; // RGB only for viewer
 
         // Calculate and allocate buffer sizes
         const size_t radii_size = align(NUM_CAMERAS * N * 2 * sizeof(int32_t));
@@ -80,16 +80,26 @@ namespace lfs::rendering {
         char* blob = arena_allocator(total_size);
         char* ptr = blob;
 
-        auto* const radii_ptr = reinterpret_cast<int32_t*>(ptr); ptr += radii_size;
-        auto* const means2d_ptr = reinterpret_cast<float*>(ptr); ptr += means2d_size;
-        auto* const depths_ptr = reinterpret_cast<float*>(ptr); ptr += depths_size;
-        auto* const dirs_ptr = reinterpret_cast<float*>(ptr); ptr += dirs_size;
-        auto* const conics_ptr = reinterpret_cast<float*>(ptr); ptr += conics_size;
-        auto* const tiles_per_gauss_ptr = reinterpret_cast<int32_t*>(ptr); ptr += tiles_per_gauss_size;
-        auto* const tile_offsets_ptr = reinterpret_cast<int32_t*>(ptr); ptr += tile_offsets_size;
-        auto* const colors_ptr = reinterpret_cast<float*>(ptr); ptr += colors_size;
-        auto* const render_colors_ptr = reinterpret_cast<float*>(ptr); ptr += render_colors_size;
-        auto* const render_alphas_ptr = reinterpret_cast<float*>(ptr); ptr += render_alphas_size;
+        auto* const radii_ptr = reinterpret_cast<int32_t*>(ptr);
+        ptr += radii_size;
+        auto* const means2d_ptr = reinterpret_cast<float*>(ptr);
+        ptr += means2d_size;
+        auto* const depths_ptr = reinterpret_cast<float*>(ptr);
+        ptr += depths_size;
+        auto* const dirs_ptr = reinterpret_cast<float*>(ptr);
+        ptr += dirs_size;
+        auto* const conics_ptr = reinterpret_cast<float*>(ptr);
+        ptr += conics_size;
+        auto* const tiles_per_gauss_ptr = reinterpret_cast<int32_t*>(ptr);
+        ptr += tiles_per_gauss_size;
+        auto* const tile_offsets_ptr = reinterpret_cast<int32_t*>(ptr);
+        ptr += tile_offsets_size;
+        auto* const colors_ptr = reinterpret_cast<float*>(ptr);
+        ptr += colors_size;
+        auto* const render_colors_ptr = reinterpret_cast<float*>(ptr);
+        ptr += render_colors_size;
+        auto* const render_alphas_ptr = reinterpret_cast<float*>(ptr);
+        ptr += render_alphas_size;
         auto* const last_ids_ptr = reinterpret_cast<int32_t*>(ptr);
 
         gsplat_fwd::RasterizeWithSHResult result{
@@ -107,8 +117,7 @@ namespace lfs::rendering {
             .compensations = nullptr,
             .isect_ids = nullptr,
             .flatten_ids = nullptr,
-            .n_isects = 0
-        };
+            .n_isects = 0};
 
         UnscentedTransformParameters ut_params;
 
@@ -132,8 +141,10 @@ namespace lfs::rendering {
         cudaMemcpyAsync(render_alphas_out, render_alphas_ptr, alpha_bytes, cudaMemcpyDeviceToDevice, stream);
 
         // Free intersection buffers allocated by gsplat
-        if (result.isect_ids) cudaFreeAsync(result.isect_ids, stream);
-        if (result.flatten_ids) cudaFreeAsync(result.flatten_ids, stream);
+        if (result.isect_ids)
+            cudaFreeAsync(result.isect_ids, stream);
+        if (result.flatten_ids)
+            cudaFreeAsync(result.flatten_ids, stream);
 
         arena.end_frame(frame_id, true);
         arena.set_rendering_active(false);

@@ -530,8 +530,8 @@ namespace lfs::core::tensor_ops {
 
     // Internal Float32 implementation (original)
     void launch_reduce_op_float32(const void* input, void* output, const size_t* shape, size_t rank,
-                                         const int* axes, size_t num_axes, bool keepdim, ReduceOp op,
-                                         cudaStream_t stream) {
+                                  const int* axes, size_t num_axes, bool keepdim, ReduceOp op,
+                                  cudaStream_t stream) {
 
         size_t n = 1;
         for (size_t i = 0; i < rank; ++i)
@@ -566,7 +566,7 @@ namespace lfs::core::tensor_ops {
                     init_val = 1.0f;
                     break;
                 }
-                init_scalar_gpu(d_out, init_val, stream);  // GPU init instead of CPU→GPU upload!
+                init_scalar_gpu(d_out, init_val, stream); // GPU init instead of CPU→GPU upload!
 
                 // Launch warp-level reduction (5-10x faster!)
                 launch_warp_reduce_full(d_in, d_out, n, op, stream);
@@ -628,11 +628,11 @@ namespace lfs::core::tensor_ops {
                     run_with_thrust_policy(stream, [&](auto policy) {
                         result = thrust::reduce(policy, input_ptr, input_ptr + n, 1.0f, ops::mul_op{});
                     });
-                    init_scalar_gpu(static_cast<float*>(output), result, stream);  // GPU init instead of CPU→GPU upload!
+                    init_scalar_gpu(static_cast<float*>(output), result, stream); // GPU init instead of CPU→GPU upload!
                 }
                 break;
             default: {
-                init_scalar_gpu(static_cast<float*>(output), 0.0f, stream);  // GPU init instead of CPU→GPU upload!
+                init_scalar_gpu(static_cast<float*>(output), 0.0f, stream); // GPU init instead of CPU→GPU upload!
             } break;
             }
             return;
@@ -812,7 +812,7 @@ namespace lfs::core::tensor_ops {
                             init_val = 1.0f;
                             break;
                         }
-                        init_scalar_gpu(output_f, init_val, stream);  // GPU init instead of CPU→GPU upload!
+                        init_scalar_gpu(output_f, init_val, stream); // GPU init instead of CPU→GPU upload!
                         launch_warp_reduce_full(input_f, output_f, n, op, stream);
 
                         if (op == ReduceOp::Mean) {
@@ -927,8 +927,8 @@ namespace lfs::core::tensor_ops {
 
     // Internal Int32 implementation (simplified - only handles full reductions)
     void launch_reduce_op_int32(const void* input, void* output, const size_t* shape, size_t rank,
-                                       const int* axes, size_t num_axes, bool keepdim, ReduceOp op,
-                                       cudaStream_t stream) {
+                                const int* axes, size_t num_axes, bool keepdim, ReduceOp op,
+                                cudaStream_t stream) {
         size_t n = 1;
         for (size_t i = 0; i < rank; ++i)
             n *= shape[i];
@@ -976,10 +976,10 @@ namespace lfs::core::tensor_ops {
                 run_with_thrust_policy(stream, [&](auto policy) {
                     result = thrust::reduce(policy, in_ptr, in_ptr + n, 1, ops::mul_op{});
                 });
-                init_scalar_gpu(d_out, result, stream);  // GPU init instead of CPU→GPU upload!
+                init_scalar_gpu(d_out, result, stream); // GPU init instead of CPU→GPU upload!
             } break;
             default: {
-                init_scalar_gpu(d_out, 0, stream);  // GPU init instead of CPU→GPU upload!
+                init_scalar_gpu(d_out, 0, stream); // GPU init instead of CPU→GPU upload!
             } break;
             }
         }
@@ -1005,7 +1005,8 @@ namespace lfs::core::tensor_ops {
         const bool is_all) {
         const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
         const size_t output_size = outer_size * inner_size;
-        if (idx >= output_size) return;
+        if (idx >= output_size)
+            return;
 
         const size_t outer_idx = idx / inner_size;
         const size_t inner_idx = idx % inner_size;
@@ -1082,10 +1083,10 @@ namespace lfs::core::tensor_ops {
 
                 if (op == ReduceOp::Any) {
                     thrust::transform(thrust::cuda::par_nosync.on(stream),
-                        thrust::device_pointer_cast(d_temp_result),
-                        thrust::device_pointer_cast(d_temp_result) + 1,
-                        thrust::device_pointer_cast(d_out_bool),
-                        [] __device__(int64_t val) { return val != 0; });
+                                      thrust::device_pointer_cast(d_temp_result),
+                                      thrust::device_pointer_cast(d_temp_result) + 1,
+                                      thrust::device_pointer_cast(d_out_bool),
+                                      [] __device__(int64_t val) { return val != 0; });
                 } else {
                     cudaMemcpyAsync(d_out_int64, d_temp_result, sizeof(int64_t), cudaMemcpyDeviceToDevice, stream);
                 }
@@ -1110,10 +1111,10 @@ namespace lfs::core::tensor_ops {
 
                 if (op == ReduceOp::All) {
                     thrust::transform(thrust::cuda::par_nosync.on(stream),
-                        thrust::device_pointer_cast(d_temp_result),
-                        thrust::device_pointer_cast(d_temp_result) + 1,
-                        thrust::device_pointer_cast(d_out_bool),
-                        [] __device__(int64_t val) { return val != 0; });
+                                      thrust::device_pointer_cast(d_temp_result),
+                                      thrust::device_pointer_cast(d_temp_result) + 1,
+                                      thrust::device_pointer_cast(d_out_bool),
+                                      [] __device__(int64_t val) { return val != 0; });
                 } else {
                     cudaMemcpyAsync(d_out_int64, d_temp_result, sizeof(int64_t), cudaMemcpyDeviceToDevice, stream);
                 }
@@ -1148,7 +1149,8 @@ namespace lfs::core::tensor_ops {
                 int first = -1, last = -1;
                 for (size_t i = 0; i < rank; ++i) {
                     if (is_reduced[i]) {
-                        if (first < 0) first = i;
+                        if (first < 0)
+                            first = i;
                         last = i;
                     }
                 }
@@ -1820,7 +1822,7 @@ namespace lfs::core::tensor_ops {
 
         int block_size = 256;
         size_t num_blocks = (num_rows + block_size - 1) / block_size;
-        const size_t max_blocks_x = 65535;  // Safe limit for all CUDA devices
+        const size_t max_blocks_x = 65535; // Safe limit for all CUDA devices
 
         // Use 2D grid for large arrays to avoid exceeding grid dimension limits
         if (num_blocks <= max_blocks_x) {
@@ -1930,7 +1932,7 @@ namespace lfs::core::tensor_ops {
 
         int block_size = 256;
         size_t num_blocks = (total_elements + block_size - 1) / block_size;
-        const size_t max_blocks_x = 65535;  // Safe limit for all CUDA devices
+        const size_t max_blocks_x = 65535; // Safe limit for all CUDA devices
 
         // Use 2D grid for large arrays to avoid exceeding grid dimension limits
         if (num_blocks <= max_blocks_x) {
@@ -2482,7 +2484,7 @@ namespace lfs::core::tensor_ops {
     __global__ void fill_strided_immediate_kernel(
         T* __restrict__ data,
         T value,
-        TensorMetadata<MAX_DIM> meta,  // Passed by value (256 bytes)
+        TensorMetadata<MAX_DIM> meta, // Passed by value (256 bytes)
         size_t storage_offset,
         int ndim,
         size_t n) {
@@ -2520,7 +2522,7 @@ namespace lfs::core::tensor_ops {
 
         constexpr int BLOCK_SIZE = 256;
         size_t num_blocks = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
-        const size_t max_blocks_x = 65535;  // Safe limit for all CUDA devices
+        const size_t max_blocks_x = 65535; // Safe limit for all CUDA devices
 
         // FAST PATHS: Avoid expensive malloc/memcpy/free for common cases
         int ndim = static_cast<int>(shape.size());
@@ -2679,7 +2681,8 @@ namespace lfs::core::tensor_ops {
 
     __global__ void check_nan_inf_kernel(const float* __restrict__ data, size_t n, int* __restrict__ result) {
         // Early exit if already found (check without atomic for speed)
-        if (*result != 0) return;
+        if (*result != 0)
+            return;
 
         const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
         const size_t stride = blockDim.x * gridDim.x;
@@ -2687,15 +2690,15 @@ namespace lfs::core::tensor_ops {
         for (size_t i = idx; i < n; i += stride) {
             const float val = data[i];
             if (isnan(val) || isinf(val)) {
-                atomicExch(result, 1);  // Signal found
-                return;  // Early exit this thread
+                atomicExch(result, 1); // Signal found
+                return;                // Early exit this thread
             }
         }
     }
 
     // Vectorized version for better memory throughput with grid-stride loop
     __global__ void check_nan_inf_kernel_vec4(const float* __restrict__ data, size_t n, int* __restrict__ result) {
-        const size_t n_vec4 = n / 4;  // Number of complete float4s
+        const size_t n_vec4 = n / 4; // Number of complete float4s
         const size_t stride = static_cast<size_t>(blockDim.x) * gridDim.x;
 
         // Grid-stride loop over float4 elements
@@ -2703,7 +2706,8 @@ namespace lfs::core::tensor_ops {
              vec_idx < n_vec4;
              vec_idx += stride) {
             // Early exit if already found
-            if (*result != 0) return;
+            if (*result != 0)
+                return;
 
             const float4 vals = reinterpret_cast<const float4*>(data)[vec_idx];
             if (isnan(vals.x) || isinf(vals.x) ||
@@ -2719,7 +2723,8 @@ namespace lfs::core::tensor_ops {
         const size_t remainder_start = n_vec4 * 4;
         const size_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
         if (thread_id < (n - remainder_start) && remainder_start + thread_id < n) {
-            if (*result != 0) return;
+            if (*result != 0)
+                return;
             const float val = data[remainder_start + thread_id];
             if (isnan(val) || isinf(val)) {
                 atomicExch(result, 1);
@@ -2731,13 +2736,13 @@ namespace lfs::core::tensor_ops {
     namespace {
         struct NaNCheckBuffers {
             int* d_result = nullptr;
-            int* h_result_pinned = nullptr;  // Pinned host memory for fast transfer
+            int* h_result_pinned = nullptr; // Pinned host memory for fast transfer
             bool initialized = false;
 
             void init() {
                 if (!initialized) {
                     CHECK_CUDA(cudaMalloc(&d_result, sizeof(int)));
-                    CHECK_CUDA(cudaMallocHost(&h_result_pinned, sizeof(int)));  // Pinned memory
+                    CHECK_CUDA(cudaMallocHost(&h_result_pinned, sizeof(int))); // Pinned memory
                     initialized = true;
                 }
             }
@@ -2751,10 +2756,11 @@ namespace lfs::core::tensor_ops {
         };
 
         thread_local NaNCheckBuffers g_nan_check_buffers;
-    }
+    } // namespace
 
     bool has_nan_or_inf_gpu(const float* data, size_t n, cudaStream_t stream) {
-        if (n == 0) return false;
+        if (n == 0)
+            return false;
 
         // Initialize persistent buffers on first use
         g_nan_check_buffers.init();

@@ -7,7 +7,8 @@
 namespace lfs::vis::command {
 
     void CommandHistory::execute(CommandPtr cmd) {
-        if (!cmd) return;
+        if (!cmd)
+            return;
 
         if (current_index_ < history_.size()) {
             history_.resize(current_index_);
@@ -18,13 +19,15 @@ namespace lfs::vis::command {
     }
 
     void CommandHistory::undo() {
-        if (!canUndo()) return;
+        if (!canUndo())
+            return;
         --current_index_;
         history_[current_index_]->undo();
     }
 
     void CommandHistory::redo() {
-        if (!canRedo()) return;
+        if (!canRedo())
+            return;
         history_[current_index_]->redo();
         ++current_index_;
     }

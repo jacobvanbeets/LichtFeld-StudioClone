@@ -146,8 +146,8 @@ namespace lfs::rendering::kernels {
     // Projection result: screen position and Jacobian rows for EWA splatting
     struct ProjectionResult {
         float2 mean2d;
-        float3 jw_r1;  // First row of J * W (Jacobian * world-to-camera rotation)
-        float3 jw_r2;  // Second row of J * W
+        float3 jw_r1; // First row of J * W (Jacobian * world-to-camera rotation)
+        float3 jw_r2; // Second row of J * W
     };
 
     // Project 3D covariance to 2D using Jacobian rows: cov2d = J * cov3d * J^T
@@ -178,8 +178,7 @@ namespace lfs::rendering::kernels {
         return {
             .mean2d = make_float2(cam_x * ortho_scale + cx, cam_y * ortho_scale + cy),
             .jw_r1 = make_float3(ortho_scale * w2c_r1.x, ortho_scale * w2c_r1.y, ortho_scale * w2c_r1.z),
-            .jw_r2 = make_float3(ortho_scale * w2c_r2.x, ortho_scale * w2c_r2.y, ortho_scale * w2c_r2.z)
-        };
+            .jw_r2 = make_float3(ortho_scale * w2c_r2.x, ortho_scale * w2c_r2.y, ortho_scale * w2c_r2.z)};
     }
 
     // Perspective projection: divide by depth with clamped Jacobian
@@ -212,8 +211,7 @@ namespace lfs::rendering::kernels {
             .jw_r2 = make_float3(
                 j22 * w2c_r2.x - j22 * ty * w2c_r3.x,
                 j22 * w2c_r2.y - j22 * ty * w2c_r3.y,
-                j22 * w2c_r2.z - j22 * ty * w2c_r3.z)
-        };
+                j22 * w2c_r2.z - j22 * ty * w2c_r3.z)};
     }
 
 } // namespace lfs::rendering::kernels

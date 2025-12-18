@@ -2,11 +2,11 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "core/tensor.hpp"
+#include <cmath>
 #include <gtest/gtest.h>
 #include <torch/torch.h>
-#include "core/tensor.hpp"
 #include <vector>
-#include <cmath>
 
 using namespace lfs::core;
 
@@ -74,7 +74,7 @@ TEST_F(AddNewGsTensorOpsTest, IndexAddFloat32_LibTorchComparison) {
     std::vector<float> base_data(N, 0.0f);
 
     // Indices to add to (with duplicates to test counting)
-    std::vector<int32_t> indices = {0, 5, 10, 5, 15, 10, 10, 0, 19, 5};  // 10 samples
+    std::vector<int32_t> indices = {0, 5, 10, 5, 15, 10, 10, 0, 19, 5}; // 10 samples
 
     // Values to add (all ones for counting)
     std::vector<float> values(10, 1.0f);
@@ -91,10 +91,11 @@ TEST_F(AddNewGsTensorOpsTest, IndexAddFloat32_LibTorchComparison) {
     std::vector<int64_t> indices_i64(indices.begin(), indices.end());
     auto base_torch = torch::zeros({static_cast<long>(N)}, torch::kFloat32).cuda();
     auto indices_torch = torch::from_blob(
-        const_cast<int64_t*>(indices_i64.data()),
-        {10},
-        torch::kInt64
-    ).clone().cuda();
+                             const_cast<int64_t*>(indices_i64.data()),
+                             {10},
+                             torch::kInt64)
+                             .clone()
+                             .cuda();
     auto values_torch = torch::ones({10}, torch::kFloat32).cuda();
 
     auto result_torch = base_torch.index_add_(0, indices_torch, values_torch).cpu();
@@ -127,8 +128,8 @@ TEST_F(AddNewGsTensorOpsTest, CountOccurrencesPattern_LibTorchComparison) {
 
     // Sampled indices (with duplicates)
     std::vector<int32_t> sampled_indices = {
-        0, 5, 10, 5, 15, 10, 10, 0, 19, 5,  // first 10
-        25, 30, 25, 35, 40, 25, 30, 45, 49, 25  // next 10
+        0, 5, 10, 5, 15, 10, 10, 0, 19, 5,     // first 10
+        25, 30, 25, 35, 40, 25, 30, 45, 49, 25 // next 10
     };
 
     // LFS: zeros -> index_add_ -> index_select -> add ones -> clamp -> to(Int32)
@@ -138,7 +139,7 @@ TEST_F(AddNewGsTensorOpsTest, CountOccurrencesPattern_LibTorchComparison) {
 
     ratios_lfs = ratios_lfs.index_add_(0, sampled_idxs_lfs, ones_lfs);
     ratios_lfs = ratios_lfs.index_select(0, sampled_idxs_lfs);
-    ratios_lfs = ratios_lfs + Tensor::ones_like(ratios_lfs);  // Add 1 more
+    ratios_lfs = ratios_lfs + Tensor::ones_like(ratios_lfs); // Add 1 more
     ratios_lfs = ratios_lfs.clamp(1.0f, static_cast<float>(n_max));
     ratios_lfs = ratios_lfs.to(DataType::Int32).contiguous();
 
@@ -148,10 +149,11 @@ TEST_F(AddNewGsTensorOpsTest, CountOccurrencesPattern_LibTorchComparison) {
     std::vector<int64_t> sampled_indices_i64(sampled_indices.begin(), sampled_indices.end());
     auto ratios_torch = torch::zeros({static_cast<long>(N)}, torch::kFloat32).cuda();
     auto sampled_idxs_torch = torch::from_blob(
-        const_cast<int64_t*>(sampled_indices_i64.data()),
-        {n_samples},
-        torch::kInt64
-    ).clone().cuda();
+                                  const_cast<int64_t*>(sampled_indices_i64.data()),
+                                  {n_samples},
+                                  torch::kInt64)
+                                  .clone()
+                                  .cuda();
     auto ones_torch = torch::ones({n_samples}, torch::kFloat32).cuda();
 
     ratios_torch = ratios_torch.index_add_(0, sampled_idxs_torch, ones_torch);
@@ -176,8 +178,8 @@ TEST_F(AddNewGsTensorOpsTest, CountOccurrencesPattern_LibTorchComparison) {
     // Expected counts (clamped to n_max=10):
     // index 0 -> 2+1=3, index 5 -> 3+1=4, index 10 -> 3+1=4
     // index 25 -> 4+1=5, index 30 -> 2+1=3
-    EXPECT_EQ(result_lfs[0], 3);   // sampled_indices[0] = 0, count=2, +1 = 3
-    EXPECT_EQ(result_lfs[1], 4);   // sampled_indices[1] = 5, count=3, +1 = 4
+    EXPECT_EQ(result_lfs[0], 3); // sampled_indices[0] = 0, count=2, +1 = 3
+    EXPECT_EQ(result_lfs[1], 4); // sampled_indices[1] = 5, count=3, +1 = 4
 }
 
 // Test 4: Opacity clamping and logit calculation
@@ -188,16 +190,16 @@ TEST_F(AddNewGsTensorOpsTest, OpacityLogitCalculation_LibTorchComparison) {
 
     // Test values including edge cases
     std::vector<float> opacities = {
-        0.0f,      // Below min -> clamps to min
-        0.001f,    // Below min -> clamps to min
-        0.005f,    // At min
-        0.01f,     // Normal
-        0.1f,      // Normal
-        0.5f,      // Normal
-        0.9f,      // Normal
-        0.99f,     // High
-        1.0f,      // At max -> clamps to max_opacity
-        1.1f       // Above max -> clamps to max_opacity
+        0.0f,   // Below min -> clamps to min
+        0.001f, // Below min -> clamps to min
+        0.005f, // At min
+        0.01f,  // Normal
+        0.1f,   // Normal
+        0.5f,   // Normal
+        0.9f,   // Normal
+        0.99f,  // High
+        1.0f,   // At max -> clamps to max_opacity
+        1.1f    // Above max -> clamps to max_opacity
     };
 
     // LFS: clamp -> logit
@@ -208,10 +210,11 @@ TEST_F(AddNewGsTensorOpsTest, OpacityLogitCalculation_LibTorchComparison) {
 
     // LibTorch: same operations
     auto opacities_torch = torch::from_blob(
-        const_cast<float*>(opacities.data()),
-        {10},
-        torch::kFloat32
-    ).clone().cuda();
+                               const_cast<float*>(opacities.data()),
+                               {10},
+                               torch::kFloat32)
+                               .clone()
+                               .cuda();
     auto clamped_torch = opacities_torch.clamp(min_opacity, max_opacity);
     auto logit_torch = (clamped_torch / (torch::ones_like(clamped_torch) - clamped_torch)).log();
     auto result_torch = logit_torch.cpu();
@@ -233,8 +236,7 @@ TEST_F(AddNewGsTensorOpsTest, OpacityLogitCalculation_LibTorchComparison) {
 TEST_F(AddNewGsTensorOpsTest, ScaleLogConversion_LibTorchComparison) {
     // Test various scale values
     std::vector<float> scales = {
-        0.001f, 0.01f, 0.1f, 0.5f, 1.0f, 2.0f, 5.0f, 10.0f, 100.0f
-    };
+        0.001f, 0.01f, 0.1f, 0.5f, 1.0f, 2.0f, 5.0f, 10.0f, 100.0f};
 
     // LFS
     auto scales_lfs = Tensor::from_vector(scales, TensorShape{9}, Device::CUDA);
@@ -243,10 +245,11 @@ TEST_F(AddNewGsTensorOpsTest, ScaleLogConversion_LibTorchComparison) {
 
     // LibTorch
     auto scales_torch = torch::from_blob(
-        const_cast<float*>(scales.data()),
-        {9},
-        torch::kFloat32
-    ).clone().cuda();
+                            const_cast<float*>(scales.data()),
+                            {9},
+                            torch::kFloat32)
+                            .clone()
+                            .cuda();
     auto log_scales_torch = scales_torch.log();
     auto result_torch = log_scales_torch.cpu();
 
@@ -279,10 +282,11 @@ TEST_F(AddNewGsTensorOpsTest, UnsqueezeSqueeze_LibTorchComparison) {
         auto result_lfs = unsqueezed_lfs.cpu().to_vector();
 
         auto tensor_torch = torch::from_blob(
-            const_cast<float*>(data.data()),
-            {5},
-            torch::kFloat32
-        ).clone().cuda();
+                                const_cast<float*>(data.data()),
+                                {5},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto unsqueezed_torch = tensor_torch.unsqueeze(-1);
         auto result_torch = unsqueezed_torch.cpu();
 
@@ -304,10 +308,11 @@ TEST_F(AddNewGsTensorOpsTest, UnsqueezeSqueeze_LibTorchComparison) {
         auto result_lfs = squeezed_lfs.cpu().to_vector();
 
         auto tensor_torch = torch::from_blob(
-            const_cast<float*>(data.data()),
-            {5, 1},
-            torch::kFloat32
-        ).clone().cuda();
+                                const_cast<float*>(data.data()),
+                                {5, 1},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto squeezed_torch = tensor_torch.squeeze(-1);
         auto result_torch = squeezed_torch.cpu();
 
@@ -351,20 +356,23 @@ TEST_F(AddNewGsTensorOpsTest, MultipleIndexSelect_LibTorchComparison) {
     // LibTorch (convert indices to int64)
     std::vector<int64_t> indices_i64(indices.begin(), indices.end());
     auto opacities_torch = torch::from_blob(
-        const_cast<float*>(opacities.data()),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().cuda();
+                               const_cast<float*>(opacities.data()),
+                               {static_cast<long>(N)},
+                               torch::kFloat32)
+                               .clone()
+                               .cuda();
     auto scales_torch = torch::from_blob(
-        const_cast<float*>(scales.data()),
-        {static_cast<long>(N), 3},
-        torch::kFloat32
-    ).clone().cuda();
+                            const_cast<float*>(scales.data()),
+                            {static_cast<long>(N), 3},
+                            torch::kFloat32)
+                            .clone()
+                            .cuda();
     auto indices_torch = torch::from_blob(
-        const_cast<int64_t*>(indices_i64.data()),
-        {static_cast<long>(n_samples)},
-        torch::kInt64
-    ).clone().cuda();
+                             const_cast<int64_t*>(indices_i64.data()),
+                             {static_cast<long>(n_samples)},
+                             torch::kInt64)
+                             .clone()
+                             .cuda();
 
     auto sampled_opacities_torch = opacities_torch.index_select(0, indices_torch);
     auto sampled_scales_torch = scales_torch.index_select(0, indices_torch);
@@ -407,21 +415,22 @@ TEST_F(AddNewGsTensorOpsTest, MultinomialSampling_LibTorchComparison) {
     // Create probability weights (simulating opacities)
     std::vector<float> probs(N);
     for (size_t i = 0; i < N; ++i) {
-        probs[i] = 0.01f * (i % 10 + 1);  // Values 0.01 to 0.10
+        probs[i] = 0.01f * (i % 10 + 1); // Values 0.01 to 0.10
     }
 
     // LFS
     auto probs_lfs = Tensor::from_vector(probs, TensorShape{N}, Device::CUDA);
-    auto sampled_lfs = Tensor::multinomial(probs_lfs, n_samples, true);  // with replacement
+    auto sampled_lfs = Tensor::multinomial(probs_lfs, n_samples, true); // with replacement
     auto result_lfs = sampled_lfs.cpu().to_vector_int();
 
     // LibTorch
     auto probs_torch = torch::from_blob(
-        const_cast<float*>(probs.data()),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().cuda();
-    auto sampled_torch = probs_torch.multinomial(n_samples, true);  // with replacement
+                           const_cast<float*>(probs.data()),
+                           {static_cast<long>(N)},
+                           torch::kFloat32)
+                           .clone()
+                           .cuda();
+    auto sampled_torch = probs_torch.multinomial(n_samples, true); // with replacement
     auto result_torch = sampled_torch.cpu();
 
     // Note: We can't compare exact indices (multinomial is random),
@@ -473,10 +482,11 @@ TEST_F(AddNewGsTensorOpsTest, Flatten_LibTorchComparison) {
         auto result_lfs = flattened_lfs.cpu().to_vector();
 
         auto tensor_torch = torch::from_blob(
-            const_cast<float*>(data.data()),
-            {5},
-            torch::kFloat32
-        ).clone().cuda();
+                                const_cast<float*>(data.data()),
+                                {5},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto flattened_torch = tensor_torch.flatten();
         auto result_torch = flattened_torch.cpu();
 
@@ -500,10 +510,11 @@ TEST_F(AddNewGsTensorOpsTest, Flatten_LibTorchComparison) {
         auto result_lfs = flattened_lfs.cpu().to_vector();
 
         auto tensor_torch = torch::from_blob(
-            const_cast<float*>(data.data()),
-            {5, 1},
-            torch::kFloat32
-        ).clone().cuda();
+                                const_cast<float*>(data.data()),
+                                {5, 1},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto flattened_torch = tensor_torch.flatten();
         auto result_torch = flattened_torch.cpu();
 
@@ -528,15 +539,17 @@ TEST_F(AddNewGsTensorOpsTest, TensorAddition_LibTorchComparison) {
 
     // LibTorch
     auto tensor1_torch = torch::from_blob(
-        const_cast<float*>(data1.data()),
-        {5},
-        torch::kFloat32
-    ).clone().cuda();
+                             const_cast<float*>(data1.data()),
+                             {5},
+                             torch::kFloat32)
+                             .clone()
+                             .cuda();
     auto tensor2_torch = torch::from_blob(
-        const_cast<float*>(data2.data()),
-        {5},
-        torch::kFloat32
-    ).clone().cuda();
+                             const_cast<float*>(data2.data()),
+                             {5},
+                             torch::kFloat32)
+                             .clone()
+                             .cuda();
     auto result_torch = (tensor1_torch + tensor2_torch).cpu();
 
     // Compare
@@ -562,7 +575,7 @@ TEST_F(AddNewGsTensorOpsTest, FullAddNewWorkflow_LibTorchComparison) {
     // Initial opacities
     std::vector<float> opacities(N);
     for (size_t i = 0; i < N; ++i) {
-        opacities[i] = 0.01f * (i % 10 + 1);  // Values 0.01 to 0.10
+        opacities[i] = 0.01f * (i % 10 + 1); // Values 0.01 to 0.10
     }
 
     // Sampled indices
@@ -608,20 +621,23 @@ TEST_F(AddNewGsTensorOpsTest, FullAddNewWorkflow_LibTorchComparison) {
     // === LibTorch Workflow ===
     std::vector<int64_t> sampled_indices_i64(sampled_indices.begin(), sampled_indices.end());
     auto opacities_torch = torch::from_blob(
-        const_cast<float*>(opacities.data()),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().cuda();
+                               const_cast<float*>(opacities.data()),
+                               {static_cast<long>(N)},
+                               torch::kFloat32)
+                               .clone()
+                               .cuda();
     auto scales_torch = torch::from_blob(
-        const_cast<float*>(scales.data()),
-        {static_cast<long>(N), 3},
-        torch::kFloat32
-    ).clone().cuda();
+                            const_cast<float*>(scales.data()),
+                            {static_cast<long>(N), 3},
+                            torch::kFloat32)
+                            .clone()
+                            .cuda();
     auto sampled_idxs_torch = torch::from_blob(
-        const_cast<int64_t*>(sampled_indices_i64.data()),
-        {n_new},
-        torch::kInt64
-    ).clone().cuda();
+                                  const_cast<int64_t*>(sampled_indices_i64.data()),
+                                  {n_new},
+                                  torch::kInt64)
+                                  .clone()
+                                  .cuda();
 
     // 1. Get sampled opacities and scales
     auto sampled_opacities_torch = opacities_torch.index_select(0, sampled_idxs_torch);
@@ -686,10 +702,11 @@ TEST_F(AddNewGsTensorOpsTest, OnesLikeDifferentDtypes_LibTorchComparison) {
         auto result_lfs = ones_lfs.cpu().to_vector();
 
         auto tensor_torch = torch::from_blob(
-            const_cast<float*>(data.data()),
-            {5},
-            torch::kFloat32
-        ).clone().cuda();
+                                const_cast<float*>(data.data()),
+                                {5},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto ones_torch = torch::ones_like(tensor_torch);
         auto result_torch = ones_torch.cpu();
 
@@ -709,10 +726,11 @@ TEST_F(AddNewGsTensorOpsTest, OnesLikeDifferentDtypes_LibTorchComparison) {
         auto result_lfs = ones_lfs.cpu().to_vector_int();
 
         auto tensor_torch = torch::from_blob(
-            const_cast<int32_t*>(int_data.data()),
-            {5},
-            torch::kInt32
-        ).clone().cuda();
+                                const_cast<int32_t*>(int_data.data()),
+                                {5},
+                                torch::kInt32)
+                                .clone()
+                                .cuda();
         auto ones_torch = torch::ones_like(tensor_torch);
         auto result_torch = ones_torch.cpu();
 
@@ -734,7 +752,7 @@ TEST_F(AddNewGsTensorOpsTest, Contiguous_LibTorchComparison) {
 
     // Create tensor and make it non-contiguous via transpose
     auto tensor_lfs = Tensor::from_vector(data, TensorShape{4, 5}, Device::CUDA);
-    auto transposed_lfs = tensor_lfs.transpose(0, 1);  // [5, 4] - non-contiguous
+    auto transposed_lfs = tensor_lfs.transpose(0, 1); // [5, 4] - non-contiguous
     auto contiguous_lfs = transposed_lfs.contiguous();
 
     EXPECT_TRUE(contiguous_lfs.is_contiguous());
@@ -743,10 +761,11 @@ TEST_F(AddNewGsTensorOpsTest, Contiguous_LibTorchComparison) {
 
     // LibTorch
     auto tensor_torch = torch::from_blob(
-        const_cast<float*>(data.data()),
-        {4, 5},
-        torch::kFloat32
-    ).clone().cuda();
+                            const_cast<float*>(data.data()),
+                            {4, 5},
+                            torch::kFloat32)
+                            .clone()
+                            .cuda();
     auto transposed_torch = tensor_torch.transpose(0, 1);
     auto contiguous_torch = transposed_torch.contiguous();
 

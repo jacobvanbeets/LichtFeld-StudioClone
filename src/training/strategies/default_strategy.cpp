@@ -6,9 +6,9 @@
 #include "core/logger.hpp"
 #include "core/parameters.hpp"
 #include "core/tensor/internal/tensor_serialization.hpp"
+#include "kernels/densification_kernels.hpp"
 #include "optimizer/render_output.hpp"
 #include "strategy_utils.hpp"
-#include "kernels/densification_kernels.hpp"
 
 namespace lfs::training {
 
@@ -16,7 +16,8 @@ namespace lfs::training {
         // Returns true if shape has any zero dimension (e.g., ShN at sh-degree 0)
         [[nodiscard]] inline bool has_zero_dimension(const lfs::core::TensorShape& shape) {
             for (size_t i = 0; i < shape.rank(); ++i) {
-                if (shape[i] == 0) return true;
+                if (shape[i] == 0)
+                    return true;
             }
             return false;
         }
@@ -73,7 +74,7 @@ namespace lfs::training {
         const int64_t num_duplicated = sampled_idxs.shape()[0];
 
         if (num_duplicated == 0) {
-            return;  // Nothing to duplicate
+            return; // Nothing to duplicate
         }
 
         // Try to fill free slots first (in-place with index_put_)
@@ -114,7 +115,7 @@ namespace lfs::training {
         const int64_t num_split = split_idxs.shape()[0];
 
         if (num_split == 0) {
-            return;  // Nothing to split
+            return; // Nothing to split
         }
 
         LOG_DEBUG("split(): {} Gaussians to split", num_split);
@@ -170,16 +171,17 @@ namespace lfs::training {
             static_cast<int>(num_split),
             shN_dim,
             _params->revised_opacity,
-            nullptr
-        );
+            nullptr);
 
         // Reset optimizer states for split indices
         auto reset_optimizer_state_at_indices = [&](ParamType param_type) {
             auto* state = _optimizer->get_state_mutable(param_type);
-            if (!state) return;
+            if (!state)
+                return;
 
             const auto& shape = state->exp_avg.shape();
-            if (has_zero_dimension(shape)) return;
+            if (has_zero_dimension(shape))
+                return;
 
             std::vector<size_t> dims = {static_cast<size_t>(num_split)};
             for (size_t i = 1; i < shape.rank(); ++i) {
@@ -303,26 +305,26 @@ namespace lfs::training {
         _splat_data->scaling_raw().index_put_(target_indices, scales.slice(0, 0, slots_to_fill));
 
         // sh0 needs reshape from [slots_to_fill, 3] to [slots_to_fill, 1, 3]
-        auto sh0_reshaped = sh0.slice(0, 0, slots_to_fill).reshape(
-            lfs::core::TensorShape({static_cast<size_t>(slots_to_fill), 1, 3}));
+        auto sh0_reshaped = sh0.slice(0, 0, slots_to_fill).reshape(lfs::core::TensorShape({static_cast<size_t>(slots_to_fill), 1, 3}));
         _splat_data->sh0().index_put_(target_indices, sh0_reshaped);
 
         _splat_data->opacity_raw().index_put_(target_indices, opacities.slice(0, 0, slots_to_fill));
 
         if (shN.is_valid() && has_shN_coefficients(_splat_data->shN())) {
             const auto& shN_shape = _splat_data->shN().shape();
-            auto shN_slice = shN.slice(0, 0, slots_to_fill).reshape(
-                lfs::core::TensorShape({static_cast<size_t>(slots_to_fill), shN_shape[1], shN_shape[2]}));
+            auto shN_slice = shN.slice(0, 0, slots_to_fill).reshape(lfs::core::TensorShape({static_cast<size_t>(slots_to_fill), shN_shape[1], shN_shape[2]}));
             _splat_data->shN().index_put_(target_indices, shN_slice);
         }
 
         // Reset optimizer states for filled slots
         auto reset_optimizer_state = [&](ParamType param_type) {
             auto* state = _optimizer->get_state_mutable(param_type);
-            if (!state) return;
+            if (!state)
+                return;
 
             const auto& shape = state->exp_avg.shape();
-            if (has_zero_dimension(shape)) return;
+            if (has_zero_dimension(shape))
+                return;
 
             std::vector<size_t> dims = {static_cast<size_t>(slots_to_fill)};
             for (size_t i = 1; i < shape.rank(); ++i) {
@@ -362,7 +364,7 @@ namespace lfs::training {
         const size_t current_size = static_cast<size_t>(_splat_data->size());
         if (_free_mask.is_valid() && current_size > 0) {
             auto active_free_mask = _free_mask.slice(0, 0, current_size);
-            auto is_active = active_free_mask.logical_not();  // true = slot is active (not free)
+            auto is_active = active_free_mask.logical_not(); // true = slot is active (not free)
             is_grad_high = is_grad_high.logical_and(is_active);
         }
 
@@ -456,10 +458,12 @@ namespace lfs::training {
         // Zero optimizer states in-place (preserves capacity)
         auto zero_optimizer_state = [&](ParamType param_type) {
             auto* state = _optimizer->get_state_mutable(param_type);
-            if (!state) return;
+            if (!state)
+                return;
 
             const auto& shape = state->exp_avg.shape();
-            if (has_zero_dimension(shape)) return;
+            if (has_zero_dimension(shape))
+                return;
 
             std::vector<size_t> dims = {static_cast<size_t>(num_pruned)};
             for (size_t i = 1; i < shape.rank(); ++i) {
@@ -503,8 +507,8 @@ namespace lfs::training {
         const size_t current_size = static_cast<size_t>(_splat_data->size());
         if (_free_mask.is_valid() && current_size > 0) {
             auto active_free_mask = _free_mask.slice(0, 0, current_size);
-            auto is_active = active_free_mask.logical_not();  // true = slot is active
-            is_prune = is_prune.logical_and(is_active);       // only prune active slots
+            auto is_active = active_free_mask.logical_not(); // true = slot is active
+            is_prune = is_prune.logical_and(is_active);      // only prune active slots
         }
 
         const auto num_prunes = static_cast<int64_t>(is_prune.sum_scalar());
@@ -573,9 +577,9 @@ namespace lfs::training {
     // ===== Serialization =====
 
     namespace {
-        constexpr uint32_t DEFAULT_MAGIC = 0x4C464446;  // "LFDF"
-        constexpr uint32_t DEFAULT_VERSION = 2;  // v2 adds free_mask serialization
-    }
+        constexpr uint32_t DEFAULT_MAGIC = 0x4C464446; // "LFDF"
+        constexpr uint32_t DEFAULT_VERSION = 2;        // v2 adds free_mask serialization
+    }                                                  // namespace
 
     void DefaultStrategy::serialize(std::ostream& os) const {
         os.write(reinterpret_cast<const char*>(&DEFAULT_MAGIC), sizeof(DEFAULT_MAGIC));
@@ -670,7 +674,8 @@ namespace lfs::training {
         // Count slots that are NOT free (i.e., active)
         // Only count up to the current size (not full capacity)
         const size_t current_size = static_cast<size_t>(_splat_data->size());
-        if (current_size == 0) return 0;
+        if (current_size == 0)
+            return 0;
 
         auto active_region = _free_mask.slice(0, 0, current_size);
         auto free_count_val = static_cast<size_t>(active_region.sum_scalar());
@@ -683,7 +688,8 @@ namespace lfs::training {
         }
         // Count free slots within current size
         const size_t current_size = static_cast<size_t>(_splat_data->size());
-        if (current_size == 0) return 0;
+        if (current_size == 0)
+            return 0;
 
         auto active_region = _free_mask.slice(0, 0, current_size);
         return static_cast<size_t>(active_region.sum_scalar());
@@ -757,10 +763,12 @@ namespace lfs::training {
         // Reset optimizer states in-place (preserves capacity)
         auto update_optimizer_state = [&](ParamType param_type) {
             auto* state = _optimizer->get_state_mutable(param_type);
-            if (!state) return;
+            if (!state)
+                return;
 
             const auto& shape = state->exp_avg.shape();
-            if (has_zero_dimension(shape)) return;
+            if (has_zero_dimension(shape))
+                return;
 
             std::vector<size_t> dims = {static_cast<size_t>(slots_to_fill)};
             for (size_t i = 1; i < shape.rank(); ++i) {

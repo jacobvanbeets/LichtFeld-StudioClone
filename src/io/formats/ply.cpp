@@ -471,8 +471,8 @@ namespace lfs::io {
                                   for (int j = 0; j < coeff_count; ++j) {
                                       const size_t offset = coeff_offsets[j];
                                       const float value = (offset != SIZE_MAX)
-                                          ? *reinterpret_cast<const float*>(vertex_data + base + offset)
-                                          : 0.0f;
+                                                              ? *reinterpret_cast<const float*>(vertex_data + base + offset)
+                                                              : 0.0f;
                                       const int channel = j / B;
                                       const int b = j % B;
                                       output[out_base + b * channels + channel] = value;
@@ -802,22 +802,26 @@ namespace lfs::io {
         // Calculate estimated file size for disk space check
         // PLY binary: header (~500 bytes) + vertex_count * stride (floats)
         const size_t vertex_count = point_cloud.means.size(0);
-        size_t floats_per_vertex = 3;  // positions
+        size_t floats_per_vertex = 3; // positions
 
-        if (point_cloud.normals.is_valid()) floats_per_vertex += 3;
+        if (point_cloud.normals.is_valid())
+            floats_per_vertex += 3;
         if (point_cloud.sh0.is_valid()) {
             floats_per_vertex += point_cloud.sh0.ndim() == 3
-                ? point_cloud.sh0.size(1) * point_cloud.sh0.size(2)
-                : point_cloud.sh0.size(1);
+                                     ? point_cloud.sh0.size(1) * point_cloud.sh0.size(2)
+                                     : point_cloud.sh0.size(1);
         }
         if (point_cloud.shN.is_valid()) {
             floats_per_vertex += point_cloud.shN.ndim() == 3
-                ? point_cloud.shN.size(1) * point_cloud.shN.size(2)
-                : point_cloud.shN.size(1);
+                                     ? point_cloud.shN.size(1) * point_cloud.shN.size(2)
+                                     : point_cloud.shN.size(1);
         }
-        if (point_cloud.opacity.is_valid()) floats_per_vertex += 1;
-        if (point_cloud.scaling.is_valid()) floats_per_vertex += 3;
-        if (point_cloud.rotation.is_valid()) floats_per_vertex += 4;
+        if (point_cloud.opacity.is_valid())
+            floats_per_vertex += 1;
+        if (point_cloud.scaling.is_valid())
+            floats_per_vertex += 3;
+        if (point_cloud.rotation.is_valid())
+            floats_per_vertex += 4;
 
         const size_t estimated_size = 1024 + vertex_count * floats_per_vertex * sizeof(float);
 
@@ -836,8 +840,8 @@ namespace lfs::io {
         std::filesystem::create_directories(options.output_path.parent_path(), ec);
         if (ec) {
             return make_error(ErrorCode::PERMISSION_DENIED,
-                std::format("Cannot create directory: {}", ec.message()),
-                options.output_path.parent_path());
+                              std::format("Cannot create directory: {}", ec.message()),
+                              options.output_path.parent_path());
         }
 
         if (options.async) {
@@ -861,28 +865,34 @@ namespace lfs::io {
                 LOG_INFO("PLY saved: {}", options.output_path.string());
             } catch (const std::exception& e) {
                 return make_error(ErrorCode::WRITE_FAILURE,
-                    std::format("Failed to write PLY: {}", e.what()),
-                    options.output_path);
+                                  std::format("Failed to write PLY: {}", e.what()),
+                                  options.output_path);
             }
         }
         return {};
     }
 
     bool is_gaussian_splat_ply(const std::filesystem::path& filepath) {
-        if (!std::filesystem::exists(filepath)) return false;
+        if (!std::filesystem::exists(filepath))
+            return false;
 
         std::ifstream file(filepath, std::ios::binary);
-        if (!file) return false;
+        if (!file)
+            return false;
 
         std::string line;
         bool has_opacity = false, has_scale = false, has_rotation = false;
 
         while (std::getline(file, line)) {
-            if (line.find("end_header") != std::string::npos) break;
+            if (line.find("end_header") != std::string::npos)
+                break;
             if (line.find("property") != std::string::npos) {
-                if (line.find("opacity") != std::string::npos) has_opacity = true;
-                if (line.find("scale_0") != std::string::npos) has_scale = true;
-                if (line.find("rot_0") != std::string::npos) has_rotation = true;
+                if (line.find("opacity") != std::string::npos)
+                    has_opacity = true;
+                if (line.find("scale_0") != std::string::npos)
+                    has_scale = true;
+                if (line.find("rot_0") != std::string::npos)
+                    has_rotation = true;
             }
         }
         return has_opacity && has_scale && has_rotation;
@@ -931,7 +941,8 @@ namespace lfs::io {
                 std::memcpy(pos_ptr, vertices->buffer.get(), N * 3 * sizeof(float));
             } else if (vertices->t == tinyply::Type::FLOAT64) {
                 const auto* src = reinterpret_cast<const double*>(vertices->buffer.get());
-                for (size_t i = 0; i < N * 3; ++i) pos_ptr[i] = static_cast<float>(src[i]);
+                for (size_t i = 0; i < N * 3; ++i)
+                    pos_ptr[i] = static_cast<float>(src[i]);
             } else {
                 return std::unexpected("Unsupported vertex type");
             }

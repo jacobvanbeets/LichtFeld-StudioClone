@@ -63,7 +63,8 @@ namespace lfs::core {
             // CUDA: use snprintf
             char buffer[1024];
             const int written = std::snprintf(buffer, sizeof(buffer), fmt, std::forward<Args>(args)...);
-            if (written < 0) return;
+            if (written < 0)
+                return;
 
             std::string msg;
             if (static_cast<size_t>(written) >= sizeof(buffer)) {

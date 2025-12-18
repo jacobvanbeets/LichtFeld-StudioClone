@@ -1,11 +1,11 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
-#include <torch/torch.h>
 #include "core/tensor.hpp"
 #include "training/kernels/grad_alpha.hpp"
 #include <chrono>
+#include <gtest/gtest.h>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 
@@ -44,7 +44,7 @@ protected:
 
 // OLD: Using separate tensor ops (slow)
 Tensor compute_blend_lfs_old(const Tensor& image, const Tensor& alpha, const Tensor& bg_color) {
-    auto alpha_complement = (alpha * -1.0f) + 1.0f;  // 1 - alpha
+    auto alpha_complement = (alpha * -1.0f) + 1.0f; // 1 - alpha
     auto bg_contribution = alpha_complement * bg_color.reshape({3, 1, 1});
     return image + bg_contribution;
 }
@@ -62,8 +62,7 @@ Tensor compute_blend_lfs_fused(const Tensor& image, const Tensor& alpha, const T
         bg_color.ptr<float>(),
         output.ptr<float>(),
         H, W,
-        nullptr
-    );
+        nullptr);
 
     return output;
 }

@@ -6,10 +6,10 @@
 // Build: g++ -std=c++23 -I../include -I../external/spz -I../src -o verify_spz verify_spz_format.cpp
 // Run: ./verify_spz
 
-#include <iostream>
+#include "load-spz.h"
 #include <cmath>
 #include <filesystem>
-#include "load-spz.h"
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -35,7 +35,7 @@ int main() {
 
         // Rotations (xyzw format)
         cloud.rotations = {0.0f, 0.0f, 0.0f, 1.0f,  // Identity
-                          0.5f, 0.5f, 0.5f, 0.5f}; // Non-identity
+                           0.5f, 0.5f, 0.5f, 0.5f}; // Non-identity
 
         // Alphas
         cloud.alphas = {0.0f, 1.0f};
@@ -47,8 +47,8 @@ int main() {
         // Point 0: sh0=[0.1, 0.2, 0.3], sh1=[0.4, 0.5, 0.6], sh2=[0.7, 0.8, 0.9]
         // Point 1: all zeros
         cloud.sh = {
-            0.1f, 0.2f, 0.3f,  0.4f, 0.5f, 0.6f,  0.7f, 0.8f, 0.9f,  // Point 0
-            0.0f, 0.0f, 0.0f,  0.0f, 0.0f, 0.0f,  0.0f, 0.0f, 0.0f   // Point 1
+            0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, // Point 0
+            0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f  // Point 1
         };
 
         // Save to temp file
@@ -86,9 +86,9 @@ int main() {
         std::cout << "  Point 0 SH coefficients:\n";
         for (int j = 0; j < 3; ++j) {
             std::cout << "    coeff " << j << ": ["
-                      << loaded.sh[j*3 + 0] << ", "
-                      << loaded.sh[j*3 + 1] << ", "
-                      << loaded.sh[j*3 + 2] << "]\n";
+                      << loaded.sh[j * 3 + 0] << ", "
+                      << loaded.sh[j * 3 + 1] << ", "
+                      << loaded.sh[j * 3 + 2] << "]\n";
         }
         std::cout << "  Expected: coeff 0=[0.1, 0.2, 0.3], coeff 1=[0.4, 0.5, 0.6], coeff 2=[0.7, 0.8, 0.9]\n";
 
@@ -118,7 +118,7 @@ int main() {
         cloud.shDegree = 0;
         cloud.positions = {1.0f, 2.0f, 3.0f};
         cloud.scales = {0.0f, 0.0f, 0.0f};
-        cloud.rotations = {0.0f, 0.0f, 0.0f, 1.0f};  // xyzw
+        cloud.rotations = {0.0f, 0.0f, 0.0f, 1.0f}; // xyzw
         cloud.alphas = {0.0f};
         cloud.colors = {0.5f, 0.5f, 0.5f};
 
@@ -165,7 +165,7 @@ int main() {
         cloud.shDegree = 0;
         cloud.positions = {0.0f, 0.0f, 0.0f};
         cloud.scales = {0.0f, 0.0f, 0.0f};
-        cloud.rotations = {0.0f, 0.0f, 0.7071f, 0.7071f};  // xyzw: 90deg around Z
+        cloud.rotations = {0.0f, 0.0f, 0.7071f, 0.7071f}; // xyzw: 90deg around Z
         cloud.alphas = {0.0f};
         cloud.colors = {0.5f, 0.5f, 0.5f};
 
@@ -188,8 +188,8 @@ int main() {
 
         if (approxEqual(loaded.rotations[0], 0.0f, 0.1f) &&
             approxEqual(loaded.rotations[1], 0.0f, 0.1f) &&
-            std::abs(loaded.rotations[2]) > 0.5f &&  // z should be ~0.7071
-            std::abs(loaded.rotations[3]) > 0.5f) {  // w should be ~0.7071
+            std::abs(loaded.rotations[2]) > 0.5f && // z should be ~0.7071
+            std::abs(loaded.rotations[3]) > 0.5f) { // w should be ~0.7071
             std::cout << "  PASS: Quaternion format correct\n";
         } else {
             std::cout << "  WARNING: Quaternion may be incorrect\n";

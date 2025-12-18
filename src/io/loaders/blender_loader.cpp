@@ -37,19 +37,24 @@ namespace lfs::io {
 
         for (const auto& folder : MASK_FOLDERS) {
             const std::filesystem::path mask_dir = base_path / folder;
-            if (!std::filesystem::exists(mask_dir)) continue;
+            if (!std::filesystem::exists(mask_dir))
+                continue;
 
             if (const auto exact = mask_dir / image_name; std::filesystem::exists(exact))
                 return exact;
 
             for (const auto& ext : MASK_EXTENSIONS) {
-                auto path = mask_dir / stem_path; path += ext;
-                if (std::filesystem::exists(path)) return path;
+                auto path = mask_dir / stem_path;
+                path += ext;
+                if (std::filesystem::exists(path))
+                    return path;
             }
 
             for (const auto& ext : MASK_EXTENSIONS) {
-                auto path = mask_dir / image_name; path += ext;
-                if (std::filesystem::exists(path)) return path;
+                auto path = mask_dir / image_name;
+                path += ext;
+                if (std::filesystem::exists(path))
+                    return path;
             }
         }
         return {};
@@ -65,7 +70,7 @@ namespace lfs::io {
         // Validate path exists
         if (!std::filesystem::exists(path)) {
             return make_error(ErrorCode::PATH_NOT_FOUND,
-                "Blender/NeRF dataset path does not exist", path);
+                              "Blender/NeRF dataset path does not exist", path);
         }
 
         // Report initial progress
@@ -86,7 +91,7 @@ namespace lfs::io {
                 LOG_DEBUG("Found transforms.json");
             } else {
                 return make_error(ErrorCode::MISSING_REQUIRED_FILES,
-                    "No transforms file found (expected 'transforms.json' or 'transforms_train.json')", path);
+                                  "No transforms file found (expected 'transforms.json' or 'transforms_train.json')", path);
             }
         } else if (path.extension() == ".json") {
             // Direct path to transforms file
@@ -94,7 +99,7 @@ namespace lfs::io {
             LOG_DEBUG("Using direct transforms file: {}", transforms_file.string());
         } else {
             return make_error(ErrorCode::UNSUPPORTED_FORMAT,
-                "Path must be a directory or a JSON file", path);
+                              "Path must be a directory or a JSON file", path);
         }
 
         // Validation only mode
@@ -104,7 +109,7 @@ namespace lfs::io {
             std::ifstream file(transforms_file);
             if (!file) {
                 return make_error(ErrorCode::PERMISSION_DENIED,
-                    "Cannot open transforms file for reading", transforms_file);
+                                  "Cannot open transforms file for reading", transforms_file);
             }
 
             // Try to parse as JSON (basic validation)
@@ -114,11 +119,11 @@ namespace lfs::io {
 
                 if (!j.contains("frames") || !j["frames"].is_array()) {
                     return make_error(ErrorCode::INVALID_DATASET,
-                        "Invalid transforms file: missing 'frames' array", transforms_file);
+                                      "Invalid transforms file: missing 'frames' array", transforms_file);
                 }
             } catch (const std::exception& e) {
                 return make_error(ErrorCode::MALFORMED_JSON,
-                    std::format("Invalid JSON: {}", e.what()), transforms_file);
+                                  std::format("Invalid JSON: {}", e.what()), transforms_file);
             }
 
             if (options.progress) {
@@ -248,7 +253,7 @@ namespace lfs::io {
 
         } catch (const std::exception& e) {
             return make_error(ErrorCode::CORRUPTED_DATA,
-                std::format("Failed to load Blender/NeRF dataset: {}", e.what()), path);
+                              std::format("Failed to load Blender/NeRF dataset: {}", e.what()), path);
         }
     }
 

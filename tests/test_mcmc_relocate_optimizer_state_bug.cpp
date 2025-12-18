@@ -21,11 +21,11 @@
  * potentially leading to convergence issues.
  */
 
-#include <gtest/gtest.h>
-#include "optimizer/adam_optimizer.hpp"
+#include "core/logger.hpp"
 #include "core/splat_data.hpp"
 #include "core/tensor.hpp"
-#include "core/logger.hpp"
+#include "optimizer/adam_optimizer.hpp"
+#include <gtest/gtest.h>
 
 using namespace lfs::training;
 using namespace lfs::core;
@@ -39,20 +39,20 @@ protected:
         // Initialize with simple values
         auto means = Tensor::zeros({n_gaussians, 3}, Device::CUDA);
         auto sh0 = Tensor::zeros({n_gaussians, 1, 3}, Device::CUDA);  // [N, 1, 3]
-        auto shN = Tensor::zeros({n_gaussians, 15, 3}, Device::CUDA);  // degree 3: 15 coefficients, 3 channels
+        auto shN = Tensor::zeros({n_gaussians, 15, 3}, Device::CUDA); // degree 3: 15 coefficients, 3 channels
         auto scaling_raw = Tensor::zeros({n_gaussians, 3}, Device::CUDA);
-        auto rotation_raw = Tensor::ones({n_gaussians, 4}, Device::CUDA);  // normalized quaternion [1,0,0,0]
+        auto rotation_raw = Tensor::ones({n_gaussians, 4}, Device::CUDA); // normalized quaternion [1,0,0,0]
         auto opacity_raw = Tensor::zeros({n_gaussians, 1}, Device::CUDA);
 
         splat_data = std::make_unique<SplatData>(
-            3,  // sh_degree
+            3, // sh_degree
             std::move(means),
             std::move(sh0),
             std::move(shN),
             std::move(scaling_raw),
             std::move(rotation_raw),
             std::move(opacity_raw),
-            1.0f  // scene_scale
+            1.0f // scene_scale
         );
 
         // Create optimizer and allocate gradients
@@ -140,7 +140,8 @@ TEST_F(MCMCRelocateOptimizerStateBugTest, DeadIndicesKeepStaleMomentum) {
         for (int j = 0; j < 3; j++) {
             dead_momentum_before[i][j] = exp_avg_before_data[dead_idx * 3 + j];
             std::cout << dead_momentum_before[i][j];
-            if (j < 2) std::cout << ", ";
+            if (j < 2)
+                std::cout << ", ";
         }
         std::cout << "]" << std::endl;
 
@@ -148,7 +149,8 @@ TEST_F(MCMCRelocateOptimizerStateBugTest, DeadIndicesKeepStaleMomentum) {
         for (int j = 0; j < 3; j++) {
             sampled_momentum_before[i][j] = exp_avg_before_data[sampled_idx * 3 + j];
             std::cout << sampled_momentum_before[i][j];
-            if (j < 2) std::cout << ", ";
+            if (j < 2)
+                std::cout << ", ";
         }
         std::cout << "]" << std::endl;
     }
@@ -201,7 +203,8 @@ TEST_F(MCMCRelocateOptimizerStateBugTest, DeadIndicesKeepStaleMomentum) {
         for (int j = 0; j < 3; j++) {
             dead_momentum_after[i][j] = exp_avg_after_data[dead_idx * 3 + j];
             std::cout << dead_momentum_after[i][j];
-            if (j < 2) std::cout << ", ";
+            if (j < 2)
+                std::cout << ", ";
         }
         std::cout << "]" << std::endl;
 
@@ -209,7 +212,8 @@ TEST_F(MCMCRelocateOptimizerStateBugTest, DeadIndicesKeepStaleMomentum) {
         for (int j = 0; j < 3; j++) {
             sampled_momentum_after[i][j] = exp_avg_after_data[sampled_idx * 3 + j];
             std::cout << sampled_momentum_after[i][j];
-            if (j < 2) std::cout << ", ";
+            if (j < 2)
+                std::cout << ", ";
         }
         std::cout << "]" << std::endl;
     }

@@ -5,12 +5,12 @@
 // Forward-only rasterization for viewer (no backward pass)
 
 #include "Rasterization.h"
-#include "Ops.h"
 #include "Common.h"
+#include "Ops.h"
 
-#include <cuda_runtime.h>
-#include <cstdio>
 #include <cassert>
+#include <cstdio>
+#include <cuda_runtime.h>
 
 namespace gsplat_fwd {
 
@@ -47,8 +47,7 @@ namespace gsplat_fwd {
         float* renders,
         float* alphas,
         int32_t* last_ids,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         GSPLAT_CHECK_CUDA_PTR(means, "means");
         GSPLAT_CHECK_CUDA_PTR(quats, "quats");
         GSPLAT_CHECK_CUDA_PTR(scales, "scales");
@@ -58,17 +57,17 @@ namespace gsplat_fwd {
         GSPLAT_CHECK_CUDA_PTR(alphas, "alphas");
         GSPLAT_CHECK_CUDA_PTR(last_ids, "last_ids");
 
-#define __LAUNCH_KERNEL__(CDIM)                                                    \
-    case CDIM:                                                                     \
-        launch_rasterize_to_pixels_from_world_3dgs_fwd_kernel<CDIM>(                \
-            means, quats, scales, colors, opacities,                               \
-            backgrounds, masks, C, N, n_isects,                                    \
-            image_width, image_height, tile_size,                                  \
-            viewmats0, viewmats1, Ks, camera_model,                                \
-            ut_params, rs_type,                                                    \
-            radial_coeffs, tangential_coeffs, thin_prism_coeffs,                   \
-            tile_offsets, flatten_ids,                                             \
-            renders, alphas, last_ids, stream);                                    \
+#define __LAUNCH_KERNEL__(CDIM)                                      \
+    case CDIM:                                                       \
+        launch_rasterize_to_pixels_from_world_3dgs_fwd_kernel<CDIM>( \
+            means, quats, scales, colors, opacities,                 \
+            backgrounds, masks, C, N, n_isects,                      \
+            image_width, image_height, tile_size,                    \
+            viewmats0, viewmats1, Ks, camera_model,                  \
+            ut_params, rs_type,                                      \
+            radial_coeffs, tangential_coeffs, thin_prism_coeffs,     \
+            tile_offsets, flatten_ids,                               \
+            renders, alphas, last_ids, stream);                      \
         break;
 
         switch (channels) {
@@ -134,8 +133,7 @@ namespace gsplat_fwd {
         const float* tangential_coeffs,
         const float* thin_prism_coeffs,
         RasterizeWithSHResult& result,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         GSPLAT_CHECK_CUDA_PTR(means, "means");
         GSPLAT_CHECK_CUDA_PTR(quats, "quats");
         GSPLAT_CHECK_CUDA_PTR(scales, "scales");
@@ -147,11 +145,11 @@ namespace gsplat_fwd {
 
         // Determine output channels based on render mode
         // render_mode: 0=RGB, 1=D, 2=ED, 3=RGB_D, 4=RGB_ED
-        uint32_t channels = 3;  // Default RGB
+        uint32_t channels = 3; // Default RGB
         if (render_mode == 1 || render_mode == 2) {
-            channels = 1;  // Depth only
+            channels = 1; // Depth only
         } else if (render_mode == 3 || render_mode == 4) {
-            channels = 4;  // RGB + Depth
+            channels = 4; // RGB + Depth
         }
 
         // Use scales directly (scaling_modifier should be applied by caller if needed)
@@ -167,8 +165,7 @@ namespace gsplat_fwd {
             ut_params, rs_type,
             radial_coeffs, tangential_coeffs, thin_prism_coeffs,
             result.radii, result.means2d, result.depths, result.conics,
-            result.compensations, stream
-        );
+            result.compensations, stream);
 
         // Step 2: Tile intersection
         auto isect_result = intersect_tile(
@@ -176,8 +173,7 @@ namespace gsplat_fwd {
             nullptr, nullptr,
             C, N, tile_size, tile_width, tile_height,
             true,
-            result.tiles_per_gauss, stream
-        );
+            result.tiles_per_gauss, stream);
 
         result.n_isects = isect_result.n_isects;
         result.isect_ids = isect_result.isect_ids;
@@ -186,8 +182,7 @@ namespace gsplat_fwd {
         intersect_offset(
             result.isect_ids, result.n_isects,
             C, tile_width, tile_height,
-            result.tile_offsets, stream
-        );
+            result.tile_offsets, stream);
 
         // Step 3: Compute viewing directions and evaluate SH
         if (render_mode == 0 || render_mode == 3 || render_mode == 4) {
@@ -196,8 +191,7 @@ namespace gsplat_fwd {
             spherical_harmonics_fwd(
                 sh_degree, result.dirs, sh_coeffs, nullptr,
                 static_cast<int64_t>(C) * N, K,
-                result.colors, stream
-            );
+                result.colors, stream);
         }
 
         // Step 4: Rasterize to pixels
@@ -211,8 +205,7 @@ namespace gsplat_fwd {
             radial_coeffs, tangential_coeffs, thin_prism_coeffs,
             result.tile_offsets, result.flatten_ids,
             result.render_colors, result.render_alphas, result.last_ids,
-            stream
-        );
+            stream);
     }
 
 } // namespace gsplat_fwd

@@ -35,12 +35,12 @@ namespace lfs::io {
         // Validate file exists
         if (!std::filesystem::exists(path)) {
             return make_error(ErrorCode::PATH_NOT_FOUND,
-                "PLY file does not exist", path);
+                              "PLY file does not exist", path);
         }
 
         if (!std::filesystem::is_regular_file(path)) {
             return make_error(ErrorCode::NOT_A_FILE,
-                "Path is not a regular file", path);
+                              "Path is not a regular file", path);
         }
 
         // Validation only mode
@@ -50,14 +50,14 @@ namespace lfs::io {
             std::ifstream file(path, std::ios::binary);
             if (!file) {
                 return make_error(ErrorCode::PERMISSION_DENIED,
-                    "Cannot open file for reading", path);
+                                  "Cannot open file for reading", path);
             }
 
             std::string header;
             std::getline(file, header);
             if (header != "ply" && header != "ply\r") {
                 return make_error(ErrorCode::INVALID_HEADER,
-                    "File does not start with 'ply' header", path);
+                                  "File does not start with 'ply' header", path);
             }
 
             if (options.progress) {
@@ -88,7 +88,7 @@ namespace lfs::io {
 
         if (!splat_result) {
             return make_error(ErrorCode::CORRUPTED_DATA,
-                std::format("Failed to load PLY: {}", splat_result.error()), path);
+                              std::format("Failed to load PLY: {}", splat_result.error()), path);
         }
 
         if (options.progress) {

@@ -1,11 +1,11 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
-#include <torch/torch.h>
 #include "core/tensor.hpp"
 #include "training/kernels/grad_alpha.hpp"
 #include <chrono>
+#include <gtest/gtest.h>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 
@@ -83,8 +83,7 @@ Tensor compute_grad_alpha_lfs_fused(const Tensor& grad_image, const Tensor& bg_c
         grad_alpha.ptr<float>(),
         H, W,
         is_chw_layout,
-        nullptr
-    );
+        nullptr);
 
     return grad_alpha;
 }

@@ -58,8 +58,8 @@ namespace lfs::rendering {
     }
 
     void RenderInfiniteGrid::computeFrustumPerspective(const glm::mat4& view_inv, const float fov_y, const float aspect,
-                                                        glm::vec3& near_origin, glm::vec3& far_origin,
-                                                        glm::vec3& far_x, glm::vec3& far_y) const {
+                                                       glm::vec3& near_origin, glm::vec3& far_origin,
+                                                       glm::vec3& far_x, glm::vec3& far_y) const {
         const glm::vec3 cam_pos = glm::vec3(view_inv[3]);
         const glm::vec3 cam_right = glm::vec3(view_inv[0]);
         const glm::vec3 cam_up = glm::vec3(view_inv[1]);
@@ -153,25 +153,38 @@ namespace lfs::rendering {
 
         ShaderScope s(shader_);
 
-        if (auto r = s->set("near_origin", near_origin); !r) return r;
-        if (auto r = s->set("near_x", near_x); !r) return r;
-        if (auto r = s->set("near_y", near_y); !r) return r;
-        if (auto r = s->set("far_origin", far_origin); !r) return r;
-        if (auto r = s->set("far_x", far_x); !r) return r;
-        if (auto r = s->set("far_y", far_y); !r) return r;
-        if (auto r = s->set("view_position", view_position); !r) return r;
-        if (auto r = s->set("matrix_viewProjection", view_proj); !r) return r;
-        if (auto r = s->set("plane", static_cast<int>(plane_)); !r) return r;
-        if (auto r = s->set("opacity", opacity_); !r) return r;
+        if (auto r = s->set("near_origin", near_origin); !r)
+            return r;
+        if (auto r = s->set("near_x", near_x); !r)
+            return r;
+        if (auto r = s->set("near_y", near_y); !r)
+            return r;
+        if (auto r = s->set("far_origin", far_origin); !r)
+            return r;
+        if (auto r = s->set("far_x", far_x); !r)
+            return r;
+        if (auto r = s->set("far_y", far_y); !r)
+            return r;
+        if (auto r = s->set("view_position", view_position); !r)
+            return r;
+        if (auto r = s->set("matrix_viewProjection", view_proj); !r)
+            return r;
+        if (auto r = s->set("plane", static_cast<int>(plane_)); !r)
+            return r;
+        if (auto r = s->set("opacity", opacity_); !r)
+            return r;
 
         VAOBinder vao_bind(vao_);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, QUAD_VERTEX_COUNT);
 
         // Restore GL state
         glDepthMask(prev_depth_mask);
-        if (!prev_blend) glDisable(GL_BLEND);
-        else glBlendFunc(prev_blend_src, prev_blend_dst);
-        if (!prev_depth_test) glDisable(GL_DEPTH_TEST);
+        if (!prev_blend)
+            glDisable(GL_BLEND);
+        else
+            glBlendFunc(prev_blend_src, prev_blend_dst);
+        if (!prev_depth_test)
+            glDisable(GL_DEPTH_TEST);
 
         return {};
     }

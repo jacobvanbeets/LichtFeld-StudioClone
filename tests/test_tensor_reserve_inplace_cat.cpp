@@ -1,15 +1,16 @@
 /**
  * Test for tensor reserve() + in-place cat() functionality
  */
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
+#include <gtest/gtest.h>
 
 using namespace lfs::core;
 
 TEST(TensorReserveInplaceCat, BasicReserveAndCat) {
     // Create a small tensor and reserve capacity
     auto t1_data = std::vector<float>(10);
-    for (int i = 0; i < 10; i++) t1_data[i] = static_cast<float>(i);
+    for (int i = 0; i < 10; i++)
+        t1_data[i] = static_cast<float>(i);
     auto t1 = Tensor::from_vector(t1_data, {10, 1}, Device::CUDA);
 
     // Reserve capacity for 100 rows
@@ -22,7 +23,8 @@ TEST(TensorReserveInplaceCat, BasicReserveAndCat) {
 
     // Create a new tensor to concatenate
     auto t2_data = std::vector<float>(10);
-    for (int i = 0; i < 10; i++) t2_data[i] = static_cast<float>(i + 10);
+    for (int i = 0; i < 10; i++)
+        t2_data[i] = static_cast<float>(i + 10);
     auto t2 = Tensor::from_vector(t2_data, {10, 1}, Device::CUDA);
 
     // Concatenate - should use in-place path
@@ -44,9 +46,10 @@ TEST(TensorReserveInplaceCat, BasicReserveAndCat) {
 TEST(TensorReserveInplaceCat, IndexSelectThenCat) {
     // Simulate the MCMC add_new_gs pattern
     std::vector<float> attr_data(100);
-    for (int i = 0; i < 100; i++) attr_data[i] = static_cast<float>(i);
+    for (int i = 0; i < 100; i++)
+        attr_data[i] = static_cast<float>(i);
     auto attributes = Tensor::from_vector(attr_data, {10, 10}, Device::CUDA);
-    attributes.reserve(100);  // Reserve for 100 rows
+    attributes.reserve(100); // Reserve for 100 rows
 
     EXPECT_EQ(attributes.capacity(), 100);
     EXPECT_EQ(attributes.logical_size(), 10);
@@ -151,7 +154,7 @@ TEST(TensorReserveInplaceCat, MultipleInplaceCats) {
         std::cout << "Iteration " << i << " - base shape: " << base.shape()[0] << std::endl;
     }
 
-    EXPECT_EQ(base.shape()[0], 35);  // 10 + 5*5
+    EXPECT_EQ(base.shape()[0], 35); // 10 + 5*5
     EXPECT_EQ(base.capacity(), 200);
 
     // Verify we can read the data

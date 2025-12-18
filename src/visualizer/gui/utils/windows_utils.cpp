@@ -136,7 +136,8 @@ namespace lfs::vis::gui {
             if (!pipe && !fallback_cmd.empty()) {
                 pipe = popen(fallback_cmd.c_str(), "r");
             }
-            if (!pipe) return {};
+            if (!pipe)
+                return {};
 
             char buffer[DIALOG_BUFFER_SIZE];
             std::string result;
@@ -172,11 +173,13 @@ namespace lfs::vis::gui {
 #else
         const std::string primary = "zenity --file-selection --save --confirm-overwrite "
                                     "--file-filter='JSON files|*.json' "
-                                    "--filename='" + defaultName + ".json' 2>/dev/null";
+                                    "--filename='" +
+                                    defaultName + ".json' 2>/dev/null";
         const std::string fallback = "kdialog --getsavefilename . 'JSON files (*.json)' 2>/dev/null";
 
         const std::string result = runDialogCommand(primary, fallback);
-        if (result.empty()) return {};
+        if (result.empty())
+            return {};
 
         std::filesystem::path path(result);
         if (path.extension() != ".json") {
@@ -202,7 +205,8 @@ namespace lfs::vis::gui {
         const std::string fallback = "kdialog --getopenfilename . 'JSON files (*.json)' 2>/dev/null";
 
         const std::string result = runDialogCommand(primary, fallback);
-        if (result.empty()) return {};
+        if (result.empty())
+            return {};
         return std::filesystem::path(result);
 #endif
     }
@@ -225,11 +229,13 @@ namespace lfs::vis::gui {
 #else
         const std::string primary = "zenity --file-selection --save --confirm-overwrite "
                                     "--file-filter='PLY files|*.ply' "
-                                    "--filename='" + defaultName + ".ply' 2>/dev/null";
+                                    "--filename='" +
+                                    defaultName + ".ply' 2>/dev/null";
         const std::string fallback = "kdialog --getsavefilename . 'PLY files (*.ply)' 2>/dev/null";
 
         const std::string result = runDialogCommand(primary, fallback);
-        if (result.empty()) return {};
+        if (result.empty())
+            return {};
 
         std::filesystem::path path(result);
         if (path.extension() != ".ply") {
@@ -257,11 +263,13 @@ namespace lfs::vis::gui {
 #else
         const std::string primary = "zenity --file-selection --save --confirm-overwrite "
                                     "--file-filter='SOG files (SuperSplat)|*.sog' "
-                                    "--filename='" + defaultName + ".sog' 2>/dev/null";
+                                    "--filename='" +
+                                    defaultName + ".sog' 2>/dev/null";
         const std::string fallback = "kdialog --getsavefilename . 'SOG files (*.sog)' 2>/dev/null";
 
         const std::string result = runDialogCommand(primary, fallback);
-        if (result.empty()) return {};
+        if (result.empty())
+            return {};
 
         std::filesystem::path path(result);
         if (path.extension() != ".sog") {
@@ -289,11 +297,13 @@ namespace lfs::vis::gui {
 #else
         const std::string primary = "zenity --file-selection --save --confirm-overwrite "
                                     "--file-filter='SPZ files (Niantic)|*.spz' "
-                                    "--filename='" + defaultName + ".spz' 2>/dev/null";
+                                    "--filename='" +
+                                    defaultName + ".spz' 2>/dev/null";
         const std::string fallback = "kdialog --getsavefilename . 'SPZ files (*.spz)' 2>/dev/null";
 
         const std::string result = runDialogCommand(primary, fallback);
-        if (result.empty()) return {};
+        if (result.empty())
+            return {};
 
         std::filesystem::path path(result);
         if (path.extension() != ".spz") {
@@ -321,11 +331,13 @@ namespace lfs::vis::gui {
 #else
         const std::string primary = "zenity --file-selection --save --confirm-overwrite "
                                     "--file-filter='HTML files|*.html' "
-                                    "--filename='" + defaultName + ".html' 2>/dev/null";
+                                    "--filename='" +
+                                    defaultName + ".html' 2>/dev/null";
         const std::string fallback = "kdialog --getsavefilename . 'HTML files (*.html)' 2>/dev/null";
 
         const std::string result = runDialogCommand(primary, fallback);
-        if (result.empty()) return {};
+        if (result.empty())
+            return {};
 
         std::filesystem::path path(result);
         if (path.extension() != ".html") {
@@ -395,11 +407,12 @@ namespace lfs::vis::gui {
                                      std::filesystem::is_directory(abs_start_dir);
 
         const std::string start_arg = has_valid_start
-            ? " --filename='" + abs_start_dir.string() + "/'"
-            : "";
+                                          ? " --filename='" + abs_start_dir.string() + "/'"
+                                          : "";
 
         const std::string primary = "zenity --file-selection --directory "
-                                    "--title='" + title + "'" + start_arg + " 2>/dev/null";
+                                    "--title='" +
+                                    title + "'" + start_arg + " 2>/dev/null";
         const std::string fallback = "kdialog --getexistingdirectory '" +
                                      (has_valid_start ? abs_start_dir.string() : ".") + "' 2>/dev/null";
 

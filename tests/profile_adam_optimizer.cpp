@@ -10,24 +10,25 @@
  *   nsys-ui adam_profile.nsys-rep
  */
 
-#include "optimizer/adam_optimizer.hpp"
 #include "core/splat_data.hpp"
 #include "core/tensor.hpp"
-#include "optimizers/fused_adam.hpp"  // Reference optimizer
-#include <nvtx3/nvToolsExt.h>
+#include "optimizer/adam_optimizer.hpp"
+#include "optimizers/fused_adam.hpp" // Reference optimizer
 #include <chrono>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
+#include <nvtx3/nvToolsExt.h>
 
 using namespace lfs::core;
 using namespace lfs::training;
 
 // NVTX helper macros
 #define NVTX_RANGE_PUSH(name) nvtxRangePushA(name)
-#define NVTX_RANGE_POP() nvtxRangePop()
+#define NVTX_RANGE_POP()      nvtxRangePop()
 
 class ScopedNVTXRange {
     const char* name_;
+
 public:
     explicit ScopedNVTXRange(const char* name) : name_(name) {
         nvtxRangePushA(name_);
@@ -65,7 +66,8 @@ Tensor from_torch(const torch::Tensor& torch_tensor) {
 }
 
 void profile_lfs_optimizer() {
-    std::cout << "\n=== Profiling LFS Optimizer ===\n" << std::endl;
+    std::cout << "\n=== Profiling LFS Optimizer ===\n"
+              << std::endl;
 
     const size_t N_initial = 100'000;
     const size_t N_add = 10'000;
@@ -128,7 +130,8 @@ void profile_lfs_optimizer() {
 }
 
 void profile_pytorch_optimizer() {
-    std::cout << "\n=== Profiling PyTorch Optimizer ===\n" << std::endl;
+    std::cout << "\n=== Profiling PyTorch Optimizer ===\n"
+              << std::endl;
 
     const size_t N_initial = 100'000;
     const size_t N_add = 10'000;
@@ -139,12 +142,12 @@ void profile_pytorch_optimizer() {
     NVTX_SCOPED_RANGE("PyTorch_Optimizer_Setup");
 
     auto torch_means = torch::randn({static_cast<long>(N_initial), 3},
-        torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA)).requires_grad_(true);
+                                    torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA))
+                           .requires_grad_(true);
 
     auto torch_opt = std::make_unique<gs::training::FusedAdam>(
         std::vector<torch::Tensor>{torch_means},
-        std::make_unique<gs::training::FusedAdam::Options>(lr)
-    );
+        std::make_unique<gs::training::FusedAdam::Options>(lr));
 
     size_t current_N = N_initial;
 
@@ -161,7 +164,7 @@ void profile_pytorch_optimizer() {
             {
                 NVTX_SCOPED_RANGE("PyTorch_Step");
                 auto grad = torch::randn({static_cast<long>(current_N), 3},
-                    torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
+                                         torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
                 torch_means.mutable_grad() = grad;
                 torch_opt->step(iter + 1);
             }
@@ -169,7 +172,7 @@ void profile_pytorch_optimizer() {
             if ((iter + 1) % add_every == 0) {
                 NVTX_SCOPED_RANGE("PyTorch_AddParams");
                 auto new_means = torch::randn({static_cast<long>(N_add), 3},
-                    torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
+                                              torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
                 auto extended = torch::cat({torch_means.detach(), new_means}, 0).requires_grad_(true);
 
                 auto& state_map = torch_opt->state();
@@ -203,7 +206,8 @@ void profile_pytorch_optimizer() {
 }
 
 void profile_step_operation_detailed() {
-    std::cout << "\n=== Detailed Step Operation Profiling ===\n" << std::endl;
+    std::cout << "\n=== Detailed Step Operation Profiling ===\n"
+              << std::endl;
 
     const size_t N = 100'000;
     const int n_steps = 50;
@@ -246,12 +250,12 @@ void profile_step_operation_detailed() {
     {
         NVTX_SCOPED_RANGE("PyTorch_DetailedSteps_Setup");
         auto torch_means = torch::randn({static_cast<long>(N), 3},
-            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA)).requires_grad_(true);
+                                        torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA))
+                               .requires_grad_(true);
 
         auto torch_opt = std::make_unique<gs::training::FusedAdam>(
             std::vector<torch::Tensor>{torch_means},
-            std::make_unique<gs::training::FusedAdam::Options>(lr)
-        );
+            std::make_unique<gs::training::FusedAdam::Options>(lr));
 
         cudaDeviceSynchronize();
         auto start = std::chrono::high_resolution_clock::now();
@@ -261,7 +265,7 @@ void profile_step_operation_detailed() {
             for (int i = 0; i < n_steps; i++) {
                 NVTX_SCOPED_RANGE("PyTorch_SingleStep");
                 auto grad = torch::randn({static_cast<long>(N), 3},
-                    torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
+                                         torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
                 torch_means.mutable_grad() = grad;
                 torch_opt->step(i + 1);
             }

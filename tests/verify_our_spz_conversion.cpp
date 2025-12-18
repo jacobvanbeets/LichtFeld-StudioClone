@@ -5,10 +5,10 @@
 // Verify our SPZ conversion by examining exported file with reference implementation
 // This tests the actual data flow through our code
 
-#include <iostream>
+#include "load-spz.h"
 #include <cmath>
 #include <filesystem>
-#include "load-spz.h"
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Loading SPZ file: " << spz_path << "\n";
 
     spz::UnpackOptions opts;
-    opts.to = spz::CoordinateSystem::RDF;  // Load in PLY coordinate system
+    opts.to = spz::CoordinateSystem::RDF; // Load in PLY coordinate system
     auto cloud = spz::loadSpz(spz_path.string(), opts);
 
     if (cloud.numPoints == 0) {
@@ -50,39 +50,39 @@ int main(int argc, char* argv[]) {
 
         // Position
         std::cout << "Position: ["
-                  << cloud.positions[i*3 + 0] << ", "
-                  << cloud.positions[i*3 + 1] << ", "
-                  << cloud.positions[i*3 + 2] << "]\n";
+                  << cloud.positions[i * 3 + 0] << ", "
+                  << cloud.positions[i * 3 + 1] << ", "
+                  << cloud.positions[i * 3 + 2] << "]\n";
 
         // Scale
         std::cout << "Scale (log): ["
-                  << cloud.scales[i*3 + 0] << ", "
-                  << cloud.scales[i*3 + 1] << ", "
-                  << cloud.scales[i*3 + 2] << "]\n";
+                  << cloud.scales[i * 3 + 0] << ", "
+                  << cloud.scales[i * 3 + 1] << ", "
+                  << cloud.scales[i * 3 + 2] << "]\n";
 
         // Rotation (xyzw)
         std::cout << "Rotation (xyzw): ["
-                  << cloud.rotations[i*4 + 0] << ", "
-                  << cloud.rotations[i*4 + 1] << ", "
-                  << cloud.rotations[i*4 + 2] << ", "
-                  << cloud.rotations[i*4 + 3] << "]\n";
+                  << cloud.rotations[i * 4 + 0] << ", "
+                  << cloud.rotations[i * 4 + 1] << ", "
+                  << cloud.rotations[i * 4 + 2] << ", "
+                  << cloud.rotations[i * 4 + 3] << "]\n";
 
         // Alpha
         std::cout << "Alpha (logit): " << cloud.alphas[i] << "\n";
 
         // Color (SH DC)
         std::cout << "Color (SH DC): ["
-                  << cloud.colors[i*3 + 0] << ", "
-                  << cloud.colors[i*3 + 1] << ", "
-                  << cloud.colors[i*3 + 2] << "]\n";
+                  << cloud.colors[i * 3 + 0] << ", "
+                  << cloud.colors[i * 3 + 1] << ", "
+                  << cloud.colors[i * 3 + 2] << "]\n";
 
         // SH coefficients
         if (cloud.shDegree > 0) {
             int sh_per_point = 0;
             switch (cloud.shDegree) {
-                case 1: sh_per_point = 3; break;
-                case 2: sh_per_point = 8; break;
-                case 3: sh_per_point = 15; break;
+            case 1: sh_per_point = 3; break;
+            case 2: sh_per_point = 8; break;
+            case 3: sh_per_point = 15; break;
             }
 
             std::cout << "SH coefficients (" << sh_per_point << " per channel):\n";
@@ -108,8 +108,8 @@ int main(int argc, char* argv[]) {
 
     for (int i = 0; i < cloud.numPoints; ++i) {
         for (int j = 0; j < 3; ++j) {
-            min_pos[j] = std::min(min_pos[j], cloud.positions[i*3 + j]);
-            max_pos[j] = std::max(max_pos[j], cloud.positions[i*3 + j]);
+            min_pos[j] = std::min(min_pos[j], cloud.positions[i * 3 + j]);
+            max_pos[j] = std::max(max_pos[j], cloud.positions[i * 3 + j]);
         }
         sum_alpha += cloud.alphas[i];
     }

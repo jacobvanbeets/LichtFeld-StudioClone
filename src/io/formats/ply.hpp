@@ -5,8 +5,8 @@
 #pragma once
 
 // Re-export public API
-#include "io/exporter.hpp"
 #include "core/point_cloud.hpp"
+#include "io/exporter.hpp"
 
 namespace lfs::io {
 

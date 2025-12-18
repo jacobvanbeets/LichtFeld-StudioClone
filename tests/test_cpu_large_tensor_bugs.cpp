@@ -109,7 +109,7 @@ TEST_F(CPULargeTensorTest, SmallTensor_UInt8ToFloat32_GPU) {
 // ============================================================================
 
 TEST_F(CPULargeTensorTest, MediumTensor_CPUtoGPU_Float32) {
-    const size_t num_points = 100000;  // 100K points
+    const size_t num_points = 100000; // 100K points
     auto cpu_tensor = create_point_cloud_positions(num_points, Device::CPU);
 
     EXPECT_TRUE(cpu_tensor.is_valid());
@@ -154,7 +154,7 @@ TEST_F(CPULargeTensorTest, MediumTensor_UInt8ToFloat32_GPU) {
 // ============================================================================
 
 TEST_F(CPULargeTensorTest, LargeTensor_CPUtoGPU_Float32) {
-    const size_t num_points = 1000000;  // 1M points
+    const size_t num_points = 1000000; // 1M points
     auto cpu_tensor = create_point_cloud_positions(num_points, Device::CPU);
 
     EXPECT_TRUE(cpu_tensor.is_valid());
@@ -199,7 +199,7 @@ TEST_F(CPULargeTensorTest, LargeTensor_UInt8ToFloat32_GPU) {
 // ============================================================================
 
 TEST_F(CPULargeTensorTest, VeryLargeTensor_CPUtoGPU_Float32) {
-    const size_t num_points = 4042850;  // Exact mural dataset size
+    const size_t num_points = 4042850; // Exact mural dataset size
 
     std::cout << "Creating CPU tensor with " << num_points << " points..." << std::endl;
     auto cpu_tensor = create_point_cloud_positions(num_points, Device::CPU);
@@ -220,7 +220,7 @@ TEST_F(CPULargeTensorTest, VeryLargeTensor_CPUtoGPU_Float32) {
 }
 
 TEST_F(CPULargeTensorTest, VeryLargeTensor_UInt8ToFloat32_CPU) {
-    const size_t num_points = 4042850;  // Exact mural dataset size
+    const size_t num_points = 4042850; // Exact mural dataset size
 
     std::cout << "Creating UInt8 tensor with " << num_points << " points..." << std::endl;
     auto uint8_tensor = create_point_cloud_colors(num_points, Device::CPU);
@@ -240,7 +240,7 @@ TEST_F(CPULargeTensorTest, VeryLargeTensor_UInt8ToFloat32_CPU) {
 }
 
 TEST_F(CPULargeTensorTest, VeryLargeTensor_UInt8ToFloat32_GPU) {
-    const size_t num_points = 4042850;  // Exact mural dataset size
+    const size_t num_points = 4042850; // Exact mural dataset size
 
     std::cout << "Creating UInt8 tensor on CPU..." << std::endl;
     auto uint8_cpu = create_point_cloud_colors(num_points, Device::CPU);
@@ -321,15 +321,15 @@ TEST_F(CPULargeTensorTest, FindFailureThreshold_UInt8ToFloat32) {
 
     // Test various sizes to find where it breaks
     std::vector<size_t> test_sizes = {
-        10000,      // 10K
-        50000,      // 50K
-        100000,     // 100K
-        500000,     // 500K
-        1000000,    // 1M
-        2000000,    // 2M
-        3000000,    // 3M
-        4000000,    // 4M
-        4042850,    // Exact mural size
+        10000,   // 10K
+        50000,   // 50K
+        100000,  // 100K
+        500000,  // 500K
+        1000000, // 1M
+        2000000, // 2M
+        3000000, // 3M
+        4000000, // 4M
+        4042850, // Exact mural size
     };
 
     for (size_t num_points : test_sizes) {
@@ -357,12 +357,12 @@ TEST_F(CPULargeTensorTest, FindFailureThreshold_UInt8ToFloat32) {
 // ============================================================================
 
 TEST_F(CPULargeTensorTest, MemoryIntegrity_LargeConversion) {
-    const size_t num_points = 100000;  // Use medium size for integrity check
+    const size_t num_points = 100000; // Use medium size for integrity check
 
     // Create UInt8 tensor with known pattern
     std::vector<uint8_t> data(num_points * 3);
     for (size_t i = 0; i < num_points * 3; ++i) {
-        data[i] = static_cast<uint8_t>((i * 7) % 256);  // Deterministic pattern
+        data[i] = static_cast<uint8_t>((i * 7) % 256); // Deterministic pattern
     }
 
     auto uint8_cpu = Tensor::from_blob(data.data(), {num_points, 3}, Device::CPU, DataType::UInt8).clone();

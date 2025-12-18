@@ -2,9 +2,9 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "Projection.h"
 #include "Common.h"
 #include "Ops.h"
-#include "Projection.h"
 
 #include <cuda_runtime.h>
 
@@ -38,8 +38,7 @@ namespace gsplat_fwd {
         float* depths,
         float* conics,
         float* compensations,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         GSPLAT_CHECK_CUDA_PTR(means, "means");
         GSPLAT_CHECK_CUDA_PTR(quats, "quats");
         GSPLAT_CHECK_CUDA_PTR(scales, "scales");
@@ -62,8 +61,7 @@ namespace gsplat_fwd {
             camera_model, ut_params, rs_type,
             radial_coeffs, tangential_coeffs, thin_prism_coeffs,
             radii, means2d, depths, conics, compensations,
-            stream
-        );
+            stream);
     }
 
 } // namespace gsplat_fwd

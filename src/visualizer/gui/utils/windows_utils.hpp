@@ -8,8 +8,8 @@
 
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
 #include <Shobjidl.h>
+#include <Windows.h>
 #endif
 
 namespace lfs::vis::gui {

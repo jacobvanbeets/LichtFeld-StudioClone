@@ -4,9 +4,9 @@
 
 #pragma once
 
+#include "core/tensor.hpp"
 #include "tool_base.hpp"
 #include "tools/selection_operation.hpp"
-#include "core/tensor.hpp"
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
@@ -56,7 +56,7 @@ namespace lfs::vis::tools {
     private:
         // ========== Selection State ==========
         SelectionOp current_op_ = SelectionOp::Replace;
-        lfs::core::Tensor stroke_selection_;  // Accumulated selection during current stroke
+        lfs::core::Tensor stroke_selection_; // Accumulated selection during current stroke
         std::shared_ptr<lfs::core::Tensor> selection_before_stroke_;
 
         // ========== Interaction State ==========

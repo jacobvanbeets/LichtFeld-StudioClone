@@ -351,7 +351,7 @@ namespace lfs::core {
                 bool is_aligned = (reinterpret_cast<uintptr_t>(segment_start) % 16) == 0;
 
                 // Grid-stride loop: Process entire segment across all threads
-                size_t stride = blockDim.x * 4;  // Each iteration processes blockDim.x * 4 elements
+                size_t stride = blockDim.x * 4; // Each iteration processes blockDim.x * 4 elements
                 for (size_t base = 0; base < segment_size; base += stride) {
                     size_t vec_idx = threadIdx.x;
                     size_t idx = base + vec_idx * 4;

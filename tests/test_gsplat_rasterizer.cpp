@@ -1,11 +1,11 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
-#include "training/rasterization/gsplat_rasterizer.hpp"
-#include "core/tensor.hpp"
-#include "core/splat_data.hpp"
 #include "core/camera.hpp"
+#include "core/splat_data.hpp"
+#include "core/tensor.hpp"
+#include "training/rasterization/gsplat_rasterizer.hpp"
+#include <gtest/gtest.h>
 
 using namespace lfs::training;
 using namespace lfs::core;
@@ -14,14 +14,14 @@ class GsplatRasterizerTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Create minimal test data
-        const size_t N = 100;  // Number of Gaussians
+        const size_t N = 100; // Number of Gaussians
         const int sh_degree = 0;
 
         // Create random Gaussian parameters
         means_ = Tensor::randn({N, 3}, Device::CUDA, DataType::Float32);
-        sh0_ = Tensor::randn({N, 1, 3}, Device::CUDA, DataType::Float32);  // sh0 is [N, 1, 3]
-        shN_ = Tensor::zeros({N, 0, 3}, Device::CUDA, DataType::Float32);  // No higher SH for degree 0
-        scaling_ = Tensor::randn({N, 3}, Device::CUDA, DataType::Float32).mul(0.1f);  // Small scales
+        sh0_ = Tensor::randn({N, 1, 3}, Device::CUDA, DataType::Float32);            // sh0 is [N, 1, 3]
+        shN_ = Tensor::zeros({N, 0, 3}, Device::CUDA, DataType::Float32);            // No higher SH for degree 0
+        scaling_ = Tensor::randn({N, 3}, Device::CUDA, DataType::Float32).mul(0.1f); // Small scales
         rotation_ = Tensor::randn({N, 4}, Device::CUDA, DataType::Float32);
         opacity_ = Tensor::randn({N}, Device::CUDA, DataType::Float32);
 
@@ -34,7 +34,7 @@ protected:
             scaling_,
             rotation_,
             opacity_,
-            1.0f  // scene_scale
+            1.0f // scene_scale
         );
 
         // Create camera
@@ -47,21 +47,21 @@ protected:
 
         camera_ = std::make_unique<Camera>(
             R, T,
-            500.0f, 500.0f,  // focal_x, focal_y
-            320.0f, 240.0f,  // center_x, center_y
-            Tensor(),        // radial_distortion
-            Tensor(),        // tangential_distortion
+            500.0f, 500.0f, // focal_x, focal_y
+            320.0f, 240.0f, // center_x, center_y
+            Tensor(),       // radial_distortion
+            Tensor(),       // tangential_distortion
             lfs::core::CameraModelType::PINHOLE,
             "test_image",
             "",
-            std::filesystem::path{},  // mask_path
-            640, 480,        // camera_width, camera_height (constructor sets image_width/height too)
-            0                // uid
+            std::filesystem::path{}, // mask_path
+            640, 480,                // camera_width, camera_height (constructor sets image_width/height too)
+            0                        // uid
         );
 
         // Background color
         bg_color_ = Tensor::zeros({3}, Device::CUDA, DataType::Float32);
-        bg_color_.fill_(0.5f);  // Gray background
+        bg_color_.fill_(0.5f); // Gray background
     }
 
     std::unique_ptr<SplatData> splat_data_;
@@ -76,10 +76,9 @@ TEST_F(GsplatRasterizerTest, ForwardPassBasic) {
         *camera_,
         *splat_data_,
         bg_color_,
-        1.0f,   // scaling_modifier
-        false,  // antialiased
-        GsplatRenderMode::RGB
-    );
+        1.0f,  // scaling_modifier
+        false, // antialiased
+        GsplatRenderMode::RGB);
 
     ASSERT_TRUE(result.has_value()) << "Forward pass failed: " << result.error();
 
@@ -89,7 +88,7 @@ TEST_F(GsplatRasterizerTest, ForwardPassBasic) {
     EXPECT_EQ(render_output.width, 640);
     EXPECT_EQ(render_output.height, 480);
     EXPECT_TRUE(render_output.image.is_valid());
-    EXPECT_EQ(render_output.image.shape()[0], 3);   // CHW format
+    EXPECT_EQ(render_output.image.shape()[0], 3); // CHW format
     EXPECT_EQ(render_output.image.shape()[1], 480);
     EXPECT_EQ(render_output.image.shape()[2], 640);
 

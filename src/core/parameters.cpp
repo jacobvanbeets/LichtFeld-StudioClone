@@ -649,7 +649,8 @@ namespace lfs::core {
                     return path;
                 }
                 const auto parent = search_dir.parent_path();
-                if (parent == search_dir) break;
+                if (parent == search_dir)
+                    break;
                 search_dir = parent;
             }
             return search_dir / PARAM_DIR / filename;

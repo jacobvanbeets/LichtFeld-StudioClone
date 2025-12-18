@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "gui/ui_context.hpp"
 #include "gui/panels/gizmo_toolbar.hpp"
+#include "gui/ui_context.hpp"
 #include <glm/glm.hpp>
 #include <string>
 

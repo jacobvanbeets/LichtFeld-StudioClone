@@ -2,14 +2,14 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
-#include "training/kernels/mcmc_kernels.hpp"
 #include "core/tensor.hpp"
-#include <cuda_runtime.h>
-#include <chrono>
+#include "training/kernels/mcmc_kernels.hpp"
 #include <algorithm>
-#include <unordered_map>
+#include <chrono>
+#include <cuda_runtime.h>
+#include <gtest/gtest.h>
 #include <numeric>
+#include <unordered_map>
 
 using namespace lfs::core;
 using namespace lfs::training::mcmc;
@@ -55,7 +55,7 @@ protected:
     }
 
     // Performance measurement helper
-    template<typename Func>
+    template <typename Func>
     double measure_time_ms(Func&& func, int warmup_iters = 2, int measure_iters = 5) {
         // Warmup
         for (int i = 0; i < warmup_iters; i++) {
@@ -82,9 +82,8 @@ TEST_F(MCMCHistogramTest, SmallInput_Correctness) {
 
     // Create test indices with some duplicates
     std::vector<int64_t> h_indices = {
-        5, 10, 5, 20, 10, 5, 30, 20, 10, 5,  // indices 5,10,20,30 with various counts
-        15, 15, 25, 25, 25, 35, 40, 40, 40, 40
-    };
+        5, 10, 5, 20, 10, 5, 30, 20, 10, 5, // indices 5,10,20,30 with various counts
+        15, 15, 25, 25, 25, 35, 40, 40, 40, 40};
 
     // Upload to GPU
     Tensor indices = upload_int64_vector(h_indices);
@@ -95,8 +94,7 @@ TEST_F(MCMCHistogramTest, SmallInput_Correctness) {
         indices.ptr<int64_t>(),
         output_counts.ptr<int32_t>(),
         h_indices.size(),
-        nullptr
-    );
+        nullptr);
 
     // Download results
     std::vector<int32_t> result = download_int32_tensor(output_counts);
@@ -115,7 +113,7 @@ TEST_F(MCMCHistogramTest, SmallInput_Correctness) {
 
 // Test 2: Correctness with realistic MCMC scenario (500k samples from 10M Gaussians)
 TEST_F(MCMCHistogramTest, RealisticMCMC_Correctness) {
-    const size_t n_samples = 500000;  // 500k samples
+    const size_t n_samples = 500000;    // 500k samples
     const int64_t max_index = 10000000; // 10M Gaussians
 
     // Generate realistic sampled indices (multinomial sampling pattern)
@@ -136,8 +134,7 @@ TEST_F(MCMCHistogramTest, RealisticMCMC_Correctness) {
         indices.ptr<int64_t>(),
         output_counts.ptr<int32_t>(),
         n_samples,
-        nullptr
-    );
+        nullptr);
 
     // Download results
     std::vector<int32_t> result = download_int32_tensor(output_counts);
@@ -161,7 +158,7 @@ TEST_F(MCMCHistogramTest, RealisticMCMC_Correctness) {
 // Test 3: Performance comparison - OLD vs NEW approach
 TEST_F(MCMCHistogramTest, Performance_RealisticScale) {
     const size_t n_samples = 500000;
-    const int64_t N = 10000000;  // 10M Gaussians
+    const int64_t N = 10000000; // 10M Gaussians
 
     // Generate realistic indices
     std::vector<int64_t> h_indices(n_samples);
@@ -189,7 +186,8 @@ TEST_F(MCMCHistogramTest, Performance_RealisticScale) {
 
         // Step 3: index_select (gather back)
         Tensor result = ratios.index_select(0, indices);
-    }, 1, 3);  // Fewer iterations since it's slow
+    },
+                                         1, 3); // Fewer iterations since it's slow
 
     // NEW APPROACH (optimized)
     Tensor output_counts = Tensor::empty({n_samples}, Device::CUDA, DataType::Int32);
@@ -198,8 +196,7 @@ TEST_F(MCMCHistogramTest, Performance_RealisticScale) {
             indices.ptr<int64_t>(),
             output_counts.ptr<int32_t>(),
             n_samples,
-            nullptr
-        );
+            nullptr);
     });
 
     std::cout << "OLD approach (index_add_ + index_select): " << old_time_ms << " ms\n";
@@ -231,7 +228,7 @@ TEST_F(MCMCHistogramTest, EdgeCases) {
     // All unique indices
     {
         std::vector<int64_t> h_indices(1000);
-        std::iota(h_indices.begin(), h_indices.end(), 0);  // 0, 1, 2, ..., 999
+        std::iota(h_indices.begin(), h_indices.end(), 0); // 0, 1, 2, ..., 999
 
         Tensor indices = upload_int64_vector(h_indices);
         Tensor output = Tensor::empty({1000}, Device::CUDA, DataType::Int32);
@@ -247,8 +244,8 @@ TEST_F(MCMCHistogramTest, EdgeCases) {
 
 // Test 5: Stress test with very large input (10M samples)
 TEST_F(MCMCHistogramTest, StressTest_10MSamples) {
-    const size_t n_samples = 10000000;  // 10M samples
-    const int64_t max_index = 5000000;   // 5M Gaussians
+    const size_t n_samples = 10000000; // 10M samples
+    const int64_t max_index = 5000000; // 5M Gaussians
 
     std::cout << "\n========================================\n";
     std::cout << "STRESS TEST: 10M samples from 5M Gaussians\n";
@@ -273,8 +270,7 @@ TEST_F(MCMCHistogramTest, StressTest_10MSamples) {
         indices.ptr<int64_t>(),
         output_counts.ptr<int32_t>(),
         n_samples,
-        nullptr
-    );
+        nullptr);
     cudaDeviceSynchronize();
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -303,8 +299,8 @@ TEST_F(MCMCHistogramTest, StressTest_10MSamples) {
 
 // Test 6: Integration test - full MCMC densification pattern
 TEST_F(MCMCHistogramTest, Integration_MCMCDensificationPattern) {
-    const size_t N = 2000000;  // 2M Gaussians
-    const size_t n_dead = 100000;  // 100k dead gaussians to relocate
+    const size_t N = 2000000;     // 2M Gaussians
+    const size_t n_dead = 100000; // 100k dead gaussians to relocate
 
     std::cout << "\n========================================\n";
     std::cout << "INTEGRATION TEST: MCMC Densification\n";
@@ -316,7 +312,7 @@ TEST_F(MCMCHistogramTest, Integration_MCMCDensificationPattern) {
     std::mt19937 rng(42);
 
     // Realistic pattern: most samples from a smaller subset (power-law distribution)
-    std::uniform_int_distribution<int64_t> dist(0, N / 2);  // Sample from first half more
+    std::uniform_int_distribution<int64_t> dist(0, N / 2); // Sample from first half more
     for (size_t i = 0; i < n_dead; i++) {
         h_sampled_idxs[i] = dist(rng);
     }
@@ -331,8 +327,7 @@ TEST_F(MCMCHistogramTest, Integration_MCMCDensificationPattern) {
         sampled_idxs.ptr<int64_t>(),
         ratios.ptr<int32_t>(),
         n_dead,
-        nullptr
-    );
+        nullptr);
 
     // Clamp to [1, 51] (as in real code)
     ratios = ratios.clamp(1, 51);

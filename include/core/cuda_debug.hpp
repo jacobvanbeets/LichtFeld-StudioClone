@@ -43,47 +43,47 @@ namespace lfs::core::debug {
 #define CHECK_CUDA(call) \
     lfs::core::debug::check_cuda_error((call), __FILE__, __LINE__, #call)
 
-#define CHECK_CUDA_RETURN(call) \
-    do { \
-        const cudaError_t _err = (call); \
-        if (_err != cudaSuccess) { \
+#define CHECK_CUDA_RETURN(call)                                                  \
+    do {                                                                         \
+        const cudaError_t _err = (call);                                         \
+        if (_err != cudaSuccess) {                                               \
             lfs::core::debug::check_cuda_error(_err, __FILE__, __LINE__, #call); \
-            return; \
-        } \
-    } while(0)
+            return;                                                              \
+        }                                                                        \
+    } while (0)
 
-#define CHECK_CUDA_RETURN_VAL(call, val) \
-    do { \
-        const cudaError_t _err = (call); \
-        if (_err != cudaSuccess) { \
+#define CHECK_CUDA_RETURN_VAL(call, val)                                         \
+    do {                                                                         \
+        const cudaError_t _err = (call);                                         \
+        if (_err != cudaSuccess) {                                               \
             lfs::core::debug::check_cuda_error(_err, __FILE__, __LINE__, #call); \
-            return (val); \
-        } \
-    } while(0)
+            return (val);                                                        \
+        }                                                                        \
+    } while (0)
 
 #ifdef CUDA_DEBUG_SYNC
-    #define CUDA_KERNEL_CHECK(name) \
-        lfs::core::debug::check_kernel_sync(__FILE__, __LINE__, name)
+#define CUDA_KERNEL_CHECK(name) \
+    lfs::core::debug::check_kernel_sync(__FILE__, __LINE__, name)
 
-    #define CUDA_KERNEL_LAUNCH(kernel, grid, block, shared, stream, ...) \
-        do { \
-            kernel<<<grid, block, shared, stream>>>(__VA_ARGS__); \
-            CUDA_KERNEL_CHECK(#kernel); \
-        } while(0)
+#define CUDA_KERNEL_LAUNCH(kernel, grid, block, shared, stream, ...) \
+    do {                                                             \
+        kernel<<<grid, block, shared, stream>>>(__VA_ARGS__);        \
+        CUDA_KERNEL_CHECK(#kernel);                                  \
+    } while (0)
 #elif defined(DEBUG_BUILD)
-    #define CUDA_KERNEL_CHECK(name) \
-        lfs::core::debug::check_kernel_async(__FILE__, __LINE__, name)
+#define CUDA_KERNEL_CHECK(name) \
+    lfs::core::debug::check_kernel_async(__FILE__, __LINE__, name)
 
-    #define CUDA_KERNEL_LAUNCH(kernel, grid, block, shared, stream, ...) \
-        do { \
-            kernel<<<grid, block, shared, stream>>>(__VA_ARGS__); \
-            CUDA_KERNEL_CHECK(#kernel); \
-        } while(0)
+#define CUDA_KERNEL_LAUNCH(kernel, grid, block, shared, stream, ...) \
+    do {                                                             \
+        kernel<<<grid, block, shared, stream>>>(__VA_ARGS__);        \
+        CUDA_KERNEL_CHECK(#kernel);                                  \
+    } while (0)
 #else
-    #define CUDA_KERNEL_CHECK(name) ((void)0)
+#define CUDA_KERNEL_CHECK(name) ((void)0)
 
-    #define CUDA_KERNEL_LAUNCH(kernel, grid, block, shared, stream, ...) \
-        kernel<<<grid, block, shared, stream>>>(__VA_ARGS__)
+#define CUDA_KERNEL_LAUNCH(kernel, grid, block, shared, stream, ...) \
+    kernel<<<grid, block, shared, stream>>>(__VA_ARGS__)
 #endif
 
 #define CUDA_KERNEL(kernel, grid, block, ...) \

@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "crop_command.hpp"
-#include "core/services.hpp"
 #include "core/logger.hpp"
+#include "core/services.hpp"
 #include "scene/scene_manager.hpp"
 
 namespace lfs::vis::command {
@@ -19,7 +19,8 @@ namespace lfs::vis::command {
 
     void CropCommand::undo() {
         auto* scene_manager = services().sceneOrNull();
-        if (!scene_manager) return;
+        if (!scene_manager)
+            return;
 
         auto& scene = scene_manager->getScene();
         auto* node = scene.getMutableNode(node_name_);
@@ -34,7 +35,8 @@ namespace lfs::vis::command {
 
     void CropCommand::redo() {
         auto* scene_manager = services().sceneOrNull();
-        if (!scene_manager) return;
+        if (!scene_manager)
+            return;
 
         auto& scene = scene_manager->getScene();
         auto* node = scene.getMutableNode(node_name_);

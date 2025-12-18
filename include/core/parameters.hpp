@@ -51,11 +51,11 @@ namespace lfs::core {
             std::string strategy = "mcmc";                    // Optimization strategy: mcmc, default.
 
             // Mask parameters
-            MaskMode mask_mode = MaskMode::None;              // Attention mask mode
-            bool invert_masks = false;                        // Invert mask values (swap object/background)
-            float mask_threshold = 0.5f;                      // Threshold: >= threshold → 1.0, < threshold → keep original
-            float mask_opacity_penalty_weight = 1.0f;         // Opacity penalty weight for segment mode
-            float mask_opacity_penalty_power = 2.0f;          // Penalty falloff (1=linear, 2=quadratic)
+            MaskMode mask_mode = MaskMode::None;      // Attention mask mode
+            bool invert_masks = false;                // Invert mask values (swap object/background)
+            float mask_threshold = 0.5f;              // Threshold: >= threshold → 1.0, < threshold → keep original
+            float mask_opacity_penalty_weight = 1.0f; // Opacity penalty weight for segment mode
+            float mask_opacity_penalty_power = 2.0f;  // Penalty falloff (1=linear, 2=quadratic)
 
             // Bilateral grid parameters
             bool use_bilateral_grid = false;
@@ -75,7 +75,7 @@ namespace lfs::core {
             size_t pause_refine_after_reset = 0;
             bool revised_opacity = false;
             bool gut = false;
-            float steps_scaler = 0.f;  // If < 0, step size scaling is disabled
+            float steps_scaler = 0.f; // If < 0, step size scaling is disabled
 
             // Random initialization parameters
             bool random = false;        // Use random initialization instead of SfM
@@ -100,7 +100,7 @@ namespace lfs::core {
         struct LoadingParams {
             bool use_cpu_memory = true;
             float min_cpu_free_memory_ratio = 0.1f; // make sure at least 10% RAM is free
-            float min_cpu_free_GB = 1.0f;        // min GB we want to be free
+            float min_cpu_free_GB = 1.0f;           // min GB we want to be free
             bool use_fs_cache = true;
             bool print_cache_status = true;
             int print_status_freq_num = 500; // every print_status_freq_num calls for load print cache status
@@ -143,16 +143,19 @@ namespace lfs::core {
         };
 
         // Output format for conversion tool
-        enum class OutputFormat { PLY, SOG, SPZ, HTML };
+        enum class OutputFormat { PLY,
+                                  SOG,
+                                  SPZ,
+                                  HTML };
 
         // Parameters for the convert command
         struct ConvertParameters {
             std::filesystem::path input_path;
-            std::filesystem::path output_path;  // Empty = derive from input
+            std::filesystem::path output_path; // Empty = derive from input
             OutputFormat format = OutputFormat::PLY;
-            int sh_degree = 3;  // 0-3, -1 = keep original
+            int sh_degree = 3; // 0-3, -1 = keep original
             int sog_iterations = 10;
-            bool overwrite = false;  // Skip overwrite prompts
+            bool overwrite = false; // Skip overwrite prompts
         };
 
         // Modern C++23 functions returning expected values

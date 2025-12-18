@@ -49,28 +49,28 @@ namespace lfs::io {
 
     constexpr std::string_view error_code_to_string(ErrorCode code) {
         switch (code) {
-            case ErrorCode::SUCCESS: return "Success";
-            case ErrorCode::PATH_NOT_FOUND: return "Path not found";
-            case ErrorCode::NOT_A_DIRECTORY: return "Not a directory";
-            case ErrorCode::NOT_A_FILE: return "Not a file";
-            case ErrorCode::PERMISSION_DENIED: return "Permission denied";
-            case ErrorCode::INSUFFICIENT_DISK_SPACE: return "Insufficient disk space";
-            case ErrorCode::PATH_NOT_WRITABLE: return "Path not writable";
-            case ErrorCode::INVALID_DATASET: return "Invalid dataset";
-            case ErrorCode::MISSING_REQUIRED_FILES: return "Missing required files";
-            case ErrorCode::CORRUPTED_DATA: return "Corrupted data";
-            case ErrorCode::UNSUPPORTED_FORMAT: return "Unsupported format";
-            case ErrorCode::EMPTY_DATASET: return "Empty dataset";
-            case ErrorCode::INVALID_HEADER: return "Invalid header";
-            case ErrorCode::MALFORMED_JSON: return "Malformed JSON";
-            case ErrorCode::WRITE_FAILURE: return "Write failed";
-            case ErrorCode::ENCODING_FAILED: return "Encoding failed";
-            case ErrorCode::ARCHIVE_CREATION_FAILED: return "Archive creation failed";
-            case ErrorCode::READ_FAILURE: return "Read failed";
-            case ErrorCode::DECODING_FAILED: return "Decoding failed";
-            case ErrorCode::CANCELLED: return "Cancelled";
-            case ErrorCode::INTERNAL_ERROR: return "Internal error";
-            default: return "Unknown error";
+        case ErrorCode::SUCCESS: return "Success";
+        case ErrorCode::PATH_NOT_FOUND: return "Path not found";
+        case ErrorCode::NOT_A_DIRECTORY: return "Not a directory";
+        case ErrorCode::NOT_A_FILE: return "Not a file";
+        case ErrorCode::PERMISSION_DENIED: return "Permission denied";
+        case ErrorCode::INSUFFICIENT_DISK_SPACE: return "Insufficient disk space";
+        case ErrorCode::PATH_NOT_WRITABLE: return "Path not writable";
+        case ErrorCode::INVALID_DATASET: return "Invalid dataset";
+        case ErrorCode::MISSING_REQUIRED_FILES: return "Missing required files";
+        case ErrorCode::CORRUPTED_DATA: return "Corrupted data";
+        case ErrorCode::UNSUPPORTED_FORMAT: return "Unsupported format";
+        case ErrorCode::EMPTY_DATASET: return "Empty dataset";
+        case ErrorCode::INVALID_HEADER: return "Invalid header";
+        case ErrorCode::MALFORMED_JSON: return "Malformed JSON";
+        case ErrorCode::WRITE_FAILURE: return "Write failed";
+        case ErrorCode::ENCODING_FAILED: return "Encoding failed";
+        case ErrorCode::ARCHIVE_CREATION_FAILED: return "Archive creation failed";
+        case ErrorCode::READ_FAILURE: return "Read failed";
+        case ErrorCode::DECODING_FAILED: return "Decoding failed";
+        case ErrorCode::CANCELLED: return "Cancelled";
+        case ErrorCode::INTERNAL_ERROR: return "Internal error";
+        default: return "Unknown error";
         }
     }
 
@@ -81,10 +81,13 @@ namespace lfs::io {
         std::filesystem::path path;
 
         Error(ErrorCode c, std::string msg)
-            : code(c), message(std::move(msg)) {}
+            : code(c),
+              message(std::move(msg)) {}
 
         Error(ErrorCode c, std::string msg, std::filesystem::path p)
-            : code(c), message(std::move(msg)), path(std::move(p)) {}
+            : code(c),
+              message(std::move(msg)),
+              path(std::move(p)) {}
 
         [[nodiscard]] std::string format() const {
             if (path.empty()) {
@@ -116,7 +119,7 @@ namespace lfs::io {
         }
     };
 
-    template<typename T>
+    template <typename T>
     using Result = std::expected<T, Error>;
 
     inline std::unexpected<Error> make_error(ErrorCode code, std::string message) {
@@ -151,7 +154,7 @@ namespace lfs::io {
             }
             if (parent.empty()) {
                 return make_error(ErrorCode::PATH_NOT_FOUND,
-                    "Cannot determine disk space", path);
+                                  "Cannot determine disk space", path);
             }
             check_path = parent;
         }
@@ -159,7 +162,7 @@ namespace lfs::io {
         const auto space_info = std::filesystem::space(check_path, ec);
         if (ec) {
             return make_error(ErrorCode::PERMISSION_DENIED,
-                std::format("Cannot check disk space: {}", ec.message()), check_path);
+                              std::format("Cannot check disk space: {}", ec.message()), check_path);
         }
 
         const auto required_with_margin = static_cast<std::uintmax_t>(
@@ -168,9 +171,10 @@ namespace lfs::io {
         if (space_info.available < required_with_margin) {
             constexpr double MB = 1024.0 * 1024.0;
             return make_error(ErrorCode::INSUFFICIENT_DISK_SPACE,
-                std::format("Need {:.1f} MB but only {:.1f} MB available",
-                    static_cast<double>(required_with_margin) / MB,
-                    static_cast<double>(space_info.available) / MB), check_path);
+                              std::format("Need {:.1f} MB but only {:.1f} MB available",
+                                          static_cast<double>(required_with_margin) / MB,
+                                          static_cast<double>(space_info.available) / MB),
+                              check_path);
         }
 
         return space_info.available;
@@ -184,7 +188,7 @@ namespace lfs::io {
             const auto perms = std::filesystem::status(path, ec).permissions();
             if (ec) {
                 return make_error(ErrorCode::PERMISSION_DENIED,
-                    std::format("Cannot check permissions: {}", ec.message()), path);
+                                  std::format("Cannot check permissions: {}", ec.message()), path);
             }
             if ((perms & std::filesystem::perms::owner_write) == std::filesystem::perms::none) {
                 return make_error(ErrorCode::PATH_NOT_WRITABLE, "Path not writable", path);
@@ -200,7 +204,7 @@ namespace lfs::io {
         if (!std::filesystem::exists(parent, ec)) {
             if (!std::filesystem::create_directories(parent, ec)) {
                 return make_error(ErrorCode::PERMISSION_DENIED,
-                    std::format("Cannot create directory: {}", ec.message()), parent);
+                                  std::format("Cannot create directory: {}", ec.message()), parent);
             }
         }
 

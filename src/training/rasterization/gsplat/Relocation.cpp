@@ -2,9 +2,9 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "Relocation.h"
 #include "Common.h"
 #include "Ops.h"
-#include "Relocation.h"
 
 #include <cuda_runtime.h>
 
@@ -17,8 +17,7 @@ namespace gsplat_lfs {
         const float* binoms,
         int64_t N,
         int32_t n_max,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         GSPLAT_CHECK_CUDA_PTR(opacities, "opacities");
         GSPLAT_CHECK_CUDA_PTR(scales, "scales");
         GSPLAT_CHECK_CUDA_PTR(ratios, "ratios");
@@ -30,8 +29,7 @@ namespace gsplat_lfs {
 
         launch_relocation_kernel(
             opacities, scales, ratios, binoms,
-            N, n_max, stream
-        );
+            N, n_max, stream);
     }
 
     void add_noise(
@@ -42,8 +40,7 @@ namespace gsplat_lfs {
         float* means,
         int64_t N,
         float current_lr,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         GSPLAT_CHECK_CUDA_PTR(raw_opacities, "raw_opacities");
         GSPLAT_CHECK_CUDA_PTR(raw_scales, "raw_scales");
         GSPLAT_CHECK_CUDA_PTR(raw_quats, "raw_quats");
@@ -56,8 +53,7 @@ namespace gsplat_lfs {
 
         launch_add_noise_kernel(
             raw_opacities, raw_scales, raw_quats,
-            noise, means, N, current_lr, stream
-        );
+            noise, means, N, current_lr, stream);
     }
 
 } // namespace gsplat_lfs

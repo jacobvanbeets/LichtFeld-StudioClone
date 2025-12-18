@@ -1,9 +1,9 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
 #include <cuda_runtime.h>
+#include <gtest/gtest.h>
 
 using namespace lfs::core;
 
@@ -176,18 +176,20 @@ TEST_F(CurandBufferOverflowTest, DocumentedBugBehavior) {
 TEST_F(CurandBufferOverflowTest, RandnLikePreservesShape) {
     // Test various odd shapes
     std::vector<std::vector<size_t>> odd_shapes = {
-        {5},           // 5 - odd
-        {3, 3},        // 9 - odd
-        {11, 7},       // 77 - odd
-        {101, 3},      // 303 - odd
-        {54275, 3},    // 162,825 - odd (MCMC real case)
+        {5},        // 5 - odd
+        {3, 3},     // 9 - odd
+        {11, 7},    // 77 - odd
+        {101, 3},   // 303 - odd
+        {54275, 3}, // 162,825 - odd (MCMC real case)
     };
 
     for (const auto& shape_vec : odd_shapes) {
         size_t total = 1;
-        for (auto dim : shape_vec) total *= dim;
+        for (auto dim : shape_vec)
+            total *= dim;
 
-        if (!is_odd_size(total)) continue; // Skip even cases
+        if (!is_odd_size(total))
+            continue; // Skip even cases
 
         TensorShape shape(shape_vec);
         Tensor original = Tensor::zeros(shape, Device::CUDA);

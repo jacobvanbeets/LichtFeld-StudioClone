@@ -21,8 +21,8 @@ namespace lfs::core::debug {
 
         [[nodiscard]] float gpu_usage_percent() const {
             return gpu_total_bytes > 0
-                ? 100.0f * static_cast<float>(gpu_used_bytes) / static_cast<float>(gpu_total_bytes)
-                : 0.0f;
+                       ? 100.0f * static_cast<float>(gpu_used_bytes) / static_cast<float>(gpu_total_bytes)
+                       : 0.0f;
         }
 
         [[nodiscard]] std::string to_string() const {

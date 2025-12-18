@@ -8,12 +8,12 @@
  */
 
 #include "core/tensor.hpp"
-#include <gtest/gtest.h>
-#include <torch/torch.h>
+#include <chrono>
 #include <cmath>
+#include <gtest/gtest.h>
 #include <limits>
 #include <random>
-#include <chrono>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 
@@ -421,7 +421,7 @@ TEST_F(NaNInfGPUCheckTest, RandomPositions_100Trials) {
         auto torch_t = torch::randn({tensor_size}, torch::kCUDA);
 
         // Randomly decide whether to insert NaN/Inf
-        std::uniform_int_distribution<int> type_dist(0, 2);  // 0=none, 1=nan, 2=inf
+        std::uniform_int_distribution<int> type_dist(0, 2); // 0=none, 1=nan, 2=inf
         int type = type_dist(rng);
 
         if (type > 0) {
@@ -438,7 +438,7 @@ TEST_F(NaNInfGPUCheckTest, RandomPositions_100Trials) {
         auto lfs_t = from_torch(torch_t);
 
         bool torch_result = torch_has_nan_or_inf(torch_t);
-        bool lfs_result = lfs_t.has_nan();  // Our impl checks both
+        bool lfs_result = lfs_t.has_nan(); // Our impl checks both
 
         EXPECT_EQ(torch_result, lfs_result)
             << "Mismatch at trial " << trial << " with type " << type;
@@ -595,7 +595,7 @@ TEST_F(NaNInfGPUCheckTest, UnalignedTensor_UsesScalarKernel) {
     // Create a tensor and then slice it to get unaligned data
     // The vectorized kernel requires 16-byte alignment
     auto torch_t = torch::randn({1001}, torch::kCUDA);
-    auto torch_sliced = torch_t.slice(0, 1);  // Start at index 1, potentially unaligned
+    auto torch_sliced = torch_t.slice(0, 1); // Start at index 1, potentially unaligned
     torch_sliced[500] = std::numeric_limits<float>::quiet_NaN();
 
     // We can't easily create unaligned LFS tensor, but we can test small sizes
@@ -626,8 +626,9 @@ TEST_F(NaNInfGPUCheckTest, CorrectnessSwept_AllSizesUpTo10K) {
         EXPECT_FALSE(lfs_clean.has_nan()) << "False positive at size " << size;
 
         // Test with NaN at various positions
-        for (int pos : {0, size/2, size-1}) {
-            if (pos >= size) continue;
+        for (int pos : {0, size / 2, size - 1}) {
+            if (pos >= size)
+                continue;
 
             auto torch_nan = torch::randn({size}, torch::kCUDA);
             torch_nan[pos] = std::numeric_limits<float>::quiet_NaN();
@@ -645,18 +646,18 @@ TEST_F(NaNInfGPUCheckTest, GridStrideLoop_ExactBoundaries) {
     // Test sizes around grid-stride boundaries
     // With BLOCK_SIZE=256 and MAX_BLOCKS=1024, vec4 kernel processes:
     // 256 * 1024 * 4 = 1,048,576 elements per "stride"
-    constexpr int STRIDE_SIZE = 256 * 1024 * 4;  // ~1M
+    constexpr int STRIDE_SIZE = 256 * 1024 * 4; // ~1M
 
     std::vector<int> sizes = {
-        STRIDE_SIZE - 1,      // Just under one stride
-        STRIDE_SIZE,          // Exactly one stride
-        STRIDE_SIZE + 1,      // Just over one stride
+        STRIDE_SIZE - 1, // Just under one stride
+        STRIDE_SIZE,     // Exactly one stride
+        STRIDE_SIZE + 1, // Just over one stride
         STRIDE_SIZE + 100,
-        STRIDE_SIZE * 2 - 1,  // Just under two strides
-        STRIDE_SIZE * 2,      // Exactly two strides
-        STRIDE_SIZE * 2 + 1,  // Just over two strides
-        STRIDE_SIZE * 3,      // Three strides
-        STRIDE_SIZE * 5,      // Five strides (~5M, typical Gaussian count)
+        STRIDE_SIZE * 2 - 1, // Just under two strides
+        STRIDE_SIZE * 2,     // Exactly two strides
+        STRIDE_SIZE * 2 + 1, // Just over two strides
+        STRIDE_SIZE * 3,     // Three strides
+        STRIDE_SIZE * 5,     // Five strides (~5M, typical Gaussian count)
     };
 
     for (int size : sizes) {
@@ -667,18 +668,19 @@ TEST_F(NaNInfGPUCheckTest, GridStrideLoop_ExactBoundaries) {
 
         // Test NaN at critical positions
         std::vector<int> positions = {
-            0,                      // First element
-            size / 4,               // Quarter
-            size / 2,               // Middle
-            3 * size / 4,           // Three quarters
-            size - 1,               // Last element
-            STRIDE_SIZE - 1,        // End of first stride
-            STRIDE_SIZE,            // Start of second stride
-            STRIDE_SIZE + 1,        // Second element of second stride
+            0,               // First element
+            size / 4,        // Quarter
+            size / 2,        // Middle
+            3 * size / 4,    // Three quarters
+            size - 1,        // Last element
+            STRIDE_SIZE - 1, // End of first stride
+            STRIDE_SIZE,     // Start of second stride
+            STRIDE_SIZE + 1, // Second element of second stride
         };
 
         for (int pos : positions) {
-            if (pos >= size) continue;
+            if (pos >= size)
+                continue;
 
             auto torch_nan = torch::randn({size}, torch::kCUDA);
             torch_nan[pos] = std::numeric_limits<float>::quiet_NaN();
@@ -738,11 +740,13 @@ TEST_F(NaNInfGPUCheckTest, GridStrideLoop_AllPositions_5M) {
     constexpr int STRIDE_SIZE = 256 * 1024 * 4;
     for (int stride = 0; stride < 5; ++stride) {
         int boundary = stride * STRIDE_SIZE;
-        if (boundary >= size) break;
+        if (boundary >= size)
+            break;
 
         for (int offset : {-1, 0, 1}) {
             int pos = boundary + offset;
-            if (pos < 0 || pos >= size) continue;
+            if (pos < 0 || pos >= size)
+                continue;
 
             auto torch_nan = base_tensor.clone();
             torch_nan[pos] = std::numeric_limits<float>::quiet_NaN();
@@ -792,7 +796,8 @@ TEST_F(NaNInfGPUCheckTest, RandomStress_1000Trials_VariousSizes) {
             bool lfs_result = lfs_t.has_nan();
 
             if (insert_nan) {
-                if (lfs_result) detected++;
+                if (lfs_result)
+                    detected++;
                 EXPECT_TRUE(lfs_result) << "False negative at size " << size << " trial " << trial;
             } else {
                 EXPECT_FALSE(lfs_result) << "False positive at size " << size << " trial " << trial;
@@ -810,7 +815,7 @@ TEST_F(NaNInfGPUCheckTest, InfDetection_LargeTensors) {
         auto torch_pinf = torch::randn({size}, torch::kCUDA);
         torch_pinf[size / 2] = std::numeric_limits<float>::infinity();
         auto lfs_pinf = from_torch(torch_pinf);
-        EXPECT_TRUE(lfs_pinf.has_nan()) << "+Inf not detected at size " << size;  // has_nan checks both
+        EXPECT_TRUE(lfs_pinf.has_nan()) << "+Inf not detected at size " << size; // has_nan checks both
 
         // Test -Inf
         auto torch_ninf = torch::randn({size}, torch::kCUDA);
@@ -837,7 +842,8 @@ TEST_F(NaNInfGPUCheckTest, MultiDim_LargeTensors) {
     for (const auto& tc : cases) {
         auto torch_t = torch::randn(tc.shape, torch::kCUDA);
         int total_elements = 1;
-        for (auto d : tc.shape) total_elements *= d;
+        for (auto d : tc.shape)
+            total_elements *= d;
 
         // Insert NaN at various positions
         std::vector<int> flat_positions = {0, total_elements / 4, total_elements / 2,

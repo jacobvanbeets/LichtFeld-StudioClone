@@ -11,27 +11,25 @@ namespace gsplat_lfs {
 
     void launch_spherical_harmonics_fwd_kernel(
         uint32_t degrees_to_use,
-        const float* dirs,               // [..., 3]
-        const float* coeffs,             // [..., K, 3]
-        const bool* masks,               // [...] optional
+        const float* dirs,   // [..., 3]
+        const float* coeffs, // [..., K, 3]
+        const bool* masks,   // [...] optional
         int64_t n_elements,
         int32_t K,
-        float* colors,                   // [..., 3]
-        cudaStream_t stream = nullptr
-    );
+        float* colors, // [..., 3]
+        cudaStream_t stream = nullptr);
 
     void launch_spherical_harmonics_bwd_kernel(
         uint32_t degrees_to_use,
-        const float* dirs,               // [..., 3]
-        const float* coeffs,             // [..., K, 3]
-        const bool* masks,               // [...] optional
-        const float* v_colors,           // [..., 3]
+        const float* dirs,     // [..., 3]
+        const float* coeffs,   // [..., K, 3]
+        const bool* masks,     // [...] optional
+        const float* v_colors, // [..., 3]
         int64_t n_elements,
         int32_t K,
         bool compute_v_dirs,
-        float* v_coeffs,                 // [..., K, 3]
-        float* v_dirs,                   // [..., 3] optional
-        cudaStream_t stream = nullptr
-    );
+        float* v_coeffs, // [..., K, 3]
+        float* v_dirs,   // [..., 3] optional
+        cudaStream_t stream = nullptr);
 
 } // namespace gsplat_lfs

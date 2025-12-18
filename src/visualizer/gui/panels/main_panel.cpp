@@ -4,11 +4,11 @@
 
 #include <glad/glad.h>
 
-#include "gui/panels/main_panel.hpp"
 #include "core/editor_context.hpp"
 #include "core/events.hpp"
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
+#include "gui/panels/main_panel.hpp"
 #include "gui/panels/tools_panel.hpp"
 #include "gui/panels/training_panel.hpp"
 #include "gui/ui_widgets.hpp"
@@ -64,7 +64,8 @@ namespace lfs::vis::gui::panels {
         }
 
         void ensureIconsLoaded() {
-            if (g_selection_icons.initialized) return;
+            if (g_selection_icons.initialized)
+                return;
             g_selection_icons.locked = loadIcon("locked.png");
             g_selection_icons.unlocked = loadIcon("unlocked.png");
             g_selection_icons.initialized = true;
@@ -357,17 +358,20 @@ namespace lfs::vis::gui::panels {
     void DrawSelectionGroups(const UIContext& ctx) {
         // Only show when selection tool is active
         auto* selection_tool = ctx.viewer->getSelectionTool();
-        if (!selection_tool || !selection_tool->isEnabled()) return;
+        if (!selection_tool || !selection_tool->isEnabled())
+            return;
 
         auto* scene_manager = ctx.viewer->getSceneManager();
-        if (!scene_manager) return;
+        if (!scene_manager)
+            return;
 
         // Lazy-load icons
         ensureIconsLoaded();
 
         Scene& scene = scene_manager->getScene();
 
-        if (!ImGui::CollapsingHeader("Selection Groups", ImGuiTreeNodeFlags_DefaultOpen)) return;
+        if (!ImGui::CollapsingHeader("Selection Groups", ImGuiTreeNodeFlags_DefaultOpen))
+            return;
 
         const float button_width = ImGui::GetContentRegionAvail().x;
 
@@ -401,8 +405,8 @@ namespace lfs::vis::gui::panels {
                 const bool is_locked = group.locked;
                 const unsigned int lock_tex = is_locked ? g_selection_icons.locked : g_selection_icons.unlocked;
                 const ImVec4 lock_tint = is_locked
-                    ? ImVec4(1.0f, 0.7f, 0.3f, 1.0f)   // Orange for locked
-                    : ImVec4(0.6f, 0.6f, 0.6f, 0.6f);  // Gray for unlocked
+                                             ? ImVec4(1.0f, 0.7f, 0.3f, 1.0f)  // Orange for locked
+                                             : ImVec4(0.6f, 0.6f, 0.6f, 0.6f); // Gray for unlocked
 
                 ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, withAlpha(theme().palette.surface_bright, 0.5f));
@@ -430,15 +434,15 @@ namespace lfs::vis::gui::panels {
                 // Color picker
                 ImVec4 color(group.color.r, group.color.g, group.color.b, 1.0f);
                 if (ImGui::ColorEdit3("##color", &color.x,
-                    ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_NoAlpha)) {
+                                      ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_NoAlpha)) {
                     scene.setSelectionGroupColor(group.id, glm::vec3(color.x, color.y, color.z));
                 }
                 ImGui::SameLine();
 
                 // Selectable group - show active marker
                 const std::string label = is_active
-                    ? std::format("> {} ({})", group.name, group.count)
-                    : std::format("  {} ({})", group.name, group.count);
+                                              ? std::format("> {} ({})", group.name, group.count)
+                                              : std::format("  {} ({})", group.name, group.count);
                 if (ImGui::Selectable(label.c_str(), is_active)) {
                     if (selection_tool->hasActivePolygon()) {
                         selection_tool->clearPolygon();

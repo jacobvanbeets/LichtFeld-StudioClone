@@ -4,10 +4,10 @@
 
 #include <glad/glad.h>
 
-#include "gui/panels/gizmo_toolbar.hpp"
 #include "core/events.hpp"
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
+#include "gui/panels/gizmo_toolbar.hpp"
 #include "gui/ui_widgets.hpp"
 #include "internal/resource_paths.hpp"
 #include "internal/viewport.hpp"
@@ -73,8 +73,7 @@ namespace lfs::vis::gui::panels {
             num_buttons * t.sizes.toolbar_button_size +
                 (num_buttons - 1) * t.sizes.toolbar_spacing +
                 num_separators * separator_extra +
-                2.0f * t.sizes.toolbar_padding
-        };
+                2.0f * t.sizes.toolbar_padding};
     }
 
     // Draws vertical gap between toolbar button groups
@@ -125,7 +124,8 @@ namespace lfs::vis::gui::panels {
     }
 
     void InitGizmoToolbar(GizmoToolbarState& state) {
-        if (state.initialized) return;
+        if (state.initialized)
+            return;
 
         state.selection_texture = LoadIconTexture("selection.png");
         state.rectangle_texture = LoadIconTexture("rectangle.png");
@@ -157,34 +157,61 @@ namespace lfs::vis::gui::panels {
     }
 
     void ShutdownGizmoToolbar(GizmoToolbarState& state) {
-        if (!state.initialized) return;
+        if (!state.initialized)
+            return;
 
-        if (state.selection_texture) glDeleteTextures(1, &state.selection_texture);
-        if (state.rectangle_texture) glDeleteTextures(1, &state.rectangle_texture);
-        if (state.polygon_texture) glDeleteTextures(1, &state.polygon_texture);
-        if (state.lasso_texture) glDeleteTextures(1, &state.lasso_texture);
-        if (state.ring_texture) glDeleteTextures(1, &state.ring_texture);
-        if (state.translation_texture) glDeleteTextures(1, &state.translation_texture);
-        if (state.rotation_texture) glDeleteTextures(1, &state.rotation_texture);
-        if (state.scaling_texture) glDeleteTextures(1, &state.scaling_texture);
-        if (state.brush_texture) glDeleteTextures(1, &state.brush_texture);
-        if (state.painting_texture) glDeleteTextures(1, &state.painting_texture);
-        if (state.align_texture) glDeleteTextures(1, &state.align_texture);
-        if (state.cropbox_texture) glDeleteTextures(1, &state.cropbox_texture);
-        if (state.bounds_texture) glDeleteTextures(1, &state.bounds_texture);
-        if (state.reset_texture) glDeleteTextures(1, &state.reset_texture);
-        if (state.local_texture) glDeleteTextures(1, &state.local_texture);
-        if (state.world_texture) glDeleteTextures(1, &state.world_texture);
-        if (state.hide_ui_texture) glDeleteTextures(1, &state.hide_ui_texture);
-        if (state.fullscreen_texture) glDeleteTextures(1, &state.fullscreen_texture);
-        if (state.exit_fullscreen_texture) glDeleteTextures(1, &state.exit_fullscreen_texture);
-        if (state.splat_texture) glDeleteTextures(1, &state.splat_texture);
-        if (state.pointcloud_texture) glDeleteTextures(1, &state.pointcloud_texture);
-        if (state.rings_texture) glDeleteTextures(1, &state.rings_texture);
-        if (state.centers_texture) glDeleteTextures(1, &state.centers_texture);
-        if (state.home_texture) glDeleteTextures(1, &state.home_texture);
-        if (state.perspective_texture) glDeleteTextures(1, &state.perspective_texture);
-        if (state.orthographic_texture) glDeleteTextures(1, &state.orthographic_texture);
+        if (state.selection_texture)
+            glDeleteTextures(1, &state.selection_texture);
+        if (state.rectangle_texture)
+            glDeleteTextures(1, &state.rectangle_texture);
+        if (state.polygon_texture)
+            glDeleteTextures(1, &state.polygon_texture);
+        if (state.lasso_texture)
+            glDeleteTextures(1, &state.lasso_texture);
+        if (state.ring_texture)
+            glDeleteTextures(1, &state.ring_texture);
+        if (state.translation_texture)
+            glDeleteTextures(1, &state.translation_texture);
+        if (state.rotation_texture)
+            glDeleteTextures(1, &state.rotation_texture);
+        if (state.scaling_texture)
+            glDeleteTextures(1, &state.scaling_texture);
+        if (state.brush_texture)
+            glDeleteTextures(1, &state.brush_texture);
+        if (state.painting_texture)
+            glDeleteTextures(1, &state.painting_texture);
+        if (state.align_texture)
+            glDeleteTextures(1, &state.align_texture);
+        if (state.cropbox_texture)
+            glDeleteTextures(1, &state.cropbox_texture);
+        if (state.bounds_texture)
+            glDeleteTextures(1, &state.bounds_texture);
+        if (state.reset_texture)
+            glDeleteTextures(1, &state.reset_texture);
+        if (state.local_texture)
+            glDeleteTextures(1, &state.local_texture);
+        if (state.world_texture)
+            glDeleteTextures(1, &state.world_texture);
+        if (state.hide_ui_texture)
+            glDeleteTextures(1, &state.hide_ui_texture);
+        if (state.fullscreen_texture)
+            glDeleteTextures(1, &state.fullscreen_texture);
+        if (state.exit_fullscreen_texture)
+            glDeleteTextures(1, &state.exit_fullscreen_texture);
+        if (state.splat_texture)
+            glDeleteTextures(1, &state.splat_texture);
+        if (state.pointcloud_texture)
+            glDeleteTextures(1, &state.pointcloud_texture);
+        if (state.rings_texture)
+            glDeleteTextures(1, &state.rings_texture);
+        if (state.centers_texture)
+            glDeleteTextures(1, &state.centers_texture);
+        if (state.home_texture)
+            glDeleteTextures(1, &state.home_texture);
+        if (state.perspective_texture)
+            glDeleteTextures(1, &state.perspective_texture);
+        if (state.orthographic_texture)
+            glDeleteTextures(1, &state.orthographic_texture);
 
         state.selection_texture = 0;
         state.rectangle_texture = 0;
@@ -214,7 +241,8 @@ namespace lfs::vis::gui::panels {
         }
 
         auto* const editor = ctx.editor;
-        if (!editor || editor->isToolsDisabled()) return;
+        if (!editor || editor->isToolsDisabled())
+            return;
 
         editor->validateActiveTool();
 
@@ -242,15 +270,18 @@ namespace lfs::vis::gui::panels {
                     const bool enabled = editor->isToolAvailable(tool);
                     const char* disabled_reason = editor->getToolUnavailableReason(tool);
 
-                    if (!enabled) ImGui::BeginDisabled();
+                    if (!enabled)
+                        ImGui::BeginDisabled();
 
                     const bool clicked = widgets::IconButton(id, texture, btn_size, is_selected, fallback);
 
-                    if (!enabled) ImGui::EndDisabled();
+                    if (!enabled)
+                        ImGui::EndDisabled();
 
                     if (clicked && enabled) {
                         editor->setActiveTool(is_selected ? ToolType::None : tool);
-                        if (!is_selected) state.current_operation = op;
+                        if (!is_selected)
+                            state.current_operation = op;
                     }
 
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -306,7 +337,8 @@ namespace lfs::vis::gui::panels {
                         if (widgets::IconButton(id, texture, btn_size, is_selected, fallback)) {
                             state.selection_mode = mode;
                         }
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("%s", tooltip);
                     };
 
                     SelectionModeButton("##centers", state.brush_texture, SelectionSubMode::Centers,
@@ -354,7 +386,8 @@ namespace lfs::vis::gui::panels {
                     if (widgets::IconButton(id, tex, btn_size, selected, fallback)) {
                         state.transform_space = space;
                     }
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", tooltip);
                 };
 
                 SpaceButton("##local", state.local_texture, TransformSpace::Local, "L", "Local Space");
@@ -387,7 +420,8 @@ namespace lfs::vis::gui::panels {
                     if (widgets::IconButton(id, tex, btn_size, selected, fallback)) {
                         state.cropbox_operation = op;
                     }
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", tooltip);
                 };
 
                 CropOpButton("##crop_bounds", state.bounds_texture, CropBoxOperation::Bounds, "B", "Resize Bounds");
@@ -402,41 +436,46 @@ namespace lfs::vis::gui::panels {
                 if (widgets::IconButton("##crop_reset", state.reset_texture, btn_size, false, "X")) {
                     state.reset_cropbox_requested = true;
                 }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Reset to Default");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Reset to Default");
             }
             ImGui::End();
         }
-
     }
 
     namespace {
         RenderVisualization getCurrentVisualization(const RenderSettings& settings) {
-            if (settings.point_cloud_mode) return RenderVisualization::PointCloud;
-            if (settings.show_rings) return RenderVisualization::Rings;
-            if (settings.show_center_markers) return RenderVisualization::Centers;
+            if (settings.point_cloud_mode)
+                return RenderVisualization::PointCloud;
+            if (settings.show_rings)
+                return RenderVisualization::Rings;
+            if (settings.show_center_markers)
+                return RenderVisualization::Centers;
             return RenderVisualization::Splat;
         }
 
         void setVisualization(RenderingManager* mgr, RenderVisualization mode) {
-            if (!mgr) return;
+            if (!mgr)
+                return;
             auto settings = mgr->getSettings();
             settings.point_cloud_mode = (mode == RenderVisualization::PointCloud);
             settings.show_rings = (mode == RenderVisualization::Rings);
             settings.show_center_markers = (mode == RenderVisualization::Centers);
             mgr->updateSettings(settings);
         }
-    }
+    } // namespace
 
     void DrawUtilityToolbar(GizmoToolbarState& state,
                             const ImVec2& viewport_pos, const ImVec2& viewport_size,
                             bool ui_hidden, bool is_fullscreen,
                             RenderingManager* render_manager,
                             const ::Viewport* viewport) {
-        if (!state.initialized) InitGizmoToolbar(state);
+        if (!state.initialized)
+            InitGizmoToolbar(state);
 
         constexpr float MARGIN_RIGHT = 10.0f;
         constexpr float MARGIN_TOP = 5.0f;
-        constexpr int FULL_BUTTON_COUNT = 8;   // Home, Fullscreen, ToggleUI, Splat, PointCloud, Rings, Centers, Projection
+        constexpr int FULL_BUTTON_COUNT = 8;    // Home, Fullscreen, ToggleUI, Splat, PointCloud, Rings, Centers, Projection
         constexpr int MINIMAL_BUTTON_COUNT = 3; // Home, Fullscreen, ToggleUI
         constexpr int SEPARATOR_COUNT = 2;
         const int num_buttons = render_manager ? FULL_BUTTON_COUNT : MINIMAL_BUTTON_COUNT;
@@ -444,8 +483,7 @@ namespace lfs::vis::gui::panels {
         const ImVec2 size = ComputeVerticalToolbarSize(num_buttons, num_separators);
         const ImVec2 pos = {
             viewport_pos.x + viewport_size.x - size.x - MARGIN_RIGHT,
-            viewport_pos.y + MARGIN_TOP
-        };
+            viewport_pos.y + MARGIN_TOP};
 
         widgets::DrawWindowShadow(pos, size, theme().sizes.window_rounding);
         ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
@@ -460,20 +498,23 @@ namespace lfs::vis::gui::panels {
             if (widgets::IconButton("##home", state.home_texture, btn_size, false, "H")) {
                 lfs::core::events::cmd::ResetCamera{}.emit();
             }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Home (H)");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Home (H)");
 
             // Fullscreen
             const auto fs_tex = is_fullscreen ? state.exit_fullscreen_texture : state.fullscreen_texture;
             if (widgets::IconButton("##fullscreen", fs_tex, btn_size, is_fullscreen, "F")) {
                 lfs::core::events::ui::ToggleFullscreen{}.emit();
             }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Fullscreen (F11)");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Fullscreen (F11)");
 
             // Toggle UI
             if (widgets::IconButton("##hide_ui", state.hide_ui_texture, btn_size, ui_hidden, "U")) {
                 lfs::core::events::ui::ToggleUI{}.emit();
             }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Toggle UI (F12)");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Toggle UI (F12)");
 
             if (render_manager) {
                 DrawToolbarSeparator(btn_size.x);
@@ -485,7 +526,8 @@ namespace lfs::vis::gui::panels {
                     if (widgets::IconButton(id, tex, btn_size, current == mode, fallback)) {
                         setVisualization(render_manager, mode);
                     }
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", tooltip);
                 };
 
                 vizButton("##splat", state.splat_texture, "S", RenderVisualization::Splat, "Splat Rendering");
@@ -510,7 +552,8 @@ namespace lfs::vis::gui::panels {
                         render_manager->updateSettings(new_settings);
                     }
                 }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", proj_tooltip);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", proj_tooltip);
             }
         }
         ImGui::End();

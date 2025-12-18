@@ -22,7 +22,7 @@ namespace lfs::training {
 namespace lfs::core {
     struct PointCloud;
     class Camera;
-}
+} // namespace lfs::core
 
 namespace lfs::vis {
 
@@ -47,8 +47,8 @@ namespace lfs::vis {
     struct CropBoxData {
         glm::vec3 min{-1.0f, -1.0f, -1.0f};
         glm::vec3 max{1.0f, 1.0f, 1.0f};
-        bool inverse = false;       // Invert crop (keep outside instead of inside)
-        bool enabled = false;       // Whether to use for filtering gaussians
+        bool inverse = false; // Invert crop (keep outside instead of inside)
+        bool enabled = false; // Whether to use for filtering gaussians
         glm::vec3 color{1.0f, 1.0f, 0.0f};
         float line_width = 2.0f;
         float flash_intensity = 0.0f;
@@ -56,14 +56,14 @@ namespace lfs::vis {
 
     // Selection group with ID, name, and color
     struct SelectionGroup {
-        uint8_t id = 0;              // 1-255, 0 means unselected
+        uint8_t id = 0; // 1-255, 0 means unselected
         std::string name;
         glm::vec3 color{1.0f, 0.0f, 0.0f};
-        size_t count = 0;            // Number of selected Gaussians
-        bool locked = false;         // If true, painting with other groups won't overwrite
+        size_t count = 0;    // Number of selected Gaussians
+        bool locked = false; // If true, painting with other groups won't overwrite
     };
 
-    class Scene;  // Forward declaration
+    class Scene; // Forward declaration
 
     // Scene graph node with Observable properties
     // Changes to observable properties automatically invalidate the scene cache
@@ -83,21 +83,21 @@ namespace lfs::vis {
         std::string name;
 
         // Data (changes require manual cache invalidation via scene)
-        std::unique_ptr<lfs::core::SplatData> model;          // For SPLAT nodes
-        std::shared_ptr<lfs::core::PointCloud> point_cloud;   // For POINTCLOUD nodes
+        std::unique_ptr<lfs::core::SplatData> model;        // For SPLAT nodes
+        std::shared_ptr<lfs::core::PointCloud> point_cloud; // For POINTCLOUD nodes
         std::unique_ptr<CropBoxData> cropbox;
-        size_t gaussian_count = 0;  // For SPLAT: num gaussians, for POINTCLOUD: num points
+        size_t gaussian_count = 0; // For SPLAT: num gaussians, for POINTCLOUD: num points
         glm::vec3 centroid{0.0f};
 
         // Camera data (for CAMERA nodes)
-        int camera_index = -1;  // Index into CameraDataset
-        int camera_uid = -1;    // Camera unique identifier (for GoToCamView)
+        int camera_index = -1; // Index into CameraDataset
+        int camera_uid = -1;   // Camera unique identifier (for GoToCamView)
 
         // Image data (for IMAGE and CAMERA nodes) - just the filename, not loaded
-        std::string image_path;  // Path to image file
+        std::string image_path; // Path to image file
 
         // Mask data (for MASK and CAMERA nodes) - path to attention mask file
-        std::string mask_path;   // Path to mask file
+        std::string mask_path; // Path to mask file
 
         // Cached world transform (mutable for lazy evaluation)
         mutable glm::mat4 world_transform{1.0f};
@@ -146,8 +146,8 @@ namespace lfs::vis {
         NodeId addGroup(const std::string& name, NodeId parent = NULL_NODE);
         NodeId addSplat(const std::string& name, std::unique_ptr<lfs::core::SplatData> model, NodeId parent = NULL_NODE);
         NodeId addPointCloud(const std::string& name, std::shared_ptr<lfs::core::PointCloud> point_cloud, NodeId parent = NULL_NODE);
-        NodeId addCropBox(const std::string& name, NodeId parent_node);  // Parent can be SPLAT or POINTCLOUD
-        NodeId addDataset(const std::string& name);  // Root node for training dataset
+        NodeId addCropBox(const std::string& name, NodeId parent_node); // Parent can be SPLAT or POINTCLOUD
+        NodeId addDataset(const std::string& name);                     // Root node for training dataset
         NodeId addCameraGroup(const std::string& name, NodeId parent, size_t camera_count);
         NodeId addCamera(const std::string& name, NodeId parent, int camera_index, int camera_uid,
                          const std::string& image_path = "", const std::string& mask_path = "");
@@ -185,7 +185,7 @@ namespace lfs::vis {
             NodeId parent_splat_id = NULL_NODE;
             const CropBoxData* data = nullptr;
             glm::mat4 world_transform{1.0f};
-            glm::mat4 local_transform{1.0f};  // Cropbox's local transform (relative to parent)
+            glm::mat4 local_transform{1.0f}; // Cropbox's local transform (relative to parent)
         };
         [[nodiscard]] std::vector<RenderableCropBox> getVisibleCropBoxes() const;
 
@@ -248,7 +248,7 @@ namespace lfs::vis {
         [[nodiscard]] const SelectionGroup* getSelectionGroup(uint8_t id) const;
         void updateSelectionGroupCounts();
         void clearSelectionGroup(uint8_t id);
-        void resetSelectionState();  // Full reset: clear mask, remove all groups, create default
+        void resetSelectionState(); // Full reset: clear mask, remove all groups, create default
 
         // ========== Training Data Storage ==========
         // Scene owns training data (cameras + initial point cloud)
@@ -299,7 +299,10 @@ namespace lfs::vis {
 
         // Mark scene data as changed (e.g., after modifying a node's deleted mask)
         // Also called by SceneNode Observable properties when they change
-        void invalidateCache() { model_cache_valid_ = false; transform_cache_valid_ = false; }
+        void invalidateCache() {
+            model_cache_valid_ = false;
+            transform_cache_valid_ = false;
+        }
         void invalidateTransformCache() { transform_cache_valid_ = false; }
         void markDirty() { invalidateCache(); }
         void markTransformDirty(NodeId node);
@@ -309,8 +312,8 @@ namespace lfs::vis {
         size_t applyDeleted();
 
     private:
-        std::vector<std::unique_ptr<Node>> nodes_;  // unique_ptr for stable addresses (Observable callbacks capture 'this')
-        std::unordered_map<NodeId, size_t> id_to_index_;  // NodeId -> index in nodes_
+        std::vector<std::unique_ptr<Node>> nodes_;       // unique_ptr for stable addresses (Observable callbacks capture 'this')
+        std::unordered_map<NodeId, size_t> id_to_index_; // NodeId -> index in nodes_
         NodeId next_node_id_ = 0;
 
         // Caching for combined model (rebuilt when models/visibility change)
@@ -328,7 +331,7 @@ namespace lfs::vis {
 
         // Selection groups (ID 0 is reserved for "unselected")
         std::vector<SelectionGroup> selection_groups_;
-        uint8_t active_selection_group_ = 1;  // Default to group 1
+        uint8_t active_selection_group_ = 1; // Default to group 1
         uint8_t next_group_id_ = 1;
 
         void rebuildCacheIfNeeded() const;
@@ -347,7 +350,7 @@ namespace lfs::vis {
         std::shared_ptr<lfs::training::CameraDataset> val_cameras_;
         std::shared_ptr<lfs::core::PointCloud> initial_point_cloud_;
         lfs::core::Tensor scene_center_;  // Scene center (mean of camera positions)
-        std::string training_model_node_;  // Name of the node being trained
+        std::string training_model_node_; // Name of the node being trained
     };
 
 } // namespace lfs::vis

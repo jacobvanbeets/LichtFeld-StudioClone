@@ -5,21 +5,21 @@
 #include "tools/selection_tool.hpp"
 #include "command/command_history.hpp"
 #include "command/commands/selection_command.hpp"
+#include "core/splat_data.hpp"
+#include "core/tensor.hpp"
 #include "input/input_bindings.hpp"
 #include "internal/viewport.hpp"
+#include "rendering/rasterizer/rasterization/include/forward.h"
+#include "rendering/rasterizer/rasterization/include/rasterization_api_tensor.h"
 #include "rendering/rendering_manager.hpp"
 #include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
-#include "core/splat_data.hpp"
-#include "core/tensor.hpp"
-#include "rendering/rasterizer/rasterization/include/forward.h"
-#include "rendering/rasterizer/rasterization/include/rasterization_api_tensor.h"
-#include <cuda_runtime.h>
 #include <GLFW/glfw3.h>
+#include <cmath>
+#include <cuda_runtime.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <imgui.h>
-#include <cmath>
 
 namespace lfs::vis::tools {
 
@@ -51,41 +51,51 @@ namespace lfs::vis::tools {
         if (input_bindings_) {
             const auto action = input_bindings_->getActionForDrag(
                 input::ToolMode::SELECTION, input::MouseButton::LEFT, mods);
-            if (action == input::Action::SELECTION_REMOVE) return SelectionOp::Remove;
-            if (action == input::Action::SELECTION_ADD) return SelectionOp::Add;
-            if (action == input::Action::SELECTION_REPLACE) return SelectionOp::Replace;
+            if (action == input::Action::SELECTION_REMOVE)
+                return SelectionOp::Remove;
+            if (action == input::Action::SELECTION_ADD)
+                return SelectionOp::Add;
+            if (action == input::Action::SELECTION_REPLACE)
+                return SelectionOp::Replace;
         }
         // Fallback
-        if (mods & GLFW_MOD_CONTROL) return SelectionOp::Remove;
-        if (mods & GLFW_MOD_SHIFT) return SelectionOp::Add;
+        if (mods & GLFW_MOD_CONTROL)
+            return SelectionOp::Remove;
+        if (mods & GLFW_MOD_SHIFT)
+            return SelectionOp::Add;
         return SelectionOp::Replace;
     }
 
     void SelectionTool::beginStroke(const ToolContext& ctx) {
         auto* const sm = ctx.getSceneManager();
-        if (!sm) return;
+        if (!sm)
+            return;
 
         const size_t n = sm->getScene().getTotalGaussianCount();
-        if (n == 0) return;
+        if (n == 0)
+            return;
 
         // Save for undo
         const auto existing = sm->getScene().getSelectionMask();
         selection_before_stroke_ = (existing && existing->is_valid())
-            ? std::make_shared<lfs::core::Tensor>(existing->clone())
-            : nullptr;
+                                       ? std::make_shared<lfs::core::Tensor>(existing->clone())
+                                       : nullptr;
 
         stroke_selection_ = lfs::core::Tensor::zeros({n}, lfs::core::Device::CUDA, lfs::core::DataType::Bool);
         is_dragging_ = true;
     }
 
     void SelectionTool::finalizeSelection(const ToolContext& ctx) {
-        if (!stroke_selection_.is_valid()) return;
+        if (!stroke_selection_.is_valid())
+            return;
 
         auto* const sm = ctx.getSceneManager();
-        if (!sm) return;
+        if (!sm)
+            return;
 
         const auto node_mask = sm->getSelectedNodeMask();
-        if (node_mask.empty()) return;
+        if (node_mask.empty())
+            return;
 
         auto& scene = sm->getScene();
         const uint8_t group_id = scene.getActiveSelectionGroup();
@@ -108,7 +118,8 @@ namespace lfs::vis::tools {
 
         const lfs::core::Tensor EMPTY_MASK;
         const lfs::core::Tensor& existing_ref = (existing_mask && existing_mask->is_valid())
-            ? *existing_mask : EMPTY_MASK;
+                                                    ? *existing_mask
+                                                    : EMPTY_MASK;
         const auto transform_indices = scene.getTransformIndices();
         const bool add_mode = (current_op_ != SelectionOp::Remove);
         const bool replace_mode = (current_op_ == SelectionOp::Replace);
@@ -138,8 +149,9 @@ namespace lfs::vis::tools {
     }
 
     bool SelectionTool::handleMouseButton(const int button, const int action, const int mods,
-                                           const double x, const double y, const ToolContext& ctx) {
-        if (!isEnabled()) return false;
+                                          const double x, const double y, const ToolContext& ctx) {
+        if (!isEnabled())
+            return false;
 
         const auto* const rm = ctx.getRenderingManager();
         const auto sel_mode = rm ? rm->getSelectionMode() : lfs::rendering::SelectionMode::Centers;
@@ -162,7 +174,8 @@ namespace lfs::vis::tools {
             }
         }
 
-        if (button != GLFW_MOUSE_BUTTON_LEFT) return false;
+        if (button != GLFW_MOUSE_BUTTON_LEFT)
+            return false;
 
         const bool is_rect = (sel_mode == lfs::rendering::SelectionMode::Rectangle);
         const bool is_lasso = (sel_mode == lfs::rendering::SelectionMode::Lasso);
@@ -293,7 +306,8 @@ namespace lfs::vis::tools {
     }
 
     bool SelectionTool::handleMouseMove(const double x, const double y, const ToolContext& ctx) {
-        if (!isEnabled()) return false;
+        if (!isEnabled())
+            return false;
 
         last_mouse_pos_ = glm::vec2(static_cast<float>(x), static_cast<float>(y));
 
@@ -303,7 +317,8 @@ namespace lfs::vis::tools {
         // Polygon vertex drag
         if (polygon_dragged_vertex_ >= 0 && polygon_dragged_vertex_ < static_cast<int>(polygon_points_.size())) {
             polygon_points_[polygon_dragged_vertex_] = glm::vec2(static_cast<float>(x), static_cast<float>(y));
-            if (polygon_closed_) updatePolygonPreview(ctx);
+            if (polygon_closed_)
+                updatePolygonPreview(ctx);
             ctx.requestRender();
             return true;
         }
@@ -329,7 +344,8 @@ namespace lfs::vis::tools {
 
         // Brush painting
         if ((sel_mode == lfs::rendering::SelectionMode::Centers ||
-             sel_mode == lfs::rendering::SelectionMode::Rings) && is_dragging_) {
+             sel_mode == lfs::rendering::SelectionMode::Rings) &&
+            is_dragging_) {
             updateBrushSelection(x, y, ctx);
             ctx.requestRender();
             return true;
@@ -342,8 +358,9 @@ namespace lfs::vis::tools {
     }
 
     bool SelectionTool::handleScroll([[maybe_unused]] const double x_offset, const double y_offset,
-                                      const int mods, const ToolContext& ctx) {
-        if (!isEnabled()) return false;
+                                     const int mods, const ToolContext& ctx) {
+        if (!isEnabled())
+            return false;
 
         const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0;
         const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
@@ -400,7 +417,8 @@ namespace lfs::vis::tools {
     }
 
     bool SelectionTool::handleKeyPress(const int key, const int mods, const ToolContext& ctx) {
-        if (!isEnabled()) return false;
+        if (!isEnabled())
+            return false;
 
         const auto* const rm = ctx.getRenderingManager();
         const auto sel_mode = rm ? rm->getSelectionMode() : lfs::rendering::SelectionMode::Centers;
@@ -481,10 +499,12 @@ namespace lfs::vis::tools {
     void SelectionTool::updateBrushSelection(const double x, const double y, const ToolContext& ctx) {
         auto* const rm = ctx.getRenderingManager();
         auto* const sm = ctx.getSceneManager();
-        if (!rm || !sm || !stroke_selection_.is_valid()) return;
+        if (!rm || !sm || !stroke_selection_.is_valid())
+            return;
 
         const auto node_mask = sm->getSelectedNodeMask();
-        if (node_mask.empty()) return;
+        if (node_mask.empty())
+            return;
 
         const auto& bounds = ctx.getViewportBounds();
         const auto& viewport = ctx.getViewport();
@@ -526,7 +546,8 @@ namespace lfs::vis::tools {
 
     void SelectionTool::updateBrushPreview(const double x, const double y, const ToolContext& ctx) {
         auto* const rm = ctx.getRenderingManager();
-        if (!rm) return;
+        if (!rm)
+            return;
 
         const auto& bounds = ctx.getViewportBounds();
         const auto& viewport = ctx.getViewport();
@@ -559,10 +580,12 @@ namespace lfs::vis::tools {
     void SelectionTool::computeRectSelection(const ToolContext& ctx) {
         auto* const rm = ctx.getRenderingManager();
         auto* const sm = ctx.getSceneManager();
-        if (!rm || !sm || !stroke_selection_.is_valid()) return;
+        if (!rm || !sm || !stroke_selection_.is_valid())
+            return;
 
         const auto screen_positions = rm->getScreenPositions();
-        if (!screen_positions || !screen_positions->is_valid()) return;
+        if (!screen_positions || !screen_positions->is_valid())
+            return;
 
         const auto& bounds = ctx.getViewportBounds();
         const auto& viewport = ctx.getViewport();
@@ -582,13 +605,16 @@ namespace lfs::vis::tools {
     }
 
     void SelectionTool::computeLassoSelection(const ToolContext& ctx) {
-        if (lasso_points_.size() < 3) return;
+        if (lasso_points_.size() < 3)
+            return;
 
         auto* const rm = ctx.getRenderingManager();
-        if (!rm || !stroke_selection_.is_valid()) return;
+        if (!rm || !stroke_selection_.is_valid())
+            return;
 
         const auto screen_positions = rm->getScreenPositions();
-        if (!screen_positions || !screen_positions->is_valid()) return;
+        if (!screen_positions || !screen_positions->is_valid())
+            return;
 
         const auto& bounds = ctx.getViewportBounds();
         const auto& viewport = ctx.getViewport();
@@ -612,18 +638,22 @@ namespace lfs::vis::tools {
     }
 
     void SelectionTool::computePolygonSelection(const ToolContext& ctx) {
-        if (!polygon_closed_ || polygon_points_.size() < 3) return;
+        if (!polygon_closed_ || polygon_points_.size() < 3)
+            return;
 
         auto* const rm = ctx.getRenderingManager();
-        if (!rm) return;
+        if (!rm)
+            return;
 
         const auto positions = rm->getScreenPositions();
-        if (!positions || !positions->is_valid()) return;
+        if (!positions || !positions->is_valid())
+            return;
 
         // Ensure stroke_selection is initialized
         if (!stroke_selection_.is_valid()) {
             auto* const sm = ctx.getSceneManager();
-            if (!sm) return;
+            if (!sm)
+                return;
             const size_t n = sm->getScene().getTotalGaussianCount();
             stroke_selection_ = lfs::core::Tensor::zeros({n}, lfs::core::Device::CUDA, lfs::core::DataType::Bool);
         }
@@ -651,13 +681,16 @@ namespace lfs::vis::tools {
     void SelectionTool::updateRectanglePreview(const ToolContext& ctx) {
         auto* const rm = ctx.getRenderingManager();
         auto* const sm = ctx.getSceneManager();
-        if (!rm || !sm) return;
+        if (!rm || !sm)
+            return;
 
         const auto node_mask = sm->getSelectedNodeMask();
-        if (node_mask.empty()) return;
+        if (node_mask.empty())
+            return;
 
         const auto screen_positions = rm->getScreenPositions();
-        if (!screen_positions || !screen_positions->is_valid()) return;
+        if (!screen_positions || !screen_positions->is_valid())
+            return;
 
         const auto& bounds = ctx.getViewportBounds();
         const auto& viewport = ctx.getViewport();
@@ -690,17 +723,21 @@ namespace lfs::vis::tools {
     }
 
     void SelectionTool::updateLassoPreview(const ToolContext& ctx) {
-        if (lasso_points_.size() < 3) return;
+        if (lasso_points_.size() < 3)
+            return;
 
         auto* const rm = ctx.getRenderingManager();
         auto* const sm = ctx.getSceneManager();
-        if (!rm || !sm) return;
+        if (!rm || !sm)
+            return;
 
         const auto node_mask = sm->getSelectedNodeMask();
-        if (node_mask.empty()) return;
+        if (node_mask.empty())
+            return;
 
         const auto screen_positions = rm->getScreenPositions();
-        if (!screen_positions || !screen_positions->is_valid()) return;
+        if (!screen_positions || !screen_positions->is_valid())
+            return;
 
         const auto& bounds = ctx.getViewportBounds();
         const auto& viewport = ctx.getViewport();
@@ -737,13 +774,16 @@ namespace lfs::vis::tools {
     }
 
     void SelectionTool::updatePolygonPreview(const ToolContext& ctx) {
-        if (!polygon_closed_ || polygon_points_.size() < 3) return;
+        if (!polygon_closed_ || polygon_points_.size() < 3)
+            return;
 
         auto* const rm = ctx.getRenderingManager();
-        if (!rm) return;
+        if (!rm)
+            return;
 
         const auto positions = rm->getScreenPositions();
-        if (!positions || !positions->is_valid()) return;
+        if (!positions || !positions->is_valid())
+            return;
 
         const auto& bounds = ctx.getViewportBounds();
         const auto& viewport = ctx.getViewport();
@@ -788,7 +828,8 @@ namespace lfs::vis::tools {
     }
 
     void SelectionTool::clearPolygon() {
-        if (polygon_points_.empty()) return;
+        if (polygon_points_.empty())
+            return;
 
         if (tool_context_) {
             if (auto* const rm = tool_context_->getRenderingManager()) {
@@ -822,7 +863,8 @@ namespace lfs::vis::tools {
     }
 
     int SelectionTool::findPolygonEdgeAt(const float x, const float y, float& t_out) const {
-        if (polygon_points_.size() < 2) return -1;
+        if (polygon_points_.size() < 2)
+            return -1;
 
         constexpr float EDGE_THRESHOLD_SQ = 8.0f * 8.0f;
         const glm::vec2 p(x, y);
@@ -833,7 +875,8 @@ namespace lfs::vis::tools {
             const glm::vec2& b = polygon_points_[(i + 1) % n];
             const glm::vec2 ab = b - a;
             const float len_sq = glm::dot(ab, ab);
-            if (len_sq < 1e-6f) continue;
+            if (len_sq < 1e-6f)
+                continue;
 
             const float t = glm::clamp(glm::dot(p - a, ab) / len_sq, 0.0f, 1.0f);
             const glm::vec2 d = p - (a + t * ab);
@@ -853,7 +896,8 @@ namespace lfs::vis::tools {
 
     void SelectionTool::updateSelectionCropBox(const ToolContext& ctx) {
         auto* const rm = ctx.getRenderingManager();
-        if (!rm) return;
+        if (!rm)
+            return;
 
         const auto& viewport = ctx.getViewport();
         const glm::quat cam_quat = glm::quat_cast(viewport.camera.R);
@@ -916,13 +960,15 @@ namespace lfs::vis::tools {
     }
 
     void SelectionTool::renderUI([[maybe_unused]] const lfs::vis::gui::UIContext& ui_ctx,
-                                  [[maybe_unused]] bool* p_open) {
-        if (!isEnabled() || ImGui::GetIO().WantCaptureMouse) return;
+                                 [[maybe_unused]] bool* p_open) {
+        if (!isEnabled() || ImGui::GetIO().WantCaptureMouse)
+            return;
 
         auto sel_mode = lfs::rendering::SelectionMode::Centers;
         if (tool_context_) {
             const auto* const rm = tool_context_->getRenderingManager();
-            if (rm) sel_mode = rm->getSelectionMode();
+            if (rm)
+                sel_mode = rm->getSelectionMode();
         }
 
         ImDrawList* const draw_list = ImGui::GetForegroundDrawList();
@@ -1002,13 +1048,17 @@ namespace lfs::vis::tools {
                               glfwGetKey(win, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
 
             int mods = 0;
-            if (shift) mods |= GLFW_MOD_SHIFT;
-            if (ctrl) mods |= GLFW_MOD_CONTROL;
+            if (shift)
+                mods |= GLFW_MOD_SHIFT;
+            if (ctrl)
+                mods |= GLFW_MOD_CONTROL;
 
             if (mods != 0) {
                 const auto op = getOpFromModifiers(mods);
-                if (op == SelectionOp::Add) mod_suffix = " +";
-                else if (op == SelectionOp::Remove) mod_suffix = " -";
+                if (op == SelectionOp::Add)
+                    mod_suffix = " +";
+                else if (op == SelectionOp::Remove)
+                    mod_suffix = " -";
             }
         }
 
@@ -1032,11 +1082,14 @@ namespace lfs::vis::tools {
             const char* mode_name = "";
             const char* suffix = "";
             switch (sel_mode) {
-                case lfs::rendering::SelectionMode::Rings:     mode_name = "RING"; break;
-                case lfs::rendering::SelectionMode::Rectangle: mode_name = "RECT"; break;
-                case lfs::rendering::SelectionMode::Polygon:   mode_name = "POLY"; suffix = polygon_closed_ ? " [Enter]" : ""; break;
-                case lfs::rendering::SelectionMode::Lasso:     mode_name = "LASSO"; break;
-                default: break;
+            case lfs::rendering::SelectionMode::Rings: mode_name = "RING"; break;
+            case lfs::rendering::SelectionMode::Rectangle: mode_name = "RECT"; break;
+            case lfs::rendering::SelectionMode::Polygon:
+                mode_name = "POLY";
+                suffix = polygon_closed_ ? " [Enter]" : "";
+                break;
+            case lfs::rendering::SelectionMode::Lasso: mode_name = "LASSO"; break;
+            default: break;
             }
             snprintf(label_buf, sizeof(label_buf), "%s%s%s", mode_name, mod_suffix, suffix);
         }

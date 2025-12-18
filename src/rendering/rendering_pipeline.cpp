@@ -87,14 +87,15 @@ namespace lfs::rendering {
                 const auto& mat = request.model_transforms[i];
                 for (int row = 0; row < 4; ++row) {
                     for (int col = 0; col < 4; ++col) {
-                        transform_data[i * 16 + row * 4 + col] = mat[col][row];  // Transpose column to row major
+                        transform_data[i * 16 + row * 4 + col] = mat[col][row]; // Transpose column to row major
                     }
                 }
             }
             model_transforms_tensor = std::make_unique<Tensor>(
                 Tensor::from_vector(transform_data,
-                                   {request.model_transforms.size(), 4, 4},
-                                   lfs::core::Device::CPU).cuda());
+                                    {request.model_transforms.size(), 4, 4},
+                                    lfs::core::Device::CPU)
+                    .cuda());
         }
 
         // Get transform indices pointer (already a tensor, just need to ensure it's on CUDA)
@@ -132,7 +133,7 @@ namespace lfs::rendering {
                 if (request.gut) {
                     // Use local forward-only GUT rasterizer (no training module dependency)
                     LOG_TRACE("Using GUT rasterizer (sh_degree temporarily changed from {} to {})",
-                             original_sh_degree, request.sh_degree);
+                              original_sh_degree, request.sh_degree);
                     auto render_output = gut_rasterize_tensor(
                         cam, const_cast<lfs::core::SplatData&>(model), background_,
                         request.scaling_modifier);
@@ -140,30 +141,30 @@ namespace lfs::rendering {
                     result.depth = std::move(render_output.depth);
                 } else {
                     LOG_TRACE("Using TENSOR_NATIVE backend (sh_degree temporarily changed from {} to {})",
-                             original_sh_degree, request.sh_degree);
+                              original_sh_degree, request.sh_degree);
                     Tensor screen_positions;
                     auto [image, depth] = rasterize_tensor(cam, const_cast<lfs::core::SplatData&>(model), background_,
-                                                    request.show_rings, request.ring_width,
-                                                    model_transforms_tensor.get(), transform_indices_ptr,
-                                                    selection_mask_ptr,
-                                                    request.output_screen_positions ? &screen_positions : nullptr,
-                                                    request.brush_active, request.brush_x, request.brush_y, request.brush_radius,
-                                                    request.brush_add_mode, request.brush_selection_tensor,
-                                                    request.brush_saturation_mode, request.brush_saturation_amount,
-                                                    request.selection_mode_rings,
-                                                    request.show_center_markers,
-                                                    request.crop_box_transform, request.crop_box_min, request.crop_box_max,
-                                                    request.crop_inverse, request.crop_desaturate,
-                                                    request.depth_filter_transform, request.depth_filter_min, request.depth_filter_max,
-                                                    request.deleted_mask,
-                                                    request.hovered_depth_id,
-                                                    request.highlight_gaussian_id,
-                                                    request.far_plane,
-                                                    request.selected_node_mask,
-                                                    request.desaturate_unselected,
-                                                    request.selection_flash_intensity,
-                                                    request.orthographic,
-                                                    request.ortho_scale);
+                                                           request.show_rings, request.ring_width,
+                                                           model_transforms_tensor.get(), transform_indices_ptr,
+                                                           selection_mask_ptr,
+                                                           request.output_screen_positions ? &screen_positions : nullptr,
+                                                           request.brush_active, request.brush_x, request.brush_y, request.brush_radius,
+                                                           request.brush_add_mode, request.brush_selection_tensor,
+                                                           request.brush_saturation_mode, request.brush_saturation_amount,
+                                                           request.selection_mode_rings,
+                                                           request.show_center_markers,
+                                                           request.crop_box_transform, request.crop_box_min, request.crop_box_max,
+                                                           request.crop_inverse, request.crop_desaturate,
+                                                           request.depth_filter_transform, request.depth_filter_min, request.depth_filter_max,
+                                                           request.deleted_mask,
+                                                           request.hovered_depth_id,
+                                                           request.highlight_gaussian_id,
+                                                           request.far_plane,
+                                                           request.selected_node_mask,
+                                                           request.desaturate_unselected,
+                                                           request.selection_flash_intensity,
+                                                           request.orthographic,
+                                                           request.ortho_scale);
                     result.image = std::move(image);
                     result.depth = std::move(depth);
                     if (request.output_screen_positions) {
@@ -200,27 +201,27 @@ namespace lfs::rendering {
             LOG_TRACE("Using TENSOR_NATIVE backend (libtorch-free rasterizer)");
             Tensor screen_positions;
             auto [image, depth] = rasterize_tensor(cam, mutable_model, background_,
-                                            request.show_rings, request.ring_width,
-                                            model_transforms_tensor.get(), transform_indices_ptr,
-                                            selection_mask_ptr,
-                                            request.output_screen_positions ? &screen_positions : nullptr,
-                                            request.brush_active, request.brush_x, request.brush_y, request.brush_radius,
-                                            request.brush_add_mode, request.brush_selection_tensor,
-                                            request.brush_saturation_mode, request.brush_saturation_amount,
-                                            request.selection_mode_rings,
-                                            request.show_center_markers,
-                                            request.crop_box_transform, request.crop_box_min, request.crop_box_max,
-                                            request.crop_inverse, request.crop_desaturate,
-                                            request.depth_filter_transform, request.depth_filter_min, request.depth_filter_max,
-                                            request.deleted_mask,
-                                            request.hovered_depth_id,
-                                            request.highlight_gaussian_id,
-                                            request.far_plane,
-                                            request.selected_node_mask,
-                                            request.desaturate_unselected,
-                                            request.selection_flash_intensity,
-                                            request.orthographic,
-                                            request.ortho_scale);
+                                                   request.show_rings, request.ring_width,
+                                                   model_transforms_tensor.get(), transform_indices_ptr,
+                                                   selection_mask_ptr,
+                                                   request.output_screen_positions ? &screen_positions : nullptr,
+                                                   request.brush_active, request.brush_x, request.brush_y, request.brush_radius,
+                                                   request.brush_add_mode, request.brush_selection_tensor,
+                                                   request.brush_saturation_mode, request.brush_saturation_amount,
+                                                   request.selection_mode_rings,
+                                                   request.show_center_markers,
+                                                   request.crop_box_transform, request.crop_box_min, request.crop_box_max,
+                                                   request.crop_inverse, request.crop_desaturate,
+                                                   request.depth_filter_transform, request.depth_filter_min, request.depth_filter_max,
+                                                   request.deleted_mask,
+                                                   request.hovered_depth_id,
+                                                   request.highlight_gaussian_id,
+                                                   request.far_plane,
+                                                   request.selected_node_mask,
+                                                   request.desaturate_unselected,
+                                                   request.selection_flash_intensity,
+                                                   request.orthographic,
+                                                   request.ortho_scale);
             result.image = std::move(image);
             result.depth = std::move(depth);
             if (request.output_screen_positions) {
@@ -259,7 +260,8 @@ namespace lfs::rendering {
         glGetIntegerv(GL_VIEWPORT, saved_viewport);
         glGetIntegerv(GL_FRAMEBUFFER_BINDING, &saved_fbo);
         const GLboolean saved_scissor = glIsEnabled(GL_SCISSOR_TEST);
-        if (saved_scissor) glDisable(GL_SCISSOR_TEST);
+        if (saved_scissor)
+            glDisable(GL_SCISSOR_TEST);
 
         // RAII restore
         const struct StateGuard {
@@ -269,7 +271,8 @@ namespace lfs::rendering {
             ~StateGuard() {
                 glBindFramebuffer(GL_FRAMEBUFFER, fbo);
                 glViewport(vp[0], vp[1], vp[2], vp[3]);
-                if (scissor) glEnable(GL_SCISSOR_TEST);
+                if (scissor)
+                    glEnable(GL_SCISSOR_TEST);
             }
         } guard{saved_viewport, saved_fbo, saved_scissor};
 
@@ -337,15 +340,15 @@ namespace lfs::rendering {
 
             // Initialize interop texture if needed or if FBO size changed
             bool should_init = persistent_color_texture_ != 0 &&
-                              (!fbo_interop_texture_ ||
-                               fbo_interop_last_width_ != persistent_fbo_width_ ||
-                               fbo_interop_last_height_ != persistent_fbo_height_);
+                               (!fbo_interop_texture_ ||
+                                fbo_interop_last_width_ != persistent_fbo_width_ ||
+                                fbo_interop_last_height_ != persistent_fbo_height_);
 
             if (should_init) {
                 if (fbo_interop_texture_) {
                     LOG_TRACE("Reinitializing CUDA-GL FBO interop texture due to size change: {}x{} -> {}x{}",
-                             fbo_interop_last_width_, fbo_interop_last_height_,
-                             persistent_fbo_width_, persistent_fbo_height_);
+                              fbo_interop_last_width_, fbo_interop_last_height_,
+                              persistent_fbo_width_, persistent_fbo_height_);
                     fbo_interop_texture_.reset();
                 } else {
                     LOG_TRACE("Initializing CUDA-GL FBO interop texture: {}x{}", width, height);
@@ -458,7 +461,8 @@ namespace lfs::rendering {
         glGetIntegerv(GL_VIEWPORT, saved_viewport);
         glGetIntegerv(GL_FRAMEBUFFER_BINDING, &saved_fbo);
         const GLboolean saved_scissor = glIsEnabled(GL_SCISSOR_TEST);
-        if (saved_scissor) glDisable(GL_SCISSOR_TEST);
+        if (saved_scissor)
+            glDisable(GL_SCISSOR_TEST);
 
         // RAII restore
         const struct StateGuard {
@@ -468,7 +472,8 @@ namespace lfs::rendering {
             ~StateGuard() {
                 glBindFramebuffer(GL_FRAMEBUFFER, fbo);
                 glViewport(vp[0], vp[1], vp[2], vp[3]);
-                if (scissor) glEnable(GL_SCISSOR_TEST);
+                if (scissor)
+                    glEnable(GL_SCISSOR_TEST);
             }
         } guard{saved_viewport, saved_fbo, saved_scissor};
 
@@ -540,9 +545,9 @@ namespace lfs::rendering {
             LOG_TIMER_TRACE("CUDA-GL FBO interop readback");
 
             bool should_init = persistent_color_texture_ != 0 &&
-                              (!fbo_interop_texture_ ||
-                               fbo_interop_last_width_ != persistent_fbo_width_ ||
-                               fbo_interop_last_height_ != persistent_fbo_height_);
+                               (!fbo_interop_texture_ ||
+                                fbo_interop_last_width_ != persistent_fbo_width_ ||
+                                fbo_interop_last_height_ != persistent_fbo_height_);
 
             if (should_init) {
                 if (fbo_interop_texture_) {
@@ -707,7 +712,7 @@ namespace lfs::rendering {
                 lfs::core::CameraModelType::PINHOLE,
                 "render_camera",
                 "none",
-                std::filesystem::path{},  // No mask path for render camera
+                std::filesystem::path{}, // No mask path for render camera
                 request.viewport_size.x,
                 request.viewport_size.y,
                 -1);
@@ -796,7 +801,7 @@ namespace lfs::rendering {
         persistent_fbo_height_ = height;
 
         LOG_TRACE("Persistent FBO created successfully: {}x{}, color_tex={}, depth_tex={}",
-                 width, height, persistent_color_texture_, persistent_depth_texture_);
+                  width, height, persistent_color_texture_, persistent_depth_texture_);
     }
 
     void RenderingPipeline::cleanupFBO() {

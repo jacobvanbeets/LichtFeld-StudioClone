@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "training/training_manager.hpp"
-#include "core/parameter_manager.hpp"
-#include "core/services.hpp"
 #include "core/events.hpp"
 #include "core/logger.hpp"
+#include "core/parameter_manager.hpp"
+#include "core/services.hpp"
 #include "scene/scene.hpp"
 #include "training/training_setup.hpp"
 #include <cstring>
@@ -234,7 +234,8 @@ namespace lfs::vis {
             LOG_TRACE("Cannot resume: {}", getActionBlockedReason(TrainingAction::Resume));
             return;
         }
-        if (!trainer_) return;
+        if (!trainer_)
+            return;
 
         const int iter = getCurrentIteration();
         const bool need_thread = !training_thread_ || !training_thread_->joinable();
@@ -257,7 +258,8 @@ namespace lfs::vis {
     }
 
     void TrainerManager::pauseTrainingTemporary() {
-        if (!isRunning()) return;
+        if (!isRunning())
+            return;
 
         if (trainer_) {
             trainer_->request_pause();
@@ -266,7 +268,8 @@ namespace lfs::vis {
     }
 
     void TrainerManager::resumeTrainingTemporary() {
-        if (!isRunning()) return;
+        if (!isRunning())
+            return;
 
         if (trainer_) {
             trainer_->request_resume();
@@ -484,9 +487,9 @@ namespace lfs::vis {
             state_machine_.transitionTo(TrainingState::Stopping);
         }
 
-        const FinishReason reason = !success ? FinishReason::Error
-                                  : user_stopped ? FinishReason::UserStopped
-                                  : FinishReason::Completed;
+        const FinishReason reason = !success       ? FinishReason::Error
+                                    : user_stopped ? FinishReason::UserStopped
+                                                   : FinishReason::Completed;
         state_machine_.transitionToFinished(reason);
 
         LOG_INFO("Training finished: iter={}, loss={:.6f}, time={:.1f}s",
@@ -559,7 +562,8 @@ namespace lfs::vis {
     }
 
     void TrainerManager::applyPendingParams() {
-        if (!trainer_) return;
+        if (!trainer_)
+            return;
 
         auto params = trainer_->getParams();
         params.dataset = pending_dataset_params_;

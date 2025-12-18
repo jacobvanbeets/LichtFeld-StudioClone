@@ -1,10 +1,10 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include "internal/tensor_impl.hpp"
-#include "internal/tensor_ops.hpp"
 #include "core/logger.hpp"
 #include "core/tensor_trace.hpp"
+#include "internal/tensor_impl.hpp"
+#include "internal/tensor_ops.hpp"
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 

@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "core/data_loading_service.hpp"
+#include "core/logger.hpp"
 #include "core/parameter_manager.hpp"
 #include "core/services.hpp"
-#include "core/logger.hpp"
 #include "scene/scene_manager.hpp"
 #include <algorithm>
 #include <stdexcept>

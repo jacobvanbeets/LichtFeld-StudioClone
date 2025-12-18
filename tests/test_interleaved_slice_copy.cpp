@@ -101,13 +101,13 @@ TEST_F(InterleavedSliceCopyTest, FullInterleavedPattern) {
         float* idx_ptr = idx_cpu.ptr<float>();
 
         for (size_t i = 0; i < N; ++i) {
-            pos_ptr[i * 3 + 0] = static_cast<float>(i * 10 + 1);  // 1, 11, 21, 31, 41
-            pos_ptr[i * 3 + 1] = static_cast<float>(i * 10 + 2);  // 2, 12, 22, 32, 42
-            pos_ptr[i * 3 + 2] = static_cast<float>(i * 10 + 3);  // 3, 13, 23, 33, 43
-            col_ptr[i * 3 + 0] = static_cast<float>(i * 10 + 4);  // 4, 14, 24, 34, 44
-            col_ptr[i * 3 + 1] = static_cast<float>(i * 10 + 5);  // 5, 15, 25, 35, 45
-            col_ptr[i * 3 + 2] = static_cast<float>(i * 10 + 6);  // 6, 16, 26, 36, 46
-            idx_ptr[i] = static_cast<float>(i);                    // 0, 1, 2, 3, 4
+            pos_ptr[i * 3 + 0] = static_cast<float>(i * 10 + 1); // 1, 11, 21, 31, 41
+            pos_ptr[i * 3 + 1] = static_cast<float>(i * 10 + 2); // 2, 12, 22, 32, 42
+            pos_ptr[i * 3 + 2] = static_cast<float>(i * 10 + 3); // 3, 13, 23, 33, 43
+            col_ptr[i * 3 + 0] = static_cast<float>(i * 10 + 4); // 4, 14, 24, 34, 44
+            col_ptr[i * 3 + 1] = static_cast<float>(i * 10 + 5); // 5, 15, 25, 35, 45
+            col_ptr[i * 3 + 2] = static_cast<float>(i * 10 + 6); // 6, 16, 26, 36, 46
+            idx_ptr[i] = static_cast<float>(i);                  // 0, 1, 2, 3, 4
         }
 
         positions = pos_cpu.cuda();
@@ -129,13 +129,11 @@ TEST_F(InterleavedSliceCopyTest, FullInterleavedPattern) {
         float expected_pos[3] = {
             static_cast<float>(i * 10 + 1),
             static_cast<float>(i * 10 + 2),
-            static_cast<float>(i * 10 + 3)
-        };
+            static_cast<float>(i * 10 + 3)};
         float expected_col[3] = {
             static_cast<float>(i * 10 + 4),
             static_cast<float>(i * 10 + 5),
-            static_cast<float>(i * 10 + 6)
-        };
+            static_cast<float>(i * 10 + 6)};
         float expected_idx = static_cast<float>(i);
 
         EXPECT_FLOAT_EQ(data[i * 7 + 0], expected_pos[0]) << "Row " << i << ", pos.x";
@@ -247,13 +245,13 @@ TEST_F(InterleavedSliceCopyTest, LargeScale) {
     const float* data = cpu.ptr<float>();
 
     // Check first row
-    EXPECT_FLOAT_EQ(data[0], 1.0f);  // pos.x
-    EXPECT_FLOAT_EQ(data[1], 1.0f);  // pos.y
-    EXPECT_FLOAT_EQ(data[2], 1.0f);  // pos.z
-    EXPECT_FLOAT_EQ(data[3], 2.0f);  // col.r
-    EXPECT_FLOAT_EQ(data[4], 2.0f);  // col.g
-    EXPECT_FLOAT_EQ(data[5], 2.0f);  // col.b
-    EXPECT_FLOAT_EQ(data[6], 3.0f);  // idx
+    EXPECT_FLOAT_EQ(data[0], 1.0f); // pos.x
+    EXPECT_FLOAT_EQ(data[1], 1.0f); // pos.y
+    EXPECT_FLOAT_EQ(data[2], 1.0f); // pos.z
+    EXPECT_FLOAT_EQ(data[3], 2.0f); // col.r
+    EXPECT_FLOAT_EQ(data[4], 2.0f); // col.g
+    EXPECT_FLOAT_EQ(data[5], 2.0f); // col.b
+    EXPECT_FLOAT_EQ(data[6], 3.0f); // idx
 
     // Check last row
     size_t last = (N - 1) * 7;

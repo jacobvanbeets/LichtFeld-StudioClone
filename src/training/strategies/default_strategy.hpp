@@ -99,7 +99,7 @@ namespace lfs::training {
         // Member variables
         std::unique_ptr<AdamOptimizer> _optimizer;
         std::unique_ptr<ExponentialLR> _scheduler;
-        lfs::core::SplatData* _splat_data = nullptr;  // Scene-owned
+        lfs::core::SplatData* _splat_data = nullptr; // Scene-owned
         std::unique_ptr<const lfs::core::param::OptimizationParameters> _params;
 
         // Free slot tracking - bool tensor [capacity], true = slot is free for reuse

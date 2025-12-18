@@ -9,7 +9,7 @@
 #include <imgui.h>
 #include <ImGuizmo.h>
 
-class Viewport;  // Forward declare global Viewport class
+class Viewport; // Forward declare global Viewport class
 
 namespace lfs::vis {
     class RenderingManager;

@@ -55,11 +55,11 @@ namespace gsplat_lfs {
 
 // Validation macros (no-ops in release, enabled in debug)
 #ifdef DEBUG
-#define GSPLAT_CHECK_CUDA_PTR(ptr, name)                                         \
-    do {                                                                         \
-        if ((ptr) == nullptr) {                                                  \
-            fprintf(stderr, "GSPLAT ERROR: %s is null\n", name);                 \
-        }                                                                        \
+#define GSPLAT_CHECK_CUDA_PTR(ptr, name)                         \
+    do {                                                         \
+        if ((ptr) == nullptr) {                                  \
+            fprintf(stderr, "GSPLAT ERROR: %s is null\n", name); \
+        }                                                        \
     } while (false)
 #else
 #define GSPLAT_CHECK_CUDA_PTR(ptr, name) ((void)0)
@@ -67,14 +67,14 @@ namespace gsplat_lfs {
 
 // CUB wrapper that handles temporary storage allocation
 // Uses cudaMalloc instead of PyTorch caching allocator
-#define CUB_WRAPPER_LFS(func, ...)                                               \
-    do {                                                                         \
-        size_t temp_storage_bytes = 0;                                           \
-        func(nullptr, temp_storage_bytes, __VA_ARGS__);                          \
-        void* temp_storage = nullptr;                                            \
-        cudaMalloc(&temp_storage, temp_storage_bytes);                           \
-        func(temp_storage, temp_storage_bytes, __VA_ARGS__);                     \
-        cudaFree(temp_storage);                                                  \
+#define CUB_WRAPPER_LFS(func, ...)                           \
+    do {                                                     \
+        size_t temp_storage_bytes = 0;                       \
+        func(nullptr, temp_storage_bytes, __VA_ARGS__);      \
+        void* temp_storage = nullptr;                        \
+        cudaMalloc(&temp_storage, temp_storage_bytes);       \
+        func(temp_storage, temp_storage_bytes, __VA_ARGS__); \
+        cudaFree(temp_storage);                              \
     } while (false)
 
     //

@@ -29,9 +29,21 @@ namespace lfs::core {
                 switch (c) {
                 case '*': regex += ".*"; break;
                 case '?': regex += "."; break;
-                case '.': case '^': case '$': case '+': case '(': case ')':
-                case '[': case ']': case '{': case '}': case '|': case '\\':
-                    regex += '\\'; regex += c; break;
+                case '.':
+                case '^':
+                case '$':
+                case '+':
+                case '(':
+                case ')':
+                case '[':
+                case ']':
+                case '{':
+                case '}':
+                case '|':
+                case '\\':
+                    regex += '\\';
+                    regex += c;
+                    break;
                 default: regex += c; break;
                 }
             }
@@ -43,7 +55,10 @@ namespace lfs::core {
         bool is_regex_pattern(const std::string& pattern) {
             for (size_t i = 0; i < pattern.size(); ++i) {
                 const char c = pattern[i];
-                if (c == '\\' && i + 1 < pattern.size()) { ++i; continue; }
+                if (c == '\\' && i + 1 < pattern.size()) {
+                    ++i;
+                    continue;
+                }
                 if (c == '+' || c == '[' || c == ']' || c == '(' || c == ')' ||
                     c == '{' || c == '}' || c == '^' || c == '$' || c == '|') {
                     return true;
@@ -85,7 +100,9 @@ namespace lfs::core {
                 const auto time_t_val = std::chrono::system_clock::to_time_t(msg.time);
                 const auto tm = *std::localtime(&time_t_val);
                 const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    msg.time.time_since_epoch()).count() % 1000;
+                                        msg.time.time_since_epoch())
+                                        .count() %
+                                    1000;
 
                 std::string_view filename;
                 if (msg.source.filename) {
@@ -103,13 +120,34 @@ namespace lfs::core {
                     level_str = "perf";
                 } else {
                     switch (msg.level) {
-                    case spdlog::level::trace:    color = colors_[0].c_str(); level_str = "trace"; break;
-                    case spdlog::level::debug:    color = colors_[1].c_str(); level_str = "debug"; break;
-                    case spdlog::level::info:     color = colors_[2].c_str(); level_str = "info"; break;
-                    case spdlog::level::warn:     color = colors_[3].c_str(); level_str = "warn"; break;
-                    case spdlog::level::err:      color = colors_[4].c_str(); level_str = "error"; break;
-                    case spdlog::level::critical: color = colors_[5].c_str(); level_str = "critical"; break;
-                    default:                      color = colors_[2].c_str(); level_str = "info"; break;
+                    case spdlog::level::trace:
+                        color = colors_[0].c_str();
+                        level_str = "trace";
+                        break;
+                    case spdlog::level::debug:
+                        color = colors_[1].c_str();
+                        level_str = "debug";
+                        break;
+                    case spdlog::level::info:
+                        color = colors_[2].c_str();
+                        level_str = "info";
+                        break;
+                    case spdlog::level::warn:
+                        color = colors_[3].c_str();
+                        level_str = "warn";
+                        break;
+                    case spdlog::level::err:
+                        color = colors_[4].c_str();
+                        level_str = "error";
+                        break;
+                    case spdlog::level::critical:
+                        color = colors_[5].c_str();
+                        level_str = "critical";
+                        break;
+                    default:
+                        color = colors_[2].c_str();
+                        level_str = "info";
+                        break;
                     }
                 }
 
@@ -159,15 +197,15 @@ namespace lfs::core {
 
         constexpr spdlog::level::level_enum to_spdlog_level(const LogLevel level) {
             switch (level) {
-            case LogLevel::Trace:       return spdlog::level::trace;
-            case LogLevel::Debug:       return spdlog::level::debug;
-            case LogLevel::Info:        return spdlog::level::info;
+            case LogLevel::Trace: return spdlog::level::trace;
+            case LogLevel::Debug: return spdlog::level::debug;
+            case LogLevel::Info: return spdlog::level::info;
             case LogLevel::Performance: return spdlog::level::info;
-            case LogLevel::Warn:        return spdlog::level::warn;
-            case LogLevel::Error:       return spdlog::level::err;
-            case LogLevel::Critical:    return spdlog::level::critical;
-            case LogLevel::Off:         return spdlog::level::off;
-            default:                    return spdlog::level::info;
+            case LogLevel::Warn: return spdlog::level::warn;
+            case LogLevel::Error: return spdlog::level::err;
+            case LogLevel::Critical: return spdlog::level::critical;
+            case LogLevel::Off: return spdlog::level::off;
+            default: return spdlog::level::info;
             }
         }
     } // anonymous namespace
@@ -192,7 +230,7 @@ namespace lfs::core {
     }
 
     void Logger::init(const LogLevel console_level, const std::string& log_file,
-                       const std::string& filter_pattern) {
+                      const std::string& filter_pattern) {
         std::lock_guard lock(impl_->mutex);
 
         std::vector<spdlog::sink_ptr> sinks;
@@ -216,7 +254,8 @@ namespace lfs::core {
     }
 
     void Logger::log(const LogLevel level, const std::source_location& loc, const std::string_view msg) {
-        if (!impl_->logger) return;
+        if (!impl_->logger)
+            return;
 
         const auto module = detect_module(loc.file_name());
         const auto module_idx = static_cast<size_t>(module);
@@ -227,10 +266,13 @@ namespace lfs::core {
 
         const auto global_lvl = static_cast<LogLevel>(global_level_.load());
         if (global_lvl == LogLevel::Performance) {
-            if (level != LogLevel::Performance) return;
+            if (level != LogLevel::Performance)
+                return;
         } else {
-            if (level == LogLevel::Performance) return;
-            if (static_cast<uint8_t>(level) < global_level_) return;
+            if (level == LogLevel::Performance)
+                return;
+            if (static_cast<uint8_t>(level) < global_level_)
+                return;
         }
 
         std::string final_msg(msg);
@@ -260,7 +302,8 @@ namespace lfs::core {
     }
 
     void Logger::flush() {
-        if (impl_->logger) impl_->logger->flush();
+        if (impl_->logger)
+            impl_->logger->flush();
     }
 
     ScopedTimer::ScopedTimer(std::string name, const LogLevel level, const std::source_location loc)

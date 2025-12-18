@@ -40,7 +40,7 @@ class Viewport {
         // Camera state
         glm::vec3 t = glm::vec3(0.0f, -3.0f, -8.0f);
         glm::vec3 pivot = glm::vec3(0.0f);
-        glm::mat3 R = computeLookAtRotation(t, pivot);  // Look at pivot from t
+        glm::mat3 R = computeLookAtRotation(t, pivot); // Look at pivot from t
         std::chrono::steady_clock::time_point pivot_set_time{};
 
         // Home position
@@ -57,7 +57,7 @@ class Viewport {
             const glm::vec3 world_up(0.0f, 1.0f, 0.0f);
             const glm::vec3 right = glm::normalize(glm::cross(world_up, forward));
             const glm::vec3 up = glm::cross(forward, right);
-            return glm::mat3(right, up, forward);  // Columns: right, up, forward
+            return glm::mat3(right, up, forward); // Columns: right, up, forward
         }
 
         void saveHomePosition() {
@@ -75,13 +75,14 @@ class Viewport {
 
         // Focus camera on bounding box
         void focusOnBounds(const glm::vec3& bounds_min, const glm::vec3& bounds_max,
-                          float fov_degrees = lfs::rendering::DEFAULT_FOV,
-                          float padding = 1.2f) {
+                           float fov_degrees = lfs::rendering::DEFAULT_FOV,
+                           float padding = 1.2f) {
             static constexpr float MIN_BOUNDS_DIAGONAL = 0.001f;
 
             const glm::vec3 center = (bounds_min + bounds_max) * 0.5f;
             const float diagonal = glm::length(bounds_max - bounds_min);
-            if (diagonal < MIN_BOUNDS_DIAGONAL) return;
+            if (diagonal < MIN_BOUNDS_DIAGONAL)
+                return;
 
             const float half_fov = glm::radians(fov_degrees) * 0.5f;
             const float distance = (diagonal * 0.5f * padding) / std::tan(half_fov);
@@ -206,7 +207,8 @@ class Viewport {
 
         float getSecondsSincePivotSet() const {
             return std::chrono::duration<float>(
-                std::chrono::steady_clock::now() - pivot_set_time).count();
+                       std::chrono::steady_clock::now() - pivot_set_time)
+                .count();
         }
 
         void updatePivotFromCamera(float distance = 5.0f) {
@@ -312,8 +314,8 @@ public:
     }
 
     glm::mat4 getProjectionMatrix(float fov_degrees = lfs::rendering::DEFAULT_FOV,
-                                   float near_plane = lfs::rendering::DEFAULT_NEAR_PLANE,
-                                   float far_plane = lfs::rendering::DEFAULT_FAR_PLANE) const {
+                                  float near_plane = lfs::rendering::DEFAULT_NEAR_PLANE,
+                                  float far_plane = lfs::rendering::DEFAULT_FAR_PLANE) const {
         float aspect_ratio = static_cast<float>(windowSize.x) / static_cast<float>(windowSize.y);
         float fov_radians = glm::radians(fov_degrees);
         return glm::perspective(fov_radians, aspect_ratio, near_plane, far_plane);

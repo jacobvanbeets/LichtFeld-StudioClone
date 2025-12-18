@@ -79,7 +79,8 @@ TEST_F(StridedTensorBenchmark, Transpose1080pImage) {
     double gpu_time = benchmark([&]() {
         auto t = img_gpu.transpose(0, 1);
         return t.numel();
-    }, 20, 100); // Increased warmup from default 10 to 20
+    },
+                                20, 100); // Increased warmup from default 10 to 20
     print_time("GPU: Transpose (zero-copy)", gpu_time);
 
     auto transposed_gpu = img_gpu.transpose(0, 1);

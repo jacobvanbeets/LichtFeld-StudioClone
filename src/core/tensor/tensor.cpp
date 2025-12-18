@@ -1,11 +1,11 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "core/logger.hpp"
+#include "core/tensor_trace.hpp"
 #include "internal/tensor_broadcast.hpp"
 #include "internal/tensor_impl.hpp"
 #include "internal/tensor_ops.hpp"
-#include "core/logger.hpp"
-#include "core/tensor_trace.hpp"
 #include <cstring>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
@@ -110,8 +110,8 @@ namespace lfs::core {
           is_view_(other.is_view_),
           is_aligned_16_(other.is_aligned_16_), // Copy alignment flags
           is_aligned_128_(other.is_aligned_128_),
-          stream_(other.stream_), // Copy stream assignment
-          capacity_(other.capacity_),       // Copy capacity management
+          stream_(other.stream_),     // Copy stream assignment
+          capacity_(other.capacity_), // Copy capacity management
           logical_size_(other.logical_size_),
           id_(next_id_++) {
 
@@ -688,8 +688,8 @@ namespace lfs::core {
         // Account for storage offset
         const char* src = static_cast<const char*>(data_) + storage_offset_ * dtype_size(dtype_);
 
-        //LOG_DEBUG("to(Device): storage_offset_={}, dtype_size={}, src_offset_bytes={}, bytes_to_copy={}",
-        //          storage_offset_, dtype_size(dtype_), storage_offset_ * dtype_size(dtype_), bytes());
+        // LOG_DEBUG("to(Device): storage_offset_={}, dtype_size={}, src_offset_bytes={}, bytes_to_copy={}",
+        //           storage_offset_, dtype_size(dtype_), storage_offset_ * dtype_size(dtype_), bytes());
 
         if (device_ == Device::CPU && device == Device::CUDA) {
             // Use cudaMemcpyAsync with pinned memory for maximum PCIe bandwidth (~7-11 GB/s)
@@ -698,10 +698,10 @@ namespace lfs::core {
             // PROFILING: Track H2D uploads to identify bottlenecks
             static std::atomic<uint64_t> h2d_counter{0};
             static std::atomic<uint64_t> h2d_bytes{0};
-            static std::atomic<uint64_t> h2d_tiny{0};      // < 64 bytes (metadata)
-            static std::atomic<uint64_t> h2d_small{0};     // 64B - 1KB
-            static std::atomic<uint64_t> h2d_medium{0};    // 1KB - 1MB
-            static std::atomic<uint64_t> h2d_large{0};     // > 1MB (images)
+            static std::atomic<uint64_t> h2d_tiny{0};   // < 64 bytes (metadata)
+            static std::atomic<uint64_t> h2d_small{0};  // 64B - 1KB
+            static std::atomic<uint64_t> h2d_medium{0}; // 1KB - 1MB
+            static std::atomic<uint64_t> h2d_large{0};  // > 1MB (images)
 
             uint64_t current_count = h2d_counter.fetch_add(1, std::memory_order_relaxed) + 1;
             uint64_t upload_bytes = bytes();
@@ -712,7 +712,7 @@ namespace lfs::core {
                 h2d_tiny.fetch_add(1, std::memory_order_relaxed);
             } else if (upload_bytes < 1024) {
                 h2d_small.fetch_add(1, std::memory_order_relaxed);
-            } else if (upload_bytes < 1024*1024) {
+            } else if (upload_bytes < 1024 * 1024) {
                 h2d_medium.fetch_add(1, std::memory_order_relaxed);
             } else {
                 h2d_large.fetch_add(1, std::memory_order_relaxed);
@@ -1262,7 +1262,7 @@ namespace lfs::core {
 
         // Only CUDA tensors benefit from stream-aware fill
         if (device_ != Device::CUDA) {
-            return fill_(value);  // Fall back to sync version for CPU
+            return fill_(value); // Fall back to sync version for CPU
         }
 
         const size_t n = numel();
@@ -1337,7 +1337,8 @@ namespace lfs::core {
             return copy_from(src.to(dtype_));
         }
 
-        if (numel() == 0) return *this;
+        if (numel() == 0)
+            return *this;
 
         const bool dst_contig = is_contiguous();
         const bool src_contig = other.is_contiguous();
@@ -1366,7 +1367,8 @@ namespace lfs::core {
                     other.data_ptr(), data_ptr(), shape_arr, strides_arr, rank, numel(), dtype_, nullptr);
             } else {
                 std::vector<size_t> shape_vec(rank);
-                for (size_t i = 0; i < rank; ++i) shape_vec[i] = static_cast<size_t>(size(i));
+                for (size_t i = 0; i < rank; ++i)
+                    shape_vec[i] = static_cast<size_t>(size(i));
 
                 size_t* d_shape = nullptr;
                 size_t* d_strides = nullptr;
@@ -2246,7 +2248,7 @@ namespace lfs::core {
         // Validate tensor state
         if (!data_owner_) {
             LOG_ERROR("reserve({}) failed on tensor '{}' (id={}): null data_owner_, is_view_={}, capacity_={}, shape={}",
-                     new_capacity, name_.empty() ? "<unnamed>" : name_, id_, is_view_, capacity_, shape_.str());
+                      new_capacity, name_.empty() ? "<unnamed>" : name_, id_, is_view_, capacity_, shape_.str());
             throw TensorError("reserve() requires an owning tensor (not a view)", this);
         }
         if (shape_.rank() == 0) {
@@ -2280,7 +2282,7 @@ namespace lfs::core {
         // First, explicitly release the old buffer to avoid double allocation
         // This ensures the old buffer is freed BEFORE we allocate the new one
         void* old_data = data_;
-        std::shared_ptr<void> old_owner = data_owner_;  // Keep reference temporarily
+        std::shared_ptr<void> old_owner = data_owner_; // Keep reference temporarily
 
         // Allocate new buffer
         void* new_data = nullptr;
@@ -2320,11 +2322,11 @@ namespace lfs::core {
             }
         });
         capacity_ = new_capacity;
-        logical_size_ = current_rows;  // Set to actual current size (from shape_[0])
+        logical_size_ = current_rows; // Set to actual current size (from shape_[0])
 
         // Explicitly release old buffer AFTER copy is complete
         // This ensures we don't have both buffers alive at the same time
-        old_owner.reset();  // Decrement ref count, potentially freeing old buffer immediately
+        old_owner.reset(); // Decrement ref count, potentially freeing old buffer immediately
 
         LOG_DEBUG("✓ Tensor #{}: reserve({}) SUCCEEDED - capacity now {}, size {} ({:.1f}% utilization)",
                   id_, new_capacity, capacity_, current_rows, 100.0 * current_rows / capacity_);
@@ -2403,7 +2405,8 @@ namespace lfs::core {
         Tensor t;
         t.data_ = data_ptr;
         t.data_owner_ = std::shared_ptr<void>(data_ptr, [](void* ptr) {
-            if (ptr) cudaFree(ptr);
+            if (ptr)
+                cudaFree(ptr);
         });
         t.shape_ = shape;
         t.strides_ = shape.strides();

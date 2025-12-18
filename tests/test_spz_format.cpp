@@ -2,13 +2,13 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
-#include <filesystem>
 #include <cmath>
+#include <filesystem>
+#include <gtest/gtest.h>
 
 #include "core/splat_data.hpp"
-#include "io/loader.hpp"
 #include "io/exporter.hpp"
+#include "io/loader.hpp"
 
 namespace fs = std::filesystem;
 using namespace lfs::core;
@@ -17,7 +17,7 @@ using namespace lfs::io;
 class SpzFormatTest : public ::testing::Test {
 protected:
     static constexpr float EPSILON = 1e-4f;
-    static constexpr float SPZ_TOLERANCE = 0.15f;  // SPZ uses lossy 8-bit quantization
+    static constexpr float SPZ_TOLERANCE = 0.15f; // SPZ uses lossy 8-bit quantization
 
     const fs::path test_ply = fs::path(PROJECT_ROOT_PATH) / "windmill.ply";
     const fs::path temp_dir = fs::temp_directory_path() / "lfs_spz_test";
@@ -69,10 +69,10 @@ protected:
             scaling_ptr[i * 3 + 2] = -3.0f + 0.01f * static_cast<float>((i + 2) % 100);
 
             // Rotation: normalized quaternion (wxyz format)
-            rotation_ptr[i * 4 + 0] = 1.0f;  // w
-            rotation_ptr[i * 4 + 1] = 0.0f;  // x
-            rotation_ptr[i * 4 + 2] = 0.0f;  // y
-            rotation_ptr[i * 4 + 3] = 0.0f;  // z
+            rotation_ptr[i * 4 + 0] = 1.0f; // w
+            rotation_ptr[i * 4 + 1] = 0.0f; // x
+            rotation_ptr[i * 4 + 2] = 0.0f; // y
+            rotation_ptr[i * 4 + 3] = 0.0f; // z
 
             // Opacity: logit values in SPZ-safe range (avoids inf from sigmoid)
             opacity_ptr[i] = -2.0f + 0.04f * static_cast<float>(i % 100);
@@ -94,8 +94,7 @@ protected:
             std::move(scaling),
             std::move(rotation),
             std::move(opacity),
-            0.5f
-        );
+            0.5f);
     }
 };
 
@@ -230,10 +229,10 @@ TEST_F(SpzFormatTest, RotationQuaternionConversion) {
 
     // Verify quaternions represent same rotation (q and -q are equivalent)
     for (size_t i = 0; i < 10; ++i) {
-        const float dot = orig_rot_ptr[i*4+0] * load_rot_ptr[i*4+0] +
-                          orig_rot_ptr[i*4+1] * load_rot_ptr[i*4+1] +
-                          orig_rot_ptr[i*4+2] * load_rot_ptr[i*4+2] +
-                          orig_rot_ptr[i*4+3] * load_rot_ptr[i*4+3];
+        const float dot = orig_rot_ptr[i * 4 + 0] * load_rot_ptr[i * 4 + 0] +
+                          orig_rot_ptr[i * 4 + 1] * load_rot_ptr[i * 4 + 1] +
+                          orig_rot_ptr[i * 4 + 2] * load_rot_ptr[i * 4 + 2] +
+                          orig_rot_ptr[i * 4 + 3] * load_rot_ptr[i * 4 + 3];
         EXPECT_NEAR(std::abs(dot), 1.0f, SPZ_TOLERANCE) << "Rotation mismatch at point " << i;
     }
 }
@@ -289,5 +288,5 @@ TEST_F(SpzFormatTest, RealPlyRoundtrip) {
 
     // CRITICAL: sh0 shape must match PLY loader
     EXPECT_EQ(spz_splat.sh0().ndim(), ply_splat.sh0().ndim());
-    EXPECT_EQ(spz_splat.sh0().size(1), ply_splat.sh0().size(1));  // Must be 1
+    EXPECT_EQ(spz_splat.sh0().size(1), ply_splat.sh0().size(1)); // Must be 1
 }

@@ -30,8 +30,8 @@
  * These tests ensure we never reintroduce these bugs.
  */
 
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
+#include <gtest/gtest.h>
 #include <iostream>
 
 using namespace lfs::core;
@@ -48,7 +48,7 @@ TEST(MCMCTensorOps, NonzeroBasicBool) {
     auto indices = mask.nonzero().squeeze(-1).cpu();
 
     ASSERT_EQ(indices.dtype(), DataType::Int64);
-    ASSERT_EQ(indices.numel(), 5);  // Five 1s in the mask
+    ASSERT_EQ(indices.numel(), 5); // Five 1s in the mask
 
     const int64_t* idx_ptr = indices.ptr<int64_t>();
     EXPECT_EQ(idx_ptr[0], 0);
@@ -66,8 +66,9 @@ TEST(MCMCTensorOps, NonzeroRealisticMCMCSize) {
     // ~3% dead (like real MCMC scenario)
     size_t expected_alive = 0;
     for (size_t i = 0; i < N; ++i) {
-        mask_data[i] = (i % 30 != 0) ? 1 : 0;  // ~97% alive
-        if (mask_data[i]) expected_alive++;
+        mask_data[i] = (i % 30 != 0) ? 1 : 0; // ~97% alive
+        if (mask_data[i])
+            expected_alive++;
     }
 
     auto alive_mask = Tensor::from_blob(mask_data.data(), {N}, Device::CPU, DataType::Bool).to(Device::CUDA);
@@ -78,7 +79,7 @@ TEST(MCMCTensorOps, NonzeroRealisticMCMCSize) {
 
     // Verify first few indices are correct
     const int64_t* idx_ptr = alive_indices.ptr<int64_t>();
-    EXPECT_EQ(idx_ptr[0], 1);  // Skip 0 (dead)
+    EXPECT_EQ(idx_ptr[0], 1); // Skip 0 (dead)
     EXPECT_EQ(idx_ptr[1], 2);
     EXPECT_EQ(idx_ptr[2], 3);
 }
@@ -107,7 +108,6 @@ TEST(MCMCTensorOps, IndexSelectInt64Basic) {
     EXPECT_EQ(result_ptr[0], 2);
     EXPECT_EQ(result_ptr[1], 5);
     EXPECT_EQ(result_ptr[2], 8);
-
 }
 
 TEST(MCMCTensorOps, IndexSelectInt64MCMCScenario) {
@@ -141,7 +141,6 @@ TEST(MCMCTensorOps, IndexSelectInt64MCMCScenario) {
     EXPECT_EQ(result_ptr[2], 15);
     EXPECT_EQ(result_ptr[3], 20);
     EXPECT_EQ(result_ptr[4], 25);
-
 }
 
 TEST(MCMCTensorOps, IndexSelectInt64LargeIndices) {
@@ -201,7 +200,7 @@ TEST(MCMCTensorOps, IndexSelectInt32RatiosExact) {
     // Simulate the exact MCMC scenario from mcmc.cpp:174
     // ratios = ratios.index_select(0, sampled_idxs).contiguous();
 
-    constexpr size_t N = 54275;  // Typical total gaussians
+    constexpr size_t N = 54275; // Typical total gaussians
     constexpr size_t n_dead = 1651;
 
     // Create ratios tensor (Int32) - counts of how many times each gaussian was sampled
@@ -212,7 +211,7 @@ TEST(MCMCTensorOps, IndexSelectInt32RatiosExact) {
     // Create sampled_idxs (Int64) - indices of alive gaussians that were sampled
     std::vector<int64_t> sampled_data(n_dead);
     for (size_t i = 0; i < n_dead; ++i) {
-        sampled_data[i] = static_cast<int64_t>(i * 30 % N);  // Some pattern
+        sampled_data[i] = static_cast<int64_t>(i * 30 % N); // Some pattern
     }
     auto sampled_idxs = Tensor::from_blob(sampled_data.data(), {n_dead}, Device::CPU, DataType::Int64).to(Device::CUDA);
 
@@ -240,7 +239,7 @@ TEST(MCMCTensorOps, IndexSelectInt32RatiosCounting) {
     // Simulate ratios after index_add_ (some gaussians sampled multiple times)
     std::vector<int32_t> ratios_data(N);
     for (size_t i = 0; i < N; ++i) {
-        ratios_data[i] = 1 + (i % 5);  // 1, 2, 3, 4, 5, 1, 2, ...
+        ratios_data[i] = 1 + (i % 5); // 1, 2, 3, 4, 5, 1, 2, ...
     }
     auto ratios = Tensor::from_blob(ratios_data.data(), {N}, Device::CPU, DataType::Int32).to(Device::CUDA);
 

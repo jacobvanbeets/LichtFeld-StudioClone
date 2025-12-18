@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "metrics.hpp"
+#include "../rasterization/fast_rasterizer.hpp"
 #include "core/image_io.hpp"
 #include "core/splat_data.hpp"
-#include "../rasterization/fast_rasterizer.hpp"
 #include "lfs/kernels/ssim.cuh"
 #include <chrono>
 #include <cmath>
@@ -162,7 +162,7 @@ namespace lfs::training {
 
         // Initialize metrics
         _psnr_metric = std::make_unique<PSNR>(1.0f);
-        _ssim_metric = std::make_unique<SSIM>(true);  // apply_valid_padding = true
+        _ssim_metric = std::make_unique<SSIM>(true); // apply_valid_padding = true
 
         // Initialize reporter
         _reporter = std::make_unique<MetricsReporter>(params.dataset.output_path);

@@ -21,7 +21,7 @@ namespace lfs::rendering {
         constexpr float HOVER_SCALE = 1.2f;
         constexpr float HOVER_BRIGHTNESS = 1.3f;
         constexpr float HIT_RADIUS_SCALE = 2.5f;
-    }
+    } // namespace
 
     constexpr glm::vec3 ViewportGizmo::AXIS_COLORS[];
 
@@ -351,12 +351,17 @@ namespace lfs::rendering {
             const glm::mat4 model = glm::translate(glm::mat4(1), labelPos) *
                                     glm::scale(glm::mat4(1), glm::vec3(sphereRadius * scaleFactor * scale));
             const glm::mat4 mvp = proj * view * model;
-            if (auto r = s->set("uMVP", mvp); !r) return r;
-            if (auto r = s->set("uModel", glm::mat4(1.0f)); !r) return r;
+            if (auto r = s->set("uMVP", mvp); !r)
+                return r;
+            if (auto r = s->set("uModel", glm::mat4(1.0f)); !r)
+                return r;
             const glm::vec3 color = glm::min(AXIS_COLORS[i] * brightness, glm::vec3(1.0f));
-            if (auto r = s->set("uColor", color); !r) return r;
-            if (auto r = s->set("uAlpha", 1.0f); !r) return r;
-            if (auto r = s->set("uUseLighting", 0); !r) return r;
+            if (auto r = s->set("uColor", color); !r)
+                return r;
+            if (auto r = s->set("uAlpha", 1.0f); !r)
+                return r;
+            if (auto r = s->set("uUseLighting", 0); !r)
+                return r;
             glDrawArrays(GL_TRIANGLES, sphere_vertex_start_, sphere_vertex_count_);
 
             const glm::vec4 clipPos = proj * view * glm::vec4(labelPos, 1.0f);
@@ -412,12 +417,17 @@ namespace lfs::rendering {
                                     glm::scale(glm::mat4(1), glm::vec3(sphereRadius * scaleFactor * scale));
             const glm::mat4 mvp = proj * view * model;
 
-            if (auto r = s->set("uMVP", mvp); !r) return r;
-            if (auto r = s->set("uModel", model); !r) return r;
+            if (auto r = s->set("uMVP", mvp); !r)
+                return r;
+            if (auto r = s->set("uModel", model); !r)
+                return r;
             const glm::vec3 color = glm::min(AXIS_COLORS[i] * brightness, glm::vec3(1.0f));
-            if (auto r = s->set("uColor", color); !r) return r;
-            if (auto r = s->set("uAlpha", 1.0f); !r) return r;
-            if (auto r = s->set("uUseLighting", 0); !r) return r;
+            if (auto r = s->set("uColor", color); !r)
+                return r;
+            if (auto r = s->set("uAlpha", 1.0f); !r)
+                return r;
+            if (auto r = s->set("uUseLighting", 0); !r)
+                return r;
 
             glDrawArrays(GL_TRIANGLES, ring_vertex_start_, ring_vertex_count_);
 
@@ -540,9 +550,10 @@ namespace lfs::rendering {
     }
 
     std::optional<GizmoHitResult> ViewportGizmo::hitTest(const glm::vec2& click_pos,
-                                                          const glm::vec2& viewport_pos,
-                                                          const glm::vec2& viewport_size) const {
-        if (!initialized_) return std::nullopt;
+                                                         const glm::vec2& viewport_pos,
+                                                         const glm::vec2& viewport_size) const {
+        if (!initialized_)
+            return std::nullopt;
 
         // Gizmo bounds (lower-right corner in ImGui coords)
         const float gizmo_x = viewport_pos.x + viewport_size.x - size_ - margin_x_;
@@ -556,7 +567,8 @@ namespace lfs::rendering {
 
         // Check spheres (positive axes)
         for (int i = 0; i < 3; ++i) {
-            if (!sphere_hits_[i].visible) continue;
+            if (!sphere_hits_[i].visible)
+                continue;
             const float dx = click_pos.x - sphere_hits_[i].screen_pos.x;
             const float dy = click_pos.y - sphere_hits_[i].screen_pos.y;
             const float r = sphere_hits_[i].radius * HIT_RADIUS_SCALE;
@@ -567,7 +579,8 @@ namespace lfs::rendering {
 
         // Check rings (negative axes)
         for (int i = 0; i < 3; ++i) {
-            if (!ring_hits_[i].visible) continue;
+            if (!ring_hits_[i].visible)
+                continue;
             const float dx = click_pos.x - ring_hits_[i].screen_pos.x;
             const float dy = click_pos.y - ring_hits_[i].screen_pos.y;
             const float r = ring_hits_[i].radius * HIT_RADIUS_SCALE;
@@ -585,25 +598,25 @@ namespace lfs::rendering {
 
         glm::vec3 forward, up, right;
         switch (axis) {
-            case GizmoAxis::X:
-                forward = glm::vec3(sign, 0.0f, 0.0f);
-                up = glm::vec3(0.0f, 1.0f, 0.0f);
-                break;
-            case GizmoAxis::Y:
-                forward = glm::vec3(0.0f, -sign, 0.0f);
-                up = glm::vec3(0.0f, 0.0f, sign);
-                break;
-            case GizmoAxis::Z:
-                forward = glm::vec3(0.0f, 0.0f, sign);
-                up = glm::vec3(0.0f, 1.0f, 0.0f);
-                break;
-            default:
-                return glm::mat3(1.0f);
+        case GizmoAxis::X:
+            forward = glm::vec3(sign, 0.0f, 0.0f);
+            up = glm::vec3(0.0f, 1.0f, 0.0f);
+            break;
+        case GizmoAxis::Y:
+            forward = glm::vec3(0.0f, -sign, 0.0f);
+            up = glm::vec3(0.0f, 0.0f, sign);
+            break;
+        case GizmoAxis::Z:
+            forward = glm::vec3(0.0f, 0.0f, sign);
+            up = glm::vec3(0.0f, 1.0f, 0.0f);
+            break;
+        default:
+            return glm::mat3(1.0f);
         }
 
         right = glm::normalize(glm::cross(up, forward));
         up = glm::normalize(glm::cross(forward, right));
-        return glm::mat3(right, up, forward);  // Columns: [right, up, forward]
+        return glm::mat3(right, up, forward); // Columns: [right, up, forward]
     }
 
 } // namespace lfs::rendering

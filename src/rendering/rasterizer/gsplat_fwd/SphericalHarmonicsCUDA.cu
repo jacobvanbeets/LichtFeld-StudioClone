@@ -16,7 +16,7 @@ namespace gsplat_fwd {
     // SH basis constants (Sloan, JCGT 2013)
     constexpr float SH_C0 = 0.2820947917738781f;
     constexpr float SH_C1 = 0.48860251190292f;
-    constexpr float SH_DC_OFFSET = 0.5f;  // 3DGS stores colors as (color - 0.5) / C0
+    constexpr float SH_DC_OFFSET = 0.5f; // 3DGS stores colors as (color - 0.5) / C0
 
     template <typename scalar_t>
     __device__ void sh_coeffs_to_color_fast(
@@ -24,8 +24,7 @@ namespace gsplat_fwd {
         const uint32_t c,
         const vec3& dir,
         const scalar_t* __restrict__ coeffs,
-        scalar_t* __restrict__ colors
-    ) {
+        scalar_t* __restrict__ colors) {
         float result = SH_C0 * coeffs[c];
         if (degree >= 1) {
             // Normally rsqrt is faster than sqrt, but --use_fast_math will optimize
@@ -116,8 +115,7 @@ namespace gsplat_fwd {
         const scalar_t* __restrict__ coeffs,
         const scalar_t* __restrict__ v_colors,
         scalar_t* __restrict__ v_coeffs,
-        vec3* __restrict__ v_dir
-    ) {
+        vec3* __restrict__ v_dir) {
         const float v_colors_local = v_colors[c];
 
         v_coeffs[c] = SH_C0 * v_colors_local;
@@ -131,13 +129,13 @@ namespace gsplat_fwd {
         float v_x = 0.f, v_y = 0.f, v_z = 0.f;
 
         v_coeffs[1 * 3 + c] = -SH_C1 * y * v_colors_local;
-        v_coeffs[2 * 3 + c] =  SH_C1 * z * v_colors_local;
+        v_coeffs[2 * 3 + c] = SH_C1 * z * v_colors_local;
         v_coeffs[3 * 3 + c] = -SH_C1 * x * v_colors_local;
 
         if (v_dir != nullptr) {
             v_x += -SH_C1 * coeffs[3 * 3 + c] * v_colors_local;
             v_y += -SH_C1 * coeffs[1 * 3 + c] * v_colors_local;
-            v_z +=  SH_C1 * coeffs[2 * 3 + c] * v_colors_local;
+            v_z += SH_C1 * coeffs[2 * 3 + c] * v_colors_local;
         }
         if (degree < 2) {
             if (v_dir != nullptr) {
@@ -392,7 +390,7 @@ namespace gsplat_fwd {
         // When dirs is nullptr, only SH0 (degree=0) can be evaluated
         vec3 dir = (degrees_to_use > 0 && dirs != nullptr) ? dirs[elem_id] : vec3{0.f, 0.f, 1.f};
         sh_coeffs_to_color_fast(
-            dirs != nullptr ? degrees_to_use : 0u,  // Only use higher SH degrees if dirs available
+            dirs != nullptr ? degrees_to_use : 0u, // Only use higher SH degrees if dirs available
             c,
             dir,
             coeffs + elem_id * K * 3,
@@ -401,14 +399,13 @@ namespace gsplat_fwd {
 
     void launch_spherical_harmonics_fwd_kernel(
         uint32_t degrees_to_use,
-        const float* dirs,        // [N, 3]
-        const float* coeffs,      // [N, K, 3]
-        const bool* masks,        // [N] optional (can be nullptr)
-        int64_t total_elements,   // N
+        const float* dirs,      // [N, 3]
+        const float* coeffs,    // [N, K, 3]
+        const bool* masks,      // [N] optional (can be nullptr)
+        int64_t total_elements, // N
         int32_t K,
-        float* colors,            // [N, 3]
-        cudaStream_t stream
-    ) {
+        float* colors, // [N, 3]
+        cudaStream_t stream) {
         const uint32_t N = static_cast<uint32_t>(total_elements);
 
         // parallelize over N * 3
@@ -479,17 +476,16 @@ namespace gsplat_fwd {
 
     void launch_spherical_harmonics_bwd_kernel(
         uint32_t degrees_to_use,
-        const float* dirs,        // [N, 3]
-        const float* coeffs,      // [N, K, 3]
-        const bool* masks,        // [N] optional (can be nullptr)
-        const float* v_colors,    // [N, 3]
-        int64_t total_elements,   // N
+        const float* dirs,      // [N, 3]
+        const float* coeffs,    // [N, K, 3]
+        const bool* masks,      // [N] optional (can be nullptr)
+        const float* v_colors,  // [N, 3]
+        int64_t total_elements, // N
         int32_t K,
         bool compute_v_dirs,
-        float* v_coeffs,          // [N, K, 3]
-        float* v_dirs,            // [N, 3] optional (can be nullptr)
-        cudaStream_t stream
-    ) {
+        float* v_coeffs, // [N, K, 3]
+        float* v_dirs,   // [N, 3] optional (can be nullptr)
+        cudaStream_t stream) {
         const uint32_t N = static_cast<uint32_t>(total_elements);
 
         // parallelize over N * 3
@@ -522,10 +518,10 @@ namespace gsplat_fwd {
         const float* __restrict__ viewmats,
         const uint32_t C,
         const uint32_t N,
-        float* __restrict__ dirs
-    ) {
+        float* __restrict__ dirs) {
         const uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx >= C * N) return;
+        if (idx >= C * N)
+            return;
 
         const uint32_t c = idx / N;
         const uint32_t n = idx % N;
@@ -558,9 +554,9 @@ namespace gsplat_fwd {
         const uint32_t C,
         const uint32_t N,
         float* dirs,
-        cudaStream_t stream
-    ) {
-        if (C * N == 0) return;
+        cudaStream_t stream) {
+        if (C * N == 0)
+            return;
 
         constexpr uint32_t BLOCK_SIZE = 256;
         const uint32_t num_blocks = (C * N + BLOCK_SIZE - 1) / BLOCK_SIZE;

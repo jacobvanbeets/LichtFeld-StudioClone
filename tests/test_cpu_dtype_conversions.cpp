@@ -27,14 +27,14 @@ class CPUDtypeConversionTest : public ::testing::Test {
 protected:
     // Test sizes: small, medium, large, very large (mural scale)
     const std::vector<size_t> test_sizes = {
-        1000,       // 1K - small baseline
-        10000,      // 10K
-        100000,     // 100K - bicycle scale
-        1000000,    // 1M
-        4000000,    // 4M - mural scale (KNOWN FAILURE)
+        1000,    // 1K - small baseline
+        10000,   // 10K
+        100000,  // 100K - bicycle scale
+        1000000, // 1M
+        4000000, // 4M - mural scale (KNOWN FAILURE)
     };
 
-    template<typename T>
+    template <typename T>
     Tensor create_tensor(size_t num_elements, Device device, DataType dtype) {
         if constexpr (std::is_same_v<T, bool>) {
             // Special handling for bool - can't use vector<bool>::data()
@@ -59,10 +59,10 @@ protected:
     }
 
     void test_conversion(const std::string& test_name,
-                        DataType from_dtype,
-                        DataType to_dtype,
-                        size_t num_elements,
-                        Device device) {
+                         DataType from_dtype,
+                         DataType to_dtype,
+                         size_t num_elements,
+                         Device device) {
         std::cout << "\n  Testing " << test_name
                   << " [" << num_elements << " elements on "
                   << (device == Device::CPU ? "CPU" : "GPU") << "]... ";
@@ -354,11 +354,11 @@ TEST_F(CPUDtypeConversionTest, UInt8_to_Float32_CPU_BinarySearch) {
     size_t failing_min = 4000000;
 
     std::vector<size_t> probe_sizes = {
-        1500000,  // 1.5M
-        2000000,  // 2M
-        2500000,  // 2.5M
-        3000000,  // 3M
-        3500000,  // 3.5M
+        1500000, // 1.5M
+        2000000, // 2M
+        2500000, // 2.5M
+        3000000, // 3M
+        3500000, // 3.5M
     };
 
     for (size_t size : probe_sizes) {
@@ -391,7 +391,7 @@ TEST_F(CPUDtypeConversionTest, UInt8_to_Float32_CPU_BinarySearch) {
 TEST_F(CPUDtypeConversionTest, UInt8_to_Float32_CPU_DataIntegrity) {
     std::cout << "\n=== UInt8->Float32 CPU Data Integrity Check ===" << std::endl;
 
-    const size_t test_size = 100000;  // Use safe size
+    const size_t test_size = 100000; // Use safe size
 
     // Create deterministic data
     std::vector<uint8_t> data(test_size);

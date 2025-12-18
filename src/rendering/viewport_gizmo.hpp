@@ -14,7 +14,9 @@ namespace lfs::rendering {
 
     class TextRenderer; // Forward declaration
 
-    enum class GizmoAxis { X = 0, Y = 1, Z = 2 };
+    enum class GizmoAxis { X = 0,
+                           Y = 1,
+                           Z = 2 };
 
     struct GizmoHitResult {
         GizmoAxis axis;
@@ -40,7 +42,10 @@ namespace lfs::rendering {
         [[nodiscard]] static glm::mat3 getAxisViewRotation(GizmoAxis axis, bool negative = false);
 
         void setSize(int size) { size_ = size; }
-        void setMargins(int x, int y) { margin_x_ = x; margin_y_ = y; }
+        void setMargins(int x, int y) {
+            margin_x_ = x;
+            margin_y_ = y;
+        }
         [[nodiscard]] int getSize() const { return size_; }
         [[nodiscard]] int getMarginX() const { return margin_x_; }
         [[nodiscard]] int getMarginY() const { return margin_y_; }
@@ -84,8 +89,7 @@ namespace lfs::rendering {
         static constexpr glm::vec3 AXIS_COLORS[3] = {
             {0.89f, 0.15f, 0.21f},
             {0.54f, 0.86f, 0.20f},
-            {0.17f, 0.48f, 0.87f}
-        };
+            {0.17f, 0.48f, 0.87f}};
     };
 
 } // namespace lfs::rendering

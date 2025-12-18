@@ -20,7 +20,8 @@ namespace lfs::core {
             const size_t rank,
             const size_t n) {
             const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-            if (idx >= n) return;
+            if (idx >= n)
+                return;
 
             size_t tmp = idx;
             size_t offset = 0;
@@ -41,7 +42,8 @@ namespace lfs::core {
             const size_t s0, const size_t s1,
             const size_t n) {
             const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-            if (idx >= n) return;
+            if (idx >= n)
+                return;
 
             const size_t i1 = idx % d1;
             const size_t i0 = idx / d1;
@@ -56,7 +58,8 @@ namespace lfs::core {
             const size_t s0, const size_t s1,
             const size_t n) {
             const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-            if (idx >= n) return;
+            if (idx >= n)
+                return;
 
             const size_t i1 = idx % d1;
             const size_t i0 = idx / d1;
@@ -67,7 +70,8 @@ namespace lfs::core {
             const void* input, void* output,
             const size_t* shape, const size_t* strides,
             const size_t rank, const size_t n, cudaStream_t stream) {
-            if (rank != 2) return;
+            if (rank != 2)
+                return;
             const int blocks = (n + SCATTER_BLOCK_SIZE - 1) / SCATTER_BLOCK_SIZE;
             strided_scatter_int32_to_float32_rank2<<<blocks, SCATTER_BLOCK_SIZE, 0, stream>>>(
                 static_cast<const int32_t*>(input), static_cast<float*>(output),
@@ -81,38 +85,38 @@ namespace lfs::core {
             const DataType dtype, cudaStream_t stream) {
             const int blocks = (n + SCATTER_BLOCK_SIZE - 1) / SCATTER_BLOCK_SIZE;
 
-            #define LAUNCH_RANK2(T) \
-                strided_scatter_kernel_rank2<<<blocks, SCATTER_BLOCK_SIZE, 0, stream>>>( \
-                    static_cast<const T*>(input), static_cast<T*>(output), \
-                    shape[0], shape[1], strides[0], strides[1], n)
+#define LAUNCH_RANK2(T)                                                      \
+    strided_scatter_kernel_rank2<<<blocks, SCATTER_BLOCK_SIZE, 0, stream>>>( \
+        static_cast<const T*>(input), static_cast<T*>(output),               \
+        shape[0], shape[1], strides[0], strides[1], n)
 
-            #define LAUNCH_GENERIC(T) \
-                strided_scatter_kernel<<<blocks, SCATTER_BLOCK_SIZE, 0, stream>>>( \
-                    static_cast<const T*>(input), static_cast<T*>(output), \
-                    shape, strides, rank, n)
+#define LAUNCH_GENERIC(T)                                              \
+    strided_scatter_kernel<<<blocks, SCATTER_BLOCK_SIZE, 0, stream>>>( \
+        static_cast<const T*>(input), static_cast<T*>(output),         \
+        shape, strides, rank, n)
 
             if (rank == 2) {
                 switch (dtype) {
                 case DataType::Float32: LAUNCH_RANK2(float); break;
-                case DataType::Int32:   LAUNCH_RANK2(int32_t); break;
-                case DataType::Int64:   LAUNCH_RANK2(int64_t); break;
-                case DataType::UInt8:   LAUNCH_RANK2(uint8_t); break;
-                case DataType::Bool:    LAUNCH_RANK2(bool); break;
+                case DataType::Int32: LAUNCH_RANK2(int32_t); break;
+                case DataType::Int64: LAUNCH_RANK2(int64_t); break;
+                case DataType::UInt8: LAUNCH_RANK2(uint8_t); break;
+                case DataType::Bool: LAUNCH_RANK2(bool); break;
                 default: break;
                 }
             } else {
                 switch (dtype) {
                 case DataType::Float32: LAUNCH_GENERIC(float); break;
-                case DataType::Int32:   LAUNCH_GENERIC(int32_t); break;
-                case DataType::Int64:   LAUNCH_GENERIC(int64_t); break;
-                case DataType::UInt8:   LAUNCH_GENERIC(uint8_t); break;
-                case DataType::Bool:    LAUNCH_GENERIC(bool); break;
+                case DataType::Int32: LAUNCH_GENERIC(int32_t); break;
+                case DataType::Int64: LAUNCH_GENERIC(int64_t); break;
+                case DataType::UInt8: LAUNCH_GENERIC(uint8_t); break;
+                case DataType::Bool: LAUNCH_GENERIC(bool); break;
                 default: break;
                 }
             }
 
-            #undef LAUNCH_RANK2
-            #undef LAUNCH_GENERIC
+#undef LAUNCH_RANK2
+#undef LAUNCH_GENERIC
         }
 
         // ============= STRIDED COPY (read strided) =============

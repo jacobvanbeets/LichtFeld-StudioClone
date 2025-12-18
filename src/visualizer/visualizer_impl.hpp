@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "command/command_history.hpp"
 #include "core/editor_context.hpp"
 #include "core/main_loop.hpp"
 #include "core/parameter_manager.hpp"
@@ -11,14 +12,13 @@
 #include "gui/gui_manager.hpp"
 #include "input/input_controller.hpp"
 #include "internal/viewport.hpp"
-#include "rendering/rendering_manager.hpp"
 #include "rendering/rendering.hpp"
+#include "rendering/rendering_manager.hpp"
 #include "scene/scene_manager.hpp"
 #include "tools/tool_base.hpp"
 #include "training/training_manager.hpp"
 #include "visualizer/visualizer.hpp"
 #include "window/window_manager.hpp"
-#include "command/command_history.hpp"
 #include <memory>
 #include <string>
 

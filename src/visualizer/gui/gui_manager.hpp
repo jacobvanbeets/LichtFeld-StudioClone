@@ -20,14 +20,14 @@
 #include <GLFW/glfw3.h>
 #include <atomic>
 #include <filesystem>
-#include <imgui.h>
-#include <ImGuizmo.h>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <imgui.h>
+#include <ImGuizmo.h>
 
 namespace lfs::core {
     struct SplatData;
@@ -80,7 +80,7 @@ namespace lfs::vis {
             // Selection sub-mode shortcuts (Ctrl+1..5)
             void setSelectionSubMode(panels::SelectionSubMode mode);
             panels::SelectionSubMode getSelectionSubMode() const { return gizmo_toolbar_state_.selection_mode; }
-            panels::ToolType getCurrentToolMode() const;  // Delegates to EditorContext
+            panels::ToolType getCurrentToolMode() const; // Delegates to EditorContext
             const panels::GizmoToolbarState& getGizmoToolbarState() const { return gizmo_toolbar_state_; }
             panels::TransformPanelState& getTransformPanelState() { return transform_panel_state_; }
 
@@ -213,9 +213,9 @@ namespace lfs::vis {
                 std::atomic<bool> active{false};
                 std::atomic<bool> cancel_requested{false};
                 std::atomic<float> progress{0.0f};
-                lfs::core::ExportFormat format{lfs::core::ExportFormat::PLY};  // Protected by mutex
-                std::string stage;  // Protected by mutex
-                std::string error;  // Protected by mutex
+                lfs::core::ExportFormat format{lfs::core::ExportFormat::PLY}; // Protected by mutex
+                std::string stage;                                            // Protected by mutex
+                std::string error;                                            // Protected by mutex
                 std::mutex mutex;
                 std::unique_ptr<std::jthread> thread;
             };

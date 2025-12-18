@@ -39,7 +39,8 @@ namespace lfs::core::debug {
     // Auto-select validation based on device and size
     inline TensorValidation validate_tensor(const Tensor& tensor) {
         constexpr size_t GPU_THRESHOLD = 10000;
-        if (tensor.is_empty()) return {};
+        if (tensor.is_empty())
+            return {};
         if (tensor.device() == Device::CUDA && tensor.numel() > GPU_THRESHOLD) {
             return validate_tensor_gpu(tensor);
         }
@@ -69,8 +70,10 @@ namespace lfs::core::debug {
         }
 
         [[nodiscard]] std::string to_string() const {
-            if (!shapes_match) return "shape mismatch";
-            if (!dtypes_match) return "dtype mismatch";
+            if (!shapes_match)
+                return "shape mismatch";
+            if (!dtypes_match)
+                return "dtype mismatch";
             return std::format("max_diff={:.6e}, mean_diff={:.6e}, diff_count={}/{}",
                                max_abs_diff, mean_abs_diff, num_different, total_elements);
         }
@@ -112,15 +115,15 @@ namespace lfs::core::debug {
 } // namespace lfs::core::debug
 
 #ifdef TENSOR_VALIDATION_ENABLED
-    #define VALIDATE_TENSOR(tensor) \
-        lfs::core::debug::log_tensor_validation(tensor, #tensor, __FILE__, __LINE__)
-    #define VALIDATE_TENSOR_NAMED(tensor, name) \
-        lfs::core::debug::log_tensor_validation(tensor, name, __FILE__, __LINE__)
+#define VALIDATE_TENSOR(tensor) \
+    lfs::core::debug::log_tensor_validation(tensor, #tensor, __FILE__, __LINE__)
+#define VALIDATE_TENSOR_NAMED(tensor, name) \
+    lfs::core::debug::log_tensor_validation(tensor, name, __FILE__, __LINE__)
 #else
-    #define VALIDATE_TENSOR(tensor) ((void)0)
-    #define VALIDATE_TENSOR_NAMED(tensor, name) ((void)0)
+#define VALIDATE_TENSOR(tensor)             ((void)0)
+#define VALIDATE_TENSOR_NAMED(tensor, name) ((void)0)
 #endif
 
-#define INSPECT_TENSOR(tensor) lfs::core::debug::log_tensor_info(tensor, #tensor)
-#define DIFF_TENSORS(expected, actual) lfs::core::debug::log_tensor_diff(expected, actual, #expected " vs " #actual)
+#define INSPECT_TENSOR(tensor)                  lfs::core::debug::log_tensor_info(tensor, #tensor)
+#define DIFF_TENSORS(expected, actual)          lfs::core::debug::log_tensor_diff(expected, actual, #expected " vs " #actual)
 #define DIFF_TENSORS_TOL(expected, actual, tol) lfs::core::debug::log_tensor_diff(expected, actual, #expected " vs " #actual, tol)

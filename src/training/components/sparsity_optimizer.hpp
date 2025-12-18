@@ -14,12 +14,12 @@ namespace lfs::training {
      * @brief Context for manual sparsity loss forward/backward (LibTorch-free)
      */
     struct SparsityLossContext {
-        const float* opacities_ptr;  // Pointer to opacity values (raw, before sigmoid)
+        const float* opacities_ptr;   // Pointer to opacity values (raw, before sigmoid)
         const float* opa_sigmoid_ptr; // Pointer to sigmoid(opacities)
-        const float* z_ptr;          // Pointer to ADMM auxiliary variable
-        const float* u_ptr;          // Pointer to ADMM dual variable
-        size_t n;                    // Number of elements
-        float rho;                   // ADMM penalty parameter
+        const float* z_ptr;           // Pointer to ADMM auxiliary variable
+        const float* u_ptr;           // Pointer to ADMM dual variable
+        size_t n;                     // Number of elements
+        float rho;                    // ADMM penalty parameter
     };
 
     /**
@@ -45,7 +45,7 @@ namespace lfs::training {
          * @return (loss_tensor_gpu, context) or error string - NO CPU SYNC
          */
         virtual std::expected<std::pair<lfs::core::Tensor, SparsityLossContext>, std::string>
-            compute_loss_forward(const lfs::core::Tensor& opacities) = 0;
+        compute_loss_forward(const lfs::core::Tensor& opacities) = 0;
 
         /**
          * @brief MANUAL BACKWARD: Compute gradients manually
@@ -56,9 +56,9 @@ namespace lfs::training {
          * @note Gradients are written directly to grad_opacities (accumulated)
          */
         virtual std::expected<void, std::string>
-            compute_loss_backward(const SparsityLossContext& ctx,
-                                float grad_loss,
-                                lfs::core::Tensor& grad_opacities) = 0;
+        compute_loss_backward(const SparsityLossContext& ctx,
+                              float grad_loss,
+                              lfs::core::Tensor& grad_opacities) = 0;
 
         /**
          * @brief Update internal state (called periodically during training)
@@ -73,7 +73,7 @@ namespace lfs::training {
          * @return Boolean mask tensor [N] or error string
          */
         virtual std::expected<lfs::core::Tensor, std::string>
-            get_prune_mask(const lfs::core::Tensor& opacities) = 0;
+        get_prune_mask(const lfs::core::Tensor& opacities) = 0;
 
         /**
          * @brief Check if we should update state at this iteration
@@ -122,17 +122,17 @@ namespace lfs::training {
         std::expected<void, std::string> initialize(const lfs::core::Tensor& opacities) override;
 
         std::expected<std::pair<lfs::core::Tensor, SparsityLossContext>, std::string>
-            compute_loss_forward(const lfs::core::Tensor& opacities) override;
+        compute_loss_forward(const lfs::core::Tensor& opacities) override;
 
         std::expected<void, std::string>
-            compute_loss_backward(const SparsityLossContext& ctx,
-                                float grad_loss,
-                                lfs::core::Tensor& grad_opacities) override;
+        compute_loss_backward(const SparsityLossContext& ctx,
+                              float grad_loss,
+                              lfs::core::Tensor& grad_opacities) override;
 
         std::expected<void, std::string> update_state(const lfs::core::Tensor& opacities) override;
 
         std::expected<lfs::core::Tensor, std::string>
-            get_prune_mask(const lfs::core::Tensor& opacities) override;
+        get_prune_mask(const lfs::core::Tensor& opacities) override;
 
         bool should_update(int iter) const override {
             int relative_iter = iter - config_.start_iteration;
@@ -164,8 +164,8 @@ namespace lfs::training {
         lfs::core::Tensor prune_z(const lfs::core::Tensor& z);
 
         Config config_;
-        lfs::core::Tensor u_;        // Dual variable (Lagrange multiplier) [N, 1]
-        lfs::core::Tensor z_;        // Auxiliary variable for sparsity [N, 1]
+        lfs::core::Tensor u_;           // Dual variable (Lagrange multiplier) [N, 1]
+        lfs::core::Tensor z_;           // Auxiliary variable for sparsity [N, 1]
         lfs::core::Tensor opa_sigmoid_; // Cached sigmoid(opacities) [N, 1]
 
         bool initialized_ = false;

@@ -11,7 +11,7 @@
 #include "geometry/bounding_box.hpp"
 #include "point_cloud_renderer.hpp"
 #include "rendering/render_constants.hpp"
-#include "rendering/rendering.hpp"  // For SelectionMode
+#include "rendering/rendering.hpp" // For SelectionMode
 #include "screen_renderer.hpp"
 #include <glm/glm.hpp>
 #include <optional>
@@ -46,8 +46,8 @@ namespace lfs::rendering {
             float ring_width = 0.01f;
             bool show_center_markers = false;
             // Per-node transforms: array of 4x4 matrices and per-Gaussian indices
-            std::vector<glm::mat4> model_transforms;          // Array of transforms, one per node
-            std::shared_ptr<lfs::core::Tensor> transform_indices;  // Per-Gaussian index [N], nullable
+            std::vector<glm::mat4> model_transforms;              // Array of transforms, one per node
+            std::shared_ptr<lfs::core::Tensor> transform_indices; // Per-Gaussian index [N], nullable
             // Selection mask for highlighting selected Gaussians
             std::shared_ptr<lfs::core::Tensor> selection_mask;
             bool output_screen_positions = false;
@@ -59,7 +59,7 @@ namespace lfs::rendering {
             lfs::core::Tensor* brush_selection_tensor = nullptr;
             bool brush_saturation_mode = false;
             float brush_saturation_amount = 0.0f;
-            bool selection_mode_rings = false;  // Ring mode hover detection
+            bool selection_mode_rings = false; // Ring mode hover detection
             // Crop box filtering
             const Tensor* crop_box_transform = nullptr;
             const Tensor* crop_box_min = nullptr;
@@ -70,7 +70,7 @@ namespace lfs::rendering {
             const Tensor* depth_filter_transform = nullptr;
             const Tensor* depth_filter_min = nullptr;
             const Tensor* depth_filter_max = nullptr;
-            const Tensor* deleted_mask = nullptr;  // Soft deletion mask [N], true = skip
+            const Tensor* deleted_mask = nullptr; // Soft deletion mask [N], true = skip
             // Ring mode hover output
             unsigned long long* hovered_depth_id = nullptr;
             int highlight_gaussian_id = -1;
@@ -90,7 +90,7 @@ namespace lfs::rendering {
         struct RenderResult {
             Tensor image;
             Tensor depth;
-            Tensor screen_positions;  // Optional: screen positions [N, 2] for brush tool
+            Tensor screen_positions; // Optional: screen positions [N, 2] for brush tool
             bool valid = false;
         };
 
@@ -143,8 +143,8 @@ namespace lfs::rendering {
         // CUDA-GL interop for direct FBO→CUDA texture readback (eliminates CPU round-trip)
         std::optional<CudaGLInteropTexture> fbo_interop_texture_;
         bool use_fbo_interop_ = true;
-        int fbo_interop_last_width_ = 0;   // Track FBO size when interop was initialized
-        int fbo_interop_last_height_ = 0;  // to detect when we need to reinitialize
+        int fbo_interop_last_width_ = 0;  // Track FBO size when interop was initialized
+        int fbo_interop_last_height_ = 0; // to detect when we need to reinitialize
 #endif
     };
 

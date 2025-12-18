@@ -2,14 +2,14 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include "Common.h"
 #include "Intersect.h"
+#include "Common.h"
 #include "Ops.h"
 
-#include <cuda_runtime.h>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cuda_runtime.h>
 
 namespace gsplat_lfs {
 
@@ -26,11 +26,10 @@ namespace gsplat_lfs {
         uint32_t tile_height,
         bool sort,
         int32_t* tiles_per_gauss_out,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         bool packed = (camera_ids != nullptr && gaussian_ids != nullptr);
         uint32_t n_elements = packed ? 0 : C * N; // For non-packed only
-        uint32_t nnz = packed ? 0 : 0; // TODO: For packed mode
+        uint32_t nnz = packed ? 0 : 0;            // TODO: For packed mode
 
         uint32_t n_tiles = tile_width * tile_height;
         uint32_t tile_n_bits = static_cast<uint32_t>(floor(log2(n_tiles))) + 1;
@@ -49,14 +48,13 @@ namespace gsplat_lfs {
         // First pass: compute tiles_per_gauss
         launch_intersect_tile_kernel(
             means2d, radii, depths,
-            nullptr, nullptr,  // camera_ids, gaussian_ids (dense)
+            nullptr, nullptr, // camera_ids, gaussian_ids (dense)
             C, N, nnz, packed,
             tile_size, tile_width, tile_height,
-            nullptr,  // cum_tiles_per_gauss
+            nullptr, // cum_tiles_per_gauss
             tiles_per_gauss_out,
-            nullptr, nullptr,  // isect_ids, flatten_ids
-            stream
-        );
+            nullptr, nullptr, // isect_ids, flatten_ids
+            stream);
 
         // Compute cumsum on CPU for simplicity
         // For performance, this should be done on GPU with CUB
@@ -93,14 +91,13 @@ namespace gsplat_lfs {
         // Second pass: compute isect_ids and flatten_ids
         launch_intersect_tile_kernel(
             means2d, radii, depths,
-            nullptr, nullptr,  // camera_ids, gaussian_ids (dense)
+            nullptr, nullptr, // camera_ids, gaussian_ids (dense)
             C, N, nnz, packed,
             tile_size, tile_width, tile_height,
             d_cum_tiles,
-            nullptr,  // tiles_per_gauss (not needed in second pass)
+            nullptr, // tiles_per_gauss (not needed in second pass)
             result.isect_ids, result.flatten_ids,
-            stream
-        );
+            stream);
 
         // Sort by isect_ids if requested
         if (sort && n_isects > 0) {
@@ -113,8 +110,7 @@ namespace gsplat_lfs {
                 n_isects, tile_n_bits, cam_n_bits,
                 result.isect_ids, result.flatten_ids,
                 isect_ids_sorted, flatten_ids_sorted,
-                stream
-            );
+                stream);
 
             // Swap sorted buffers (radix sort may swap internally)
             cudaFree(result.isect_ids);
@@ -137,19 +133,17 @@ namespace gsplat_lfs {
         uint32_t tile_width,
         uint32_t tile_height,
         int32_t* isect_offsets,
-        cudaStream_t stream
-    ) {
+        cudaStream_t stream) {
         if (n_isects == 0) {
             cudaMemsetAsync(isect_offsets, 0,
-                           C * tile_height * tile_width * sizeof(int32_t), stream);
+                            C * tile_height * tile_width * sizeof(int32_t), stream);
             return;
         }
 
         launch_intersect_offset_kernel(
             isect_ids, n_isects,
             C, tile_width, tile_height,
-            isect_offsets, stream
-        );
+            isect_offsets, stream);
     }
 
 } // namespace gsplat_lfs

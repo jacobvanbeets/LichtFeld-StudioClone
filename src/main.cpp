@@ -21,16 +21,15 @@ int main(int argc, char* argv[]) {
 
         if constexpr (std::is_same_v<T, lfs::core::args::HelpMode>) {
             return 0;
-        }
-        else if constexpr (std::is_same_v<T, lfs::core::args::ConvertMode>) {
+        } else if constexpr (std::is_same_v<T, lfs::core::args::ConvertMode>) {
             return lfs::core::run_converter(mode.params);
-        }
-        else if constexpr (std::is_same_v<T, lfs::core::args::TrainingMode>) {
+        } else if constexpr (std::is_same_v<T, lfs::core::args::TrainingMode>) {
             LOG_INFO("========================================");
             LOG_INFO("           LichtFeld Studio             ");
             LOG_INFO("========================================");
             lfs::core::Application app;
             return app.run(std::move(mode.params));
         }
-    }, std::move(*result));
+    },
+                      std::move(*result));
 }

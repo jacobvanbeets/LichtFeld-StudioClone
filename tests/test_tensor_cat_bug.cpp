@@ -1,10 +1,10 @@
 /* Test to verify tensor cat operation works correctly */
 
-#include <gtest/gtest.h>
-#include <cuda_runtime.h>
 #include "core/tensor.hpp"
-#include <iostream>
+#include <cuda_runtime.h>
+#include <gtest/gtest.h>
 #include <iomanip>
+#include <iostream>
 
 using namespace lfs::core;
 
@@ -39,11 +39,13 @@ TEST(TensorCatBugTest, SimpleConcatenation) {
     float expected[9] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
 
     std::cout << "Expected: ";
-    for (int i = 0; i < 9; i++) std::cout << expected[i] << " ";
+    for (int i = 0; i < 9; i++)
+        std::cout << expected[i] << " ";
     std::cout << std::endl;
 
     std::cout << "Got:      ";
-    for (int i = 0; i < 9; i++) std::cout << result_data[i] << " ";
+    for (int i = 0; i < 9; i++)
+        std::cout << result_data[i] << " ";
     std::cout << std::endl;
 
     for (int i = 0; i < 9; i++) {
@@ -88,7 +90,7 @@ TEST(TensorCatBugTest, TrimmedTensorConcatenation) {
     auto result = Tensor::cat(parts, 0);
 
     // Verify shape
-    ASSERT_EQ(result.shape()[0], 5);  // 3 + 2
+    ASSERT_EQ(result.shape()[0], 5); // 3 + 2
     ASSERT_EQ(result.shape()[1], 3);
 
     // Verify first 3 rows match trimmed data
@@ -98,9 +100,9 @@ TEST(TensorCatBugTest, TrimmedTensorConcatenation) {
     std::cout << "\nTrimmed tensor concatenation:" << std::endl;
     for (size_t i = 0; i < 5; i++) {
         std::cout << "  Row " << i << ": "
-                  << result_data[i*3 + 0] << ", "
-                  << result_data[i*3 + 1] << ", "
-                  << result_data[i*3 + 2] << std::endl;
+                  << result_data[i * 3 + 0] << ", "
+                  << result_data[i * 3 + 1] << ", "
+                  << result_data[i * 3 + 2] << std::endl;
     }
 
     // First 3 rows should match
@@ -138,7 +140,8 @@ TEST(TensorCatBugTest, RepeatedConcatenations) {
         float data[9];
         cudaMemcpy(data, state.ptr<float>(), 9 * sizeof(float), cudaMemcpyDeviceToHost);
         std::cout << "After 1st cat [3,3]: ";
-        for (int i = 0; i < 9; i++) std::cout << data[i] << " ";
+        for (int i = 0; i < 9; i++)
+            std::cout << data[i] << " ";
         std::cout << std::endl;
 
         // Check first 6 values preserved
@@ -159,7 +162,8 @@ TEST(TensorCatBugTest, RepeatedConcatenations) {
         float data[15];
         cudaMemcpy(data, state.ptr<float>(), 15 * sizeof(float), cudaMemcpyDeviceToHost);
         std::cout << "After 2nd cat [5,3]: ";
-        for (int i = 0; i < 15; i++) std::cout << data[i] << " ";
+        for (int i = 0; i < 15; i++)
+            std::cout << data[i] << " ";
         std::cout << std::endl;
 
         // Check first 6 values STILL preserved

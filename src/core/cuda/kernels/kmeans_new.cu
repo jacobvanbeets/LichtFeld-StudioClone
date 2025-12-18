@@ -2,8 +2,8 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include "core/tensor.hpp"
 #include "core/cuda/kmeans.cuh"
+#include "core/tensor.hpp"
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 #include <thrust/device_vector.h>

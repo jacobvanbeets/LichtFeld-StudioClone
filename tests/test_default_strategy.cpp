@@ -1,11 +1,11 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include "training/strategies/default_strategy.hpp"
 #include "core/logger.hpp"
 #include "core/parameters.hpp"
 #include "core/point_cloud.hpp"
 #include "core/splat_data.hpp"
+#include "training/strategies/default_strategy.hpp"
 #include <gtest/gtest.h>
 
 using namespace lfs::training;
@@ -15,16 +15,16 @@ using namespace lfs::core;
 static SplatData create_test_splat_data(int n_gaussians = 100) {
     std::vector<float> means_data(n_gaussians * 3, 0.0f);
     std::vector<float> sh0_data(n_gaussians * 3, 0.5f);
-    std::vector<float> shN_data(n_gaussians * 48, 0.0f);  // 3 SH degrees, 16*3=48
-    std::vector<float> scaling_data(n_gaussians * 3, -2.0f);  // log(0.135)
+    std::vector<float> shN_data(n_gaussians * 48, 0.0f);     // 3 SH degrees, 16*3=48
+    std::vector<float> scaling_data(n_gaussians * 3, -2.0f); // log(0.135)
     std::vector<float> rotation_data(n_gaussians * 4);
     for (int i = 0; i < n_gaussians; ++i) {
-        rotation_data[i * 4 + 0] = 1.0f;  // w
-        rotation_data[i * 4 + 1] = 0.0f;  // x
-        rotation_data[i * 4 + 2] = 0.0f;  // y
-        rotation_data[i * 4 + 3] = 0.0f;  // z
+        rotation_data[i * 4 + 0] = 1.0f; // w
+        rotation_data[i * 4 + 1] = 0.0f; // x
+        rotation_data[i * 4 + 2] = 0.0f; // y
+        rotation_data[i * 4 + 3] = 0.0f; // z
     }
-    std::vector<float> opacity_data(n_gaussians, 0.5f);  // logit(0.5) ≈ 0
+    std::vector<float> opacity_data(n_gaussians, 0.5f); // logit(0.5) ≈ 0
 
     auto means = Tensor::from_vector(means_data, TensorShape({static_cast<size_t>(n_gaussians), 3}), Device::CUDA);
     auto sh0 = Tensor::from_vector(sh0_data, TensorShape({static_cast<size_t>(n_gaussians), 3}), Device::CUDA);
@@ -159,7 +159,7 @@ TEST(DefaultStrategyTest, PruneGaussians_LowOpacity) {
     // Set some opacities very low
     std::vector<float> opacity_data(30);
     for (int i = 0; i < 30; ++i) {
-        opacity_data[i] = (i < 10) ? -5.0f : 0.5f;  // First 10 have very low opacity
+        opacity_data[i] = (i < 10) ? -5.0f : 0.5f; // First 10 have very low opacity
     }
     splat_data.opacity_raw() = Tensor::from_vector(opacity_data, TensorShape({30, 1}), Device::CUDA);
 
@@ -179,7 +179,7 @@ TEST(DefaultStrategyTest, ResetOpacity_ClampsValues) {
     auto splat_data = create_test_splat_data(20);
 
     // Set some opacities very high
-    std::vector<float> opacity_data(20, 3.0f);  // High opacity (logit space)
+    std::vector<float> opacity_data(20, 3.0f); // High opacity (logit space)
     splat_data.opacity_raw() = Tensor::from_vector(opacity_data, TensorShape({20, 1}), Device::CUDA);
 
     DefaultStrategy strategy(splat_data);
@@ -208,19 +208,19 @@ TEST(DefaultStrategyTest, RemoveGaussians) {
 
     // Remove 10 Gaussians
     // Create mask using direct memory access (workaround for bool tensor creation)
-    auto mask = Tensor::zeros_bool({50}, Device::CPU);  // Start on CPU
+    auto mask = Tensor::zeros_bool({50}, Device::CPU); // Start on CPU
     auto mask_ptr = mask.ptr<unsigned char>();
     for (int i = 0; i < 10; ++i) {
-        mask_ptr[i] = 1;  // Set first 10 to true
+        mask_ptr[i] = 1; // Set first 10 to true
     }
-    mask = mask.to(Device::CUDA);  // Transfer to GPU
+    mask = mask.to(Device::CUDA); // Transfer to GPU
 
     strategy.remove_gaussians(mask);
 
     // With soft deletion, tensor size stays the same but active_count() reflects logical size
-    EXPECT_EQ(strategy.get_model().size(), 50);  // Physical size unchanged
-    EXPECT_EQ(strategy.active_count(), 40);       // Logical size is 40
-    EXPECT_EQ(strategy.free_count(), 10);         // 10 free slots
+    EXPECT_EQ(strategy.get_model().size(), 50); // Physical size unchanged
+    EXPECT_EQ(strategy.active_count(), 40);     // Logical size is 40
+    EXPECT_EQ(strategy.free_count(), 10);       // 10 free slots
 }
 
 TEST(DefaultStrategyTest, FullTrainingLoop_ShortRun) {
@@ -255,7 +255,7 @@ TEST(DefaultStrategyTest, FullTrainingLoop_ShortRun) {
 
     // Model should still be valid
     EXPECT_GT(strategy.get_model().size(), 0);
-    EXPECT_LE(strategy.get_model().size(), 100);  // Shouldn't grow too much
+    EXPECT_LE(strategy.get_model().size(), 100); // Shouldn't grow too much
 }
 
 TEST(DefaultStrategyTest, EdgeCase_NoRefinement) {
@@ -264,7 +264,7 @@ TEST(DefaultStrategyTest, EdgeCase_NoRefinement) {
 
     param::OptimizationParameters opt_params;
     opt_params.iterations = 100;
-    opt_params.start_refine = 200;  // Never refine
+    opt_params.start_refine = 200; // Never refine
     opt_params.stop_refine = 300;
 
     strategy.initialize(opt_params);
@@ -332,7 +332,7 @@ TEST(DefaultStrategyStressTest, LongTrainingLoop_200Iterations) {
     opt_params.refine_every = 20;
     opt_params.reset_every = 100;
     opt_params.pause_refine_after_reset = 10;
-    opt_params.grad_threshold = 0.00005f;  // Lower threshold for test gradients
+    opt_params.grad_threshold = 0.00005f; // Lower threshold for test gradients
 
     strategy.initialize(opt_params);
 
@@ -371,7 +371,7 @@ TEST(DefaultStrategyStressTest, LongTrainingLoop_200Iterations) {
 
     // Model should still be valid and reasonable size
     EXPECT_GT(strategy.get_model().size(), 0);
-    EXPECT_LT(strategy.get_model().size(), 1000);  // Allow for moderate growth during stress test
+    EXPECT_LT(strategy.get_model().size(), 1000); // Allow for moderate growth during stress test
 }
 
 TEST(DefaultStrategyStressTest, ZeroGradients_NoCorruption) {
@@ -438,5 +438,5 @@ TEST(DefaultStrategyStressTest, VeryLargeModel_1kGaussians) {
         strategy.step(iter);
     }
 
-    EXPECT_GT(strategy.get_model().size(), 900);  // Should not lose too many
+    EXPECT_GT(strategy.get_model().size(), 900); // Should not lose too many
 }

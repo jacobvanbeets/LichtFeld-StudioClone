@@ -30,7 +30,7 @@ namespace lfs::vis {
         void updateWindowSize();
         void swapBuffers();
         void pollEvents();
-        void waitEvents(double timeout_seconds);  // Sleep until event or timeout
+        void waitEvents(double timeout_seconds); // Sleep until event or timeout
         bool shouldClose() const;
         void cancelClose();
         void requestRedraw();

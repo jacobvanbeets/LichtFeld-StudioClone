@@ -2,13 +2,13 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "tools/align_tool.hpp"
+#include "internal/viewport.hpp"
 #include "rendering/rendering_manager.hpp"
 #include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
-#include "internal/viewport.hpp"
 #include <GLFW/glfw3.h>
-#include <imgui.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <imgui.h>
 
 namespace lfs::vis::tools {
 
@@ -31,13 +31,13 @@ namespace lfs::vis::tools {
         const glm::mat4 proj = viewport.getProjectionMatrix();
         const glm::vec4 clip_pos = proj * view * glm::vec4(world_pos, 1.0f);
 
-        if (clip_pos.w <= 0.0f) return ImVec2(-1000, -1000);
+        if (clip_pos.w <= 0.0f)
+            return ImVec2(-1000, -1000);
 
         const glm::vec3 ndc = glm::vec3(clip_pos) / clip_pos.w;
         return ImVec2(
             (ndc.x * 0.5f + 0.5f) * viewport.windowSize.x,
-            (1.0f - (ndc.y * 0.5f + 0.5f)) * viewport.windowSize.y
-        );
+            (1.0f - (ndc.y * 0.5f + 0.5f)) * viewport.windowSize.y);
     }
 
     static float calculateScreenRadius(const glm::vec3& world_pos, const float world_radius, const Viewport& viewport) {
@@ -46,15 +46,17 @@ namespace lfs::vis::tools {
         const glm::vec4 view_pos = view * glm::vec4(world_pos, 1.0f);
         const float depth = -view_pos.z;
 
-        if (depth <= 0.0f) return 0.0f;
+        if (depth <= 0.0f)
+            return 0.0f;
 
         const float screen_radius = (world_radius * proj[1][1] * viewport.windowSize.y) / (2.0f * depth);
         return glm::clamp(screen_radius, 5.0f, 50.0f);
     }
 
     void AlignTool::renderUI([[maybe_unused]] const lfs::vis::gui::UIContext& ui_ctx,
-                              [[maybe_unused]] bool* p_open) {
-        if (!isEnabled() || !tool_context_) return;
+                             [[maybe_unused]] bool* p_open) {
+        if (!isEnabled() || !tool_context_)
+            return;
 
         ImDrawList* const draw_list = ImGui::GetForegroundDrawList();
         const ImVec2 mouse_pos = ImGui::GetMousePos();
@@ -81,7 +83,8 @@ namespace lfs::vis::tools {
             draw_list->AddText(ImVec2(screen_pos.x - 4, screen_pos.y - 6), t.overlay_text_u32(), &label, &label + 1);
         }
 
-        if (over_gui) return;
+        if (over_gui)
+            return;
 
         draw_list->AddCircle(mouse_pos, 5.0f, CROSSHAIR_COLOR, 16, 2.0f);
 
@@ -119,7 +122,8 @@ namespace lfs::vis::tools {
                     const glm::vec3 v01 = p1 - p0;
                     const glm::vec3 v02 = p2 - p0;
                     glm::vec3 normal = glm::normalize(glm::cross(v01, v02));
-                    if (normal.y > 0.0f) normal = -normal;
+                    if (normal.y > 0.0f)
+                        normal = -normal;
 
                     const glm::vec3 center = (p0 + p1 + p2) / 3.0f;
                     const float line_length = glm::max(glm::length(v01) * 0.5f, 0.1f);
@@ -145,10 +149,10 @@ namespace lfs::vis::tools {
         // Instructions
         const char* instruction = nullptr;
         switch (picked_points_.size()) {
-            case 0: instruction = "Click 1st point"; break;
-            case 1: instruction = "Click 2nd point"; break;
-            case 2: instruction = "Click 3rd point"; break;
-            default: break;
+        case 0: instruction = "Click 1st point"; break;
+        case 1: instruction = "Click 2nd point"; break;
+        case 2: instruction = "Click 3rd point"; break;
+        default: break;
         }
         if (instruction) {
             draw_list->AddText(ImVec2(mouse_pos.x + 15, mouse_pos.y - 10), CROSSHAIR_COLOR, instruction);
@@ -160,7 +164,8 @@ namespace lfs::vis::tools {
     }
 
     bool AlignTool::handleMouseButton(int button, int action, double x, double y, const ToolContext& ctx) {
-        if (!isEnabled()) return false;
+        if (!isEnabled())
+            return false;
 
         if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
             const glm::vec3 world_pos = unprojectScreenPoint(x, y, ctx);
@@ -186,7 +191,8 @@ namespace lfs::vis::tools {
     }
 
     void AlignTool::onEnabledChanged(bool enabled) {
-        if (!enabled) reset();
+        if (!enabled)
+            reset();
     }
 
     void AlignTool::reset() {
@@ -197,10 +203,12 @@ namespace lfs::vis::tools {
         constexpr glm::vec3 INVALID_POS(-1e10f);
 
         auto* const rendering_manager = ctx.getRenderingManager();
-        if (!rendering_manager) return INVALID_POS;
+        if (!rendering_manager)
+            return INVALID_POS;
 
         const float depth = rendering_manager->getDepthAtPixel(static_cast<int>(x), static_cast<int>(y));
-        if (depth < 0.0f) return INVALID_POS;
+        if (depth < 0.0f)
+            return INVALID_POS;
 
         const auto& viewport = ctx.getViewport();
         return viewport.unprojectPixel(static_cast<float>(x), static_cast<float>(y), depth,
@@ -208,10 +216,12 @@ namespace lfs::vis::tools {
     }
 
     void AlignTool::applyAlignment(const ToolContext& ctx) {
-        if (picked_points_.size() != 3) return;
+        if (picked_points_.size() != 3)
+            return;
 
         auto* const scene_manager = ctx.getSceneManager();
-        if (!scene_manager) return;
+        if (!scene_manager)
+            return;
 
         auto& scene = scene_manager->getScene();
 
@@ -225,7 +235,8 @@ namespace lfs::vis::tools {
         const glm::vec3 center = (p0 + p1 + p2) / 3.0f;
 
         // Ensure normal points downward (-Y)
-        if (normal.y > 0.0f) normal = -normal;
+        if (normal.y > 0.0f)
+            normal = -normal;
 
         // Rotation to align normal with -Y
         constexpr glm::vec3 kTargetUp(0.0f, -1.0f, 0.0f);

@@ -3,21 +3,21 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "adam_optimizer.hpp"
-#include "adam_api.h"  // fast_lfs::optimizer::adam_step_raw
+#include "adam_api.h" // fast_lfs::optimizer::adam_step_raw
 #include "core/logger.hpp"
 #include "core/tensor/internal/tensor_serialization.hpp"
 #include <cmath>
-#include <stdexcept>
 #include <cuda_runtime.h>
+#include <stdexcept>
 
 // Simple CUDA error checking macro
-#define CHECK_CUDA(call)                                                              \
-    do {                                                                              \
-        cudaError_t err = call;                                                      \
-        if (err != cudaSuccess) {                                                    \
-            throw std::runtime_error(std::string("CUDA error: ") +                  \
-                                    cudaGetErrorString(err));                        \
-        }                                                                            \
+#define CHECK_CUDA(call)                                           \
+    do {                                                           \
+        cudaError_t err = call;                                    \
+        if (err != cudaSuccess) {                                  \
+            throw std::runtime_error(std::string("CUDA error: ") + \
+                                     cudaGetErrorString(err));     \
+        }                                                          \
     } while (0)
 
 namespace lfs::training {
@@ -25,10 +25,11 @@ namespace lfs::training {
     namespace {
         constexpr int SH_WARMUP_ITERATIONS = 1000;
         constexpr float DEFAULT_GROWTH_MULTIPLIER = 1.5f;
-    }
+    } // namespace
 
     AdamOptimizer::AdamOptimizer(lfs::core::SplatData& splat_data, const AdamConfig& config)
-        : config_(config), splat_data_(splat_data) {}
+        : config_(config),
+          splat_data_(splat_data) {}
 
     void AdamOptimizer::step(const int iteration) {
         for (const auto type : all_param_types()) {
@@ -93,12 +94,12 @@ namespace lfs::training {
 
     lfs::core::Tensor& AdamOptimizer::get_param(ParamType type) {
         switch (type) {
-            case ParamType::Means: return splat_data_.means();
-            case ParamType::Sh0: return splat_data_.sh0();
-            case ParamType::ShN: return splat_data_.shN();
-            case ParamType::Scaling: return splat_data_.scaling_raw();
-            case ParamType::Rotation: return splat_data_.rotation_raw();
-            case ParamType::Opacity: return splat_data_.opacity_raw();
+        case ParamType::Means: return splat_data_.means();
+        case ParamType::Sh0: return splat_data_.sh0();
+        case ParamType::ShN: return splat_data_.shN();
+        case ParamType::Scaling: return splat_data_.scaling_raw();
+        case ParamType::Rotation: return splat_data_.rotation_raw();
+        case ParamType::Opacity: return splat_data_.opacity_raw();
         }
         throw std::runtime_error("Invalid ParamType");
     }
@@ -114,12 +115,12 @@ namespace lfs::training {
 
     std::string AdamOptimizer::param_name(ParamType type) const {
         switch (type) {
-            case ParamType::Means: return "means";
-            case ParamType::Sh0: return "sh0";
-            case ParamType::ShN: return "shN";
-            case ParamType::Scaling: return "scaling";
-            case ParamType::Rotation: return "rotation";
-            case ParamType::Opacity: return "opacity";
+        case ParamType::Means: return "means";
+        case ParamType::Sh0: return "sh0";
+        case ParamType::ShN: return "shN";
+        case ParamType::Scaling: return "scaling";
+        case ParamType::Rotation: return "rotation";
+        case ParamType::Opacity: return "opacity";
         }
         return "unknown";
     }
@@ -141,8 +142,8 @@ namespace lfs::training {
 
         if (!state.grad.is_valid() || state.grad.numel() == 0) {
             state.grad = (initial_cap > param_size)
-                ? lfs::core::Tensor::zeros_direct(param.shape(), initial_cap)
-                : lfs::core::Tensor::zeros(param.shape(), param.device());
+                             ? lfs::core::Tensor::zeros_direct(param.shape(), initial_cap)
+                             : lfs::core::Tensor::zeros(param.shape(), param.device());
         }
 
         if (initial_cap > param_size) {
@@ -206,21 +207,22 @@ namespace lfs::training {
             config_.beta2,
             config_.eps,
             bias_correction1_rcp,
-            bias_correction2_sqrt_rcp
-        );
+            bias_correction2_sqrt_rcp);
     }
 
     void AdamOptimizer::reset_state_at_indices(ParamType type, const std::vector<int64_t>& indices) {
-        if (indices.empty()) return;
+        if (indices.empty())
+            return;
 
         const auto name = param_name(type);
-        if (!states_.contains(name)) return;
+        if (!states_.contains(name))
+            return;
 
         // Skip ShN when not initialized (sh_degree=0 case)
         if (type == ParamType::ShN) {
             const auto& param = get_param(type);
             if (!param.is_valid() || (param.ndim() >= 2 && param.shape()[1] == 0)) {
-                return;  // ShN is empty at sh-degree 0, nothing to reset
+                return; // ShN is empty at sh-degree 0, nothing to reset
             }
         }
 
@@ -254,10 +256,12 @@ namespace lfs::training {
 
     void AdamOptimizer::extend_state_by_gather(ParamType type, const lfs::core::Tensor& indices) {
         const auto name = param_name(type);
-        if (!states_.contains(name)) return;
+        if (!states_.contains(name))
+            return;
 
         const size_t n_new = indices.numel();
-        if (n_new == 0) return;
+        if (n_new == 0)
+            return;
 
         auto& param = get_param(type);
         auto& state = states_[name];
@@ -274,11 +278,11 @@ namespace lfs::training {
 
         // Fast path: use reserved capacity
         const bool all_have_capacity = state.grad.capacity() > 0 &&
-                                        state.exp_avg.capacity() > 0 &&
-                                        state.exp_avg_sq.capacity() > 0;
+                                       state.exp_avg.capacity() > 0 &&
+                                       state.exp_avg_sq.capacity() > 0;
         const bool fits_in_capacity = new_size <= state.grad.capacity() &&
-                                       new_size <= state.exp_avg.capacity() &&
-                                       new_size <= state.exp_avg_sq.capacity();
+                                      new_size <= state.exp_avg.capacity() &&
+                                      new_size <= state.exp_avg_sq.capacity();
         if (all_have_capacity && fits_in_capacity) {
             // exp_avg and exp_avg_sq: gather from existing (copy optimizer momentum for duplicated Gaussians)
             state.exp_avg.append_gather(indices);
@@ -363,11 +367,11 @@ namespace lfs::training {
 
         // Fast path: use reserved capacity (all tensors must have capacity)
         const bool all_have_capacity = state.grad.capacity() > 0 &&
-                                        state.exp_avg.capacity() > 0 &&
-                                        state.exp_avg_sq.capacity() > 0;
+                                       state.exp_avg.capacity() > 0 &&
+                                       state.exp_avg_sq.capacity() > 0;
         const bool fits_in_capacity = new_size <= state.grad.capacity() &&
-                                       new_size <= state.exp_avg.capacity() &&
-                                       new_size <= state.exp_avg_sq.capacity();
+                                      new_size <= state.exp_avg.capacity() &&
+                                      new_size <= state.exp_avg_sq.capacity();
         if (all_have_capacity && fits_in_capacity) {
             state.grad.append_zeros(n_new);
             state.exp_avg.append_zeros(n_new);
@@ -484,7 +488,7 @@ namespace lfs::training {
                 const size_t new_size = sh0.shape()[0];
 
                 LOG_DEBUG("add_new_params_gather: ShN resize to {} (uninitialized={})",
-                    new_size, is_uninitialized);
+                          new_size, is_uninitialized);
 
                 // Create new tensor with correct shape [new_size, 0, 3]
                 auto new_tensor = lfs::core::Tensor::empty(
@@ -499,7 +503,8 @@ namespace lfs::training {
         }
 
         if (!param.is_valid()) {
-            if (type == ParamType::ShN) return;  // ShN may not be initialized at sh-degree 0
+            if (type == ParamType::ShN)
+                return; // ShN may not be initialized at sh-degree 0
             LOG_ERROR("add_new_params_gather: {} not initialized", param_name(type));
             return;
         }
@@ -521,7 +526,8 @@ namespace lfs::training {
     }
 
     void AdamOptimizer::relocate_params_at_indices(ParamType type, const std::vector<int64_t>& indices) {
-        if (indices.empty()) return;
+        if (indices.empty())
+            return;
 
         const auto& param = get_param(type);
         for (const auto idx : indices) {
@@ -538,16 +544,18 @@ namespace lfs::training {
     }
 
     void AdamOptimizer::relocate_params_at_indices_gpu(ParamType type, const int64_t* indices_device, const size_t n_indices) {
-        if (n_indices == 0) return;
+        if (n_indices == 0)
+            return;
 
         const auto name = param_name(type);
-        if (!states_.contains(name)) return;
+        if (!states_.contains(name))
+            return;
 
         // Skip ShN when not initialized (sh_degree=0 case)
         if (type == ParamType::ShN) {
             const auto& param = get_param(type);
             if (!param.is_valid() || (param.ndim() >= 2 && param.shape()[1] == 0)) {
-                return;  // ShN is empty at sh-degree 0, nothing to relocate
+                return; // ShN is empty at sh-degree 0, nothing to relocate
             }
         }
 
@@ -575,9 +583,9 @@ namespace lfs::training {
     }
 
     namespace {
-        constexpr uint32_t ADAM_STATE_MAGIC = 0x4C464144;  // "LFAD"
+        constexpr uint32_t ADAM_STATE_MAGIC = 0x4C464144; // "LFAD"
         constexpr uint32_t ADAM_STATE_VERSION = 1;
-    }
+    } // namespace
 
     void AdamOptimizer::serialize(std::ostream& os) const {
         os.write(reinterpret_cast<const char*>(&ADAM_STATE_MAGIC), sizeof(ADAM_STATE_MAGIC));
@@ -601,12 +609,14 @@ namespace lfs::training {
 
         uint32_t num_states = 0;
         for (const auto& [_, state] : states_) {
-            if (state.exp_avg.is_valid() && state.exp_avg_sq.is_valid()) ++num_states;
+            if (state.exp_avg.is_valid() && state.exp_avg_sq.is_valid())
+                ++num_states;
         }
         os.write(reinterpret_cast<const char*>(&num_states), sizeof(num_states));
 
         for (const auto& [name, state] : states_) {
-            if (!state.exp_avg.is_valid() || !state.exp_avg_sq.is_valid()) continue;
+            if (!state.exp_avg.is_valid() || !state.exp_avg_sq.is_valid())
+                continue;
 
             const auto name_len = static_cast<uint32_t>(name.size());
             os.write(reinterpret_cast<const char*>(&name_len), sizeof(name_len));
@@ -691,7 +701,8 @@ namespace lfs::training {
     void AdamOptimizer::reserve_capacity(const size_t capacity) {
         for (auto& [_, state] : states_) {
             if (capacity > state.capacity) {
-                if (state.grad.is_valid()) state.grad.reserve(capacity);
+                if (state.grad.is_valid())
+                    state.grad.reserve(capacity);
                 state.exp_avg.reserve(capacity);
                 state.exp_avg_sq.reserve(capacity);
                 state.capacity = capacity;

@@ -35,7 +35,7 @@ namespace lfs::io {
         // Validate path exists
         if (!std::filesystem::exists(path)) {
             return make_error(ErrorCode::PATH_NOT_FOUND,
-                "SOG file/directory does not exist", path);
+                              "SOG file/directory does not exist", path);
         }
 
         // Validation only mode
@@ -70,7 +70,7 @@ namespace lfs::io {
 
             if (!valid) {
                 return make_error(ErrorCode::INVALID_HEADER,
-                    "Invalid SOG format (expected ZIP archive or directory with meta.json)", path);
+                                  "Invalid SOG format (expected ZIP archive or directory with meta.json)", path);
             }
 
             if (options.progress) {
@@ -100,7 +100,7 @@ namespace lfs::io {
         auto splat_result = load_sog(path);
         if (!splat_result) {
             return make_error(ErrorCode::CORRUPTED_DATA,
-                std::format("Failed to load SOG: {}", splat_result.error()), path);
+                              std::format("Failed to load SOG: {}", splat_result.error()), path);
         }
 
         if (options.progress) {

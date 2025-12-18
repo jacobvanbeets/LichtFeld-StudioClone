@@ -4,11 +4,11 @@
 #pragma once
 
 #include <cstddef>
+#include <cuda_runtime.h>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
-#include <cuda_runtime.h>
 
 namespace lfs::core {
 

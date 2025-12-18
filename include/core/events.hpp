@@ -17,7 +17,10 @@ namespace lfs::core {
     class Scene;
 
     // Export format enum
-    enum class ExportFormat { PLY, SOG, SPZ, HTML_VIEWER };
+    enum class ExportFormat { PLY,
+                              SOG,
+                              SPZ,
+                              HTML_VIEWER };
 
 // Clean event macro - uses lfs::core::event::bus()
 #define EVENT(Name, ...)                                   \
@@ -52,7 +55,7 @@ namespace lfs::core {
             EVENT(LoadCheckpointForTraining, std::filesystem::path path;);
             EVENT(ShowDatasetLoadPopup, std::filesystem::path dataset_path;);
             EVENT(ClearScene, );
-            EVENT(SwitchToEditMode, );  // Keep trained model, discard dataset
+            EVENT(SwitchToEditMode, ); // Keep trained model, discard dataset
             EVENT(ResetCamera, );
             EVENT(ShowWindow, std::string window_name; bool show;);
             EVENT(ExecuteConsole, std::string command;);
@@ -63,11 +66,11 @@ namespace lfs::core {
             EVENT(SetPLYVisibility, std::string name; bool visible;);
             EVENT(ExportNodeAs, std::string name; ExportFormat format;);
             EVENT(ExportAllMergedAs, ExportFormat format;);
-            EVENT(ReparentNode, std::string node_name; std::string new_parent_name;);  // Empty parent = root
-            EVENT(AddGroup, std::string name; std::string parent_name;);  // Create empty group node
-            EVENT(DuplicateNode, std::string name;);  // Duplicate node (and children if group)
-            EVENT(MergeGroup, std::string name;);  // Merge group children into single PLY
-            EVENT(SetNodeLocked, std::string name; bool locked;);  // Lock/unlock node for editing
+            EVENT(ReparentNode, std::string node_name; std::string new_parent_name;); // Empty parent = root
+            EVENT(AddGroup, std::string name; std::string parent_name;);              // Create empty group node
+            EVENT(DuplicateNode, std::string name;);                                  // Duplicate node (and children if group)
+            EVENT(MergeGroup, std::string name;);                                     // Merge group children into single PLY
+            EVENT(SetNodeLocked, std::string name; bool locked;);                     // Lock/unlock node for editing
             EVENT(CropPLY, lfs::geometry::BoundingBox crop_box; bool inverse;);
             EVENT(ApplyCropBox, );
             EVENT(FitCropBoxToScene, bool use_percentile;);
@@ -78,7 +81,7 @@ namespace lfs::core {
             EVENT(ToggleGTComparison, );
             EVENT(Undo, );
             EVENT(Redo, );
-            EVENT(DeleteSelected, );  // Delete selected Gaussians (soft delete)
+            EVENT(DeleteSelected, ); // Delete selected Gaussians (soft delete)
             EVENT(InvertSelection, );
             EVENT(DeselectAll, );
             EVENT(SelectAll, );
@@ -195,7 +198,7 @@ namespace lfs::core {
             EVENT(FocusTrainingPanel, );
             EVENT(ToggleUI, );
             EVENT(ToggleFullscreen, );
-        }                                                  // namespace ui
+        } // namespace ui
 
         // ============================================================================
         // Internal - System coordination events (minimal)

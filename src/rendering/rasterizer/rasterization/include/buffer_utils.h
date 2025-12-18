@@ -46,7 +46,7 @@ namespace lfs::rendering {
         float2* mean2d;
         float4* conic_opacity;
         float3* color;
-        float* depth;  // Camera-space depth of each Gaussian center
+        float* depth; // Camera-space depth of each Gaussian center
         bool* outside_crop;
         uint8_t* selection_status;
         uint* n_visible_primitives;

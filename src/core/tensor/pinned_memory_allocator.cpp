@@ -22,7 +22,9 @@ namespace lfs::core {
 
     // Block implementation
     PinnedMemoryAllocator::Block::Block(void* p, size_t s, cudaStream_t stream)
-        : ptr(p), size(s), last_stream(stream) {
+        : ptr(p),
+          size(s),
+          last_stream(stream) {
         if (ptr) {
             cudaError_t err = cudaEventCreate(&ready_event);
             if (err != cudaSuccess) {
@@ -42,7 +44,10 @@ namespace lfs::core {
     }
 
     PinnedMemoryAllocator::Block::Block(Block&& other) noexcept
-        : ptr(other.ptr), size(other.size), last_stream(other.last_stream), ready_event(other.ready_event) {
+        : ptr(other.ptr),
+          size(other.size),
+          last_stream(other.last_stream),
+          ready_event(other.ready_event) {
         other.ptr = nullptr;
         other.size = 0;
         other.last_stream = nullptr;

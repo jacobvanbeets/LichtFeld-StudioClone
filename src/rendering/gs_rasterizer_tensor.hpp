@@ -53,8 +53,8 @@ namespace lfs::rendering {
 
     // GUT rasterization for viewer (forward-only, no training dependency)
     struct GutRenderOutput {
-        Tensor image;  // [3, H, W]
-        Tensor depth;  // [1, H, W]
+        Tensor image; // [3, H, W]
+        Tensor depth; // [1, H, W]
     };
 
     GutRenderOutput gut_rasterize_tensor(

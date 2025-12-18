@@ -101,7 +101,7 @@ namespace lfs::training::mcmc {
         size_t n_samples,
         size_t sh_rest,
         int opacity_dim,
-        size_t N,  // Add N parameter for bounds checking
+        size_t N, // Add N parameter for bounds checking
         void* stream = nullptr);
 
     /**
@@ -135,7 +135,7 @@ namespace lfs::training::mcmc {
         size_t n_copy,
         size_t sh_rest,
         int opacity_dim,
-        size_t N,  // Add N parameter for bounds checking
+        size_t N, // Add N parameter for bounds checking
         void* stream = nullptr);
 
     /**

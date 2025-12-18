@@ -37,7 +37,7 @@ namespace lfs::vis {
         // Crop box (data stored in scene graph CropBoxData, these are UI toggles only)
         bool show_crop_box = false;
         bool use_crop_box = false;
-        bool desaturate_unselected = false;  // Desaturate unselected PLYs when one is selected
+        bool desaturate_unselected = false; // Desaturate unselected PLYs when one is selected
 
         // Background
         glm::vec3 background_color = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -62,7 +62,7 @@ namespace lfs::vis {
         bool show_center_markers = false;
 
         // Camera frustums
-        bool show_camera_frustums = true;  // Master toggle for camera frustum rendering
+        bool show_camera_frustums = true; // Master toggle for camera frustum rendering
         float camera_frustum_scale = 0.25f;
         glm::vec3 train_camera_color = glm::vec3(1.0f, 1.0f, 1.0f);
         glm::vec3 eval_camera_color = glm::vec3(1.0f, 0.0f, 0.0f);
@@ -78,7 +78,7 @@ namespace lfs::vis {
         bool gut = false;
         bool equirectangular = false;
         bool orthographic = false;
-        float ortho_scale = 100.0f;  // Pixels per world unit (larger = more zoomed in)
+        float ortho_scale = 100.0f; // Pixels per world unit (larger = more zoomed in)
 
         // Selection colors (RGB: committed=219,83,83 preview=0,222,76 center=0,154,187)
         glm::vec3 selection_color_committed{0.859f, 0.325f, 0.325f};
@@ -190,11 +190,15 @@ namespace lfs::vis {
         }
 
         [[nodiscard]] float getSelectionFlashIntensity() const {
-            if (!selection_flash_active_.load()) return 0.0f;
+            if (!selection_flash_active_.load())
+                return 0.0f;
             const float t = std::chrono::duration<float>(
-                std::chrono::steady_clock::now() - selection_flash_start_time_).count() / SELECTION_FLASH_DURATION_SEC;
-            if (t >= 1.0f) return 0.0f;
-            return 1.0f - t * t;  // Ease-out
+                                std::chrono::steady_clock::now() - selection_flash_start_time_)
+                                .count() /
+                            SELECTION_FLASH_DURATION_SEC;
+            if (t >= 1.0f)
+                return 0.0f;
+            return 1.0f - t * t; // Ease-out
         }
 
         // Settings management
@@ -256,7 +260,10 @@ namespace lfs::vis {
             brush_add_mode_ = add_mode;
             markDirty();
         }
-        void clearPreviewSelection() { preview_selection_ = nullptr; markDirty(); }
+        void clearPreviewSelection() {
+            preview_selection_ = nullptr;
+            markDirty();
+        }
 
         // Selection mode for brush tool
         void setSelectionMode(lfs::rendering::SelectionMode mode) { selection_mode_ = mode; }
@@ -348,7 +355,7 @@ namespace lfs::vis {
         // Ring mode hover preview (packed depth+id from atomicMin)
         unsigned long long hovered_depth_id_ = 0xFFFFFFFFFFFFFFFFULL;
         unsigned long long* d_hovered_depth_id_ = nullptr;
-        int hovered_gaussian_id_ = -1;  // Extracted from lower 32 bits
+        int hovered_gaussian_id_ = -1; // Extracted from lower 32 bits
 
         // Cached filtered point cloud for cropbox preview (avoid CPU filtering every frame)
         mutable std::unique_ptr<lfs::core::PointCloud> cached_filtered_point_cloud_;

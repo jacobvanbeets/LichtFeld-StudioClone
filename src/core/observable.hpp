@@ -16,12 +16,14 @@ namespace lfs::core {
         using Callback = std::function<void()>;
 
         Observable() = default;
-        Observable(T initial, Callback cb) : value_(std::move(initial)), on_change_(std::move(cb)) {}
+        Observable(T initial, Callback cb) : value_(std::move(initial)),
+                                             on_change_(std::move(cb)) {}
 
         Observable& operator=(const T& v) {
             if (!(value_ == v)) {
                 value_ = v;
-                if (on_change_) on_change_();
+                if (on_change_)
+                    on_change_();
             }
             return *this;
         }
@@ -29,7 +31,8 @@ namespace lfs::core {
         Observable& operator=(T&& v) {
             if (!(value_ == v)) {
                 value_ = std::move(v);
-                if (on_change_) on_change_();
+                if (on_change_)
+                    on_change_();
             }
             return *this;
         }
@@ -38,7 +41,10 @@ namespace lfs::core {
         [[nodiscard]] const T& get() const { return value_; }
         T& getMutable() { return value_; }
 
-        void notifyChanged() { if (on_change_) on_change_(); }
+        void notifyChanged() {
+            if (on_change_)
+                on_change_();
+        }
         void setCallback(Callback cb) { on_change_ = std::move(cb); }
         void setQuiet(const T& v) { value_ = v; }
         void setQuiet(T&& v) { value_ = std::move(v); }
@@ -71,4 +77,4 @@ namespace lfs::core {
         return lhs.get() * rhs;
     }
 
-}  // namespace lfs::core
+} // namespace lfs::core

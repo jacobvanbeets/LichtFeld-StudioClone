@@ -134,7 +134,8 @@ namespace lfs::vis {
     }
 
     void WindowManager::toggleFullscreen() {
-        if (!window_) return;
+        if (!window_)
+            return;
 
         if (is_fullscreen_) {
             glfwSetWindowMonitor(window_, nullptr,

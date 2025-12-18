@@ -14,10 +14,10 @@
 
 #include "core/tensor.hpp"
 #include <gtest/gtest.h>
-#include <torch/torch.h>
-#include <vector>
 #include <numeric>
 #include <random>
+#include <torch/torch.h>
+#include <vector>
 
 using namespace lfs::core;
 
@@ -139,8 +139,8 @@ TEST_F(TensorCatReductionBugTest, Cat_1D_Huge_2_6M) {
     float* p1 = cpu1.ptr<float>();
     float* p2 = cpu2.ptr<float>();
     for (size_t i = 0; i < N; ++i) {
-        p1[i] = 31.0f + static_cast<float>(i % 36);   // [31, 66]
-        p2[i] = -14.0f + static_cast<float>(i % 36);  // [-14, 21]
+        p1[i] = 31.0f + static_cast<float>(i % 36);  // [31, 66]
+        p2[i] = -14.0f + static_cast<float>(i % 36); // [-14, 21]
     }
 
     auto t1 = cpu1.to(Device::CUDA);
@@ -188,14 +188,14 @@ TEST_F(TensorCatReductionBugTest, Cat_2D_SliceColumn_Medium) {
     float* p2 = cpu2.ptr<float>();
 
     for (size_t i = 0; i < N1; ++i) {
-        p1[i*3 + 0] = 100.0f + static_cast<float>(i % 100);  // x: [100, 199]
-        p1[i*3 + 1] = 0.0f;
-        p1[i*3 + 2] = 0.0f;
+        p1[i * 3 + 0] = 100.0f + static_cast<float>(i % 100); // x: [100, 199]
+        p1[i * 3 + 1] = 0.0f;
+        p1[i * 3 + 2] = 0.0f;
     }
     for (size_t i = 0; i < N2; ++i) {
-        p2[i*3 + 0] = -200.0f + static_cast<float>(i % 100); // x: [-200, -101]
-        p2[i*3 + 1] = 0.0f;
-        p2[i*3 + 2] = 0.0f;
+        p2[i * 3 + 0] = -200.0f + static_cast<float>(i % 100); // x: [-200, -101]
+        p2[i * 3 + 1] = 0.0f;
+        p2[i * 3 + 2] = 0.0f;
     }
 
     auto t1 = cpu1.to(Device::CUDA);
@@ -218,15 +218,15 @@ TEST_F(TensorCatReductionBugTest, Cat_2D_SliceColumn_Large_Exact) {
 
     // Splat 1: translated, x in [31, 66]
     for (size_t i = 0; i < N; ++i) {
-        p1[i*3 + 0] = 31.0f + static_cast<float>(i % 36);
-        p1[i*3 + 1] = -35.0f + static_cast<float>(i % 37);
-        p1[i*3 + 2] = -16.0f + static_cast<float>(i % 28);
+        p1[i * 3 + 0] = 31.0f + static_cast<float>(i % 36);
+        p1[i * 3 + 1] = -35.0f + static_cast<float>(i % 37);
+        p1[i * 3 + 2] = -16.0f + static_cast<float>(i % 28);
     }
     // Splat 2: at origin, x in [-14, 21]
     for (size_t i = 0; i < N; ++i) {
-        p2[i*3 + 0] = -14.0f + static_cast<float>(i % 36);
-        p2[i*3 + 1] = -35.0f + static_cast<float>(i % 37);
-        p2[i*3 + 2] = -16.0f + static_cast<float>(i % 28);
+        p2[i * 3 + 0] = -14.0f + static_cast<float>(i % 36);
+        p2[i * 3 + 1] = -35.0f + static_cast<float>(i % 37);
+        p2[i * 3 + 2] = -16.0f + static_cast<float>(i % 28);
     }
 
     auto t1 = cpu1.to(Device::CUDA);
@@ -252,8 +252,8 @@ TEST_F(TensorCatReductionBugTest, Slice_1D_Range_Small) {
     std::vector<float> data = {1.0f, 2.0f, 3.0f, 100.0f, 200.0f, 300.0f};
     auto t = Tensor::from_vector(data, {6}, Device::CUDA);
 
-    auto slice1 = t.slice(0, 0, 3);  // [1, 2, 3]
-    auto slice2 = t.slice(0, 3, 6);  // [100, 200, 300]
+    auto slice1 = t.slice(0, 0, 3); // [1, 2, 3]
+    auto slice2 = t.slice(0, 3, 6); // [100, 200, 300]
 
     verifyMinMax(slice1, "Slice_1D_Range first");
     verifyMinMax(slice2, "Slice_1D_Range second");
@@ -268,17 +268,17 @@ TEST_F(TensorCatReductionBugTest, Slice_1D_Range_Large) {
     const size_t N = 100000;
     auto cpu = Tensor::zeros({N}, Device::CPU);
     float* p = cpu.ptr<float>();
-    for (size_t i = 0; i < N/2; ++i) {
-        p[i] = 1000.0f + static_cast<float>(i);  // [1000, 50999]
+    for (size_t i = 0; i < N / 2; ++i) {
+        p[i] = 1000.0f + static_cast<float>(i); // [1000, 50999]
     }
-    for (size_t i = N/2; i < N; ++i) {
-        p[i] = -1000.0f - static_cast<float>(i - N/2);  // [-1000, -50999]
+    for (size_t i = N / 2; i < N; ++i) {
+        p[i] = -1000.0f - static_cast<float>(i - N / 2); // [-1000, -50999]
     }
 
     auto t = cpu.to(Device::CUDA);
 
-    auto slice1 = t.slice(0, 0, N/2);
-    auto slice2 = t.slice(0, N/2, N);
+    auto slice1 = t.slice(0, 0, N / 2);
+    auto slice2 = t.slice(0, N / 2, N);
 
     verifyMinMax(slice1, "Slice_1D_Range_Large first");
     verifyMinMax(slice2, "Slice_1D_Range_Large second");
@@ -294,12 +294,11 @@ TEST_F(TensorCatReductionBugTest, Slice_2D_Column_Small) {
         1.0f, 10.0f, 100.0f,
         2.0f, 20.0f, 200.0f,
         3.0f, 30.0f, 300.0f,
-        4.0f, 40.0f, 400.0f
-    };
+        4.0f, 40.0f, 400.0f};
     auto t = Tensor::from_vector(data, {4, 3}, Device::CUDA);
 
     for (int c = 0; c < 3; ++c) {
-        auto col = t.slice(1, c, c+1).squeeze(1);
+        auto col = t.slice(1, c, c + 1).squeeze(1);
         verifyMinMax(col, "Slice_2D_Column_Small col" + std::to_string(c));
     }
 
@@ -320,9 +319,9 @@ TEST_F(TensorCatReductionBugTest, Slice_2D_Column_Large) {
     auto cpu = Tensor::zeros({N, 3}, Device::CPU);
     float* p = cpu.ptr<float>();
     for (size_t i = 0; i < N; ++i) {
-        p[i*3 + 0] = static_cast<float>(i);       // [0, N-1]
-        p[i*3 + 1] = -static_cast<float>(i);      // [-(N-1), 0]
-        p[i*3 + 2] = 1000.0f;                     // constant
+        p[i * 3 + 0] = static_cast<float>(i);  // [0, N-1]
+        p[i * 3 + 1] = -static_cast<float>(i); // [-(N-1), 0]
+        p[i * 3 + 2] = 1000.0f;                // constant
     }
 
     auto t = cpu.to(Device::CUDA);
@@ -336,8 +335,8 @@ TEST_F(TensorCatReductionBugTest, Slice_2D_Column_Large) {
     verifyMinMax(col2, "Slice_2D_Column_Large col2");
 
     EXPECT_FLOAT_EQ(col0.min().item(), 0.0f);
-    EXPECT_FLOAT_EQ(col0.max().item(), static_cast<float>(N-1));
-    EXPECT_FLOAT_EQ(col1.min().item(), -static_cast<float>(N-1));
+    EXPECT_FLOAT_EQ(col0.max().item(), static_cast<float>(N - 1));
+    EXPECT_FLOAT_EQ(col1.min().item(), -static_cast<float>(N - 1));
     EXPECT_FLOAT_EQ(col1.max().item(), 0.0f);
     EXPECT_FLOAT_EQ(col2.min().item(), 1000.0f);
     EXPECT_FLOAT_EQ(col2.max().item(), 1000.0f);
@@ -347,8 +346,7 @@ TEST_F(TensorCatReductionBugTest, Slice_2D_Row_Small) {
     std::vector<float> data = {
         1.0f, 2.0f, 3.0f,
         100.0f, 200.0f, 300.0f,
-        10.0f, 20.0f, 30.0f
-    };
+        10.0f, 20.0f, 30.0f};
     auto t = Tensor::from_vector(data, {3, 3}, Device::CUDA);
 
     auto row0 = t.slice(0, 0, 1).squeeze(0);
@@ -374,7 +372,7 @@ TEST_F(TensorCatReductionBugTest, StorageOffset_SliceMiddle) {
     auto t = Tensor::from_vector(data, {9}, Device::CUDA);
 
     // Slice middle portion
-    auto middle = t.slice(0, 3, 6);  // Should be [100, 200, 300]
+    auto middle = t.slice(0, 3, 6); // Should be [100, 200, 300]
 
     EXPECT_GT(middle.storage_offset(), 0) << "Middle slice should have non-zero storage_offset";
 
@@ -387,7 +385,7 @@ TEST_F(TensorCatReductionBugTest, StorageOffset_SliceEnd) {
     std::vector<float> data = {1000.0f, 2000.0f, 3000.0f, 1.0f, 2.0f, 3.0f};
     auto t = Tensor::from_vector(data, {6}, Device::CUDA);
 
-    auto end = t.slice(0, 3, 6);  // Should be [1, 2, 3]
+    auto end = t.slice(0, 3, 6); // Should be [1, 2, 3]
 
     verifyMinMax(end, "StorageOffset_SliceEnd");
     EXPECT_FLOAT_EQ(end.min().item(), 1.0f);
@@ -419,12 +417,11 @@ TEST_F(TensorCatReductionBugTest, StorageOffset_2D_ColumnSlice) {
     std::vector<float> data = {
         1.0f, 100.0f,
         2.0f, 200.0f,
-        3.0f, 300.0f
-    };
+        3.0f, 300.0f};
     auto t = Tensor::from_vector(data, {3, 2}, Device::CUDA);
 
-    auto col0 = t.slice(1, 0, 1).squeeze(1);  // [1, 2, 3]
-    auto col1 = t.slice(1, 1, 2).squeeze(1);  // [100, 200, 300]
+    auto col0 = t.slice(1, 0, 1).squeeze(1); // [1, 2, 3]
+    auto col1 = t.slice(1, 1, 2).squeeze(1); // [100, 200, 300]
 
     verifyMinMax(col0, "StorageOffset_2D col0");
     verifyMinMax(col1, "StorageOffset_2D col1");
@@ -443,8 +440,7 @@ TEST_F(TensorCatReductionBugTest, Contiguous_ColumnSlice_Small) {
     std::vector<float> data = {
         1.0f, 10.0f, 100.0f,
         2.0f, 20.0f, 200.0f,
-        3.0f, 30.0f, 300.0f
-    };
+        3.0f, 30.0f, 300.0f};
     auto t = Tensor::from_vector(data, {3, 3}, Device::CUDA);
 
     auto col0 = t.slice(1, 0, 1).squeeze(1);
@@ -470,9 +466,9 @@ TEST_F(TensorCatReductionBugTest, Contiguous_ColumnSlice_Large) {
     auto cpu = Tensor::zeros({N, 3}, Device::CPU);
     float* p = cpu.ptr<float>();
     for (size_t i = 0; i < N; ++i) {
-        p[i*3 + 0] = static_cast<float>(i);
-        p[i*3 + 1] = 0.0f;
-        p[i*3 + 2] = 0.0f;
+        p[i * 3 + 0] = static_cast<float>(i);
+        p[i * 3 + 1] = 0.0f;
+        p[i * 3 + 2] = 0.0f;
     }
 
     auto t = cpu.to(Device::CUDA);
@@ -488,7 +484,7 @@ TEST_F(TensorCatReductionBugTest, Contiguous_ColumnSlice_Large) {
 
     verifyMinMax(col0_contig, "Contiguous_ColumnSlice_Large");
     EXPECT_FLOAT_EQ(col0_contig.min().item(), 0.0f);
-    EXPECT_FLOAT_EQ(col0_contig.max().item(), static_cast<float>(N-1));
+    EXPECT_FLOAT_EQ(col0_contig.max().item(), static_cast<float>(N - 1));
 }
 
 TEST_F(TensorCatReductionBugTest, Contiguous_AfterCatSlice) {
@@ -499,8 +495,8 @@ TEST_F(TensorCatReductionBugTest, Contiguous_AfterCatSlice) {
     float* p2 = cpu2.ptr<float>();
 
     for (size_t i = 0; i < N; ++i) {
-        p1[i*3] = 100.0f + static_cast<float>(i % 100);
-        p2[i*3] = -100.0f - static_cast<float>(i % 100);
+        p1[i * 3] = 100.0f + static_cast<float>(i % 100);
+        p2[i * 3] = -100.0f - static_cast<float>(i % 100);
     }
 
     auto t1 = cpu1.to(Device::CUDA);
@@ -520,8 +516,8 @@ TEST_F(TensorCatReductionBugTest, Contiguous_AfterCatSlice) {
 // ============================================================================
 
 TEST_F(TensorCatReductionBugTest, Sum_Cat_1D) {
-    std::vector<float> d1 = {1.0f, 2.0f, 3.0f};  // sum = 6
-    std::vector<float> d2 = {10.0f, 20.0f, 30.0f};  // sum = 60
+    std::vector<float> d1 = {1.0f, 2.0f, 3.0f};    // sum = 6
+    std::vector<float> d2 = {10.0f, 20.0f, 30.0f}; // sum = 60
 
     auto t1 = Tensor::from_vector(d1, {3}, Device::CUDA);
     auto t2 = Tensor::from_vector(d2, {3}, Device::CUDA);
@@ -532,15 +528,15 @@ TEST_F(TensorCatReductionBugTest, Sum_Cat_1D) {
 }
 
 TEST_F(TensorCatReductionBugTest, Sum_Cat_2D_Column) {
-    std::vector<float> d1 = {1.0f, 10.0f, 2.0f, 20.0f, 3.0f, 30.0f};  // [3, 2]
-    std::vector<float> d2 = {4.0f, 40.0f, 5.0f, 50.0f};  // [2, 2]
+    std::vector<float> d1 = {1.0f, 10.0f, 2.0f, 20.0f, 3.0f, 30.0f}; // [3, 2]
+    std::vector<float> d2 = {4.0f, 40.0f, 5.0f, 50.0f};              // [2, 2]
 
     auto t1 = Tensor::from_vector(d1, {3, 2}, Device::CUDA);
     auto t2 = Tensor::from_vector(d2, {2, 2}, Device::CUDA);
     auto cat = Tensor::cat({t1, t2}, 0);
 
-    auto col0 = cat.slice(1, 0, 1).squeeze(1);  // [1, 2, 3, 4, 5]
-    auto col1 = cat.slice(1, 1, 2).squeeze(1);  // [10, 20, 30, 40, 50]
+    auto col0 = cat.slice(1, 0, 1).squeeze(1); // [1, 2, 3, 4, 5]
+    auto col1 = cat.slice(1, 1, 2).squeeze(1); // [10, 20, 30, 40, 50]
 
     EXPECT_FLOAT_EQ(col0.sum_scalar(), 15.0f);
     EXPECT_FLOAT_EQ(col1.sum_scalar(), 150.0f);
@@ -551,18 +547,18 @@ TEST_F(TensorCatReductionBugTest, Sum_Slice_Large) {
     auto cpu = Tensor::zeros({N}, Device::CPU);
     float* p = cpu.ptr<float>();
     float expected_first = 0.0f, expected_second = 0.0f;
-    for (size_t i = 0; i < N/2; ++i) {
+    for (size_t i = 0; i < N / 2; ++i) {
         p[i] = 1.0f;
         expected_first += 1.0f;
     }
-    for (size_t i = N/2; i < N; ++i) {
+    for (size_t i = N / 2; i < N; ++i) {
         p[i] = 2.0f;
         expected_second += 2.0f;
     }
 
     auto t = cpu.to(Device::CUDA);
-    auto slice1 = t.slice(0, 0, N/2);
-    auto slice2 = t.slice(0, N/2, N);
+    auto slice1 = t.slice(0, 0, N / 2);
+    auto slice2 = t.slice(0, N / 2, N);
 
     EXPECT_FLOAT_EQ(slice1.sum_scalar(), expected_first);
     EXPECT_FLOAT_EQ(slice2.sum_scalar(), expected_second);
@@ -573,30 +569,29 @@ TEST_F(TensorCatReductionBugTest, Sum_Slice_Large) {
 // ============================================================================
 
 TEST_F(TensorCatReductionBugTest, Mean_Cat_1D) {
-    std::vector<float> d1 = {2.0f, 4.0f, 6.0f};  // mean = 4
-    std::vector<float> d2 = {10.0f, 20.0f, 30.0f};  // mean = 20, combined mean = 12
+    std::vector<float> d1 = {2.0f, 4.0f, 6.0f};    // mean = 4
+    std::vector<float> d2 = {10.0f, 20.0f, 30.0f}; // mean = 20, combined mean = 12
 
     auto t1 = Tensor::from_vector(d1, {3}, Device::CUDA);
     auto t2 = Tensor::from_vector(d2, {3}, Device::CUDA);
     auto cat = Tensor::cat({t1, t2}, 0);
 
     float mean = cat.mean_scalar();
-    EXPECT_FLOAT_EQ(mean, 12.0f);  // (2+4+6+10+20+30)/6 = 72/6 = 12
+    EXPECT_FLOAT_EQ(mean, 12.0f); // (2+4+6+10+20+30)/6 = 72/6 = 12
 }
 
 TEST_F(TensorCatReductionBugTest, Mean_Slice_Column) {
     std::vector<float> data = {
         1.0f, 10.0f,
         3.0f, 30.0f,
-        5.0f, 50.0f
-    };
+        5.0f, 50.0f};
     auto t = Tensor::from_vector(data, {3, 2}, Device::CUDA);
 
     auto col0 = t.slice(1, 0, 1).squeeze(1);
     auto col1 = t.slice(1, 1, 2).squeeze(1);
 
-    EXPECT_FLOAT_EQ(col0.mean_scalar(), 3.0f);   // (1+3+5)/3 = 3
-    EXPECT_FLOAT_EQ(col1.mean_scalar(), 30.0f);  // (10+30+50)/3 = 30
+    EXPECT_FLOAT_EQ(col0.mean_scalar(), 3.0f);  // (1+3+5)/3 = 3
+    EXPECT_FLOAT_EQ(col1.mean_scalar(), 30.0f); // (10+30+50)/3 = 30
 }
 
 // ============================================================================
@@ -656,12 +651,12 @@ TEST_F(TensorCatReductionBugTest, VsTorch_Large_Cat_Column) {
     std::vector<float> d1(N * 3), d2(N * 3);
 
     for (size_t i = 0; i < N; ++i) {
-        d1[i*3 + 0] = 100.0f + static_cast<float>(i % 100);
-        d1[i*3 + 1] = 0.0f;
-        d1[i*3 + 2] = 0.0f;
-        d2[i*3 + 0] = -100.0f - static_cast<float>(i % 100);
-        d2[i*3 + 1] = 0.0f;
-        d2[i*3 + 2] = 0.0f;
+        d1[i * 3 + 0] = 100.0f + static_cast<float>(i % 100);
+        d1[i * 3 + 1] = 0.0f;
+        d1[i * 3 + 2] = 0.0f;
+        d2[i * 3 + 0] = -100.0f - static_cast<float>(i % 100);
+        d2[i * 3 + 1] = 0.0f;
+        d2[i * 3 + 2] = 0.0f;
     }
 
     auto our_t1 = Tensor::from_vector(d1, {N, 3}, Device::CUDA);
@@ -721,7 +716,7 @@ TEST_F(TensorCatReductionBugTest, Cat_Then_Cat) {
 // ============================================================================
 
 TEST_F(TensorCatReductionBugTest, Cat_3D_Dim0) {
-    std::vector<float> d1(2*3*4), d2(2*3*4);
+    std::vector<float> d1(2 * 3 * 4), d2(2 * 3 * 4);
     for (size_t i = 0; i < d1.size(); ++i) {
         d1[i] = 100.0f + static_cast<float>(i);
         d2[i] = -100.0f - static_cast<float>(i);
@@ -734,12 +729,12 @@ TEST_F(TensorCatReductionBugTest, Cat_3D_Dim0) {
     ASSERT_EQ(cat.size(0), 4);
 
     verifyMinMax(cat, "Cat_3D_Dim0");
-    EXPECT_FLOAT_EQ(cat.min().item(), -123.0f);  // -100 - 23
-    EXPECT_FLOAT_EQ(cat.max().item(), 123.0f);   // 100 + 23
+    EXPECT_FLOAT_EQ(cat.min().item(), -123.0f); // -100 - 23
+    EXPECT_FLOAT_EQ(cat.max().item(), 123.0f);  // 100 + 23
 }
 
 TEST_F(TensorCatReductionBugTest, Slice_3D_Dim1) {
-    std::vector<float> data(4*5*6);
+    std::vector<float> data(4 * 5 * 6);
     for (size_t i = 0; i < data.size(); ++i) {
         data[i] = static_cast<float>(i);
     }
@@ -747,7 +742,7 @@ TEST_F(TensorCatReductionBugTest, Slice_3D_Dim1) {
     auto t = Tensor::from_vector(data, {4, 5, 6}, Device::CUDA);
 
     // Slice along dim 1
-    auto slice = t.slice(1, 2, 4);  // [4, 2, 6]
+    auto slice = t.slice(1, 2, 4); // [4, 2, 6]
     ASSERT_EQ(slice.size(0), 4);
     ASSERT_EQ(slice.size(1), 2);
     ASSERT_EQ(slice.size(2), 6);
@@ -786,7 +781,7 @@ TEST_F(TensorCatReductionBugTest, Slice_SingleElement) {
     std::vector<float> data = {100.0f, 200.0f, 300.0f};
     auto t = Tensor::from_vector(data, {3}, Device::CUDA);
 
-    auto slice = t.slice(0, 1, 2);  // Just [200.0f]
+    auto slice = t.slice(0, 1, 2); // Just [200.0f]
     EXPECT_FLOAT_EQ(slice.min().item(), 200.0f);
     EXPECT_FLOAT_EQ(slice.max().item(), 200.0f);
 }
@@ -843,7 +838,7 @@ TEST_F(TensorCatReductionBugTest, IsContiguous_RowSlice) {
     std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     auto t = Tensor::from_vector(data, {2, 3}, Device::CUDA);
 
-    auto row0 = t.slice(0, 0, 1);  // [1, 3]
+    auto row0 = t.slice(0, 0, 1); // [1, 3]
     // Row slice should be contiguous (consecutive memory)
     EXPECT_TRUE(row0.is_contiguous()) << "Row slice should be contiguous";
 }
@@ -852,7 +847,7 @@ TEST_F(TensorCatReductionBugTest, IsContiguous_ColumnSlice) {
     std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     auto t = Tensor::from_vector(data, {2, 3}, Device::CUDA);
 
-    auto col0 = t.slice(1, 0, 1);  // [2, 1] - elements at positions 0 and 3
+    auto col0 = t.slice(1, 0, 1); // [2, 1] - elements at positions 0 and 3
     // Column slice should NOT be contiguous (strided memory)
     // Note: This test checks our implementation's behavior
     // The bug may be that we report it as contiguous when it's not
@@ -870,7 +865,7 @@ TEST_F(TensorCatReductionBugTest, IsContiguous_RangeSlice) {
     std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     auto t = Tensor::from_vector(data, {6}, Device::CUDA);
 
-    auto slice = t.slice(0, 2, 5);  // [3, 4, 5]
+    auto slice = t.slice(0, 2, 5); // [3, 4, 5]
     // This is a view with storage_offset, but should be contiguous
     // because stride matches
 }
@@ -888,8 +883,10 @@ TEST_F(TensorCatReductionBugTest, Random_Cat_Reduction_Small) {
         const size_t N2 = 100 + (gen() % 100);
 
         std::vector<float> d1(N1), d2(N2);
-        for (auto& v : d1) v = dist(gen);
-        for (auto& v : d2) v = dist(gen);
+        for (auto& v : d1)
+            v = dist(gen);
+        for (auto& v : d2)
+            v = dist(gen);
 
         auto t1 = Tensor::from_vector(d1, {N1}, Device::CUDA);
         auto t2 = Tensor::from_vector(d2, {N2}, Device::CUDA);
@@ -912,8 +909,10 @@ TEST_F(TensorCatReductionBugTest, Random_Cat_Reduction_Large) {
         float* p1 = cpu1.ptr<float>();
         float* p2 = cpu2.ptr<float>();
 
-        for (size_t i = 0; i < N1; ++i) p1[i] = dist(gen);
-        for (size_t i = 0; i < N2; ++i) p2[i] = dist(gen);
+        for (size_t i = 0; i < N1; ++i)
+            p1[i] = dist(gen);
+        for (size_t i = 0; i < N2; ++i)
+            p2[i] = dist(gen);
 
         auto t1 = cpu1.to(Device::CUDA);
         auto t2 = cpu2.to(Device::CUDA);
@@ -1064,8 +1063,7 @@ TEST_F(TensorCatReductionBugTest, Clone_After_ColumnSlice) {
     std::vector<float> data = {
         1.0f, 100.0f,
         2.0f, 200.0f,
-        3.0f, 300.0f
-    };
+        3.0f, 300.0f};
     auto t = Tensor::from_vector(data, {3, 2}, Device::CUDA);
 
     auto col1 = t.slice(1, 1, 2).squeeze(1);

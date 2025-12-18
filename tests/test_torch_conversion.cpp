@@ -1,7 +1,7 @@
 /* Test to_torch conversion */
+#include "core/tensor.hpp"
 #include <gtest/gtest.h>
 #include <torch/torch.h>
-#include "core/tensor.hpp"
 
 // Helper to convert lfs::core::Tensor to torch::Tensor
 torch::Tensor to_torch(const lfs::core::Tensor& lfs_tensor) {

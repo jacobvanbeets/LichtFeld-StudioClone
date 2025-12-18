@@ -1,15 +1,15 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "core/logger.hpp"
 #include "internal/tensor_impl.hpp"
 #include "internal/tensor_ops.hpp"
-#include "core/logger.hpp"
 #include <algorithm>
 #include <cstring>
 #include <execution>
+#include <format>
 #include <numeric>
 #include <ranges>
-#include <format>
 
 #define CHECK_CUDA(call)                                        \
     do {                                                        \
@@ -688,18 +688,18 @@ namespace lfs::core {
             if (device_ == Device::CUDA) {
                 // Convert int64 indices to int32 for kernel (kernel expects int* not int64_t*)
                 auto idx_int32 = (idx_same_device.dtype() == DataType::Int64)
-                    ? idx_same_device.to(DataType::Int32)
-                    : idx_same_device;
+                                     ? idx_same_device.to(DataType::Int32)
+                                     : idx_same_device;
 
                 // Dispatch based on data type
                 if (dtype_ == DataType::Float32) {
                     tensor_ops::launch_index_add<float>(ptr<float>(), idx_int32.ptr<int>(),
-                                                 src_same_device.ptr<float>(), shape_.dims().data(),
-                                                 shape_.rank(), dim, idx.numel(), 0);
+                                                        src_same_device.ptr<float>(), shape_.dims().data(),
+                                                        shape_.rank(), dim, idx.numel(), 0);
                 } else if (dtype_ == DataType::Int32) {
                     tensor_ops::launch_index_add<int>(ptr<int>(), idx_int32.ptr<int>(),
-                                               src_same_device.ptr<int>(), shape_.dims().data(),
-                                               shape_.rank(), dim, idx.numel(), 0);
+                                                      src_same_device.ptr<int>(), shape_.dims().data(),
+                                                      shape_.rank(), dim, idx.numel(), 0);
                 } else {
                     LOG_ERROR("index_add_ only supports Float32 and Int32 types, got {}", static_cast<int>(dtype_));
                     return *this;
@@ -782,18 +782,18 @@ namespace lfs::core {
         if (device_ == Device::CUDA) {
             // Convert int64 indices to int32 for kernel (kernel expects int* not int64_t*)
             auto idx_int32 = (idx_same_device.dtype() == DataType::Int64)
-                ? idx_same_device.to(DataType::Int32)
-                : idx_same_device;
+                                 ? idx_same_device.to(DataType::Int32)
+                                 : idx_same_device;
 
             // Dispatch based on data type
             if (dtype_ == DataType::Float32) {
                 tensor_ops::launch_index_add<float>(ptr<float>(), idx_int32.ptr<int>(),
-                                             src_same_device.ptr<float>(), shape_.dims().data(),
-                                             shape_.rank(), dim, idx.numel(), 0);
+                                                    src_same_device.ptr<float>(), shape_.dims().data(),
+                                                    shape_.rank(), dim, idx.numel(), 0);
             } else if (dtype_ == DataType::Int32) {
                 tensor_ops::launch_index_add<int>(ptr<int>(), idx_int32.ptr<int>(),
-                                           src_same_device.ptr<int>(), shape_.dims().data(),
-                                           shape_.rank(), dim, idx.numel(), 0);
+                                                  src_same_device.ptr<int>(), shape_.dims().data(),
+                                                  shape_.rank(), dim, idx.numel(), 0);
             } else {
                 LOG_ERROR("index_add_ only supports Float32 and Int32 types, got {}", static_cast<int>(dtype_));
                 return *this;
@@ -939,7 +939,8 @@ namespace lfs::core {
             if (vals_same_device.shape() == TensorShape(expected_shape)) {
                 // Convert indices to Int32 if needed (index_copy_ requires Int32)
                 Tensor idx_int32 = (idx_same_device.dtype() == DataType::Int32)
-                    ? idx_same_device : idx_same_device.to(DataType::Int32);
+                                       ? idx_same_device
+                                       : idx_same_device.to(DataType::Int32);
                 tensor_ops::launch_index_copy(ptr<float>(), idx_int32.ptr<int>(),
                                               vals_same_device.ptr<float>(), shape_.dims().data(),
                                               shape_.rank(), 0, idx_int32.numel(), stream_);
@@ -972,8 +973,8 @@ namespace lfs::core {
                             row_idx += num_rows;
                         if (row_idx >= 0 && row_idx < static_cast<IndexT>(num_rows)) {
                             std::memcpy(data + row_idx * row_size,
-                                       values + i * row_size,
-                                       row_size * sizeof(DataT));
+                                        values + i * row_size,
+                                        row_size * sizeof(DataT));
                         }
                     }
                 } else {
@@ -1014,8 +1015,8 @@ namespace lfs::core {
                         if (row_idx >= 0 && row_idx < static_cast<IndexT>(num_rows)) {
                             // Copy entire row
                             std::memcpy(data + row_idx * row_size,
-                                       values + i * row_size,
-                                       row_size * sizeof(DataT));
+                                        values + i * row_size,
+                                        row_size * sizeof(DataT));
                         }
                     }
                 } else {
@@ -1805,7 +1806,7 @@ namespace lfs::core {
         // Validation: check capacity
         if (capacity_ == 0) {
             LOG_ERROR("append_zeros({}) failed on tensor '{}' (id={}): capacity_=0, shape={}, is_view_={}",
-                     n_rows, name_.empty() ? "<unnamed>" : name_, id_, shape_.str(), is_view_);
+                      n_rows, name_.empty() ? "<unnamed>" : name_, id_, shape_.str(), is_view_);
             throw std::runtime_error("append_zeros() requires tensor with capacity > 0 (use reserve() first)");
         }
 

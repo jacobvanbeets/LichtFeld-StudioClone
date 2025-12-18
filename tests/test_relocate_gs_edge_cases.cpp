@@ -19,11 +19,11 @@
  * 10. Element-wise operations with reductions
  */
 
-#include <gtest/gtest.h>
 #include "core/tensor.hpp"
-#include <torch/torch.h>
 #include <cmath>
+#include <gtest/gtest.h>
 #include <limits>
+#include <torch/torch.h>
 
 using namespace lfs::core;
 
@@ -61,9 +61,8 @@ TEST_F(RelocateGsEdgeCasesTest, LogitEdgeValuesNearOne) {
     // Values closer to 1.0 than 1e-7 are handled by clamping in relocate_gs
     std::vector<float> test_values = {
         0.9f, 0.99f, 0.999f, 0.9999f,
-        1.0f - 1e-7f,  // Max value used in relocate_gs (after clamping)
-        1.0f - 1e-6f
-    };
+        1.0f - 1e-7f, // Max value used in relocate_gs (after clamping)
+        1.0f - 1e-6f};
 
     for (float val : test_values) {
         auto p = Tensor::full({1}, val, Device::CUDA);
@@ -91,8 +90,7 @@ TEST_F(RelocateGsEdgeCasesTest, LogitAfterClamping) {
     const float max_opacity = 1.0f - 1e-7f;
 
     std::vector<float> input_values = {
-        0.0f, 0.001f, 0.005f, 0.1f, 0.5f, 0.9f, 0.999f, 1.0f
-    };
+        0.0f, 0.001f, 0.005f, 0.1f, 0.5f, 0.9f, 0.999f, 1.0f};
 
     for (float val : input_values) {
         auto p = Tensor::full({1}, val, Device::CUDA);
@@ -110,8 +108,7 @@ TEST_F(RelocateGsEdgeCasesTest, LogitAfterClamping) {
 TEST_F(RelocateGsEdgeCasesTest, LogitBatchOperation) {
     // Test logit on a batch of values (as happens in relocate_gs)
     std::vector<float> values = {
-        0.005f, 0.01f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f, 0.99f, 1.0f - 1e-7f
-    };
+        0.005f, 0.01f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f, 0.99f, 1.0f - 1e-7f};
 
     auto p = Tensor::from_vector(values, TensorShape{values.size()}, Device::CUDA);
     auto logit = (p / (Tensor::ones_like(p) - p)).log();
@@ -134,20 +131,20 @@ TEST_F(RelocateGsEdgeCasesTest, LogitBatchOperation) {
 TEST_F(RelocateGsEdgeCasesTest, Int32ClampBasic) {
     // Test Int32 clamp as used for ratios in relocate_gs
     auto ratios = Tensor::from_vector(
-        std::vector<float>{0, 1, 5, 10, 50, 100},
-        TensorShape{6}, Device::CUDA
-    ).to(DataType::Int32);
+                      std::vector<float>{0, 1, 5, 10, 50, 100},
+                      TensorShape{6}, Device::CUDA)
+                      .to(DataType::Int32);
 
     const int n_max = 51;
     auto clamped = ratios.clamp(1, n_max);
     auto result = clamped.cpu().to_vector_int();
 
-    EXPECT_EQ(result[0], 1);   // 0 -> 1
-    EXPECT_EQ(result[1], 1);   // 1 -> 1
-    EXPECT_EQ(result[2], 5);   // 5 -> 5
-    EXPECT_EQ(result[3], 10);  // 10 -> 10
-    EXPECT_EQ(result[4], 50);  // 50 -> 50
-    EXPECT_EQ(result[5], 51);  // 100 -> 51 (clamped to n_max)
+    EXPECT_EQ(result[0], 1);  // 0 -> 1
+    EXPECT_EQ(result[1], 1);  // 1 -> 1
+    EXPECT_EQ(result[2], 5);  // 5 -> 5
+    EXPECT_EQ(result[3], 10); // 10 -> 10
+    EXPECT_EQ(result[4], 50); // 50 -> 50
+    EXPECT_EQ(result[5], 51); // 100 -> 51 (clamped to n_max)
 }
 
 TEST_F(RelocateGsEdgeCasesTest, Int32ClampEdgeCases) {
@@ -155,13 +152,12 @@ TEST_F(RelocateGsEdgeCasesTest, Int32ClampEdgeCases) {
     std::vector<int> values = {
         std::numeric_limits<int>::min(),
         -1000, -1, 0, 1, 2, 50, 51, 52, 100, 1000,
-        std::numeric_limits<int>::max()
-    };
+        std::numeric_limits<int>::max()};
 
     auto tensor = Tensor::from_vector(
-        std::vector<float>(values.begin(), values.end()),
-        TensorShape{values.size()}, Device::CUDA
-    ).to(DataType::Int32);
+                      std::vector<float>(values.begin(), values.end()),
+                      TensorShape{values.size()}, Device::CUDA)
+                      .to(DataType::Int32);
     auto clamped = tensor.clamp(1, 51);
     auto result = clamped.cpu().to_vector_int();
 
@@ -231,12 +227,12 @@ TEST_F(RelocateGsEdgeCasesTest, LogicalNotAndNonzero) {
     auto alive_mask = dead_mask.logical_not();
     auto result = alive_mask.cpu().to_vector_bool();
 
-    EXPECT_FALSE(result[0]);  // ~true = false
-    EXPECT_TRUE(result[1]);   // ~false = true
-    EXPECT_FALSE(result[2]);  // ~true = false
-    EXPECT_TRUE(result[3]);   // ~false = true
-    EXPECT_TRUE(result[4]);   // ~false = true
-    EXPECT_FALSE(result[5]);  // ~true = false
+    EXPECT_FALSE(result[0]); // ~true = false
+    EXPECT_TRUE(result[1]);  // ~false = true
+    EXPECT_FALSE(result[2]); // ~true = false
+    EXPECT_TRUE(result[3]);  // ~false = true
+    EXPECT_TRUE(result[4]);  // ~false = true
+    EXPECT_FALSE(result[5]); // ~true = false
 }
 
 TEST_F(RelocateGsEdgeCasesTest, ElementWiseMultiplyThenSum) {
@@ -244,10 +240,10 @@ TEST_F(RelocateGsEdgeCasesTest, ElementWiseMultiplyThenSum) {
     // This tests element-wise multiply followed by reduction
 
     std::vector<float> rotation_data = {
-        1.0f, 0.0f, 0.0f, 0.0f,  // Row 0: magnitude^2 = 1.0
-        0.5f, 0.5f, 0.5f, 0.5f,  // Row 1: magnitude^2 = 1.0
-        1e-5f, 1e-5f, 1e-5f, 1e-5f,  // Row 2: magnitude^2 = 4e-10
-        0.0f, 0.0f, 0.0f, 0.0f   // Row 3: magnitude^2 = 0.0
+        1.0f, 0.0f, 0.0f, 0.0f,     // Row 0: magnitude^2 = 1.0
+        0.5f, 0.5f, 0.5f, 0.5f,     // Row 1: magnitude^2 = 1.0
+        1e-5f, 1e-5f, 1e-5f, 1e-5f, // Row 2: magnitude^2 = 4e-10
+        0.0f, 0.0f, 0.0f, 0.0f      // Row 3: magnitude^2 = 0.0
     };
 
     auto rotation_raw = Tensor::from_vector(rotation_data, TensorShape{4, 4}, Device::CUDA);
@@ -304,7 +300,7 @@ TEST_F(RelocateGsEdgeCasesTest, SqueezeAfterNonzero) {
     EXPECT_EQ(indices.ndim(), 1);
     auto result = indices.cpu().to_vector_int64();
 
-    EXPECT_EQ(result.size(), 3);  // 3 true values
+    EXPECT_EQ(result.size(), 3); // 3 true values
     EXPECT_EQ(result[0], 1);
     EXPECT_EQ(result[1], 3);
     EXPECT_EQ(result[2], 4);
@@ -364,8 +360,7 @@ TEST_F(RelocateGsEdgeCasesTest, NonzeroSingleElement) {
 TEST_F(RelocateGsEdgeCasesTest, DivisionByNearZero) {
     // Test: p / (1 - p) when p is very close to 1
     std::vector<float> values_near_one = {
-        0.9f, 0.99f, 0.999f, 0.9999f, 1.0f - 1e-7f
-    };
+        0.9f, 0.99f, 0.999f, 0.9999f, 1.0f - 1e-7f};
 
     for (float val : values_near_one) {
         auto p = Tensor::full({1}, val, Device::CUDA);
@@ -451,8 +446,8 @@ TEST_F(RelocateGsEdgeCasesTest, DoubleIndexSelectBasic) {
     // Test: alive_indices.index_select(0, sampled_idxs_local)
     // This is double indirection: indices[sampled_idxs]
 
-    std::vector<int64_t> alive_indices_data = {1, 3, 5, 7, 9};  // 5 alive
-    std::vector<int64_t> sampled_local_data = {0, 2, 4, 1};     // Sample from alive
+    std::vector<int64_t> alive_indices_data = {1, 3, 5, 7, 9}; // 5 alive
+    std::vector<int64_t> sampled_local_data = {0, 2, 4, 1};    // Sample from alive
 
     auto alive_indices = Tensor::from_vector(std::vector<int>(alive_indices_data.begin(), alive_indices_data.end()), TensorShape{5}, Device::CUDA).to(DataType::Int64);
     auto sampled_local = Tensor::from_vector(std::vector<int>(sampled_local_data.begin(), sampled_local_data.end()), TensorShape{4}, Device::CUDA).to(DataType::Int64);
@@ -461,16 +456,16 @@ TEST_F(RelocateGsEdgeCasesTest, DoubleIndexSelectBasic) {
     auto result = sampled_idxs.cpu().to_vector_int64();
 
     EXPECT_EQ(result.size(), 4);
-    EXPECT_EQ(result[0], 1);  // alive_indices[0]
-    EXPECT_EQ(result[1], 5);  // alive_indices[2]
-    EXPECT_EQ(result[2], 9);  // alive_indices[4]
-    EXPECT_EQ(result[3], 3);  // alive_indices[1]
+    EXPECT_EQ(result[0], 1); // alive_indices[0]
+    EXPECT_EQ(result[1], 5); // alive_indices[2]
+    EXPECT_EQ(result[2], 9); // alive_indices[4]
+    EXPECT_EQ(result[3], 3); // alive_indices[1]
 }
 
 TEST_F(RelocateGsEdgeCasesTest, DoubleIndexSelectWithDuplicates) {
     // Test double index_select when sampled indices have duplicates
     std::vector<int64_t> alive_indices_data = {10, 20, 30, 40};
-    std::vector<int64_t> sampled_local_data = {0, 0, 1, 1, 2, 2};  // Duplicates
+    std::vector<int64_t> sampled_local_data = {0, 0, 1, 1, 2, 2}; // Duplicates
 
     auto alive_indices = Tensor::from_vector(std::vector<int>(alive_indices_data.begin(), alive_indices_data.end()), TensorShape{4}, Device::CUDA).to(DataType::Int64);
     auto sampled_local = Tensor::from_vector(std::vector<int>(sampled_local_data.begin(), sampled_local_data.end()), TensorShape{6}, Device::CUDA).to(DataType::Int64);
@@ -548,10 +543,10 @@ TEST_F(RelocateGsEdgeCasesTest, ContiguousPreservesData) {
 
     // Verify data is correct
     auto result = contig.cpu().to_vector();
-    EXPECT_FLOAT_EQ(result[0], 1.0f);  // [0, 0]
-    EXPECT_FLOAT_EQ(result[1], 6.0f);  // [0, 1]
-    EXPECT_FLOAT_EQ(result[2], 2.0f);  // [1, 0]
-    EXPECT_FLOAT_EQ(result[3], 7.0f);  // [1, 1]
+    EXPECT_FLOAT_EQ(result[0], 1.0f); // [0, 0]
+    EXPECT_FLOAT_EQ(result[1], 6.0f); // [0, 1]
+    EXPECT_FLOAT_EQ(result[2], 2.0f); // [1, 0]
+    EXPECT_FLOAT_EQ(result[3], 7.0f); // [1, 1]
 }
 
 // ============================================================================
@@ -602,13 +597,13 @@ TEST_F(RelocateGsEdgeCasesTest, FullRelocateGsPipelineSimulation) {
     for (size_t i = 0; i < N; ++i) {
         if (i < 10) {
             // First 10: very low opacity (dead by opacity criterion)
-            opacity_data[i] = 0.001f + (i * 0.0002f);  // [0.001, 0.0028]
+            opacity_data[i] = 0.001f + (i * 0.0002f); // [0.001, 0.0028]
         } else if (i < 20) {
             // Next 10: at threshold
             opacity_data[i] = min_opacity;
         } else {
             // Rest: alive
-            opacity_data[i] = 0.2f + (static_cast<float>(i) / N) * 0.5f;  // [0.2, 0.7]
+            opacity_data[i] = 0.2f + (static_cast<float>(i) / N) * 0.5f; // [0.2, 0.7]
         }
     }
     auto opacities = Tensor::from_vector(opacity_data, TensorShape{N}, Device::CUDA);
@@ -659,7 +654,7 @@ TEST_F(RelocateGsEdgeCasesTest, FullRelocateGsPipelineSimulation) {
     ratios = ratios.clamp(1, n_max);
 
     // 7. Simulate new opacities and compute logit
-    auto new_opacities = sampled_opacities * 0.8f;  // Scaled down
+    auto new_opacities = sampled_opacities * 0.8f; // Scaled down
     new_opacities = new_opacities.clamp(min_opacity, 1.0f - 1e-7f);
     auto new_opacity_raw = (new_opacities / (Tensor::ones_like(new_opacities) - new_opacities)).log();
 
@@ -720,8 +715,7 @@ TEST_F(RelocateGsEdgeCasesTest, RotationMagnitudeSquaredCalculation) {
         // quat 3: [1, 1, 1, 1] -> mag² = 4
         1.0f, 1.0f, 1.0f, 1.0f,
         // quat 4: very small -> mag² ≈ 4e-10 (below threshold)
-        1e-5f, 1e-5f, 1e-5f, 1e-5f
-    };
+        1e-5f, 1e-5f, 1e-5f, 1e-5f};
 
     auto rotation_raw = Tensor::from_vector(quaternions, TensorShape{5, 4}, Device::CUDA);
 
@@ -731,12 +725,12 @@ TEST_F(RelocateGsEdgeCasesTest, RotationMagnitudeSquaredCalculation) {
 
     // Verify against manual calculation
     for (size_t i = 0; i < 5; ++i) {
-        float w = quaternions[i*4 + 0];
-        float x = quaternions[i*4 + 1];
-        float y = quaternions[i*4 + 2];
-        float z = quaternions[i*4 + 3];
+        float w = quaternions[i * 4 + 0];
+        float x = quaternions[i * 4 + 1];
+        float y = quaternions[i * 4 + 2];
+        float z = quaternions[i * 4 + 3];
 
-        float expected = w*w + x*x + y*y + z*z;
+        float expected = w * w + x * x + y * y + z * z;
         float computed = result[i];
         float diff = std::abs(computed - expected);
 
@@ -746,22 +740,22 @@ TEST_F(RelocateGsEdgeCasesTest, RotationMagnitudeSquaredCalculation) {
     }
 
     // Verify expected values
-    EXPECT_NEAR(result[0], 1.0f, 1e-6f);  // Unit quaternion
-    EXPECT_NEAR(result[1], 1.0f, 1e-6f);  // Normalized quaternion
-    EXPECT_NEAR(result[2], 4.0f, 1e-6f);  // Scaled quaternion
-    EXPECT_NEAR(result[3], 4.0f, 1e-6f);  // All ones
-    EXPECT_LT(result[4], 1e-8f);           // Very small (below dead threshold)
+    EXPECT_NEAR(result[0], 1.0f, 1e-6f); // Unit quaternion
+    EXPECT_NEAR(result[1], 1.0f, 1e-6f); // Normalized quaternion
+    EXPECT_NEAR(result[2], 4.0f, 1e-6f); // Scaled quaternion
+    EXPECT_NEAR(result[3], 4.0f, 1e-6f); // All ones
+    EXPECT_LT(result[4], 1e-8f);         // Very small (below dead threshold)
 }
 
 TEST_F(RelocateGsEdgeCasesTest, RotationDeadThreshold) {
     // Test the dead Gaussian detection threshold: rot_mag_sq < 1e-8
     std::vector<float> test_quats = {
         // Below threshold (should be dead)
-        1e-5f, 1e-5f, 1e-5f, 1e-5f,  // mag² = 4e-10 < 1e-8 ✓ dead
-        5e-5f, 0.0f, 0.0f, 0.0f,     // mag² = 2.5e-9 < 1e-8 ✓ dead
+        1e-5f, 1e-5f, 1e-5f, 1e-5f, // mag² = 4e-10 < 1e-8 ✓ dead
+        5e-5f, 0.0f, 0.0f, 0.0f,    // mag² = 2.5e-9 < 1e-8 ✓ dead
         // Above threshold (should be alive)
-        1e-4f, 1e-5f, 1e-5f, 1e-5f,  // mag² ≈ 1.02e-8 > 1e-8 ✗ alive
-        1e-3f, 0.0f, 0.0f, 0.0f,     // mag² = 1e-6 > 1e-8 ✗ alive
+        1e-4f, 1e-5f, 1e-5f, 1e-5f, // mag² ≈ 1.02e-8 > 1e-8 ✗ alive
+        1e-3f, 0.0f, 0.0f, 0.0f,    // mag² = 1e-6 > 1e-8 ✗ alive
     };
 
     auto rotation_raw = Tensor::from_vector(test_quats, TensorShape{4, 4}, Device::CUDA);
@@ -783,8 +777,8 @@ TEST_F(RelocateGsEdgeCasesTest, RotationDeadThreshold) {
 TEST_F(RelocateGsEdgeCasesTest, RotationMagnitudeSumDimension) {
     // Verify sum(-1) sums along the last dimension correctly
     std::vector<float> simple_data = {
-        1.0f, 2.0f, 3.0f, 4.0f,   // row 0: 1² + 2² + 3² + 4² = 1+4+9+16 = 30
-        5.0f, 6.0f, 7.0f, 8.0f    // row 1: 5² + 6² + 7² + 8² = 25+36+49+64 = 174
+        1.0f, 2.0f, 3.0f, 4.0f, // row 0: 1² + 2² + 3² + 4² = 1+4+9+16 = 30
+        5.0f, 6.0f, 7.0f, 8.0f  // row 1: 5² + 6² + 7² + 8² = 25+36+49+64 = 174
     };
 
     auto tensor = Tensor::from_vector(simple_data, TensorShape{2, 4}, Device::CUDA);
@@ -807,21 +801,45 @@ TEST_F(RelocateGsEdgeCasesTest, RotationMagnitudeSquared_LibTorchComparison) {
 
     std::vector<float> quaternions = {
         // Unit quaternion
-        1.0f, 0.0f, 0.0f, 0.0f,
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
         // Normalized quaternion
-        0.5f, 0.5f, 0.5f, 0.5f,
+        0.5f,
+        0.5f,
+        0.5f,
+        0.5f,
         // Scaled quaternion
-        2.0f, 0.0f, 0.0f, 0.0f,
+        2.0f,
+        0.0f,
+        0.0f,
+        0.0f,
         // All ones
-        1.0f, 1.0f, 1.0f, 1.0f,
+        1.0f,
+        1.0f,
+        1.0f,
+        1.0f,
         // Very small (dead threshold)
-        1e-5f, 1e-5f, 1e-5f, 1e-5f,
+        1e-5f,
+        1e-5f,
+        1e-5f,
+        1e-5f,
         // Random values
-        0.7071f, 0.7071f, 0.0f, 0.0f,
+        0.7071f,
+        0.7071f,
+        0.0f,
+        0.0f,
         // Near threshold: mag² ≈ 1e-8
-        3.16e-5f, 0.0f, 0.0f, 0.0f,
+        3.16e-5f,
+        0.0f,
+        0.0f,
+        0.0f,
         // Negative values
-        -1.0f, 1.0f, -1.0f, 1.0f,
+        -1.0f,
+        1.0f,
+        -1.0f,
+        1.0f,
     };
 
     const size_t N = quaternions.size() / 4;
@@ -833,10 +851,11 @@ TEST_F(RelocateGsEdgeCasesTest, RotationMagnitudeSquared_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto rotation_torch = torch::from_blob(
-        quaternions.data(),
-        {static_cast<long>(N), 4},
-        torch::kFloat32
-    ).clone().cuda();
+                              quaternions.data(),
+                              {static_cast<long>(N), 4},
+                              torch::kFloat32)
+                              .clone()
+                              .cuda();
     auto rot_mag_sq_torch = (rotation_torch * rotation_torch).sum(-1);
     auto result_torch_tensor = rot_mag_sq_torch.cpu();
 
@@ -848,10 +867,10 @@ TEST_F(RelocateGsEdgeCasesTest, RotationMagnitudeSquared_LibTorchComparison) {
 
         EXPECT_LT(diff, 1e-6f)
             << "Quat[" << i << "]: ["
-            << quaternions[i*4+0] << ", "
-            << quaternions[i*4+1] << ", "
-            << quaternions[i*4+2] << ", "
-            << quaternions[i*4+3] << "] "
+            << quaternions[i * 4 + 0] << ", "
+            << quaternions[i * 4 + 1] << ", "
+            << quaternions[i * 4 + 2] << ", "
+            << quaternions[i * 4 + 3] << "] "
             << "LFS=" << lfs_val << " vs LibTorch=" << torch_val
             << " (diff=" << diff << ")";
     }
@@ -862,8 +881,7 @@ TEST_F(RelocateGsEdgeCasesTest, LogitCalculation_LibTorchComparison) {
 
     std::vector<float> opacity_values = {
         0.005f, 0.01f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f, 0.99f,
-        1.0f - 1e-7f, 0.005f + 1e-6f, 0.5f - 1e-6f, 0.5f + 1e-6f
-    };
+        1.0f - 1e-7f, 0.005f + 1e-6f, 0.5f - 1e-6f, 0.5f + 1e-6f};
     const size_t N = opacity_values.size();
 
     // ========== LFS Tensor Library ==========
@@ -873,10 +891,11 @@ TEST_F(RelocateGsEdgeCasesTest, LogitCalculation_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto p_torch = torch::from_blob(
-        opacity_values.data(),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().cuda();
+                       opacity_values.data(),
+                       {static_cast<long>(N)},
+                       torch::kFloat32)
+                       .clone()
+                       .cuda();
     auto logit_torch = (p_torch / (torch::ones_like(p_torch) - p_torch)).log();
     auto result_torch_tensor = logit_torch.cpu();
 
@@ -898,8 +917,7 @@ TEST_F(RelocateGsEdgeCasesTest, Int32Clamp_LibTorchComparison) {
     // Compare Int32 clamp operation
 
     std::vector<float> values_float = {
-        -100, -10, -1, 0, 1, 2, 10, 25, 50, 51, 52, 100, 1000
-    };
+        -100, -10, -1, 0, 1, 2, 10, 25, 50, 51, 52, 100, 1000};
     const size_t N = values_float.size();
     const int n_max = 51;
 
@@ -910,10 +928,12 @@ TEST_F(RelocateGsEdgeCasesTest, Int32Clamp_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto tensor_torch = torch::from_blob(
-        values_float.data(),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().to(torch::kInt32).cuda();
+                            values_float.data(),
+                            {static_cast<long>(N)},
+                            torch::kFloat32)
+                            .clone()
+                            .to(torch::kInt32)
+                            .cuda();
     auto result_torch = tensor_torch.clamp(1, n_max);
     auto result_torch_tensor = result_torch.cpu();
 
@@ -946,15 +966,19 @@ TEST_F(RelocateGsEdgeCasesTest, LogicalOperations_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto mask1_torch = torch::from_blob(
-            mask1_data.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().to(torch::kBool).cuda();
+                               mask1_data.data(),
+                               {static_cast<long>(N)},
+                               torch::kFloat32)
+                               .clone()
+                               .to(torch::kBool)
+                               .cuda();
         auto mask2_torch = torch::from_blob(
-            mask2_data.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().to(torch::kBool).cuda();
+                               mask2_data.data(),
+                               {static_cast<long>(N)},
+                               torch::kFloat32)
+                               .clone()
+                               .to(torch::kBool)
+                               .cuda();
         auto result_torch = mask1_torch.logical_or(mask2_torch);
         auto result_torch_tensor = result_torch.cpu();
 
@@ -978,10 +1002,12 @@ TEST_F(RelocateGsEdgeCasesTest, LogicalOperations_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto mask_torch = torch::from_blob(
-            mask1_data.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().to(torch::kBool).cuda();
+                              mask1_data.data(),
+                              {static_cast<long>(N)},
+                              torch::kFloat32)
+                              .clone()
+                              .to(torch::kBool)
+                              .cuda();
         auto result_torch = mask_torch.logical_not();
         auto result_torch_tensor = result_torch.cpu();
 
@@ -1012,10 +1038,11 @@ TEST_F(RelocateGsEdgeCasesTest, Squeeze_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto tensor_torch = torch::from_blob(
-            data.data(),
-            {static_cast<long>(N), 1},
-            torch::kFloat32
-        ).clone().cuda();
+                                data.data(),
+                                {static_cast<long>(N), 1},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto result_torch = tensor_torch.squeeze(-1);
         auto result_torch_tensor = result_torch.cpu();
 
@@ -1043,10 +1070,11 @@ TEST_F(RelocateGsEdgeCasesTest, Squeeze_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto tensor_torch = torch::from_blob(
-            data.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().cuda();
+                                data.data(),
+                                {static_cast<long>(N)},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto result_torch = tensor_torch.squeeze(-1);
 
         // ========== Compare Results ==========
@@ -1070,10 +1098,12 @@ TEST_F(RelocateGsEdgeCasesTest, Nonzero_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto mask_torch = torch::from_blob(
-        mask_data.data(),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().to(torch::kBool).cuda();
+                          mask_data.data(),
+                          {static_cast<long>(N)},
+                          torch::kFloat32)
+                          .clone()
+                          .to(torch::kBool)
+                          .cuda();
     auto indices_torch = mask_torch.nonzero().squeeze(-1);
     auto result_torch_tensor = indices_torch.cpu();
 
@@ -1095,8 +1125,7 @@ TEST_F(RelocateGsEdgeCasesTest, Division_LibTorchComparison) {
     // Compare division operations, especially p / (1 - p)
 
     std::vector<float> p_values = {
-        0.005f, 0.01f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 0.99f, 1.0f - 1e-7f
-    };
+        0.005f, 0.01f, 0.1f, 0.25f, 0.5f, 0.75f, 0.9f, 0.99f, 1.0f - 1e-7f};
     const size_t N = p_values.size();
 
     // ========== LFS Tensor Library ==========
@@ -1107,10 +1136,11 @@ TEST_F(RelocateGsEdgeCasesTest, Division_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto p_torch = torch::from_blob(
-        p_values.data(),
-        {static_cast<long>(N)},
-        torch::kFloat32
-    ).clone().cuda();
+                       p_values.data(),
+                       {static_cast<long>(N)},
+                       torch::kFloat32)
+                       .clone()
+                       .cuda();
     auto denominator_torch = torch::ones_like(p_torch) - p_torch;
     auto result_torch = p_torch / denominator_torch;
     auto result_torch_tensor = result_torch.cpu();
@@ -1144,10 +1174,11 @@ TEST_F(RelocateGsEdgeCasesTest, OnesLike_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto tensor_torch = torch::from_blob(
-            data.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().cuda();
+                                data.data(),
+                                {static_cast<long>(N)},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto ones_torch = torch::ones_like(tensor_torch);
         auto result_torch_tensor = ones_torch.cpu();
 
@@ -1167,10 +1198,11 @@ TEST_F(RelocateGsEdgeCasesTest, OnesLike_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto tensor_torch = torch::from_blob(
-            data.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().cuda();
+                                data.data(),
+                                {static_cast<long>(N)},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto ones_torch = torch::ones_like(tensor_torch, torch::kInt32);
         auto result_torch_tensor = ones_torch.cpu();
 
@@ -1190,10 +1222,11 @@ TEST_F(RelocateGsEdgeCasesTest, OnesLike_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto tensor_torch = torch::from_blob(
-            data.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().cuda();
+                                data.data(),
+                                {static_cast<long>(N)},
+                                torch::kFloat32)
+                                .clone()
+                                .cuda();
         auto ones_torch = torch::ones_like(tensor_torch, torch::kInt64);
         auto result_torch_tensor = ones_torch.cpu();
 
@@ -1209,8 +1242,8 @@ TEST_F(RelocateGsEdgeCasesTest, IndexSelect_LibTorchComparison) {
     // Compare chained index_select operations (double indirection)
 
     std::vector<float> base_data = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
-    std::vector<int64_t> indices1_data = {9, 7, 5, 3, 1};  // First level indices
-    std::vector<int64_t> indices2_data = {0, 2, 4, 1};     // Second level indices
+    std::vector<int64_t> indices1_data = {9, 7, 5, 3, 1}; // First level indices
+    std::vector<int64_t> indices2_data = {0, 2, 4, 1};    // Second level indices
 
     const size_t N = base_data.size();
     const size_t N1 = indices1_data.size();
@@ -1221,23 +1254,25 @@ TEST_F(RelocateGsEdgeCasesTest, IndexSelect_LibTorchComparison) {
         // ========== LFS Tensor Library ==========
         auto base_lfs = Tensor::from_vector(base_data, TensorShape{N}, Device::CUDA);
         auto indices_lfs = Tensor::from_vector(
-            std::vector<int>(indices1_data.begin(), indices1_data.end()),
-            TensorShape{N1}, Device::CUDA
-        ).to(DataType::Int64);
+                               std::vector<int>(indices1_data.begin(), indices1_data.end()),
+                               TensorShape{N1}, Device::CUDA)
+                               .to(DataType::Int64);
         auto result_lfs_tensor = base_lfs.index_select(0, indices_lfs);
         auto result_lfs = result_lfs_tensor.cpu().to_vector();
 
         // ========== LibTorch ==========
         auto base_torch = torch::from_blob(
-            base_data.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().cuda();
+                              base_data.data(),
+                              {static_cast<long>(N)},
+                              torch::kFloat32)
+                              .clone()
+                              .cuda();
         auto indices_torch = torch::from_blob(
-            indices1_data.data(),
-            {static_cast<long>(N1)},
-            torch::kInt64
-        ).clone().cuda();
+                                 indices1_data.data(),
+                                 {static_cast<long>(N1)},
+                                 torch::kInt64)
+                                 .clone()
+                                 .cuda();
         auto result_torch = base_torch.index_select(0, indices_torch);
         auto result_torch_tensor = result_torch.cpu();
 
@@ -1253,13 +1288,13 @@ TEST_F(RelocateGsEdgeCasesTest, IndexSelect_LibTorchComparison) {
         // ========== LFS Tensor Library ==========
         auto base_lfs = Tensor::from_vector(base_data, TensorShape{N}, Device::CUDA);
         auto indices1_lfs = Tensor::from_vector(
-            std::vector<int>(indices1_data.begin(), indices1_data.end()),
-            TensorShape{N1}, Device::CUDA
-        ).to(DataType::Int64);
+                                std::vector<int>(indices1_data.begin(), indices1_data.end()),
+                                TensorShape{N1}, Device::CUDA)
+                                .to(DataType::Int64);
         auto indices2_lfs = Tensor::from_vector(
-            std::vector<int>(indices2_data.begin(), indices2_data.end()),
-            TensorShape{N2}, Device::CUDA
-        ).to(DataType::Int64);
+                                std::vector<int>(indices2_data.begin(), indices2_data.end()),
+                                TensorShape{N2}, Device::CUDA)
+                                .to(DataType::Int64);
 
         auto temp_lfs = base_lfs.index_select(0, indices1_lfs);
         auto result_lfs_tensor = temp_lfs.index_select(0, indices2_lfs);
@@ -1267,20 +1302,23 @@ TEST_F(RelocateGsEdgeCasesTest, IndexSelect_LibTorchComparison) {
 
         // ========== LibTorch ==========
         auto base_torch = torch::from_blob(
-            base_data.data(),
-            {static_cast<long>(N)},
-            torch::kFloat32
-        ).clone().cuda();
+                              base_data.data(),
+                              {static_cast<long>(N)},
+                              torch::kFloat32)
+                              .clone()
+                              .cuda();
         auto indices1_torch = torch::from_blob(
-            indices1_data.data(),
-            {static_cast<long>(N1)},
-            torch::kInt64
-        ).clone().cuda();
+                                  indices1_data.data(),
+                                  {static_cast<long>(N1)},
+                                  torch::kInt64)
+                                  .clone()
+                                  .cuda();
         auto indices2_torch = torch::from_blob(
-            indices2_data.data(),
-            {static_cast<long>(N2)},
-            torch::kInt64
-        ).clone().cuda();
+                                  indices2_data.data(),
+                                  {static_cast<long>(N2)},
+                                  torch::kInt64)
+                                  .clone()
+                                  .cuda();
 
         auto temp_torch = base_torch.index_select(0, indices1_torch);
         auto result_torch = temp_torch.index_select(0, indices2_torch);
@@ -1314,10 +1352,11 @@ TEST_F(RelocateGsEdgeCasesTest, Sum_LibTorchComparison) {
 
     // ========== LibTorch ==========
     auto tensor_torch = torch::from_blob(
-        data.data(),
-        {static_cast<long>(N), static_cast<long>(M)},
-        torch::kFloat32
-    ).clone().cuda();
+                            data.data(),
+                            {static_cast<long>(N), static_cast<long>(M)},
+                            torch::kFloat32)
+                            .clone()
+                            .cuda();
     auto result_torch = tensor_torch.sum(-1);
     auto result_torch_tensor = result_torch.cpu();
 

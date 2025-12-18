@@ -12,8 +12,12 @@
 namespace lfs::core::args {
 
     // Parsed argument modes
-    struct TrainingMode { std::unique_ptr<param::TrainingParameters> params; };
-    struct ConvertMode { param::ConvertParameters params; };
+    struct TrainingMode {
+        std::unique_ptr<param::TrainingParameters> params;
+    };
+    struct ConvertMode {
+        param::ConvertParameters params;
+    };
     struct HelpMode {};
 
     using ParsedArgs = std::variant<TrainingMode, ConvertMode, HelpMode>;

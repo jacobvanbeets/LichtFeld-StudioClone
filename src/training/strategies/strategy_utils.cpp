@@ -19,7 +19,8 @@ namespace lfs::training {
 
             // Reserve capacity for all parameters (skip empty tensors like shN at sh_degree=0)
             auto reserve_if_valid = [capacity](lfs::core::Tensor& t) {
-                if (t.is_valid() && t.numel() > 0) t.reserve(capacity);
+                if (t.is_valid() && t.numel() > 0)
+                    t.reserve(capacity);
             };
             reserve_if_valid(splat_data.means());
             reserve_if_valid(splat_data.sh0());
@@ -36,7 +37,7 @@ namespace lfs::training {
 
         // Create Adam config with per-parameter learning rates
         AdamConfig config;
-        config.lr = params.means_lr * splat_data.get_scene_scale();  // Default LR (for means)
+        config.lr = params.means_lr * splat_data.get_scene_scale(); // Default LR (for means)
         // Use double literals (not float!) to match legacy precision
         config.beta1 = 0.9;
         config.beta2 = 0.999;
@@ -45,7 +46,7 @@ namespace lfs::training {
         // Set per-parameter learning rates (matching legacy MCMC strategy)
         config.param_lrs["means"] = params.means_lr * splat_data.get_scene_scale();
         config.param_lrs["sh0"] = params.shs_lr;
-        config.param_lrs["shN"] = params.shs_lr / 20.0f;  // ShN uses reduced LR (1/20 of SH0)
+        config.param_lrs["shN"] = params.shs_lr / 20.0f; // ShN uses reduced LR (1/20 of SH0)
         config.param_lrs["scaling"] = params.scaling_lr;
         config.param_lrs["rotation"] = params.rotation_lr;
         config.param_lrs["opacity"] = params.opacity_lr;
@@ -54,7 +55,7 @@ namespace lfs::training {
         // This dramatically reduces peak memory usage by avoiding double-buffering during growth
         if (params.max_cap > 0) {
             config.initial_capacity = static_cast<size_t>(params.max_cap);
-            config.growth_factor = 1.5f;  // Still allow growth beyond max_cap if needed
+            config.growth_factor = 1.5f; // Still allow growth beyond max_cap if needed
             LOG_INFO("AdamOptimizer: pre-allocating capacity for {} Gaussians (optimizer states)", config.initial_capacity);
         }
 
