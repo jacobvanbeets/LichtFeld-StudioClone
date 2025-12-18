@@ -92,9 +92,14 @@ namespace lfs::io {
         size_t opacity_offset = SIZE_MAX;
         size_t scale_offsets[3] = {SIZE_MAX, SIZE_MAX, SIZE_MAX};
         size_t rot_offsets[4] = {SIZE_MAX, SIZE_MAX, SIZE_MAX, SIZE_MAX};
-        size_t dc_start_offset = SIZE_MAX;
-        size_t rest_start_offset = SIZE_MAX;
+        size_t dc_offsets[ply_constants::MAX_DC_COMPONENTS];
+        size_t rest_offsets[ply_constants::MAX_REST_COMPONENTS];
         int dc_count = 0, rest_count = 0;
+
+        FastPropertyLayout() {
+            std::fill(std::begin(dc_offsets), std::end(dc_offsets), SIZE_MAX);
+            std::fill(std::begin(rest_offsets), std::end(rest_offsets), SIZE_MAX);
+        }
 
         [[nodiscard]] bool has_positions() const { return pos_x_offset != SIZE_MAX; }
         [[nodiscard]] bool has_opacity() const { return opacity_offset != SIZE_MAX; }
@@ -281,16 +286,18 @@ namespace lfs::io {
                     layout.opacity_offset = layout.vertex_stride;
                 } else if (name_len >= 5 && std::strncmp(prop_name, "f_dc_", 5) == 0) {
                     int idx = std::atoi(prop_name + 5);
-                    if (idx == 0)
-                        layout.dc_start_offset = layout.vertex_stride;
-                    if (idx >= layout.dc_count)
-                        layout.dc_count = idx + 1;
+                    if (idx >= 0 && idx < ply_constants::MAX_DC_COMPONENTS) {
+                        layout.dc_offsets[idx] = layout.vertex_stride;
+                        if (idx >= layout.dc_count)
+                            layout.dc_count = idx + 1;
+                    }
                 } else if (name_len >= 7 && std::strncmp(prop_name, "f_rest_", 7) == 0) {
                     int idx = std::atoi(prop_name + 7);
-                    if (idx == 0)
-                        layout.rest_start_offset = layout.vertex_stride;
-                    if (idx >= layout.rest_count)
-                        layout.rest_count = idx + 1;
+                    if (idx >= 0 && idx < ply_constants::MAX_REST_COMPONENTS) {
+                        layout.rest_offsets[idx] = layout.vertex_stride;
+                        if (idx >= layout.rest_count)
+                            layout.rest_count = idx + 1;
+                    }
                 } else if (name_len == 7 && std::strncmp(prop_name, "scale_", 6) == 0) {
                     int idx = prop_name[6] - '0';
                     if (idx >= 0 && idx < 3)
@@ -437,30 +444,32 @@ namespace lfs::io {
         }
     }
 
-    // SH coefficient extraction to host memory
-    void extract_sh_coefficients_to_host(const char* vertex_data, const FastPropertyLayout& layout,
-                                         size_t start_offset, int coeff_count, int channels,
-                                         float* output) {
-        if (coeff_count == 0 || start_offset == SIZE_MAX)
+    // SH coefficient extraction with per-coefficient offsets (handles arbitrary PLY property order)
+    void extract_sh_coefficients_to_host(const char* __restrict__ vertex_data,
+                                         const FastPropertyLayout& layout,
+                                         const size_t* __restrict__ coeff_offsets,
+                                         const int coeff_count, const int channels,
+                                         float* __restrict__ output) {
+        if (coeff_count == 0)
             return;
 
         const size_t count = layout.vertex_count;
         const size_t stride = layout.vertex_stride;
         const int B = coeff_count / channels;
 
-        LOG_TRACE("Extracting {} SH coefficients for {} vertices", coeff_count, count);
-
         tbb::parallel_for(tbb::blocked_range<size_t>(0, count, ply_constants::BLOCK_SIZE_SMALL),
-                          [&](const tbb::blocked_range<size_t>& range) {
+                          [=](const tbb::blocked_range<size_t>& range) {
                               for (size_t i = range.begin(); i < range.end(); ++i) {
+                                  const size_t base = i * stride;
+                                  const size_t out_base = i * B * channels;
                                   for (int j = 0; j < coeff_count; ++j) {
-                                      float value = *reinterpret_cast<const float*>(vertex_data + i * stride + start_offset + j * 4);
-
-                                      int channel = j / B;
-                                      int b = j % B;
-
-                                      // Store in [N, B, 3] layout
-                                      output[i * B * channels + b * channels + channel] = value;
+                                      const size_t offset = coeff_offsets[j];
+                                      const float value = (offset != SIZE_MAX)
+                                          ? *reinterpret_cast<const float*>(vertex_data + base + offset)
+                                          : 0.0f;
+                                      const int channel = j / B;
+                                      const int b = j % B;
+                                      output[out_base + b * channels + channel] = value;
                                   }
                               }
                           });
@@ -536,7 +545,7 @@ namespace lfs::io {
                 int B0 = layout.dc_count / ply_constants::COLOR_CHANNELS;
                 sh0_dim1 = B0;
                 host_sh0.resize(N * B0 * ply_constants::COLOR_CHANNELS);
-                extract_sh_coefficients_to_host(vertex_data, layout, layout.dc_start_offset,
+                extract_sh_coefficients_to_host(vertex_data, layout, layout.dc_offsets,
                                                 layout.dc_count, ply_constants::COLOR_CHANNELS, host_sh0.data());
             } else {
                 host_sh0.resize(N * ply_constants::COLOR_CHANNELS, 0.0f);
@@ -546,7 +555,7 @@ namespace lfs::io {
                 int Bn = layout.rest_count / ply_constants::COLOR_CHANNELS;
                 shN_dim1 = Bn;
                 host_shN.resize(N * Bn * ply_constants::COLOR_CHANNELS);
-                extract_sh_coefficients_to_host(vertex_data, layout, layout.rest_start_offset,
+                extract_sh_coefficients_to_host(vertex_data, layout, layout.rest_offsets,
                                                 layout.rest_count, ply_constants::COLOR_CHANNELS, host_shN.data());
             } else {
                 shN_dim1 = ply_constants::SH_DEGREE_3_REST_COEFFS;
