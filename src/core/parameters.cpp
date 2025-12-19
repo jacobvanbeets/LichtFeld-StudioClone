@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "core/parameters.hpp"
+#include "core/logger.hpp"
 #include <chrono>
 #include <ctime>
 #include <expected>
@@ -11,7 +12,6 @@
 #include <fstream>
 #include <iomanip>
 #include <nlohmann/json.hpp>
-#include <print>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -181,50 +181,27 @@ namespace lfs::core {
                     }
                 }
 
-                // Print report
-                if (!all_match || !unknown_params.empty()) {
-                    std::println(stderr, "\nParameter verification report:");
-
-                    if (!mismatched_values.empty()) {
-                        std::println(stderr, "\nMismatched values:");
-                        for (const auto& param : mismatched_values) {
-                            std::print(stderr, "  - {}: JSON={}", param, json[param].dump());
-                            // Find and print the default value and description
-                            for (const auto& p : expected_params) {
-                                if (p.name == param) {
-                                    std::print(stderr, ", Default=");
-                                    std::visit([&](const auto& val) {
-                                        std::print(stderr, "{}", val);
-                                    },
-                                               p.value);
-                                    std::println(stderr, " ({})", p.description);
-                                    break;
-                                }
+                // Log mismatches
+                if (!mismatched_values.empty()) {
+                    for (const auto& param : mismatched_values) {
+                        for (const auto& p : expected_params) {
+                            if (p.name == param) {
+                                std::string default_val;
+                                std::visit([&](const auto& val) {
+                                    default_val = std::format("{}", val);
+                                }, p.value);
+                                LOG_DEBUG("Parameter mismatch: {} (JSON={}, default={})",
+                                          param, json[param].dump(), default_val);
+                                break;
                             }
                         }
                     }
+                }
 
-                    if (!missing_in_json.empty()) {
-                        std::println(stderr, "\nParameters in struct but not in JSON:");
-                        for (const auto& param : missing_in_json) {
-                            // Find and print the description
-                            for (const auto& p : expected_params) {
-                                if (p.name == param) {
-                                    std::println(stderr, "  - {} ({})", param, p.description);
-                                    break;
-                                }
-                            }
-                        }
+                if (!unknown_params.empty()) {
+                    for (const auto& param : unknown_params) {
+                        LOG_DEBUG("Unknown parameter in JSON: {}", param);
                     }
-
-                    if (!unknown_params.empty()) {
-                        std::println(stderr, "\nUnknown parameters in JSON (will be ignored):");
-                        for (const auto& param : unknown_params) {
-                            std::println(stderr, "  - {}", param);
-                        }
-                    }
-                } else {
-                    std::println("Parameter verification passed successfully!");
                 }
 
                 return all_match;
@@ -336,7 +313,7 @@ namespace lfs::core {
                 if (strategy == "mcmc" || strategy == "default") {
                     params.strategy = strategy;
                 } else {
-                    std::println(stderr, "Warning: Invalid optimization strategy '{}' in JSON. Using default 'default'", strategy);
+                    LOG_WARN("Invalid strategy '{}' in JSON, using default", strategy);
                 }
             }
 
@@ -533,10 +510,10 @@ namespace lfs::core {
                     return std::unexpected(std::format("Could not open file for writing: {}", filepath.string()));
                 }
 
-                file << json.dump(4); // Pretty print with 4 spaces
+                file << json.dump(4);
                 file.close();
 
-                std::println("Saved training configuration to: {}", filepath.string());
+                LOG_INFO("Saved training config to: {}", filepath.string());
                 return {};
 
             } catch (const std::exception& e) {

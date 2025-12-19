@@ -10,7 +10,6 @@
 #include <chrono>
 #include <condition_variable>
 #include <format>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -19,6 +18,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "core/logger.hpp"
 
 namespace lfs::training {
 
@@ -216,8 +216,7 @@ namespace lfs::training {
                 }
             }
 
-            std::cout << "Dataset created with " << indices_.size()
-                      << " images (split: " << static_cast<int>(split_) << ")" << std::endl;
+            LOG_INFO("Dataset created with {} images (split: {})", indices_.size(), static_cast<int>(split_));
         }
 
         /// Get single example by index

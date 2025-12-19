@@ -12,7 +12,6 @@
 #include <cmath>
 #include <expected>
 #include <format>
-#include <print>
 #include <vector>
 
 namespace {
@@ -868,14 +867,9 @@ namespace lfs::core {
                 shN_ = shN_temp;
             }
 
-            std::println("Scene scale: {}", scene_scale);
-            std::println("Initialized SplatData with:");
-            std::println("  - {} points", num_points);
-            std::println("  - Max SH degree: {}", params.optimization.sh_degree);
-            std::println("  - Total SH coefficients: {}", feature_shape);
-            std::println("  - sh0 shape: {}", sh0_.shape().str());
-            std::println("  - shN shape: {}", shN_.shape().str());
-            std::println("  - Layout: [N, channels={}, coeffs]", sh0_.size(1));
+            LOG_INFO("Scene scale: {}", scene_scale);
+            LOG_INFO("Initialized SplatData: {} points, max SH degree: {}, SH coefficients: {}, sh0 shape: {}, shN shape: {}",
+                     num_points, params.optimization.sh_degree, feature_shape, sh0_.shape().str(), shN_.shape().str());
 
             auto result = SplatData(
                 params.optimization.sh_degree,

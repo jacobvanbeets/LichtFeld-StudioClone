@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <args.hxx>
 #include <array>
+#include <cstdlib>
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -169,12 +170,17 @@ namespace {
                 return std::unexpected(std::format("Parse error: {}\n{}", e.what(), parser.Help()));
             }
 
-            // Initialize logger based on command line arguments
+            // Initialize logger (CLI args override environment variable)
             {
                 auto level = lfs::core::LogLevel::Info;
                 std::string log_file_path;
                 std::string filter_pattern;
 
+                // Check environment variable first
+                if (const char* env_level = std::getenv("LOG_LEVEL")) {
+                    level = parse_log_level(env_level);
+                }
+                // CLI argument overrides environment variable
                 if (log_level) {
                     level = parse_log_level(::args::get(log_level));
                 }

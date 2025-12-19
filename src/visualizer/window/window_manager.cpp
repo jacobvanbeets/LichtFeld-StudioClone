@@ -4,13 +4,13 @@
 
 #include "window_manager.hpp"
 #include "core/events.hpp"
+#include "core/logger.hpp"
 // clang-format off
 // GLAD must be included before GLFW
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 // clang-format on
 #include <iostream>
-#include <print>
 
 namespace lfs::vis {
 
@@ -19,9 +19,9 @@ namespace lfs::vis {
     static void window_focus_callback(GLFWwindow*, int focused) {
         if (!focused) {
             lfs::core::events::internal::WindowFocusLost{}.emit();
-            std::println("[WindowManager] Window lost focus");
+            LOG_DEBUG("Window lost focus");
         } else {
-            std::println("[WindowManager] Window gained focus");
+            LOG_DEBUG("Window gained focus");
         }
     }
 

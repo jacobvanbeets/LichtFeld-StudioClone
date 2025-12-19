@@ -114,52 +114,31 @@ namespace lfs::core {
                 size_t free_mem = 0, total_mem = 0;
                 cudaMemGetInfo(&free_mem, &total_mem);
 
-                // Log large direct allocations
                 static std::atomic<size_t> direct_total{0};
                 direct_total += bytes;
-                printf("[POOL] Direct cudaMalloc: %.2f GB (total direct: %.2f GB)\n",
-                       bytes / (1024.0 * 1024.0 * 1024.0),
-                       direct_total.load() / (1024.0 * 1024.0 * 1024.0));
+                constexpr double GB = 1024.0 * 1024.0 * 1024.0;
+                LOG_DEBUG("[MEM] Direct cudaMalloc: %.2f GB (total: %.2f GB)",
+                          bytes / GB, direct_total.load() / GB);
 
                 cudaError_t err = cudaMalloc(&ptr, bytes);
                 if (err != cudaSuccess) {
-                    printf("[POOL ERROR] cudaMalloc (direct) failed: %s\n", cudaGetErrorString(err));
-                    printf("[POOL ERROR] This might be due to fragmentation. Trying to free cached memory...\n");
-
-                    // CRITICAL: Free CUDA memory pool cache to release memory back to OS
-                    // This releases memory from cudaMallocAsync pool that's cached but unused
-                    cudaDeviceSynchronize(); // Ensure all ops complete
-
+                    LOG_WARN("[MEM] cudaMalloc failed: %s, trimming pool...", cudaGetErrorString(err));
+                    cudaDeviceSynchronize();
 #if CUDART_VERSION >= 12080
-                    // Trim the memory pool to release unused memory
                     int device;
                     cudaGetDevice(&device);
                     cudaMemPool_t pool;
                     cudaDeviceGetDefaultMemPool(&pool, device);
-                    cudaMemPoolTrimTo(pool, 0); // Release all unused memory
-                    printf("[POOL] Trimmed CUDA memory pool\n");
+                    cudaMemPoolTrimTo(pool, 0);
 #endif
-
-                    // Check what memory is available after trimming
-                    cudaMemGetInfo(&free_mem, &total_mem);
-                    printf("[POOL] After trim: free=%.2f GB, requested=%.2f GB\n",
-                           free_mem / (1024.0 * 1024.0 * 1024.0),
-                           bytes / (1024.0 * 1024.0 * 1024.0));
-
-                    // Retry allocation
                     err = cudaMalloc(&ptr, bytes);
                     if (err != cudaSuccess) {
-                        cudaMemGetInfo(&free_mem, &total_mem);
-                        printf("[POOL ERROR] Retry failed. Free mem: %.2f GB\n", free_mem / (1024.0 * 1024.0 * 1024.0));
-                        LOG_ERROR("cudaMalloc (direct) failed for {} bytes: {}", bytes, cudaGetErrorString(err));
-                        LOG_ERROR("Even after trimming pool, not enough memory available.");
-                        LOG_ERROR("This indicates intermediate tensors are holding memory.");
+                        LOG_ERROR("[MEM] cudaMalloc retry failed for %zu bytes: %s", bytes, cudaGetErrorString(err));
                         return nullptr;
                     }
                 }
 
-                // CRITICAL: Track that this pointer came from direct cudaMalloc
-                // Must use cudaFree (not cudaFreeAsync) for deallocation!
+                // Track allocation method for correct deallocation
                 {
                     std::lock_guard<std::mutex> lock(map_mutex_);
                     allocation_map_[ptr] = AllocMethod::Direct;
@@ -167,36 +146,30 @@ namespace lfs::core {
                 return ptr;
             }
 
-            // Use cudaMallocAsync for medium-large allocations (100MB - 1GB)
             AllocMethod method;
 #if CUDART_VERSION >= 12080
-            // Use stream-ordered allocation with memory pool (FAST!)
             cudaError_t err = cudaMallocAsync(&ptr, bytes, stream);
             if (err == cudaSuccess) {
                 method = AllocMethod::Async;
+                AllocationProfiler::instance().record_allocation(bytes, 3);
 
-                // Record allocation site for profiling
-                AllocationProfiler::instance().record_allocation(bytes, 3); // skip 3 frames: record_allocation, allocate, Tensor::allocate
-
-                // Track allocation sizes
                 static std::atomic<int> alloc_count{0};
                 static std::atomic<size_t> total_bytes_allocated{0};
-                static std::atomic<int> small_allocs{0};  // < 1 MB
-                static std::atomic<int> medium_allocs{0}; // 1-100 MB
-                static std::atomic<int> large_allocs{0};  // 100MB-1GB
+                static std::atomic<int> small_allocs{0};
+                static std::atomic<int> medium_allocs{0};
+                static std::atomic<int> large_allocs{0};
 
-                alloc_count++;
+                ++alloc_count;
                 total_bytes_allocated += bytes;
 
-                if (bytes < (1 << 20))
-                    small_allocs++;
-                else if (bytes < (100 << 20))
-                    medium_allocs++;
-                else
-                    large_allocs++;
+                constexpr size_t ONE_MB = 1 << 20;
+                constexpr size_t HUNDRED_MB = 100 << 20;
+                if (bytes < ONE_MB) ++small_allocs;
+                else if (bytes < HUNDRED_MB) ++medium_allocs;
+                else ++large_allocs;
 
-                if (alloc_count % 2000 == 0) {
-                    // Print allocation profiling report every 2k allocations
+                constexpr int LOG_INTERVAL = 2000;
+                if (alloc_count % LOG_INTERVAL == 0) {
                     if constexpr (ENABLE_ALLOCATION_PROFILING) {
                         AllocationProfiler::instance().print_top_allocators(30);
                         AllocationProfiler::instance().print_tensor_allocations(50);
@@ -204,70 +177,45 @@ namespace lfs::core {
                         AllocationProfiler::instance().print_lifetime_stats_by_origin(20);
                     }
 
-                    // Query memory pool attributes
                     int device;
                     cudaGetDevice(&device);
                     cudaMemPool_t pool;
                     cudaDeviceGetDefaultMemPool(&pool, device);
 
-                    // Get pool reserved memory (what's actually allocated from OS)
-                    uint64_t pool_reserved = 0;
+                    uint64_t pool_reserved = 0, pool_used = 0;
                     cudaMemPoolGetAttribute(pool, cudaMemPoolAttrReservedMemCurrent, &pool_reserved);
-
-                    // Get pool used memory (what's actively in use)
-                    uint64_t pool_used = 0;
                     cudaMemPoolGetAttribute(pool, cudaMemPoolAttrUsedMemCurrent, &pool_used);
 
-                    // Get total process CUDA memory usage
                     size_t free_mem, total_mem;
                     cudaMemGetInfo(&free_mem, &total_mem);
-                    size_t process_used = total_mem - free_mem;
+                    const size_t process_used = total_mem - free_mem;
 
-                    // Calculate non-pool memory (direct allocations + arena + driver overhead)
-                    size_t non_pool = process_used - pool_reserved;
-
-                    printf("[POOL] After %d allocs (small:%d med:%d large:%d) | Pool: reserved=%.2f GB, used=%.2f GB | Cumulative allocated: %.2f GB | Process: %.2f GB (non-pool: %.2f GB)\n",
-                           alloc_count.load(),
-                           small_allocs.load(),
-                           medium_allocs.load(),
-                           large_allocs.load(),
-                           pool_reserved / (1024.0 * 1024.0 * 1024.0),
-                           pool_used / (1024.0 * 1024.0 * 1024.0),
-                           total_bytes_allocated.load() / (1024.0 * 1024.0 * 1024.0),
-                           process_used / (1024.0 * 1024.0 * 1024.0),
-                           non_pool / (1024.0 * 1024.0 * 1024.0));
+                    constexpr double GB_DIV = 1024.0 * 1024.0 * 1024.0;
+                    LOG_DEBUG("[MEM] %d allocs (s:%d m:%d l:%d) | Pool: %.2f/%.2f GB | Total: %.2f GB | Process: %.2f GB",
+                              alloc_count.load(), small_allocs.load(), medium_allocs.load(), large_allocs.load(),
+                              pool_used / GB_DIV, pool_reserved / GB_DIV, total_bytes_allocated.load() / GB_DIV, process_used / GB_DIV);
                 }
             } else {
-                LOG_ERROR("cudaMallocAsync failed for {} bytes: {}",
-                          bytes, cudaGetErrorString(err));
-                // Fallback to direct allocation if pool fails
-                LOG_WARN("Falling back to direct cudaMalloc");
+                LOG_WARN("cudaMallocAsync failed: %s, falling back", cudaGetErrorString(err));
                 err = cudaMalloc(&ptr, bytes);
                 if (err != cudaSuccess) {
-                    LOG_ERROR("cudaMalloc (fallback) failed for {} bytes: {}",
-                              bytes, cudaGetErrorString(err));
+                    LOG_ERROR("cudaMalloc fallback failed for %zu bytes: %s", bytes, cudaGetErrorString(err));
                     return nullptr;
                 }
-                method = AllocMethod::Direct; // Fallback uses direct
+                method = AllocMethod::Direct;
             }
 #else
-            // Fallback to synchronous allocation (SLOW) for CUDA < 12.8
             cudaError_t err = cudaMalloc(&ptr, bytes);
             if (err != cudaSuccess) {
-                LOG_ERROR("cudaMalloc failed for {} bytes: {}",
-                          bytes, cudaGetErrorString(err));
+                LOG_ERROR("cudaMalloc failed for %zu bytes: %s", bytes, cudaGetErrorString(err));
                 return nullptr;
             }
-            method = AllocMethod::Direct; // Old CUDA version uses direct
-            LOG_WARN("Using cudaMalloc (CUDA < 12.8). Consider upgrading for 50-600× faster allocation");
+            method = AllocMethod::Direct;
 #endif
-
-            // Track allocation method (not Arena, so must track in map)
             {
                 std::lock_guard<std::mutex> lock(map_mutex_);
                 allocation_map_[ptr] = method;
             }
-
             return ptr;
         }
 

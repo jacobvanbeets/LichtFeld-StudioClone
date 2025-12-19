@@ -34,8 +34,9 @@ namespace lfs::core {
         Input = 6,
         GUI = 7,
         Window = 8,
-        Unknown = 9,
-        Count = 10
+        Memory = 9,
+        Unknown = 10,
+        Count = 11
     };
 
     class Logger {
@@ -137,3 +138,5 @@ namespace lfs::core {
 #define LOG_TIMER(name)       ::lfs::core::ScopedTimer _timer##__LINE__(name)
 #define LOG_TIMER_TRACE(name) ::lfs::core::ScopedTimer _timer##__LINE__(name, ::lfs::core::LogLevel::Trace)
 #define LOG_TIMER_DEBUG(name) ::lfs::core::ScopedTimer _timer##__LINE__(name, ::lfs::core::LogLevel::Debug)
+
+// Memory logging: use LOG_DEBUG("[MEM] ...") and filter with --log-filter "*MEM*"

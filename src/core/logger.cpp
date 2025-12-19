@@ -190,6 +190,8 @@ namespace lfs::core {
                 return LogModule::GUI;
             if (path.find("window") != std::string_view::npos || path.find("Window") != std::string_view::npos)
                 return LogModule::Window;
+            if (path.find("memory") != std::string_view::npos || path.find("Memory") != std::string_view::npos)
+                return LogModule::Memory;
             if (path.find("core") != std::string_view::npos || path.find("Core") != std::string_view::npos)
                 return LogModule::Core;
             return LogModule::Unknown;

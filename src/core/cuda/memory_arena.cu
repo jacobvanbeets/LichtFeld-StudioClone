@@ -3,12 +3,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "memory_arena.hpp"
+#include "core/logger.hpp"
 #include <algorithm>
 #include <cstring>
 #include <cuda_runtime.h>
-#include <iomanip>
-#include <iostream>
-#include <sstream>
 #include <stdexcept>
 #include <thread>
 
@@ -27,18 +25,14 @@ namespace lfs::core {
         int device;
         cudaGetDevice(&device);
         if (!is_vmm_supported(device)) {
-            std::cerr << "[RasterizerMemoryArena] WARNING: VMM not supported, falling back to smaller allocation\n";
-            config_.initial_commit = 128 << 20; // Smaller initial if no VMM
-            config_.max_physical = 4ULL << 30;  // Lower max if no VMM
+            LOG_WARN("VMM not supported, falling back to smaller allocation");
+            config_.initial_commit = 128 << 20;
+            config_.max_physical = 4ULL << 30;
         }
 
-        std::cout << "[RasterizerMemoryArena] Created with config:\n"
-                  << "  Virtual size: " << (config_.virtual_size >> 30) << " GB (costs no memory!)\n"
-                  << "  Initial commit: " << (config_.initial_commit >> 20) << " MB\n"
-                  << "  Max physical: " << (config_.max_physical >> 30) << " GB\n"
-                  << "  Granularity: " << (config_.granularity >> 20) << " MB\n"
-                  << "  Alignment: " << config_.alignment << " bytes\n"
-                  << "  Log interval: every " << config_.log_interval << " frames\n";
+        LOG_DEBUG("Arena config: virtual=%zu GB, initial=%zu MB, max=%zu GB, granularity=%zu MB",
+                  config_.virtual_size >> 30, config_.initial_commit >> 20,
+                  config_.max_physical >> 30, config_.granularity >> 20);
     }
 
     RasterizerMemoryArena::~RasterizerMemoryArena() {
@@ -269,12 +263,8 @@ namespace lfs::core {
             }
         }
 
-        // Log compact status
-        std::cout << "[Arena Frame " << frame_id << "] "
-                  << committed_mb << " MB committed, "
-                  << peak_period_mb << " MB peak ("
-                  << std::fixed << std::setprecision(0) << utilization << "% used), "
-                  << arena.realloc_count.load() << " reallocs\n";
+        LOG_DEBUG("Arena frame %lu: %zu MB committed, %zu MB peak (%.0f%% used), %zu reallocs",
+                  frame_id, committed_mb, peak_period_mb, utilization, arena.realloc_count.load());
 
         // Reset period peak for next logging interval
         arena.peak_usage_period.store(0, std::memory_order_release);
@@ -367,7 +357,7 @@ namespace lfs::core {
         std::lock_guard<std::mutex> lock1(arena_mutex_);
         std::lock_guard<std::mutex> lock2(frame_mutex_);
 
-        std::cout << "\n[RasterizerMemoryArena] ⚠️  EMERGENCY CLEANUP ⚠️" << std::endl;
+        LOG_WARN("Emergency cleanup started");
 
         // Clear all inactive frames
         auto it = frame_contexts_.begin();
@@ -379,27 +369,23 @@ namespace lfs::core {
             }
         }
 
-        // Decommit unused memory BEFORE resetting offsets (so we know what's in use)
+        // Decommit unused memory BEFORE resetting offsets
         for (auto& [device, arena] : device_arenas_) {
             if (arena) {
-                decommit_unused_memory(*arena);                    // Check offset before resetting
-                arena->offset.store(0, std::memory_order_release); // Now safe to reset
-                std::cout << "  Reset arena on device " << device
-                          << " (committed: " << (arena->committed_size >> 20) << " MB)" << std::endl;
+                decommit_unused_memory(*arena);
+                arena->offset.store(0, std::memory_order_release);
+                LOG_DEBUG("Reset arena on device %d (committed: %zu MB)", device, arena->committed_size >> 20);
             }
         }
 
-        // Try to free cached memory
         empty_cuda_cache();
 
-        // Synchronize all devices
         for (const auto& [device, arena] : device_arenas_) {
             cudaSetDevice(device);
             cudaDeviceSynchronize();
         }
 
-        std::cout << "[RasterizerMemoryArena] Emergency cleanup completed\n"
-                  << std::endl;
+        LOG_WARN("Emergency cleanup completed");
     }
 
     RasterizerMemoryArena::Arena& RasterizerMemoryArena::get_or_create_arena(int device) {
@@ -437,30 +423,20 @@ namespace lfs::core {
                 arena.virtual_size = config_.virtual_size;
                 result = cuMemAddressReserve(&arena.d_ptr, arena.virtual_size, 0, 0, 0);
                 if (result != CUDA_SUCCESS) {
-                    // Fall back to traditional allocation
-                    std::cout << "[RasterizerMemoryArena] VMM reservation failed, using traditional allocation\n";
+                    LOG_WARN("VMM reservation failed, using traditional allocation");
                     arena.d_ptr = 0;
                     arena.virtual_size = 0;
-                    // Continue with traditional allocation below
                 } else {
-                    std::cout << "\n========================================\n"
-                              << "[RasterizerMemoryArena] VMM INITIALIZATION\n"
-                              << "  Device: " << device << "\n"
-                              << "  Virtual space reserved: " << (arena.virtual_size >> 30)
-                              << " GB (costs NO memory!)\n";
+                    LOG_INFO("VMM initialized: device=%d, virtual=%zu GB", device, arena.virtual_size >> 30);
 
-                    // Commit initial physical memory
                     if (!commit_more_memory(arena, config_.initial_commit)) {
-                        // If initial commit fails, fall back to traditional
                         cuMemAddressFree(arena.d_ptr, arena.virtual_size);
                         arena.d_ptr = 0;
                         arena.virtual_size = 0;
-                        std::cout << "  Initial commit failed, falling back to traditional allocation\n";
+                        LOG_WARN("Initial commit failed, falling back to traditional allocation");
                     } else {
                         arena.generation = generation_counter_.fetch_add(1, std::memory_order_relaxed);
                         arena.offset.store(0, std::memory_order_release);
-                        std::cout << "========================================\n"
-                                  << std::endl;
                         return *arena_ptr;
                     }
                 }
@@ -491,29 +467,19 @@ namespace lfs::core {
             while (initial_size >= (64 << 20) && !allocated) {
                 err = cudaMalloc(&arena.fallback_buffer, initial_size);
                 if (err == cudaSuccess) {
-                    printf("[TRACKED] Arena cudaMalloc: %.2f MB\n", initial_size / (1024.0 * 1024));
-                }
-                if (err == cudaSuccess) {
+                    LOG_TRACE("Arena cudaMalloc: %zu MB", initial_size >> 20);
                     arena.capacity = initial_size;
                     arena.committed_size = initial_size;
                     arena.generation = generation_counter_.fetch_add(1, std::memory_order_relaxed);
                     arena.offset.store(0, std::memory_order_release);
                     allocated = true;
 
-                    std::cout << "\n========================================\n"
-                              << "[RasterizerMemoryArena] TRADITIONAL ALLOCATION (No VMM)\n"
-                              << "  Device: " << device << "\n"
-                              << "  Size: " << (initial_size >> 20) << " MB\n"
-                              << "  GPU free before: " << (free_memory >> 20) << " MB\n";
-
                     cudaMemGetInfo(&free_memory, &total_memory);
-                    std::cout << "  GPU free after: " << (free_memory >> 20) << " MB\n"
-                              << "========================================\n"
-                              << std::endl;
+                    LOG_INFO("Traditional allocation: device=%d, size=%zu MB, GPU free=%zu MB",
+                             device, initial_size >> 20, free_memory >> 20);
                 } else {
                     initial_size /= 2;
-                    std::cout << "[RasterizerMemoryArena] Allocation failed, trying "
-                              << (initial_size >> 20) << " MB" << std::endl;
+                    LOG_DEBUG("Allocation failed, trying %zu MB", initial_size >> 20);
                 }
             }
 
@@ -585,8 +551,7 @@ namespace lfs::core {
 
         // If large allocation fails, try splitting into smaller chunks
         if (result != CUDA_SUCCESS && commit_size > arena.granularity * 4) {
-            std::cout << "[RasterizerMemoryArena] Large allocation of " << (commit_size >> 20)
-                      << " MB failed, trying multiple smaller chunks...\n";
+            LOG_DEBUG("Large allocation of %zu MB failed, trying smaller chunks", commit_size >> 20);
 
             // Try 4 smaller chunks (each 1/4 of requested size)
             size_t chunk_size = (commit_size / 4);
@@ -610,13 +575,12 @@ namespace lfs::core {
 
                         result = cuMemSetAccess(arena.d_ptr + map_offset, chunk_size, &access_desc, 1);
                         if (result == CUDA_SUCCESS) {
-                            // Track the chunk
                             {
                                 std::lock_guard<std::mutex> lock(arena.chunks_mutex);
                                 arena.chunks.push_back({chunk_handle, map_offset, chunk_size, true});
                             }
                             total_allocated += chunk_size;
-                            printf("[TRACKED-VMM] cuMemCreate chunk %d: %.2f MB\n", i, chunk_size / (1024.0 * 1024));
+                            LOG_TRACE("VMM chunk %d: %zu MB", i, chunk_size >> 20);
                         } else {
                             cuMemUnmap(arena.d_ptr + map_offset, chunk_size);
                             cuMemRelease(chunk_handle);
@@ -631,8 +595,7 @@ namespace lfs::core {
                 arena.committed_size += total_allocated;
                 arena.capacity = arena.committed_size;
                 arena.realloc_count.fetch_add(1, std::memory_order_relaxed);
-                std::cout << "[RasterizerMemoryArena] Committed " << (total_allocated >> 20)
-                          << " MB via multiple chunks (total: " << (arena.committed_size >> 20) << " MB)\n";
+                LOG_DEBUG("Committed %zu MB via chunks (total: %zu MB)", total_allocated >> 20, arena.committed_size >> 20);
                 return true;
             }
 
@@ -643,10 +606,7 @@ namespace lfs::core {
             return false;
         }
 
-        // Track VMM allocation
-        printf("[TRACKED-VMM] cuMemCreate: %.2f MB (total committed: %.2f MB)\n",
-               commit_size / (1024.0 * 1024),
-               (arena.committed_size + commit_size) / (1024.0 * 1024));
+        LOG_TRACE("VMM commit: %zu MB (total: %zu MB)", commit_size >> 20, (arena.committed_size + commit_size) >> 20);
 
         // Map with proper alignment
         size_t map_offset = arena.committed_size;
@@ -680,8 +640,7 @@ namespace lfs::core {
         arena.capacity = arena.committed_size;
         arena.realloc_count.fetch_add(1, std::memory_order_relaxed);
 
-        std::cout << "[RasterizerMemoryArena] Committed " << (commit_size >> 20)
-                  << " MB (total: " << (arena.committed_size >> 20) << " MB)\n";
+        LOG_DEBUG("Committed %zu MB (total: %zu MB)", commit_size >> 20, arena.committed_size >> 20);
 
         return true;
     }
@@ -740,11 +699,10 @@ namespace lfs::core {
             arena.chunks.erase(arena.chunks.begin() + new_size, arena.chunks.end());
             arena.committed_size -= total_freed;
 
-            std::cout << "[RasterizerMemoryArena] Decommitted " << (total_freed >> 20)
-                      << " MB (freed " << chunks_to_remove << " chunks), "
-                      << "arena now at " << (arena.committed_size >> 20) << " MB" << std::endl;
+            LOG_DEBUG("Decommitted %zu MB (%zu chunks), arena now at %zu MB",
+                      total_freed >> 20, chunks_to_remove, arena.committed_size >> 20);
         } else {
-            std::cout << "[RasterizerMemoryArena] No unused chunks to decommit (all in use)" << std::endl;
+            LOG_TRACE("No unused chunks to decommit");
         }
 
         // Reset peak usage tracking
@@ -754,14 +712,11 @@ namespace lfs::core {
     char* RasterizerMemoryArena::allocate_internal(Arena& arena, size_t size, uint64_t frame_id) {
         size_t aligned_size = align_size(size);
 
-        // Detailed allocation logging for profiling
         if (config_.enable_profiling && (frame_id % config_.log_interval == 0)) {
-            size_t size_mb = aligned_size >> 20;
-            if (size_mb > 0) { // Only log allocations >= 1MB
-                size_t old_offset = arena.offset.load();
-                std::cout << "[Arena Alloc] Frame " << frame_id << ": requesting "
-                          << size_mb << " MB (offset=" << (old_offset >> 20)
-                          << " MB, exact_size=" << (aligned_size / 1024.0 / 1024.0) << " MB)\n";
+            const size_t size_mb = aligned_size >> 20;
+            if (size_mb > 0) {
+                LOG_TRACE("Frame %lu: requesting %zu MB (offset=%zu MB)",
+                          frame_id, size_mb, arena.offset.load() >> 20);
             }
         }
 
@@ -830,24 +785,16 @@ namespace lfs::core {
             // We need to grow - calculate how much
             size_t growth_needed = total_needed - arena.committed_size;
 
-            // Progressive fallback: start with generous growth, then fall back to smaller increments
-            // Retry 0-2: Try growth_needed * 2 - generous headroom for concurrent allocations
-            // Retry 3-4: Try growth_needed * 1.5 - minimal overhead, just what's needed
+            // Progressive fallback strategy
             size_t growth_amount;
             if (retry < 3) {
-                // First attempts: 2x needed to avoid repeated allocations
                 growth_amount = growth_needed * 2;
                 if (retry > 0) {
-                    std::cout << "[RasterizerMemoryArena] Retry " << retry
-                              << ": attempting growth of " << (growth_amount >> 20)
-                              << " MB (2x needed)\n";
+                    LOG_DEBUG("Retry %d: growth %zu MB (2x needed)", retry, growth_amount >> 20);
                 }
             } else {
-                // Final attempts: minimal growth, just what's needed plus 50% headroom
                 growth_amount = (growth_needed * 3) / 2;
-                std::cout << "[RasterizerMemoryArena] Retry " << retry
-                          << ": attempting minimal growth of " << (growth_amount >> 20)
-                          << " MB (1.5x needed)\n";
+                LOG_DEBUG("Retry %d: minimal growth %zu MB", retry, growth_amount >> 20);
             }
 
             // Cap at max physical
@@ -855,10 +802,8 @@ namespace lfs::core {
             growth_amount = new_committed - arena.committed_size;
 
             if (growth_amount == 0) {
-                // Can't grow anymore - we're at max capacity
-                std::cerr << "\n[RasterizerMemoryArena] ⚠️  CAPACITY LIMIT REACHED ⚠️\n"
-                          << "Arena at maximum size: " << (config_.max_physical >> 20) << " MB\n"
-                          << "Cannot allocate additional: " << (aligned_size >> 20) << " MB\n";
+                LOG_ERROR("Capacity limit reached: max=%zu MB, requested=%zu MB",
+                          config_.max_physical >> 20, aligned_size >> 20);
                 return nullptr;
             }
 
@@ -878,27 +823,15 @@ namespace lfs::core {
             }
 
             if (!success) {
-                // Check if it's a temporary failure or permanent
                 if (retry < MAX_RETRIES - 1) {
-                    // Try emergency cleanup and retry
-                    std::cout << "[RasterizerMemoryArena] Growth failed, attempting cleanup and retry "
-                              << (retry + 1) << "/" << MAX_RETRIES << "\n";
-
+                    LOG_DEBUG("Growth failed, cleanup and retry %d/%d", retry + 1, MAX_RETRIES);
                     empty_cuda_cache();
                     cudaDeviceSynchronize();
-
-                    // Small delay to let other operations complete
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     continue;
                 } else {
-                    // All retries exhausted - return nullptr for graceful degradation
-                    std::cerr << "\n[RasterizerMemoryArena] ⚠️  OUT OF MEMORY ⚠️\n"
-                              << "Failed to grow arena after " << MAX_RETRIES << " attempts\n"
-                              << "  Requested allocation: " << (size >> 20) << " MB\n"
-                              << "  Current usage: " << (current_offset >> 20) << " MB\n"
-                              << "  Committed size: " << (arena.committed_size >> 20) << " MB\n"
-                              << "  Max capacity: " << (config_.max_physical >> 20) << " MB\n"
-                              << "\n⚠️  Returning nullptr - caller should handle gracefully\n\n";
+                    LOG_ERROR("Out of memory after %d attempts: requested=%zu MB, usage=%zu MB, committed=%zu MB, max=%zu MB",
+                              MAX_RETRIES, size >> 20, current_offset >> 20, arena.committed_size >> 20, config_.max_physical >> 20);
                     return nullptr;
                 }
             }
@@ -906,99 +839,69 @@ namespace lfs::core {
             // Growth succeeded, retry allocation
         }
 
-        // Should never reach here - return nullptr for safety
-        std::cerr << "[RasterizerMemoryArena] ERROR: Allocation loop exhausted, returning nullptr\n";
+        LOG_ERROR("Allocation loop exhausted");
         return nullptr;
     }
 
     bool RasterizerMemoryArena::grow_arena(Arena& arena, size_t required_size) {
-        // Called with arena_mutex_ held
-        // This is the fallback for non-VMM systems
-
-        // Get current frame for logging
-        uint64_t current_frame = frame_counter_.load(std::memory_order_relaxed);
-
-        size_t old_capacity = arena.capacity;
-        size_t new_capacity = std::max(
-            required_size * 2, // Double the required size for headroom
-            static_cast<size_t>(arena.capacity * 1.5f));
+        // Called with arena_mutex_ held (fallback for non-VMM systems)
+        const size_t old_capacity = arena.capacity;
+        size_t new_capacity = std::max(required_size * 2, static_cast<size_t>(arena.capacity * 1.5f));
 
         // Round up to 128MB boundary
-        new_capacity = ((new_capacity + (128 << 20) - 1) / (128 << 20)) * (128 << 20);
+        constexpr size_t ALIGNMENT = 128 << 20;
+        new_capacity = ((new_capacity + ALIGNMENT - 1) / ALIGNMENT) * ALIGNMENT;
         new_capacity = std::min(new_capacity, config_.max_physical);
 
         if (new_capacity <= arena.capacity) {
-            std::cerr << "\n[RasterizerMemoryArena] ❌ CANNOT GROW - MAX SIZE REACHED\n"
-                      << "  Current capacity: " << (arena.capacity >> 20) << " MB\n"
-                      << "  Required: " << (required_size >> 20) << " MB\n"
-                      << "  Max allowed: " << (config_.max_physical >> 30) << " GB\n"
-                      << std::endl;
+            LOG_ERROR("Cannot grow: capacity=%zu MB, required=%zu MB, max=%zu GB",
+                      arena.capacity >> 20, required_size >> 20, config_.max_physical >> 30);
             return false;
         }
 
-        // Check available memory
-        size_t free_memory_before, total_memory;
-        cudaError_t err = cudaMemGetInfo(&free_memory_before, &total_memory);
+        size_t free_memory, total_memory;
+        cudaError_t err = cudaMemGetInfo(&free_memory, &total_memory);
         if (err != cudaSuccess) {
             return false;
         }
 
-        size_t additional_needed = new_capacity - arena.capacity;
+        const size_t additional_needed = new_capacity - arena.capacity;
+        constexpr size_t MIN_FREE_BUFFER = 200 << 20;
 
-        // ALWAYS LOG GROWTH ATTEMPT
-        std::cout << "\n========================================\n"
-                  << "[RasterizerMemoryArena] 📈 GROWING ARENA (Traditional)\n"
-                  << "  Frame: " << current_frame << "\n"
-                  << "  Device: " << arena.device << "\n"
-                  << "  Current capacity: " << (old_capacity >> 20) << " MB\n"
-                  << "  Required size: " << (required_size >> 20) << " MB\n"
-                  << "  New capacity: " << (new_capacity >> 20) << " MB\n"
-                  << "  Additional needed: " << (additional_needed >> 20) << " MB\n"
-                  << "  GPU free: " << (free_memory_before >> 20) << " MB\n"
-                  << "  Reallocation #" << (arena.realloc_count.load() + 1) << "\n";
+        LOG_DEBUG("Growing arena: %zu MB -> %zu MB (need %zu MB, free %zu MB)",
+                  old_capacity >> 20, new_capacity >> 20, additional_needed >> 20, free_memory >> 20);
 
-        if (free_memory_before < additional_needed + (200 << 20)) { // Keep 200MB free
-            std::cout << "  ⚠️  Low memory - attempting cleanup...\n";
-            // Try to free cached memory
+        if (free_memory < additional_needed + MIN_FREE_BUFFER) {
+            LOG_DEBUG("Low memory, attempting cleanup");
             empty_cuda_cache();
-            cudaMemGetInfo(&free_memory_before, &total_memory);
-            std::cout << "  GPU free after cleanup: " << (free_memory_before >> 20) << " MB\n";
+            cudaMemGetInfo(&free_memory, &total_memory);
 
-            if (free_memory_before < additional_needed + (200 << 20)) {
-                std::cout << "  ❌ INSUFFICIENT MEMORY FOR GROWTH\n"
-                          << "========================================\n"
-                          << std::endl;
+            if (free_memory < additional_needed + MIN_FREE_BUFFER) {
+                LOG_WARN("Insufficient memory for growth: need %zu MB, free %zu MB",
+                         additional_needed >> 20, free_memory >> 20);
                 return false;
             }
         }
 
-        // Allocate new buffer
         void* new_buffer = nullptr;
         err = cudaMalloc(&new_buffer, new_capacity);
-        if (err == cudaSuccess) {
-            printf("[TRACKED] Arena realloc cudaMalloc: %.2f MB\n", new_capacity / (1024.0 * 1024));
-        }
         if (err != cudaSuccess) {
-            std::cout << "  ❌ GROWTH FAILED: " << cudaGetErrorString(err) << "\n"
-                      << "========================================\n"
-                      << std::endl;
+            LOG_WARN("Growth allocation failed: %s", cudaGetErrorString(err));
             return false;
         }
 
-        // Copy existing data
-        size_t copy_size = arena.offset.load(std::memory_order_acquire);
+        LOG_TRACE("Arena realloc: %zu MB", new_capacity >> 20);
+
+        const size_t copy_size = arena.offset.load(std::memory_order_acquire);
         if (copy_size > 0 && arena.fallback_buffer) {
             err = cudaMemcpy(new_buffer, arena.fallback_buffer, copy_size, cudaMemcpyDeviceToDevice);
             if (err != cudaSuccess) {
                 cudaFree(new_buffer);
-                std::cout << "  ❌ COPY FAILED: " << cudaGetErrorString(err) << "\n"
-                          << "========================================\n"
-                          << std::endl;
+                LOG_ERROR("Copy failed during growth: %s", cudaGetErrorString(err));
                 return false;
             }
         }
 
-        // Free old buffer and replace
         if (arena.fallback_buffer) {
             cudaFree(arena.fallback_buffer);
         }
@@ -1008,15 +911,8 @@ namespace lfs::core {
         arena.generation = generation_counter_.fetch_add(1, std::memory_order_relaxed);
         arena.realloc_count.fetch_add(1, std::memory_order_relaxed);
 
-        // Get memory after allocation
-        size_t free_memory_after;
-        cudaMemGetInfo(&free_memory_after, &total_memory);
-
-        std::cout << "  ✅ GROWTH SUCCESSFUL\n"
-                  << "  GPU free after growth: " << (free_memory_after >> 20) << " MB\n"
-                  << "  Memory used for growth: " << ((free_memory_before - free_memory_after) >> 20) << " MB\n"
-                  << "========================================\n"
-                  << std::endl;
+        cudaMemGetInfo(&free_memory, &total_memory);
+        LOG_DEBUG("Growth successful: new capacity=%zu MB, GPU free=%zu MB", new_capacity >> 20, free_memory >> 20);
 
         return true;
     }
@@ -1078,30 +974,14 @@ namespace lfs::core {
     }
 
     void RasterizerMemoryArena::dump_statistics() const {
-        auto stats = get_statistics();
+        const auto stats = get_statistics();
+        const auto runtime = std::chrono::steady_clock::now() - creation_time_;
+        const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(runtime).count();
+        const float utilization = stats.capacity > 0 ? (100.0f * stats.peak_usage / stats.capacity) : 0.0f;
 
-        std::stringstream ss;
-        ss << "\n========================================\n"
-           << "[RasterizerMemoryArena] FINAL STATISTICS\n"
-           << "  Total physical committed: " << (stats.capacity >> 20) << " MB\n"
-           << "  Peak usage: " << (stats.peak_usage >> 20) << " MB\n"
-           << "  Frames processed: " << stats.frame_count << "\n"
-           << "  Total reallocations: " << stats.reallocation_count << "\n"
-           << "  Peak utilization: " << std::fixed << std::setprecision(1)
-           << (stats.peak_usage * 100.0f / std::max(size_t(1), stats.capacity)) << "%\n";
-
-        auto runtime = std::chrono::steady_clock::now() - creation_time_;
-        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(runtime).count();
-        ss << "  Runtime: " << seconds << " seconds\n";
-
-        if (stats.frame_count > 0) {
-            ss << "  Average time per frame: "
-               << (seconds * 1000.0 / stats.frame_count) << " ms\n";
-        }
-
-        ss << "========================================\n";
-
-        std::cout << ss.str() << std::flush;
+        LOG_INFO("Arena stats: committed=%zu MB, peak=%zu MB (%.1f%%), frames=%zu, reallocs=%zu, runtime=%lds",
+                 stats.capacity >> 20, stats.peak_usage >> 20, utilization,
+                 stats.frame_count, stats.reallocation_count, seconds);
     }
 
     bool RasterizerMemoryArena::is_under_memory_pressure() const {
