@@ -369,12 +369,13 @@ add_subdirectory(external)
 # =============================================================================
 # LIBRARY MODULES
 # =============================================================================
-add_subdirectory(src/core)      # Core module (lfs::core namespace)
-add_subdirectory(src/training)  # Training module (lfs::training namespace)
-add_subdirectory(src/io)        # I/O module (lfs::io namespace)
-add_subdirectory(src/rendering) # Rendering module (lfs::rendering namespace)
+add_subdirectory(src/core)       # Core module (lfs::core namespace)
+add_subdirectory(src/training)   # Training module (lfs::training namespace)
+add_subdirectory(src/io)         # I/O module (lfs::io namespace)
+add_subdirectory(src/rendering)  # Rendering module (lfs::rendering namespace)
+add_subdirectory(src/sequencer)  # Sequencer module (lfs::sequencer namespace)
 add_subdirectory(src/visualizer) # Visualizer module (lfs::vis namespace)
-add_subdirectory(src/geometry)  # Geometry utilities
+add_subdirectory(src/geometry)   # Geometry utilities
 
 # =============================================================================
 # MAIN EXECUTABLES

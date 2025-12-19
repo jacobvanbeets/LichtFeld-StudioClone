@@ -10,9 +10,13 @@
 #include "core/events.hpp"
 #include "gui/panels/gizmo_toolbar.hpp"
 #include "gui/panels/menu_bar.hpp"
+#include "gui/panels/sequencer_settings_panel.hpp"
 #include "gui/panels/transform_panel.hpp"
+#include "io/video/video_export_options.hpp"
 #include "gui/ui_context.hpp"
 #include "gui/utils/drag_drop_native.hpp"
+#include "sequencer/sequencer_controller.hpp"
+#include "sequencer/sequencer_panel.hpp"
 #include "windows/export_dialog.hpp"
 #include "windows/notification_popup.hpp"
 #include "windows/save_directory_popup.hpp"
@@ -144,7 +148,6 @@ namespace lfs::vis {
             static constexpr float VIEWPORT_GIZMO_MARGIN_X = 10.0f;
             static constexpr float VIEWPORT_GIZMO_MARGIN_Y = 10.0f;
 
-            // Status bar layout
             static constexpr float STATUS_BAR_HEIGHT = 22.0f;
 
             // Crop box gizmo state (shared between panel and rendering)
@@ -153,6 +156,8 @@ namespace lfs::vis {
 
             // Method declarations
             void renderStatusBar(const UIContext& ctx);
+            void renderSequencerPanel(const UIContext& ctx);
+            void renderCameraPath(const UIContext& ctx);
             void showSpeedOverlay(float current_speed, float max_speed);
             void showZoomSpeedOverlay(float zoom_speed, float max_zoom_speed);
             void renderCropBoxGizmo(const UIContext& ctx);
@@ -160,6 +165,12 @@ namespace lfs::vis {
 
             std::unique_ptr<MenuBar> menu_bar_;
             bool menu_bar_input_bindings_set_ = false;
+
+            // Camera sequencer
+            SequencerController sequencer_controller_;
+            std::unique_ptr<SequencerPanel> sequencer_panel_;
+            bool keyframe_context_menu_open_ = false;
+            std::optional<size_t> context_menu_keyframe_;
 
             // Node transform gizmo state
             bool show_node_gizmo_ = true;
@@ -221,14 +232,36 @@ namespace lfs::vis {
             };
             ExportState export_state_;
 
+            // Video export state
+            struct VideoExportState {
+                std::atomic<bool> active{false};
+                std::atomic<bool> cancel_requested{false};
+                std::atomic<float> progress{0.0f};
+                std::atomic<int> current_frame{0};
+                std::atomic<int> total_frames{0};
+                std::string stage;
+                std::string error;
+                std::mutex mutex;
+                std::unique_ptr<std::jthread> thread;
+            };
+            VideoExportState video_export_state_;
+
+            // Sequencer UI state
+            panels::SequencerUIState sequencer_ui_state_;
+
             void renderExportOverlay();
+            void renderVideoExportOverlay();
             void renderEmptyStateOverlay();
             void renderDragDropOverlay();
             void startAsyncExport(lfs::core::ExportFormat format,
                                   const std::filesystem::path& path,
                                   std::unique_ptr<lfs::core::SplatData> data);
+            void startVideoExport(const std::filesystem::path& path,
+                                  const io::video::VideoExportOptions& options);
             void cancelExport();
+            void cancelVideoExport();
             bool isExporting() const { return export_state_.active.load(); }
+            bool isExportingVideo() const { return video_export_state_.active.load(); }
 
             // Native drag-drop handler for visual feedback
             NativeDragDrop drag_drop_;

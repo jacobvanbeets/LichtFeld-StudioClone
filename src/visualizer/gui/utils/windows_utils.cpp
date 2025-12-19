@@ -347,6 +347,40 @@ namespace lfs::vis::gui {
 #endif
     }
 
+    std::filesystem::path SaveMp4FileDialog(const std::string& defaultName) {
+#ifdef _WIN32
+        PWSTR filePath = nullptr;
+        COMDLG_FILTERSPEC rgSpec[] = {{L"MP4 Video", L"*.mp4"}};
+        const std::wstring wDefaultName(defaultName.begin(), defaultName.end());
+
+        if (SUCCEEDED(utils::saveFileNative(filePath, rgSpec, 1, wDefaultName.c_str()))) {
+            std::filesystem::path result(filePath);
+            CoTaskMemFree(filePath);
+            if (result.extension() != ".mp4") {
+                result += ".mp4";
+            }
+            return result;
+        }
+        return {};
+#else
+        const std::string primary = "zenity --file-selection --save --confirm-overwrite "
+                                    "--file-filter='MP4 Video|*.mp4' "
+                                    "--filename='" +
+                                    defaultName + ".mp4' 2>/dev/null";
+        const std::string fallback = "kdialog --getsavefilename . 'MP4 Video (*.mp4)' 2>/dev/null";
+
+        const std::string result = runDialogCommand(primary, fallback);
+        if (result.empty())
+            return {};
+
+        std::filesystem::path path(result);
+        if (path.extension() != ".mp4") {
+            path += ".mp4";
+        }
+        return path;
+#endif
+    }
+
     std::filesystem::path SelectFolderDialog(const std::string& title, const std::filesystem::path& startDir) {
 #ifdef _WIN32
         HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);

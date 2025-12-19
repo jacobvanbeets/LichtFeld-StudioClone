@@ -60,6 +60,50 @@ target_include_directories(spz_lib PUBLIC ${CMAKE_SOURCE_DIR}/external/spz)
 target_link_libraries(spz_lib PRIVATE ZLIB::ZLIB)
 target_compile_features(spz_lib PUBLIC cxx_std_17)
 
+# Video encoding library (FFmpeg + CUDA for GPU-accelerated encoding)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
+        libavcodec
+        libavformat
+        libswscale
+        libavutil
+)
+
+add_library(lfs_video STATIC
+        video/video_export_options.hpp
+        video/video_encoder.hpp
+        video/video_encoder.cpp
+        video/color_convert.cuh
+        video/color_convert.cu
+)
+
+target_include_directories(lfs_video
+        PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/core/include
+)
+
+target_link_libraries(lfs_video
+        PRIVATE
+        PkgConfig::FFMPEG
+        spdlog::spdlog
+        CUDA::cudart
+)
+
+target_compile_features(lfs_video PUBLIC cxx_std_23)
+
+set_target_properties(lfs_video PROPERTIES
+        CUDA_SEPARABLE_COMPILATION OFF
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON
+        CUDA_STANDARD 20
+        CUDA_STANDARD_REQUIRED ON
+)
+
+target_compile_options(lfs_video PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:-O3 -use_fast_math --extended-lambda>
+)
+
 # Main IO library
 add_library(lfs_io STATIC
         # Implementation file only (header is in include/io/)
@@ -160,6 +204,7 @@ target_link_libraries(lfs_io
         PUBLIC
         lfs_core            # Link to modular core library for SplatData, Camera, etc.
         lfs_training        # For checkpoint loading
+        lfs_video           # Video encoding for sequencer export
         PRIVATE
         TBB::tbb
         spdlog::spdlog

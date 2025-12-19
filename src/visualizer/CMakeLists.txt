@@ -32,6 +32,7 @@ add_library(lfs_visualizer STATIC
         gui/panels/gizmo_toolbar.cpp
         gui/panels/scene_panel.cpp
         gui/panels/tools_panel.cpp
+        gui/panels/sequencer_settings_panel.cpp
         gui/windows/file_browser.cpp
         gui/windows/image_preview.cpp
         gui/windows/export_dialog.cpp
@@ -54,6 +55,10 @@ add_library(lfs_visualizer STATIC
         tools/brush_tool.cpp
         tools/align_tool.cpp
         tools/selection_tool.cpp
+
+        # Sequencer (camera animation)
+        sequencer/sequencer_controller.cpp
+        sequencer/sequencer_panel.cpp
 
         # Command system (undo/redo)
         command/command_history.cpp
@@ -88,6 +93,7 @@ target_link_libraries(lfs_visualizer
         lfs_io
         lfs_rendering
         lfs_training
+        lfs_sequencer      # Camera animation sequencer
         glad::glad
         glfw
         imgui::imgui

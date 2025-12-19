@@ -14,6 +14,7 @@ namespace lfs::vis {
     // Forward declarations
     class VisualizerImpl;
     class EditorContext;
+    class SequencerController;
 
     namespace gui {
         class FileBrowser;
@@ -32,6 +33,7 @@ namespace lfs::vis {
             FileBrowser* file_browser = nullptr;
             std::unordered_map<std::string, bool>* window_states = nullptr;
             EditorContext* editor = nullptr;
+            SequencerController* sequencer_controller = nullptr;
             FontSet fonts;
         };
 

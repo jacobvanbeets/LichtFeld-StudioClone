@@ -421,6 +421,10 @@ namespace lfs::vis::input {
             // UI
             {KeyTrigger{GLFW_KEY_F12, MODIFIER_NONE}, Action::TOGGLE_UI, "Hide UI"},
             {KeyTrigger{GLFW_KEY_F11, MODIFIER_NONE}, Action::TOGGLE_FULLSCREEN, "Fullscreen"},
+            // Sequencer
+            {KeyTrigger{GLFW_KEY_K, MODIFIER_NONE}, Action::SEQUENCER_ADD_KEYFRAME, "Add keyframe"},
+            {KeyTrigger{GLFW_KEY_U, MODIFIER_NONE}, Action::SEQUENCER_UPDATE_KEYFRAME, "Update keyframe"},
+            {KeyTrigger{GLFW_KEY_SPACE, MODIFIER_NONE}, Action::SEQUENCER_PLAY_PAUSE, "Play/Pause"},
         };
 
         constexpr ToolMode ALL_MODES[] = {
@@ -532,6 +536,9 @@ namespace lfs::vis::input {
         case Action::NODE_RECT_SELECT: return "Rectangle Select Nodes";
         case Action::TOGGLE_UI: return "Toggle UI";
         case Action::TOGGLE_FULLSCREEN: return "Toggle Fullscreen";
+        case Action::SEQUENCER_ADD_KEYFRAME: return "Add Keyframe";
+        case Action::SEQUENCER_UPDATE_KEYFRAME: return "Update Keyframe";
+        case Action::SEQUENCER_PLAY_PAUSE: return "Play/Pause";
         default: return "Unknown";
         }
     }

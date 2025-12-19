@@ -3,6 +3,16 @@
   "dependencies": [
     "args",
     "boost-preprocessor",
+    {
+      "name": "ffmpeg",
+      "features": [
+        "avcodec",
+        "avformat",
+        "swscale",
+        "nvcodec",
+        "x264"
+      ]
+    },
     "freetype",
     "glad",
     "glfw3",

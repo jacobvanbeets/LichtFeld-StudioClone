@@ -16,12 +16,15 @@
 #include "gui/html_viewer_export.hpp"
 #include "gui/panels/main_panel.hpp"
 #include "gui/panels/scene_panel.hpp"
+#include "gui/panels/sequencer_settings_panel.hpp"
 #include "gui/panels/tools_panel.hpp"
+#include "sequencer/keyframe.hpp"
 #include "gui/panels/training_panel.hpp"
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "gui/windows/file_browser.hpp"
 #include "io/exporter.hpp"
+#include "io/video/video_encoder.hpp"
 
 #include "input/input_controller.hpp"
 #include "internal/resource_paths.hpp"
@@ -92,6 +95,7 @@ namespace lfs::vis::gui {
         export_dialog_ = std::make_unique<ExportDialog>();
         notification_popup_ = std::make_unique<NotificationPopup>();
         save_directory_popup_ = std::make_unique<SaveDirectoryPopup>();
+        sequencer_panel_ = std::make_unique<SequencerPanel>(sequencer_controller_);
 
         // Initialize window states
         window_states_["file_browser"] = false;
@@ -450,6 +454,7 @@ namespace lfs::vis::gui {
             .file_browser = file_browser_.get(),
             .window_states = &window_states_,
             .editor = &editor_ctx,
+            .sequencer_controller = &sequencer_controller_,
             .fonts = {font_regular_, font_bold_, font_heading_, font_small_, font_section_}};
 
         // Right panel
@@ -521,8 +526,10 @@ namespace lfs::vis::gui {
                 ImGui::PopStyleColor(3);
 
                 // Rendering content helper
-                const auto draw_rendering = [&ctx] {
+                const auto draw_rendering = [&ctx, this] {
                     panels::DrawRenderingSettings(ctx);
+                    ImGui::Separator();
+                    panels::DrawSequencerSection(ctx, sequencer_ui_state_);
                     ImGui::Separator();
                     panels::DrawSelectionGroups(ctx);
                     ImGui::Separator();
@@ -814,6 +821,14 @@ namespace lfs::vis::gui {
             }
         }
 
+        // Render sequencer panel above status bar (only in edit mode)
+        if (!ui_hidden_ && ctx.editor && !ctx.editor->isToolsDisabled()) {
+            if (sequencer_ui_state_.show_camera_path) {
+                renderCameraPath(ctx);
+            }
+            renderSequencerPanel(ctx);
+        }
+
         // Render status bar at bottom of viewport
         if (!ui_hidden_) {
             renderStatusBar(ctx);
@@ -827,9 +842,9 @@ namespace lfs::vis::gui {
                     const glm::vec2 vp_pos(viewport_pos_.x, viewport_pos_.y);
                     const glm::vec2 vp_size(viewport_size_.x, viewport_size_.y);
 
-                    // Gizmo bounds (lower-right corner)
+                    // Gizmo bounds (upper-right corner)
                     const float gizmo_x = vp_pos.x + vp_size.x - VIEWPORT_GIZMO_SIZE - VIEWPORT_GIZMO_MARGIN_X;
-                    const float gizmo_y = vp_pos.y + vp_size.y - VIEWPORT_GIZMO_SIZE - VIEWPORT_GIZMO_MARGIN_Y;
+                    const float gizmo_y = vp_pos.y + VIEWPORT_GIZMO_MARGIN_Y;
 
                     const ImVec2 mouse = ImGui::GetMousePos();
                     const bool mouse_in_gizmo = mouse.x >= gizmo_x && mouse.x <= gizmo_x + VIEWPORT_GIZMO_SIZE &&
@@ -907,6 +922,7 @@ namespace lfs::vis::gui {
 
         // Render export progress overlay (blocking overlay on top of everything)
         renderExportOverlay();
+        renderVideoExportOverlay();
 
         // Render empty state welcome screen when no content loaded
         renderEmptyStateOverlay();
@@ -916,6 +932,40 @@ namespace lfs::vis::gui {
 
         if (save_directory_popup_) {
             save_directory_popup_->render(viewport_pos_, viewport_size_);
+        }
+
+        // Render keyframe context menu (needs to be at end of frame for proper z-order)
+        if (keyframe_context_menu_open_) {
+            const auto& timeline = sequencer_controller_.timeline();
+            if (ImGui::BeginPopup("KeyframeContextMenu")) {
+                if (ImGui::MenuItem("Add Keyframe Here", "K")) {
+                    lfs::core::events::cmd::SequencerAddKeyframe{}.emit();
+                }
+                if (context_menu_keyframe_.has_value() && *context_menu_keyframe_ < timeline.size()) {
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Update to Current View", "U")) {
+                        sequencer_controller_.selectKeyframe(*context_menu_keyframe_);
+                        lfs::core::events::cmd::SequencerUpdateKeyframe{}.emit();
+                    }
+                    if (ImGui::MenuItem("Go to Keyframe")) {
+                        sequencer_controller_.selectKeyframe(*context_menu_keyframe_);
+                        sequencer_controller_.seek(timeline.keyframes()[*context_menu_keyframe_].time);
+                    }
+                    ImGui::Separator();
+                    const bool is_first = (*context_menu_keyframe_ == 0);
+                    if (ImGui::MenuItem("Delete Keyframe", "Del", false, !is_first)) {
+                        sequencer_controller_.selectKeyframe(*context_menu_keyframe_);
+                        sequencer_controller_.removeSelectedKeyframe();
+                    }
+                    if (is_first && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetTooltip("Cannot delete first keyframe");
+                    }
+                }
+                ImGui::EndPopup();
+            } else {
+                keyframe_context_menu_open_ = false;
+                context_menu_keyframe_ = std::nullopt;
+            }
         }
 
         // Render notification popups (errors, warnings, etc.)
@@ -1004,10 +1054,175 @@ namespace lfs::vis::gui {
             return false;
 
         const float gizmo_x = viewport_pos_.x + viewport_size_.x - VIEWPORT_GIZMO_SIZE - VIEWPORT_GIZMO_MARGIN_X;
-        const float gizmo_y = viewport_pos_.y + viewport_size_.y - VIEWPORT_GIZMO_SIZE - VIEWPORT_GIZMO_MARGIN_Y;
+        const float gizmo_y = viewport_pos_.y + VIEWPORT_GIZMO_MARGIN_Y;
 
         return x >= gizmo_x && x <= gizmo_x + VIEWPORT_GIZMO_SIZE &&
                y >= gizmo_y && y <= gizmo_y + VIEWPORT_GIZMO_SIZE;
+    }
+
+    void GuiManager::renderSequencerPanel(const UIContext& /*ctx*/) {
+        sequencer_controller_.update(ImGui::GetIO().DeltaTime);
+
+        if (sequencer_controller_.isPlaying() && !sequencer_controller_.timeline().empty()) {
+            const auto state = sequencer_controller_.currentCameraState();
+            auto& viewport = viewer_->getViewport();
+            viewport.camera.R = glm::mat3_cast(state.rotation);
+            viewport.camera.t = state.position;
+
+            if (auto* const rm = viewer_->getRenderingManager()) {
+                rm->markDirty();
+            }
+        }
+
+        sequencer_panel_->render(viewport_pos_.x, viewport_size_.x, viewport_pos_.y + viewport_size_.y);
+    }
+
+    void GuiManager::renderCameraPath(const UIContext& /*ctx*/) {
+        constexpr float PATH_THICKNESS = 2.0f;
+        constexpr float FRUSTUM_THICKNESS = 1.5f;
+        constexpr float PLAYHEAD_SIZE = 8.0f;
+        constexpr float NDC_CULL_MARGIN = 1.5f;
+        constexpr int PATH_SAMPLES = 20;
+        constexpr float FRUSTUM_SIZE = 0.15f;   // Size of frustum base
+        constexpr float FRUSTUM_DEPTH = 0.25f;  // Depth of frustum
+        constexpr float HIT_RADIUS = 15.0f;     // Click detection radius in pixels
+
+        const auto& timeline = sequencer_controller_.timeline();
+        const auto& viewport = viewer_->getViewport();
+        const glm::mat4 view_proj = viewport.getProjectionMatrix() * viewport.getViewMatrix();
+
+        const auto projectToScreen = [&](const glm::vec3& pos) -> ImVec2 {
+            const glm::vec4 clip = view_proj * glm::vec4(pos, 1.0f);
+            if (clip.w <= 0.0f) return {-10000.0f, -10000.0f};
+            const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            return {viewport_pos_.x + (ndc.x * 0.5f + 0.5f) * viewport_size_.x,
+                    viewport_pos_.y + (1.0f - (ndc.y * 0.5f + 0.5f)) * viewport_size_.y};
+        };
+
+        const auto isVisible = [&](const glm::vec3& pos) -> bool {
+            const glm::vec4 clip = view_proj * glm::vec4(pos, 1.0f);
+            if (clip.w <= 0.0f) return false;
+            const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            return std::abs(ndc.x) <= NDC_CULL_MARGIN && std::abs(ndc.y) <= NDC_CULL_MARGIN;
+        };
+
+        ImDrawList* const dl = ImGui::GetForegroundDrawList();
+        const auto& t = theme();
+
+        if (timeline.empty()) return;
+
+        // Path line
+        const auto path_points = timeline.generatePath(PATH_SAMPLES);
+        if (path_points.size() >= 2) {
+            const ImU32 path_color = toU32WithAlpha(t.palette.primary, 0.8f);
+            for (size_t i = 0; i + 1 < path_points.size(); ++i) {
+                if (!isVisible(path_points[i]) && !isVisible(path_points[i + 1])) continue;
+                dl->AddLine(projectToScreen(path_points[i]), projectToScreen(path_points[i + 1]), path_color, PATH_THICKNESS);
+            }
+        }
+
+        // Hit testing for keyframe clicking
+        const ImVec2 mouse = ImGui::GetMousePos();
+        const bool mouse_in_viewport = mouse.x >= viewport_pos_.x && mouse.x <= viewport_pos_.x + viewport_size_.x &&
+                                        mouse.y >= viewport_pos_.y && mouse.y <= viewport_pos_.y + viewport_size_.y;
+
+        std::optional<size_t> hovered_keyframe;
+        float closest_dist = HIT_RADIUS;
+
+        // Draw frustums at keyframe positions
+        const ImU32 frustum_color = toU32WithAlpha(t.palette.primary, 0.7f);
+        const ImU32 hovered_frustum_color = toU32WithAlpha(lighten(t.palette.primary, 0.15f), 0.85f);
+        const ImU32 selected_frustum_color = toU32WithAlpha(lighten(t.palette.primary, 0.3f), 0.9f);
+
+        for (size_t i = 0; i < timeline.keyframes().size(); ++i) {
+            const auto& kf = timeline.keyframes()[i];
+            if (!isVisible(kf.position)) continue;
+
+            const ImVec2 s_apex = projectToScreen(kf.position);
+
+            // Hit test
+            if (mouse_in_viewport) {
+                const float dist = std::sqrt((mouse.x - s_apex.x) * (mouse.x - s_apex.x) +
+                                             (mouse.y - s_apex.y) * (mouse.y - s_apex.y));
+                if (dist < closest_dist) {
+                    closest_dist = dist;
+                    hovered_keyframe = i;
+                }
+            }
+
+            const bool selected = sequencer_controller_.selectedKeyframe() == i;
+            const bool hovered = hovered_keyframe == i;
+            ImU32 color = frustum_color;
+            if (selected) color = selected_frustum_color;
+            else if (hovered) color = hovered_frustum_color;
+            const float thickness = selected ? FRUSTUM_THICKNESS * 1.5f : FRUSTUM_THICKNESS;
+
+            // Build frustum in camera local space, then transform to world
+            // Apply GL_TO_COLMAP transform (flip Y and Z) to match training camera frustums
+            const glm::mat3 rot_mat = glm::mat3_cast(kf.rotation);
+            const glm::vec3 forward = rot_mat[2];   // Z (GL_TO_COLMAP flips Z, was -Z)
+            const glm::vec3 up = -rot_mat[1];       // -Y (GL_TO_COLMAP flips Y)
+            const glm::vec3 right = rot_mat[0];     // X (unchanged)
+
+            // Frustum apex at camera position
+            const glm::vec3 apex = kf.position;
+
+            // Frustum base corners (in front of camera)
+            const glm::vec3 base_center = apex + forward * FRUSTUM_DEPTH;
+            const glm::vec3 tl = base_center + up * FRUSTUM_SIZE - right * FRUSTUM_SIZE;
+            const glm::vec3 tr = base_center + up * FRUSTUM_SIZE + right * FRUSTUM_SIZE;
+            const glm::vec3 bl = base_center - up * FRUSTUM_SIZE - right * FRUSTUM_SIZE;
+            const glm::vec3 br = base_center - up * FRUSTUM_SIZE + right * FRUSTUM_SIZE;
+
+            // Project all points
+            const ImVec2 s_tl = projectToScreen(tl);
+            const ImVec2 s_tr = projectToScreen(tr);
+            const ImVec2 s_bl = projectToScreen(bl);
+            const ImVec2 s_br = projectToScreen(br);
+
+            // Draw frustum edges (apex to corners)
+            dl->AddLine(s_apex, s_tl, color, thickness);
+            dl->AddLine(s_apex, s_tr, color, thickness);
+            dl->AddLine(s_apex, s_bl, color, thickness);
+            dl->AddLine(s_apex, s_br, color, thickness);
+
+            // Draw base rectangle
+            dl->AddLine(s_tl, s_tr, color, thickness);
+            dl->AddLine(s_tr, s_br, color, thickness);
+            dl->AddLine(s_br, s_bl, color, thickness);
+            dl->AddLine(s_bl, s_tl, color, thickness);
+
+            // Draw "up" indicator (small triangle on top edge)
+            const glm::vec3 up_tip = base_center + up * FRUSTUM_SIZE * 1.3f;
+            const ImVec2 s_up = projectToScreen(up_tip);
+            dl->AddTriangleFilled(s_up, s_tl, s_tr, color);
+        }
+
+        // Handle keyframe clicking
+        if (mouse_in_viewport && !ImGui::IsAnyItemHovered() && !ImGuizmo::IsOver()) {
+            // Left click to select
+            if (hovered_keyframe.has_value() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                sequencer_controller_.selectKeyframe(*hovered_keyframe);
+            }
+            // Right click for context menu
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                context_menu_keyframe_ = hovered_keyframe;  // Can be nullopt if not on a keyframe
+                keyframe_context_menu_open_ = true;
+                ImGui::OpenPopup("KeyframeContextMenu");
+            }
+        }
+
+        // Playhead marker
+        if (!sequencer_controller_.isStopped()) {
+            const auto state = sequencer_controller_.currentCameraState();
+            if (isVisible(state.position)) {
+                const ImVec2 sp = projectToScreen(state.position);
+                dl->AddTriangleFilled({sp.x, sp.y - PLAYHEAD_SIZE},
+                                       {sp.x - PLAYHEAD_SIZE * 0.7f, sp.y + PLAYHEAD_SIZE * 0.5f},
+                                       {sp.x + PLAYHEAD_SIZE * 0.7f, sp.y + PLAYHEAD_SIZE * 0.5f},
+                                       t.error_u32());
+            }
+        }
     }
 
     void GuiManager::renderStatusBar(const UIContext& ctx) {
@@ -1664,6 +1879,44 @@ namespace lfs::vis::gui {
                 wm->toggleFullscreen();
             }
         });
+
+        cmd::SequencerAddKeyframe::when([this](const auto&) {
+            const auto& cam = viewer_->getViewport().camera;
+            auto& timeline = sequencer_controller_.timeline();
+            const float time = timeline.empty() ? 0.0f : timeline.endTime() + 1.0f;
+
+            lfs::sequencer::Keyframe kf;
+            kf.time = time;
+            kf.position = cam.t;
+            kf.rotation = glm::quat_cast(cam.R);
+            kf.fov = lfs::sequencer::DEFAULT_FOV;
+            timeline.addKeyframe(kf);
+            sequencer_controller_.seek(time);
+        });
+
+        cmd::SequencerUpdateKeyframe::when([this](const auto&) {
+            if (!sequencer_controller_.hasSelection()) return;
+            const auto& cam = viewer_->getViewport().camera;
+            sequencer_controller_.updateSelectedKeyframe(
+                cam.t,
+                glm::quat_cast(cam.R),
+                lfs::sequencer::DEFAULT_FOV);
+        });
+
+        cmd::SequencerPlayPause::when([this](const auto&) {
+            sequencer_controller_.togglePlayPause();
+        });
+
+        cmd::SequencerExportVideo::when([this](const auto& evt) {
+            const auto path = SaveMp4FileDialog("camera_path");
+            if (path.empty()) return;
+
+            io::video::VideoExportOptions options;
+            options.resolution = static_cast<io::video::VideoResolution>(evt.resolution);
+            options.framerate = evt.framerate;
+            options.crf = evt.crf;
+            startVideoExport(path, options);
+        });
     }
 
     void GuiManager::setSelectionSubMode(panels::SelectionSubMode mode) {
@@ -1711,7 +1964,7 @@ namespace lfs::vis::gui {
 
     bool GuiManager::wantsInput() const {
         // Block all input while exporting
-        if (export_state_.active.load()) {
+        if (export_state_.active.load() || video_export_state_.active.load()) {
             return true;
         }
         ImGuiIO& io = ImGui::GetIO();
@@ -2485,6 +2738,237 @@ namespace lfs::vis::gui {
         draw_list->AddText({center_x - subtitle_size.x * 0.5f, center_y + 35.0f}, SUBTITLE_COLOR, SUBTITLE);
         if (font_small_)
             ImGui::PopFont();
+    }
+
+    void GuiManager::renderVideoExportOverlay() {
+        if (!video_export_state_.active.load()) {
+            if (video_export_state_.thread && video_export_state_.thread->joinable()) {
+                video_export_state_.thread->join();
+                video_export_state_.thread.reset();
+            }
+            return;
+        }
+
+        constexpr float OVERLAY_WIDTH = 400.0f;
+        constexpr float BUTTON_WIDTH = 100.0f;
+        constexpr float BUTTON_HEIGHT = 30.0f;
+        constexpr float PROGRESS_BAR_HEIGHT = 20.0f;
+
+        const ImGuiViewport* const viewport = ImGui::GetMainViewport();
+        const ImVec2 overlay_pos(
+            viewport->WorkPos.x + (viewport->WorkSize.x - OVERLAY_WIDTH) * 0.5f,
+            viewport->WorkPos.y + (viewport->WorkSize.y - 120.0f) * 0.5f);
+
+        ImGui::SetNextWindowPos(overlay_pos, ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(OVERLAY_WIDTH, 0), ImGuiCond_Always);
+
+        constexpr ImGuiWindowFlags FLAGS = ImGuiWindowFlags_NoTitleBar |
+                                           ImGuiWindowFlags_NoResize |
+                                           ImGuiWindowFlags_NoMove |
+                                           ImGuiWindowFlags_NoScrollbar |
+                                           ImGuiWindowFlags_NoCollapse |
+                                           ImGuiWindowFlags_AlwaysAutoResize;
+
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.1f, 0.95f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20, 15));
+
+        if (ImGui::Begin("##VideoExportProgress", nullptr, FLAGS)) {
+            ImGui::Text("Exporting Video...");
+            ImGui::Spacing();
+
+            const float progress = video_export_state_.progress.load();
+            ImGui::ProgressBar(progress, ImVec2(-1, PROGRESS_BAR_HEIGHT));
+
+            const int current = video_export_state_.current_frame.load();
+            const int total = video_export_state_.total_frames.load();
+            ImGui::Text("Frame %d / %d", current, total);
+
+            {
+                const std::lock_guard lock(video_export_state_.mutex);
+                ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "%s",
+                                   video_export_state_.stage.c_str());
+            }
+
+            ImGui::Spacing();
+
+            ImGui::SetCursorPosX((OVERLAY_WIDTH - BUTTON_WIDTH) * 0.5f - ImGui::GetStyle().WindowPadding.x);
+            if (ImGui::Button("Cancel", ImVec2(BUTTON_WIDTH, BUTTON_HEIGHT))) {
+                cancelVideoExport();
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor();
+
+        ImDrawList* const draw_list = ImGui::GetBackgroundDrawList();
+        draw_list->AddRectFilled(
+            viewport->WorkPos,
+            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x,
+                   viewport->WorkPos.y + viewport->WorkSize.y),
+            IM_COL32(0, 0, 0, 100));
+    }
+
+    void GuiManager::cancelVideoExport() {
+        if (!video_export_state_.active.load()) return;
+
+        LOG_INFO("Cancelling video export");
+        video_export_state_.cancel_requested.store(true);
+        if (video_export_state_.thread) {
+            video_export_state_.thread->request_stop();
+        }
+    }
+
+    void GuiManager::startVideoExport(const std::filesystem::path& path,
+                                       const io::video::VideoExportOptions& options) {
+        auto* const scene_manager = viewer_->getSceneManager();
+        auto* const rendering_manager = viewer_->getRenderingManager();
+        if (!scene_manager || !rendering_manager) {
+            LOG_ERROR("Cannot export video: missing components");
+            return;
+        }
+
+        const auto& timeline = sequencer_controller_.timeline();
+        if (timeline.empty()) {
+            LOG_ERROR("Cannot export video: no keyframes");
+            return;
+        }
+
+        // Get scene render state
+        const auto render_state = scene_manager->buildRenderState();
+        if (!render_state.combined_model) {
+            LOG_ERROR("No splat data to render");
+            return;
+        }
+
+        // Get rendering engine
+        auto* const engine = rendering_manager->getRenderingEngine();
+        if (!engine) {
+            LOG_ERROR("Rendering engine not available");
+            return;
+        }
+
+        const float duration = timeline.duration();
+        const int total_frames = static_cast<int>(std::ceil(duration * options.framerate)) + 1;
+        const int width = io::video::getWidth(options.resolution);
+        const int height = io::video::getHeight(options.resolution);
+
+        video_export_state_.active.store(true);
+        video_export_state_.cancel_requested.store(false);
+        video_export_state_.progress.store(0.0f);
+        video_export_state_.total_frames.store(total_frames);
+        video_export_state_.current_frame.store(0);
+        {
+            std::lock_guard lock(video_export_state_.mutex);
+            video_export_state_.stage = "Initializing";
+            video_export_state_.error.clear();
+        }
+
+        LOG_INFO("Starting video export: {} frames at {}x{}", total_frames, width, height);
+
+        // Capture settings from rendering manager
+        const auto render_settings = rendering_manager->getSettings();
+        const lfs::core::SplatData* splat_ptr = render_state.combined_model;
+
+        video_export_state_.thread = std::make_unique<std::jthread>(
+            [this, path, options, total_frames, width, height,
+             splat_ptr, engine, render_settings](std::stop_token stop_token) {
+
+                io::video::VideoEncoder encoder;
+
+                {
+                    std::lock_guard lock(video_export_state_.mutex);
+                    video_export_state_.stage = "Opening encoder";
+                }
+
+                auto result = encoder.open(path, options);
+                if (!result) {
+                    std::lock_guard lock(video_export_state_.mutex);
+                    video_export_state_.error = result.error();
+                    video_export_state_.stage = "Failed: " + result.error();
+                    video_export_state_.active.store(false);
+                    LOG_ERROR("Failed to open encoder: {}", result.error());
+                    return;
+                }
+
+                const float start_time = sequencer_controller_.timeline().startTime();
+                const float time_step = 1.0f / static_cast<float>(options.framerate);
+
+                for (int frame = 0; frame < total_frames; ++frame) {
+                    if (stop_token.stop_requested() || video_export_state_.cancel_requested.load()) {
+                        LOG_INFO("Video export cancelled at frame {}", frame);
+                        break;
+                    }
+
+                    const float time = start_time + static_cast<float>(frame) * time_step;
+                    const auto cam_state = sequencer_controller_.timeline().evaluate(time);
+
+                    // Create render request
+                    rendering::RenderRequest request;
+                    request.viewport.rotation = glm::mat3_cast(cam_state.rotation);
+                    request.viewport.translation = cam_state.position;
+                    request.viewport.size = {width, height};
+                    request.viewport.fov = cam_state.fov;
+                    request.background_color = render_settings.background_color;
+                    request.sh_degree = render_settings.sh_degree;
+                    request.scaling_modifier = render_settings.scaling_modifier;
+                    request.antialiasing = true;
+
+                    auto render_result = engine->renderGaussians(*splat_ptr, request);
+                    if (!render_result.has_value() || !render_result->valid || !render_result->image) {
+                        LOG_ERROR("Failed to render frame {}", frame);
+                        continue;
+                    }
+
+                    // Convert from CHW (channel-first) to HWC (height-width-channel) for video encoding
+                    // Renderer outputs [C, H, W], encoder expects [H, W, C]
+                    auto image_hwc = render_result->image->permute({1, 2, 0}).contiguous();
+
+                    // Debug: log tensor info on first frame
+                    if (frame == 0) {
+                        LOG_INFO("Video export: CHW shape=[{},{},{}] -> HWC shape=[{},{},{}]",
+                                 render_result->image->shape()[0], render_result->image->shape()[1], render_result->image->shape()[2],
+                                 image_hwc.shape()[0], image_hwc.shape()[1], image_hwc.shape()[2]);
+                    }
+
+                    // Encode directly from GPU (NVENC or CUDA color convert + x264)
+                    const auto* const gpu_ptr = image_hwc.data_ptr();
+                    auto write_result = encoder.writeFrameGpu(gpu_ptr, width, height, nullptr);
+                    if (!write_result) {
+                        std::lock_guard lock(video_export_state_.mutex);
+                        video_export_state_.error = write_result.error();
+                        video_export_state_.stage = "Encode error";
+                        LOG_ERROR("Failed to encode frame {}: {}", frame, write_result.error());
+                        break;
+                    }
+
+                    video_export_state_.current_frame.store(frame + 1);
+                    video_export_state_.progress.store(
+                        static_cast<float>(frame + 1) / static_cast<float>(total_frames));
+                    {
+                        std::lock_guard lock(video_export_state_.mutex);
+                        video_export_state_.stage = std::format("Encoding frame {}/{}", frame + 1, total_frames);
+                    }
+                }
+
+                {
+                    std::lock_guard lock(video_export_state_.mutex);
+                    video_export_state_.stage = "Finalizing";
+                }
+
+                if (auto close_result = encoder.close(); !close_result) {
+                    std::lock_guard lock(video_export_state_.mutex);
+                    video_export_state_.error = close_result.error();
+                    video_export_state_.stage = "Failed";
+                    LOG_ERROR("Failed to close encoder: {}", close_result.error());
+                } else if (video_export_state_.error.empty() && !video_export_state_.cancel_requested.load()) {
+                    std::lock_guard lock(video_export_state_.mutex);
+                    video_export_state_.stage = "Complete";
+                    LOG_INFO("Video export completed: {}", path.string());
+                }
+
+                video_export_state_.active.store(false);
+            });
     }
 
 } // namespace lfs::vis::gui

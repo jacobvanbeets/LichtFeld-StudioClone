@@ -473,7 +473,7 @@ namespace lfs::vis::gui::panels {
         if (!state.initialized)
             InitGizmoToolbar(state);
 
-        constexpr float MARGIN_RIGHT = 10.0f;
+        constexpr float MARGIN_LEFT = 10.0f;
         constexpr float MARGIN_TOP = 5.0f;
         constexpr int FULL_BUTTON_COUNT = 8;    // Home, Fullscreen, ToggleUI, Splat, PointCloud, Rings, Centers, Projection
         constexpr int MINIMAL_BUTTON_COUNT = 3; // Home, Fullscreen, ToggleUI
@@ -482,7 +482,7 @@ namespace lfs::vis::gui::panels {
         const int num_separators = render_manager ? SEPARATOR_COUNT : 0;
         const ImVec2 size = ComputeVerticalToolbarSize(num_buttons, num_separators);
         const ImVec2 pos = {
-            viewport_pos.x + viewport_size.x - size.x - MARGIN_RIGHT,
+            viewport_pos.x + MARGIN_LEFT,
             viewport_pos.y + MARGIN_TOP};
 
         widgets::DrawWindowShadow(pos, size, theme().sizes.window_rounding);

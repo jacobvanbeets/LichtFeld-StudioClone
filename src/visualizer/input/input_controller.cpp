@@ -876,6 +876,18 @@ namespace lfs::vis {
                     ui::ToggleFullscreen{}.emit();
                     return;
 
+                case input::Action::SEQUENCER_ADD_KEYFRAME:
+                    cmd::SequencerAddKeyframe{}.emit();
+                    return;
+
+                case input::Action::SEQUENCER_UPDATE_KEYFRAME:
+                    cmd::SequencerUpdateKeyframe{}.emit();
+                    return;
+
+                case input::Action::SEQUENCER_PLAY_PAUSE:
+                    cmd::SequencerPlayPause{}.emit();
+                    return;
+
                 default:
                     break;
                 }

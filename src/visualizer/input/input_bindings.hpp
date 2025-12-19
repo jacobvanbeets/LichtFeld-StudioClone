@@ -91,6 +91,10 @@ namespace lfs::vis::input {
         // UI
         TOGGLE_UI,
         TOGGLE_FULLSCREEN,
+        // Sequencer
+        SEQUENCER_ADD_KEYFRAME,
+        SEQUENCER_UPDATE_KEYFRAME,
+        SEQUENCER_PLAY_PAUSE,
     };
 
     // Using MODIFIER_ prefix to avoid Windows macro conflicts

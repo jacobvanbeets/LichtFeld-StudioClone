@@ -132,6 +132,7 @@ set(OPTIONAL_TEST_FILES
     test_tensor_zero_dimension.cpp
     test_mask_loss.cpp
     test_checkpoint_resume.cpp
+    test_video_color_convert.cpp
 )
 
 foreach(TEST_FILE ${OPTIONAL_TEST_FILES})
@@ -182,6 +183,7 @@ target_link_libraries(lichtfeld_tests PRIVATE
     lfs_core
     lfs_geometry
     lfs_io
+    lfs_video
     lfs_tensor
 
     # Backend libraries
