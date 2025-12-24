@@ -800,10 +800,10 @@ namespace lfs::training {
 
                             // Handle OOM by switching tile mode
                             if (tile_mode == TileMode::Four) {
-                                // Already at maximum tiling - can't tile further, stop gracefully
-                                LOG_ERROR("OUT OF MEMORY at maximum tile mode (2x2). Stopping training gracefully.");
+                                // Already at maximum tiling - can't tile further, return error
+                                LOG_ERROR("OUT OF MEMORY at maximum tile mode (2x2). Cannot continue training.");
                                 LOG_ERROR("Arena error: {}", error);
-                                return StepResult::Stop;
+                                return std::unexpected(error);
                             } else {
                                 // Upgrade to next tile mode
                                 TileMode new_mode = (tile_mode == TileMode::One) ? TileMode::Two : TileMode::Four;
