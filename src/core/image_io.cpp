@@ -38,8 +38,8 @@ namespace {
         }
 
         const int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(),
-                                                   static_cast<int>(wstr.size()),
-                                                   nullptr, 0, nullptr, nullptr);
+                                                    static_cast<int>(wstr.size()),
+                                                    nullptr, 0, nullptr, nullptr);
         if (size_needed <= 0) {
             LOG_ERROR("Wide string to UTF-8 conversion failed: size calculation returned {}", size_needed);
             return std::string();

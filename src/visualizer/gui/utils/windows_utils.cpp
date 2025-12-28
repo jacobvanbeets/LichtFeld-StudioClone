@@ -87,8 +87,8 @@ namespace lfs::vis::gui {
 
             // Get required buffer size
             const int size_needed = MultiByteToWideChar(CP_UTF8, 0, utf8_str.c_str(),
-                                                       static_cast<int>(utf8_str.size()),
-                                                       nullptr, 0);
+                                                        static_cast<int>(utf8_str.size()),
+                                                        nullptr, 0);
             if (size_needed <= 0) {
                 LOG_ERROR("UTF-8 to wide string conversion failed");
                 return std::wstring();
