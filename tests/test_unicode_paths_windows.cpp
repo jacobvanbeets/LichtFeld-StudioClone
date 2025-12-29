@@ -14,13 +14,13 @@
  * This test runs on Windows CI without requiring CUDA/GPU.
  */
 
-#include <gtest/gtest.h>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <gtest/gtest.h>
+#include <map>
 #include <sstream>
 #include <vector>
-#include <map>
-#include <cstring>
 
 #include "core/path_utils.hpp"
 
@@ -96,7 +96,7 @@ protected:
         std::ifstream in(path, std::ios::binary);
         EXPECT_TRUE(in.is_open()) << "Failed to open file: " << path.string();
         return std::string{std::istreambuf_iterator<char>(in),
-                          std::istreambuf_iterator<char>()};
+                           std::istreambuf_iterator<char>()};
     }
 
     // Helper to read binary data
@@ -131,7 +131,8 @@ protected:
         oss << "  \"frames\": [\n";
         for (size_t i = 0; i < image_names.size(); i++) {
             oss << "    {\"file_path\": \"" << image_names[i] << "\"";
-            if (i < image_names.size() - 1) oss << ",";
+            if (i < image_names.size() - 1)
+                oss << ",";
             oss << "}\n";
         }
         oss << "  ]\n";
@@ -253,9 +254,8 @@ TEST_F(UnicodePathTest, BinaryFileFormats) {
 
     // Test binary data with various formats
     std::vector<uint8_t> binary_data = {
-        0x50, 0x4C, 0x59, 0x0A,  // "PLY\n" header
-        0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD, 0xFC
-    };
+        0x50, 0x4C, 0x59, 0x0A, // "PLY\n" header
+        0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD, 0xFC};
 
     struct FormatTest {
         std::string name;
@@ -364,8 +364,7 @@ TEST_F(UnicodePathTest, DirectoryOperations) {
         "画像2_image2_이미지2_图像2.jpg",
         "モデル_model_모델_模型.ply",
         "設定_config_설정_配置.json",
-        "データ_data_데이터_数据.bin"
-    };
+        "データ_data_데이터_数据.bin"};
 
     for (const auto& filename : filenames) {
         create_file(dir / filename, "test content");
@@ -409,8 +408,7 @@ TEST_F(UnicodePathTest, DeeplyNestedPaths) {
         "L2_データ_데이터_数据",
         "L3_項目_프로젝트_项目",
         "L4_出力_출력_输出",
-        "L5_最終_최종_最终"
-    };
+        "L5_最終_최종_最终"};
 
     for (const auto& level : levels) {
         current = current / level;
@@ -501,8 +499,7 @@ TEST_F(UnicodePathTest, ConfigFileOperations) {
         std::vector<std::string> config_names = {
             "一般_general_일반_通用.json",
             "表示_display_디스플레이_显示.json",
-            "レンダリング_rendering_렌더링_渲染.json"
-        };
+            "レンダリング_rendering_렌더링_渲染.json"};
 
         for (const auto& name : config_names) {
             auto config_path = config_dir / name;
@@ -525,8 +522,7 @@ TEST_F(UnicodePathTest, TransformFileOperations) {
     std::vector<std::string> image_names = {
         "画像_001_이미지_图像",
         "画像_002_이미지_图像",
-        "写真_photo_사진_照片"
-    };
+        "写真_photo_사진_照片"};
 
     for (const auto& img_name : image_names) {
         // Create mock images (both with and without .png extension)
@@ -561,15 +557,14 @@ TEST_F(UnicodePathTest, PLYFileOperations) {
     std::vector<std::string> ply_names = {
         "点群_pointcloud_포인트클라우드_点云.ply",
         "メッシュ_mesh_메시_网格.ply",
-        "スプラット_splat_스플랫_splat.ply"
-    };
+        "スプラット_splat_스플랫_splat.ply"};
 
     for (const auto& ply_name : ply_names) {
         SCOPED_TRACE(ply_name);
         auto ply_path = models_dir / ply_name;
 
         create_mock_ply(ply_path, 10);
-        verify_file(ply_path, 50);  // At least 50 bytes
+        verify_file(ply_path, 50); // At least 50 bytes
 
         // Read and verify header
         std::string content = read_file(ply_path);
@@ -591,8 +586,7 @@ TEST_F(UnicodePathTest, CacheOperations) {
     std::vector<std::string> cache_items = {
         "画像_キャッシュ_1_이미지_캐시_图像_缓存",
         "データ_キャッシュ_2_데이터_캐시_数据_缓存",
-        "変換_キャッシュ_3_변환_캐시_转换_缓存"
-    };
+        "変換_キャッシュ_3_변환_캐시_转换_缓存"};
 
     for (const auto& item : cache_items) {
         SCOPED_TRACE(item);
@@ -691,8 +685,7 @@ TEST_F(UnicodePathTest, MultipleFileOperations) {
         {"韓国_1.txt", "Korean 1"},
         {"韓国_2.txt", "Korean 2"},
         {"混合_1.txt", "Mixed 1"},
-        {"混合_2.txt", "Mixed 2"}
-    };
+        {"混合_2.txt", "Mixed 2"}};
 
     // Create all files
     for (const auto& [name, content] : files) {
@@ -775,8 +768,7 @@ TEST_F(UnicodePathTest, RealWorld_COLMAPProject) {
     std::vector<std::string> image_names = {
         "桜_さくら_001.png",
         "桜_さくら_002.png",
-        "花見_hanami_001.png"
-    };
+        "花見_hanami_001.png"};
 
     for (const auto& name : image_names) {
         auto img_path = images_dir / name;
@@ -878,8 +870,8 @@ TEST_F(UnicodePathTest, RealWorld_ExportWorkflow) {
     auto sog_path = exports_dir / "故宮_ForbiddenCity_紫禁城.sog";
     // SOG is a ZIP archive, create minimal ZIP header
     std::vector<uint8_t> zip_header = {
-        0x50, 0x4B, 0x03, 0x04,  // ZIP local file header signature
-        0x14, 0x00, 0x00, 0x00,  // Version, flags
+        0x50, 0x4B, 0x03, 0x04, // ZIP local file header signature
+        0x14, 0x00, 0x00, 0x00, // Version, flags
     };
     create_binary_file(sog_path, zip_header);
     verify_file(sog_path);
@@ -888,12 +880,12 @@ TEST_F(UnicodePathTest, RealWorld_ExportWorkflow) {
     auto spz_path = exports_dir / "长城_GreatWall_万里長城.spz";
     // SPZ is gzipped, create gzip header
     std::vector<uint8_t> gzip_header = {
-        0x1F, 0x8B,  // Gzip magic bytes
-        0x08,        // Compression method (deflate)
-        0x00,        // Flags
-        0x00, 0x00, 0x00, 0x00,  // Timestamp
-        0x00,        // Extra flags
-        0xFF         // OS
+        0x1F, 0x8B,             // Gzip magic bytes
+        0x08,                   // Compression method (deflate)
+        0x00,                   // Flags
+        0x00, 0x00, 0x00, 0x00, // Timestamp
+        0x00,                   // Extra flags
+        0xFF                    // OS
     };
     create_binary_file(spz_path, gzip_header);
     verify_file(spz_path);
@@ -1130,4 +1122,3 @@ TEST_F(UnicodePathTest, RealWorld_PathResolution) {
     auto resolved3 = resolve_image("紅葉_autumn_003.jpg");
     EXPECT_TRUE(fs::exists(resolved3)) << "Failed to resolve: 紅葉_autumn_003.jpg";
 }
-
