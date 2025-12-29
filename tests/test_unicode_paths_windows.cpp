@@ -1143,8 +1143,7 @@ TEST_F(UnicodePathTest, Utf8RoundTrip) {
         "日本語フォルダ",
         "한국어_korean_test",
         "中文测试_chinese_test",
-        "Mixed_混合_ミックス_혼합"
-    };
+        "Mixed_混合_ミックス_혼합"};
 
     for (const auto& name : test_names) {
         auto subdir = unicode_dir / name;
@@ -1189,12 +1188,12 @@ TEST_F(UnicodePathTest, DirectoryIterationWithPathToUtf8) {
 
     // Create directories with various Unicode names (exactly like user's screenshot)
     std::vector<std::string> folder_names = {
-        "テスト_unicode_test",       // Japanese
-        "한국어_korean_test",        // Korean
-        "中文测试_chinese_test",     // Chinese
-        "العربية_arabic_test",      // Arabic (RTL)
-        "עברית_hebrew_test",        // Hebrew (RTL)
-        "emoji_😀_🎉_🚀_test"        // Emoji
+        "テスト_unicode_test",   // Japanese
+        "한국어_korean_test",    // Korean
+        "中文测试_chinese_test", // Chinese
+        "العربية_arabic_test",   // Arabic (RTL)
+        "עברית_hebrew_test",     // Hebrew (RTL)
+        "emoji_😀_🎉_🚀_test"    // Emoji
     };
 
     std::map<std::string, fs::path> created_paths;
@@ -1293,12 +1292,12 @@ TEST_F(UnicodePathTest, AstralPlaneCharacters) {
     fs::create_directories(test_dir);
 
     std::vector<std::string> astral_names = {
-        "emoji_face_😀😁😂🤣",           // Emoji faces
-        "emoji_flags_🇯🇵🇰🇷🇨🇳",         // Flag emoji (ZWJ sequences)
-        "emoji_complex_👨‍👩‍👧‍👦",            // Family emoji (ZWJ sequence)
-        "rare_cjk_𠀀𠀁𠀂",               // CJK Extension B characters
-        "math_symbols_𝔸𝔹ℂ𝔻",           // Mathematical symbols
-        "musical_𝄞𝄢𝄪",                // Musical symbols
+        "emoji_face_😀😁😂🤣",                     // Emoji faces
+        "emoji_flags_🇯🇵🇰🇷🇨🇳",                      // Flag emoji (ZWJ sequences)
+        "emoji_complex_👨‍👩‍👧‍👦", // Family emoji (ZWJ sequence)
+        "rare_cjk_𠀀𠀁𠀂",                         // CJK Extension B characters
+        "math_symbols_𝔸𝔹ℂ𝔻",                       // Mathematical symbols
+        "musical_𝄞𝄢𝄪",                             // Musical symbols
     };
 
     for (const auto& name : astral_names) {
@@ -1340,7 +1339,7 @@ TEST_F(UnicodePathTest, UnicodeNormalization) {
     // - NFD: U+0061 U+0308 (a + combining diaeresis)
 
     // Create with one form, access with potentially different form
-    std::string nfc_name = "Ärger_NFC";  // Using precomposed ä
+    std::string nfc_name = "Ärger_NFC"; // Using precomposed ä
     auto nfc_path = test_dir / nfc_name;
 
     create_file(nfc_path, "NFC content");
@@ -1356,7 +1355,7 @@ TEST_F(UnicodePathTest, UnicodeNormalization) {
 
     // Test with Japanese characters that have normalization variants
     // が (U+304C, NFC) vs か゛ (U+304B U+3099, NFD)
-    std::string ja_nfc = "が_NFC_test";  // Precomposed
+    std::string ja_nfc = "が_NFC_test"; // Precomposed
     auto ja_path = test_dir / ja_nfc;
 
     create_file(ja_path, "Japanese NFC content");
@@ -1470,9 +1469,9 @@ TEST_F(UnicodePathTest, UnicodeWhitespaceAndSpecial) {
     // Various Unicode whitespace characters
     std::vector<std::pair<std::string, std::string>> whitespace_tests = {
         {"regular space", "file with spaces.txt"},
-        {"ideographic_space", "file\u3000space.txt"},  // U+3000 ideographic space (CJK)
-        {"nbsp", "file\u00A0nbsp.txt"},                // U+00A0 non-breaking space
-        {"en_space", "file\u2002enspace.txt"},         // U+2002 en space
+        {"ideographic_space", "file\u3000space.txt"}, // U+3000 ideographic space (CJK)
+        {"nbsp", "file\u00A0nbsp.txt"},               // U+00A0 non-breaking space
+        {"en_space", "file\u2002enspace.txt"},        // U+2002 en space
     };
 
     for (const auto& [desc, filename] : whitespace_tests) {
@@ -1507,13 +1506,13 @@ TEST_F(UnicodePathTest, SingleUnicodeCharacterPaths) {
     fs::create_directories(test_dir);
 
     std::vector<std::string> single_chars = {
-        "あ",    // Hiragana
-        "字",    // Kanji
-        "한",    // Hangul
-        "Ä",     // Latin with diacritic
-        "α",     // Greek
-        "Я",     // Cyrillic
-        "😀",   // Emoji
+        "あ", // Hiragana
+        "字", // Kanji
+        "한", // Hangul
+        "Ä",  // Latin with diacritic
+        "α",  // Greek
+        "Я",  // Cyrillic
+        "😀", // Emoji
     };
 
     for (const auto& ch : single_chars) {
@@ -1555,15 +1554,14 @@ TEST_F(UnicodePathTest, FileBrowserDisplayStrings) {
     std::vector<std::string> problem_names = {
         "テスト_unicode_test",
         "한국어_korean_test",
-        "中文测试_chinese_test"
-    };
+        "中文测试_chinese_test"};
 
     for (const auto& name : problem_names) {
         fs::create_directories(test_dir / name);
     }
 
     // Simulate the display string generation from file_browser.cpp
-    const char* directory_prefix = "[DIR] ";  // Similar to LOC(FileBrowser::DIRECTORY)
+    const char* directory_prefix = "[DIR] "; // Similar to LOC(FileBrowser::DIRECTORY)
 
     for (const auto& entry : fs::directory_iterator(test_dir)) {
         if (entry.is_directory()) {
@@ -1714,8 +1712,7 @@ TEST_F(UnicodePathTest, CacheKeyGenerationWithUnicodePaths) {
         "画像_image_이미지_图像.png",
         "テスト_test_테스트_测试.jpg",
         "データ_data_데이터_数据.bin",
-        "Mixed_混合_ミックス_혼합.tiff"
-    };
+        "Mixed_混合_ミックス_혼합.tiff"};
 
     std::map<std::string, std::string> generated_keys;
 
@@ -1775,8 +1772,7 @@ TEST_F(UnicodePathTest, ImageBeingSavedTrackingWithUnicodePaths) {
         test_dir / "画像1_image1.png",
         test_dir / "画像2_image2.png",
         test_dir / "한국어_korean.jpg",
-        test_dir / "中文_chinese.png"
-    };
+        test_dir / "中文_chinese.png"};
 
     // Create files and add to tracking
     for (const auto& path : unicode_paths) {
@@ -1835,8 +1831,7 @@ TEST_F(UnicodePathTest, DragDropPathHandling) {
         "ドラッグ_drag_드래그_拖拽.png",
         "ドロップ_drop_드롭_放下.jpg",
         "混合ファイル_Mixed_혼합파일_混合文件.ply",
-        "Special (file) [test].sog"
-    };
+        "Special (file) [test].sog"};
 
     std::vector<std::string> received_paths;
 
@@ -1884,8 +1879,7 @@ TEST_F(UnicodePathTest, SaveDirectoryPopupPathDerivation) {
     std::vector<fs::path> dataset_paths = {
         test_dir / "プロジェクト_project_프로젝트_项目" / "dataset",
         test_dir / "作品_work_작품_作品" / "images",
-        test_dir / "Mixed_混合_ミックス" / "colmap"
-    };
+        test_dir / "Mixed_混合_ミックス" / "colmap"};
 
     for (const auto& dataset_path : dataset_paths) {
         SCOPED_TRACE(path_to_utf8(dataset_path));
@@ -1938,8 +1932,7 @@ TEST_F(UnicodePathTest, FileDialogInitialDirectory) {
     std::vector<fs::path> initial_dirs = {
         test_dir / "Documents" / "プロジェクト_Projects",
         test_dir / "桌面_Desktop" / "3D模型_3DModels",
-        test_dir / "다운로드_Downloads" / "데이터셋_Datasets"
-    };
+        test_dir / "다운로드_Downloads" / "데이터셋_Datasets"};
 
     for (const auto& dir : initial_dirs) {
         SCOPED_TRACE(path_to_utf8(dir));
