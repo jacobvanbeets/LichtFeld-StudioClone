@@ -2364,7 +2364,7 @@ TEST_F(UnicodePathTest, CheckpointSaveLoad) {
 
     // Checkpoint header structure simulation
     struct MockCheckpointHeader {
-        uint32_t magic = 0x4C465343;  // "LFSC"
+        uint32_t magic = 0x4C465343; // "LFSC"
         uint32_t version = 1;
         uint32_t iteration;
         uint32_t num_gaussians;
