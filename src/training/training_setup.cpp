@@ -520,7 +520,8 @@ namespace lfs::training {
                 for (size_t i = 0; i < cameras.size(); ++i) {
                     const bool is_val = enable_eval && (i % test_every) == 0;
                     is_val ? ++val_count : ++train_count;
-                    if (cameras[i]->has_mask()) ++mask_count;
+                    if (cameras[i]->has_mask())
+                        ++mask_count;
                 }
 
                 const auto cameras_group_id = scene.addGroup("Cameras", dataset_id);
@@ -558,7 +559,8 @@ namespace lfs::training {
             } else {
                 return std::unexpected("Unknown data type from loader");
             }
-        }, load_result.data);
+        },
+                          load_result.data);
     }
 
 } // namespace lfs::training

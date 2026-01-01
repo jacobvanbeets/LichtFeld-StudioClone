@@ -2497,7 +2497,8 @@ namespace lfs::vis::gui {
                     .images_folder = local_params.dataset.images,
                     .validate_only = false,
                     .progress = [this, &stop_token](const float pct, const std::string& msg) {
-                        if (stop_token.stop_requested()) return;
+                        if (stop_token.stop_requested())
+                            return;
                         import_state_.progress.store(pct / 100.0f);
                         const std::lock_guard lock(import_state_.mutex);
                         import_state_.stage = msg;
@@ -2525,7 +2526,8 @@ namespace lfs::vis::gui {
                             import_state_.num_images = data.cameras ? data.cameras->size() : 0;
                             import_state_.num_points = data.point_cloud ? data.point_cloud->size() : 0;
                         }
-                    }, import_state_.load_result->data);
+                    },
+                               import_state_.load_result->data);
                 } else {
                     import_state_.success = false;
                     import_state_.error = result.error().format();
