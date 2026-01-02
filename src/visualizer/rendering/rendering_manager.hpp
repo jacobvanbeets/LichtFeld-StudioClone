@@ -323,7 +323,6 @@ namespace lfs::vis {
         mutable std::atomic<bool> overlay_animation_active_{false};
 
         size_t last_model_ptr_ = 0;
-        glm::ivec2 last_render_size_{0, 0};
         std::chrono::steady_clock::time_point last_training_render_;
 
         // Split view state
@@ -379,6 +378,10 @@ namespace lfs::vis {
         mutable glm::vec3 cached_cropbox_max_{0.0f};
         mutable bool cached_cropbox_inverse_ = false;
         mutable const lfs::core::PointCloud* cached_source_point_cloud_ = nullptr;
+
+        // Viewport state
+        glm::ivec2 last_viewport_size_{0, 0}; // Last requested viewport size
+        glm::ivec2 cached_result_size_{0, 0}; // Size at which cached_result_ was actually rendered
     };
 
 } // namespace lfs::vis

@@ -8,6 +8,7 @@
 #include "command/commands/cropbox_command.hpp"
 #include "command/commands/transform_command.hpp"
 #include "core/events.hpp"
+#include "core/parameters.hpp"
 #include "gui/panels/gizmo_toolbar.hpp"
 #include "gui/panels/menu_bar.hpp"
 #include "gui/panels/sequencer_settings_panel.hpp"
@@ -15,6 +16,7 @@
 #include "io/video/video_export_options.hpp"
 #include "gui/ui_context.hpp"
 #include "gui/utils/drag_drop_native.hpp"
+#include "io/loader.hpp"
 #include "sequencer/sequencer_controller.hpp"
 #include "sequencer/sequencer_panel.hpp"
 #include "windows/exit_confirmation_popup.hpp"
@@ -24,6 +26,7 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -277,11 +280,39 @@ namespace lfs::vis {
             };
             VideoExportState video_export_state_;
 
+            // Async dataset import state
+            struct ImportState {
+                std::atomic<bool> active{false};
+                std::atomic<bool> show_completion{false};
+                std::atomic<bool> load_complete{false};
+                std::atomic<float> progress{0.0f};
+                std::mutex mutex;
+                // Protected by mutex:
+                std::filesystem::path path;
+                std::string stage;
+                std::string dataset_type;
+                std::string error;
+                size_t num_images{0};
+                size_t num_points{0};
+                bool success{false};
+                std::chrono::steady_clock::time_point completion_time;
+                std::optional<lfs::io::LoadResult> load_result;
+                lfs::core::param::TrainingParameters params;
+                std::unique_ptr<std::jthread> thread;
+            };
+            ImportState import_state_;
+
             // Sequencer UI state
             panels::SequencerUIState sequencer_ui_state_;
 
+            void startAsyncImport(const std::filesystem::path& path,
+                                  const lfs::core::param::TrainingParameters& params);
+            void checkAsyncImportCompletion();
+            void applyLoadedDataToScene();
+
             void renderExportOverlay();
             void renderVideoExportOverlay();
+            void renderImportOverlay();
             void renderEmptyStateOverlay();
             void renderDragDropOverlay();
             void renderStartupOverlay();

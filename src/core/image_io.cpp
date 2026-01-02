@@ -9,6 +9,7 @@
 #include <OpenImageIO/imageio.h>
 
 #include "core/logger.hpp"
+#include "core/path_utils.hpp"
 #include <algorithm>
 #include <condition_variable>
 #include <filesystem>
@@ -20,46 +21,7 @@
 #include <thread>
 #include <vector>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 namespace {
-
-    // Helper function to convert filesystem path to UTF-8 string for OIIO
-    // On Windows, path.string() uses system codepage (not UTF-8), which breaks Unicode
-    // On Linux/Mac, path.string() is already UTF-8
-    inline std::string path_to_utf8(const std::filesystem::path& p) {
-#ifdef _WIN32
-        // On Windows, convert wide string to UTF-8
-        const std::wstring wstr = p.wstring();
-        if (wstr.empty()) {
-            return std::string();
-        }
-
-        const int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(),
-                                                    static_cast<int>(wstr.size()),
-                                                    nullptr, 0, nullptr, nullptr);
-        if (size_needed <= 0) {
-            LOG_ERROR("Wide string to UTF-8 conversion failed: size calculation returned {}", size_needed);
-            return std::string();
-        }
-
-        std::string utf8_str(size_needed, 0);
-        const int converted = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(),
-                                                  static_cast<int>(wstr.size()),
-                                                  &utf8_str[0], size_needed, nullptr, nullptr);
-        if (converted <= 0) {
-            LOG_ERROR("Wide string to UTF-8 conversion failed during write");
-            return std::string();
-        }
-        utf8_str.resize(converted);
-        return utf8_str;
-#else
-        // On Linux/Mac, native encoding is UTF-8
-        return p.string();
-#endif
-    }
 
     // Run once: set global OIIO attributes (threading, etc.)
     std::once_flag g_oiio_once;
@@ -101,7 +63,7 @@ namespace lfs::core {
     std::tuple<int, int, int> get_image_info(std::filesystem::path p) {
         init_oiio();
 
-        const std::string path_utf8 = path_to_utf8(p);
+        const std::string path_utf8 = lfs::core::path_to_utf8(p);
         auto in = OIIO::ImageInput::open(path_utf8);
         if (!in) {
             throw std::runtime_error("OIIO open failed: " + path_utf8 + " : " + OIIO::geterror());
@@ -118,7 +80,7 @@ namespace lfs::core {
     load_image_with_alpha(std::filesystem::path p) {
         init_oiio();
 
-        const std::string path_utf8 = path_to_utf8(p);
+        const std::string path_utf8 = lfs::core::path_to_utf8(p);
         std::unique_ptr<OIIO::ImageInput> in(OIIO::ImageInput::open(path_utf8));
         if (!in)
             throw std::runtime_error("Load failed: " + path_utf8 + " : " + OIIO::geterror());
@@ -193,7 +155,7 @@ namespace lfs::core {
             init_oiio();
         }
 
-        const std::string path_utf8 = path_to_utf8(p);
+        const std::string path_utf8 = lfs::core::path_to_utf8(p);
         std::unique_ptr<OIIO::ImageInput> in;
         {
             LOG_TIMER("OIIO::ImageInput::open");
@@ -376,18 +338,34 @@ namespace lfs::core {
                 }
             }
 
-            if (res_div == 2 || res_div == 4 || res_div == 8) {
-                const int nw = std::max(1, w / res_div);
-                const int nh = std::max(1, h / res_div);
+            // Calculate target dimensions after res_div
+            int nw = (res_div == 2 || res_div == 4 || res_div == 8) ? std::max(1, w / res_div) : w;
+            int nh = (res_div == 2 || res_div == 4 || res_div == 8) ? std::max(1, h / res_div) : h;
+
+            // Apply max_width if needed
+            int scale_w = nw;
+            int scale_h = nh;
+            if (max_width > 0 && (nw > max_width || nh > max_width)) {
+                if (nw > nh) {
+                    scale_h = std::max(1, max_width * nh / nw);
+                    scale_w = std::max(1, max_width);
+                } else {
+                    scale_w = std::max(1, max_width * nw / nh);
+                    scale_h = std::max(1, max_width);
+                }
+            }
+
+            // Resize if dimensions changed
+            if (scale_w != w || scale_h != h) {
                 unsigned char* out = nullptr;
                 try {
-                    out = downscale_resample_direct(base, w, h, nw, nh, nthreads);
+                    out = downscale_resample_direct(base, w, h, scale_w, scale_h, nthreads);
                 } catch (...) {
                     std::free(base);
                     throw;
                 }
                 std::free(base);
-                return {out, nw, nh, 3};
+                return {out, scale_w, scale_h, 3};
             }
 
             return {base, w, h, 3};
@@ -411,7 +389,7 @@ namespace lfs::core {
         if (channels < 1 || channels > 4)
             throw std::runtime_error("save_image: channels must be in [1..4]");
 
-        const std::string path_utf8 = path_to_utf8(path);
+        const std::string path_utf8 = lfs::core::path_to_utf8(path);
         LOG_INFO("Saving image: {} shape: [{}, {}, {}]", path_utf8, height, width, channels);
 
         auto img_uint8 = (image.clamp(0, 1) * 255.0f).to(lfs::core::DataType::UInt8).contiguous();
@@ -527,7 +505,7 @@ namespace lfs::core {
             return false;
         }
 
-        const std::string path_utf8 = path_to_utf8(p);
+        const std::string path_utf8 = lfs::core::path_to_utf8(p);
         std::unique_ptr<OIIO::ImageOutput> out(OIIO::ImageOutput::create(path_utf8));
         if (!out) {
             return false;
@@ -703,7 +681,7 @@ namespace lfs::core::image_io {
                 lfs::core::save_image(t.path, t.image);
             }
         } catch (const std::exception& e) {
-            LOG_ERROR("[BatchImageSaver] Error saving {}: {}", t.path.string(), e.what());
+            LOG_ERROR("[BatchImageSaver] Error saving {}: {}", lfs::core::path_to_utf8(t.path), e.what());
         }
     }
 } // namespace lfs::core::image_io

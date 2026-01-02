@@ -6,6 +6,9 @@
 
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
+#include "core/parameter_manager.hpp"
+#include "core/path_utils.hpp"
+#include "core/services.hpp"
 #include "gui/dpi_scale.hpp"
 #include "gui/localization_manager.hpp"
 #include "gui/panels/scene_panel.hpp"
@@ -491,9 +494,13 @@ namespace lfs::vis::gui {
             }
 
             // [Mask] - indicator for cameras with masks
+            // Rotate 180° when masks are inverted
             if (has_mask && m_icons.mask) {
                 ImGui::SameLine(0.0f, ICON_SPACING);
-                ImGui::Image(static_cast<ImTextureID>(m_icons.mask), icon_sz, {0, 0}, {1, 1},
+                const bool inverted = services().paramsOrNull() && services().paramsOrNull()->getActiveParams().invert_masks;
+                const ImVec2 uv0 = inverted ? ImVec2(1, 1) : ImVec2(0, 0);
+                const ImVec2 uv1 = inverted ? ImVec2(0, 0) : ImVec2(1, 1);
+                ImGui::Image(static_cast<ImTextureID>(m_icons.mask), icon_sz, uv0, uv1,
                              ImVec4(0.9f, 0.5f, 0.6f, 0.8f), {0, 0, 0, 0});
             }
 
@@ -848,7 +855,7 @@ namespace lfs::vis::gui {
 
             for (size_t i = 0; i < m_imagePaths.size(); ++i) {
                 const auto& imagePath = m_imagePaths[i];
-                const std::string filename = imagePath.filename().string();
+                const std::string filename = lfs::core::path_to_utf8(imagePath.filename());
                 const std::string unique_id = std::format("{}##{}", filename, i);
                 const bool is_selected = (m_selectedImageIndex == static_cast<int>(i));
 
@@ -927,9 +934,9 @@ namespace lfs::vis::gui {
 
     void ScenePanel::onImageSelected(const std::filesystem::path& imagePath) {
         ui::NodeSelected{
-            .path = imagePath.string(),
+            .path = lfs::core::path_to_utf8(imagePath),
             .type = "Images",
-            .metadata = {{"filename", imagePath.filename().string()}, {"path", imagePath.string()}}}
+            .metadata = {{"filename", lfs::core::path_to_utf8(imagePath.filename())}, {"path", lfs::core::path_to_utf8(imagePath)}}}
             .emit();
     }
 

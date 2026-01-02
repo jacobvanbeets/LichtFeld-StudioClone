@@ -62,6 +62,7 @@ get_filename_component(PROJ_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 
 option(ENABLE_CUDA_GL_INTEROP "Enable CUDA-OpenGL interoperability" ON)
 option(BUILD_TESTS "Build tests" OFF)
+option(BUILD_UNICODE_TEST_ONLY "Build only Unicode path test (no CUDA)" OFF)
 option(ENABLE_ALLOCATION_PROFILING "Enable tensor allocation profiling" OFF)
 
 # Debug options
@@ -429,7 +430,6 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${RESOURCE_DIR}/assets/icon/scene"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${RESOURCE_DIR}/assets/fonts"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${RESOURCE_DIR}/assets/themes"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${RESOURCE_DIR}/parameter"
     COMMENT "Creating resource directory structure"
 )
 
@@ -488,14 +488,6 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/core11-logo.png"
         "${RESOURCE_DIR}/assets/"
     COMMENT "Copying application assets"
-)
-
-# Copy parameter files
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/parameter"
-        "${RESOURCE_DIR}/parameter"
-    COMMENT "Copying parameter files"
 )
 
 # Copy locale files
@@ -579,10 +571,14 @@ configure_build_type(${PROJECT_NAME})
 # =============================================================================
 # TESTING (Optional)
 # =============================================================================
-if(BUILD_TESTS)
+if(BUILD_TESTS OR BUILD_UNICODE_TEST_ONLY)
     enable_testing()
     add_subdirectory(tests)
-    message(STATUS "Tests enabled. Build with 'ninja lichtfeld_tests' and run with 'ninja run_tests' or 'ctest'")
+    if(BUILD_UNICODE_TEST_ONLY)
+        message(STATUS "Unicode path test enabled. Build with 'ninja unicode_path_test' and run with 'ctest -R UnicodePathTest'")
+    else()
+        message(STATUS "Tests enabled. Build with 'ninja lichtfeld_tests' and run with 'ninja run_tests' or 'ctest'")
+    endif()
 endif()
 
 # =============================================================================
@@ -603,6 +599,7 @@ message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  CUDA Standard: ${CMAKE_CUDA_STANDARD}")
 message(STATUS "  OpenImageIO Found: ${OpenImageIO_FOUND}")
 message(STATUS "  Tests: ${BUILD_TESTS}")
+message(STATUS "  Unicode Test Only: ${BUILD_UNICODE_TEST_ONLY}")
 message(STATUS "  Portable Build: ${BUILD_PORTABLE}")
 if(BUILD_PORTABLE)
     message(STATUS "  -> PTX-only: ON (SM >= ${BUILD_CUDA_MIN_SM}, JIT at runtime)")
@@ -617,7 +614,11 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "" FORCE)
 endif()
 
+set(CMAKE_INSTALL_UCRT_LIBRARIES TRUE)
+set(CMAKE_INSTALL_OPENMP_LIBRARIES TRUE)
+
 include(GNUInstallDirs)
+include(InstallRequiredSystemLibraries)
 
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION ".")
@@ -632,7 +633,6 @@ install(FILES "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/lichtfeld-icon.png"
 install(FILES "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/lichtfeld-splash-logo.png" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
 install(FILES "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/lichtfeld-splash-loading.png" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
 install(FILES "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/core11-logo.png" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/parameter" DESTINATION "${INSTALL_RESOURCE_DIR}")
 
 if(TARGET nvimgcodec)
     install(TARGETS nvimgcodec LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
