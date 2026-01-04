@@ -192,15 +192,14 @@ set(TEST_FILES
     test_vram_resize.cpp
     test_stride_bugs.cpp
     test_bool_any_all.cpp
+    test_fused_l1_ssim.cpp
     test_add_new_gs_tensor_ops.cpp
     test_cpu_dtype_conversions.cpp
     test_cpu_large_tensor_bugs.cpp
     test_curand_buffer_overflow.cpp
     test_default_strategy_comparison.cpp
-    # test_export_comparison.cpp  # Standalone tool with its own main()
     test_gradient_accumulation.cpp
     test_image_resize_parallel.cpp
-    # test_mcmc_histogram_optimization.cpp  # Disabled - references removed function
     test_tensor_cat_bug.cpp
     test_tensor_slicing_safety.cpp
     test_tensor_struct_init.cpp
