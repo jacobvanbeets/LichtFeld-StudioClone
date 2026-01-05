@@ -737,7 +737,8 @@ namespace lfs::core {
             }
             */
 
-            cudaStream_t transfer_stream = stream ? stream : 0;
+            // Use provided stream, or tensor's stream, or default stream
+            cudaStream_t transfer_stream = stream ? stream : (stream_ ? stream_ : 0);
             CHECK_CUDA(cudaMemcpyAsync(t.data_, src, bytes(), cudaMemcpyHostToDevice, transfer_stream));
 
             // CRITICAL: Update source tensor's stream so deallocator knows which stream used this memory
@@ -746,23 +747,34 @@ namespace lfs::core {
                 const_cast<Tensor*>(this)->stream_ = stream;
             }
 
-            // If stream is provided, caller is responsible for sync
+            // If no stream provided, sync - but use stream sync if tensor has a stream
             if (!stream) {
-                CHECK_CUDA(cudaDeviceSynchronize()); // Ensure transfer completes before returning
+                if (stream_) {
+                    cudaStreamSynchronize(stream_);
+                } else {
+                    CHECK_CUDA(cudaDeviceSynchronize());
+                }
             }
         } else if (device_ == Device::CUDA && device == Device::CPU) {
-            // API BOUNDARY: Sync before GPU→CPU transfer
+            // API BOUNDARY: Sync before GPU→CPU transfer - use stream sync when possible
             if (stream) {
                 cudaStreamSynchronize(stream);
+            } else if (stream_) {
+                cudaStreamSynchronize(stream_);
             } else {
                 cudaDeviceSynchronize();
             }
             // Async transfer for GPU→CPU as well (destination is pinned)
-            cudaStream_t transfer_stream = stream ? stream : 0;
+            cudaStream_t transfer_stream = stream ? stream : (stream_ ? stream_ : 0);
             CHECK_CUDA(cudaMemcpyAsync(t.data_, src, bytes(), cudaMemcpyDeviceToHost, transfer_stream));
 
+            // Sync after transfer - but use stream sync if available
             if (!stream) {
-                CHECK_CUDA(cudaDeviceSynchronize()); // Ensure transfer completes before returning
+                if (stream_) {
+                    cudaStreamSynchronize(stream_);
+                } else {
+                    CHECK_CUDA(cudaDeviceSynchronize());
+                }
             }
         }
 
@@ -789,12 +801,12 @@ namespace lfs::core {
 #define CONVERT_DTYPE_CUDA(FROM_TYPE, TO_TYPE, FROM_DTYPE, TO_DTYPE)                                                                         \
     if (dtype_ == FROM_DTYPE && dtype == TO_DTYPE) {                                                                                         \
         auto result = empty(shape_, device_, TO_DTYPE);                                                                                      \
+        result.set_stream(stream_);                                                                                                          \
         if (numel() == 0)                                                                                                                    \
             return result;                                                                                                                   \
         if (device_ == Device::CUDA) {                                                                                                       \
             tensor_ops::launch_convert_type<FROM_TYPE, TO_TYPE>(                                                                             \
-                ptr<FROM_TYPE>(), result.ptr<TO_TYPE>(), numel(), 0);                                                                        \
-            /* No sync - tensor-to-tensor operation */                                                                                       \
+                ptr<FROM_TYPE>(), result.ptr<TO_TYPE>(), numel(), stream_);                                                                  \
             return result;                                                                                                                   \
         }                                                                                                                                    \
         /* CPU fallback */                                                                                                                   \
@@ -817,14 +829,14 @@ namespace lfs::core {
         // Bool <-> Float32 (manual - can't use launch_convert_type due to uint8_t conflict)
         if (dtype_ == DataType::Bool && dtype == DataType::Float32) {
             auto result = empty(shape_, device_, DataType::Float32);
+            result.set_stream(stream_);
             if (numel() == 0)
                 return result;
 
             if (device_ == Device::CUDA) {
                 // Use generic conversion (unsigned char -> float)
                 tensor_ops::launch_convert_type<unsigned char, float>(
-                    ptr<unsigned char>(), result.ptr<float>(), numel(), 0);
-                // No sync - tensor-to-tensor GPU operation
+                    ptr<unsigned char>(), result.ptr<float>(), numel(), stream_);
             } else {
                 const unsigned char* src = ptr<unsigned char>();
                 float* dst = result.ptr<float>();
@@ -866,6 +878,7 @@ namespace lfs::core {
         // DEBUG: Add logging for Float32->Int32 conversion
         if (dtype_ == DataType::Float32 && dtype == DataType::Int32) {
             auto result = empty(shape_, device_, DataType::Int32);
+            result.set_stream(stream_);
             if (numel() == 0)
                 return result;
 
@@ -878,8 +891,7 @@ namespace lfs::core {
 
             if (device_ == Device::CUDA) {
                 tensor_ops::launch_convert_type<float, int>(
-                    ptr<float>(), result.ptr<int>(), numel(), 0);
-                // No sync - tensor-to-tensor GPU operation
+                    ptr<float>(), result.ptr<int>(), numel(), stream_);
             } else {
                 const float* src = ptr<float>();
                 int* dst = result.ptr<int>();
@@ -942,14 +954,14 @@ namespace lfs::core {
 
         if (dtype_ == DataType::Bool && dtype == DataType::Int32) {
             auto result = empty(shape_, device_, DataType::Int32);
+            result.set_stream(stream_);
             if (numel() == 0)
                 return result;
 
             if (device_ == Device::CUDA) {
                 // Use generic conversion (unsigned char -> int)
                 tensor_ops::launch_convert_type<unsigned char, int>(
-                    ptr<unsigned char>(), result.ptr<int>(), numel(), 0);
-                // No sync - tensor-to-tensor GPU operation
+                    ptr<unsigned char>(), result.ptr<int>(), numel(), stream_);
             } else {
                 const unsigned char* src = ptr<unsigned char>();
                 int* dst = result.ptr<int>();
@@ -963,14 +975,14 @@ namespace lfs::core {
         // Bool -> Int64
         if (dtype_ == DataType::Bool && dtype == DataType::Int64) {
             auto result = empty(shape_, device_, DataType::Int64);
+            result.set_stream(stream_);
             if (numel() == 0)
                 return result;
 
             if (device_ == Device::CUDA) {
                 // Use generic conversion (unsigned char -> int64_t)
                 tensor_ops::launch_convert_type<unsigned char, int64_t>(
-                    ptr<unsigned char>(), result.ptr<int64_t>(), numel(), 0);
-                // No sync - tensor-to-tensor GPU operation
+                    ptr<unsigned char>(), result.ptr<int64_t>(), numel(), stream_);
             } else {
                 const unsigned char* src = ptr<unsigned char>();
                 int64_t* dst = result.ptr<int64_t>();
@@ -1016,14 +1028,14 @@ namespace lfs::core {
         // Bool -> Float16
         if (dtype_ == DataType::Bool && dtype == DataType::Float16) {
             auto result = empty(shape_, device_, DataType::Float16);
+            result.set_stream(stream_);
             if (numel() == 0)
                 return result;
 
             if (device_ == Device::CUDA) {
                 // Use generic conversion (unsigned char -> __half)
                 tensor_ops::launch_convert_type<unsigned char, __half>(
-                    ptr<unsigned char>(), result.ptr<__half>(), numel(), 0);
-                // No sync - tensor-to-tensor GPU operation
+                    ptr<unsigned char>(), result.ptr<__half>(), numel(), stream_);
             } else {
                 const unsigned char* src = ptr<unsigned char>();
                 __half* dst = result.ptr<__half>();
@@ -1074,14 +1086,15 @@ namespace lfs::core {
         // Without sync, item<int>() may read before conversion completes, getting garbage
         if (dtype_ == DataType::Int64 && dtype == DataType::Int32) {
             auto result = empty(shape_, device_, DataType::Int32);
+            result.set_stream(stream_);
             if (numel() == 0)
                 return result;
 
             if (device_ == Device::CUDA) {
                 tensor_ops::launch_convert_type<int64_t, int>(
-                    ptr<int64_t>(), result.ptr<int>(), numel(), 0);
+                    ptr<int64_t>(), result.ptr<int>(), numel(), stream_);
                 // CRITICAL: Sync to ensure conversion completes before item() reads
-                cudaDeviceSynchronize();
+                cudaStreamSynchronize(stream_);
             } else {
                 const int64_t* src = ptr<int64_t>();
                 int* dst = result.ptr<int>();
@@ -1142,20 +1155,23 @@ namespace lfs::core {
             // For CUDA non-contiguous tensors: use CUDA kernel that respects strides
             if (device_ == Device::CUDA) {
                 // Use CUDA kernel for strided fill (much faster than element-by-element cudaMemcpy)
+                // Use tensor's stream if available for async operation
                 if (dtype_ == DataType::Float32) {
                     tensor_ops::launch_fill_strided<float>(
-                        static_cast<float*>(data_), value, shape_.dims(), strides_, storage_offset_, n, nullptr);
+                        static_cast<float*>(data_), value, shape_.dims(), strides_, storage_offset_, n, stream_);
                 } else if (dtype_ == DataType::Int32) {
                     int int_val = static_cast<int>(value);
                     tensor_ops::launch_fill_strided<int>(
-                        static_cast<int*>(data_), int_val, shape_.dims(), strides_, storage_offset_, n, nullptr);
+                        static_cast<int*>(data_), int_val, shape_.dims(), strides_, storage_offset_, n, stream_);
                 } else if (dtype_ == DataType::Bool) {
                     unsigned char bool_val = (value != 0.0f) ? 1 : 0;
                     tensor_ops::launch_fill_strided<unsigned char>(
-                        static_cast<unsigned char*>(data_), bool_val, shape_.dims(), strides_, storage_offset_, n, nullptr);
+                        static_cast<unsigned char*>(data_), bool_val, shape_.dims(), strides_, storage_offset_, n, stream_);
                 }
-                // Sync for the no-stream overload (maintains original behavior)
-                CHECK_CUDA(cudaDeviceSynchronize());
+                // Only sync if no stream (maintains original behavior for non-stream tensors)
+                if (!stream_) {
+                    CHECK_CUDA(cudaDeviceSynchronize());
+                }
                 return *this;
             }
 
@@ -1190,39 +1206,39 @@ namespace lfs::core {
         // Account for storage offset
         void* dest = static_cast<char*>(data_) + storage_offset_ * dtype_size(dtype_);
 
-        // Handle Bool dtype
-        if (dtype_ == DataType::Bool) {
-            unsigned char bool_val = (value != 0.0f) ? 1 : 0;
-            if (device_ == Device::CUDA) {
-                std::vector<unsigned char> temp(numel(), bool_val);
-                CHECK_CUDA(cudaMemcpy(dest, temp.data(), bytes(), cudaMemcpyHostToDevice));
-            } else {
-                unsigned char* data = static_cast<unsigned char*>(dest);
-                std::fill(data, data + numel(), bool_val);
-            }
-            return *this;
-        }
-
-        // Handle Int32 dtype
-        if (dtype_ == DataType::Int32) {
-            int int_val = static_cast<int>(value);
-            if (device_ == Device::CUDA) {
-                std::vector<int> temp(numel(), int_val);
-                CHECK_CUDA(cudaMemcpy(dest, temp.data(), bytes(), cudaMemcpyHostToDevice));
-            } else {
-                int* data = static_cast<int*>(dest);
-                std::fill(data, data + numel(), int_val);
-            }
-            return *this;
-        }
-
-        // Handle Float32 dtype (original code)
+        // CUDA: use GPU kernel directly (avoids CPU temp array + memcpy)
         if (device_ == Device::CUDA) {
-            std::vector<float> temp(numel(), value);
-            CHECK_CUDA(cudaMemcpy(dest, temp.data(), bytes(), cudaMemcpyHostToDevice));
+            const size_t n = numel();
+            const std::vector<size_t> shape_1d = {n};
+            const std::vector<size_t> strides_1d = {1};
+
+            if (dtype_ == DataType::Float32) {
+                tensor_ops::launch_fill_strided<float>(
+                    static_cast<float*>(dest), value, shape_1d, strides_1d, 0, n, stream_);
+            } else if (dtype_ == DataType::Int32) {
+                tensor_ops::launch_fill_strided<int>(
+                    static_cast<int*>(dest), static_cast<int>(value), shape_1d, strides_1d, 0, n, stream_);
+            } else if (dtype_ == DataType::Bool) {
+                const auto bool_val = static_cast<unsigned char>(value != 0.0f);
+                tensor_ops::launch_fill_strided<unsigned char>(
+                    static_cast<unsigned char*>(dest), bool_val, shape_1d, strides_1d, 0, n, stream_);
+            }
+            if (!stream_) {
+                CHECK_CUDA(cudaDeviceSynchronize());
+            }
+            return *this;
+        }
+
+        // CPU: use std::fill
+        const size_t n = numel();
+        if (dtype_ == DataType::Bool) {
+            const auto bool_val = static_cast<unsigned char>(value != 0.0f);
+            std::fill(static_cast<unsigned char*>(dest), static_cast<unsigned char*>(dest) + n, bool_val);
+        } else if (dtype_ == DataType::Int32) {
+            const auto int_val = static_cast<int>(value);
+            std::fill(static_cast<int*>(dest), static_cast<int*>(dest) + n, int_val);
         } else {
-            float* data = static_cast<float*>(dest);
-            std::fill(data, data + numel(), value);
+            std::fill(static_cast<float*>(dest), static_cast<float*>(dest) + n, value);
         }
 
         return *this;
@@ -1728,10 +1744,13 @@ namespace lfs::core {
         const char* data_ptr = static_cast<const char*>(data_) + storage_offset_ * dtype_size(dtype_);
         float value = 0.0f;
 
-        // Sync before reading from GPU
+        // Sync before reading from GPU - use stream sync if available (much faster!)
         if (device_ == Device::CUDA) {
-            // API BOUNDARY: Sync before reading value from GPU
-            cudaDeviceSynchronize();
+            if (stream_) {
+                cudaStreamSynchronize(stream_);
+            } else {
+                cudaDeviceSynchronize();
+            }
         }
 
         // Handle different dtypes
@@ -1808,8 +1827,12 @@ namespace lfs::core {
         values.resize(n);
 
         if (device_ == Device::CUDA) {
-            // API BOUNDARY: Sync before reading from GPU
-            cudaDeviceSynchronize();
+            // Sync before reading from GPU - use stream sync if available
+            if (stream_) {
+                cudaStreamSynchronize(stream_);
+            } else {
+                cudaDeviceSynchronize();
+            }
             CHECK_CUDA(cudaMemcpy(values.data(), data_, n * sizeof(float),
                                   cudaMemcpyDeviceToHost));
         } else {
@@ -1873,8 +1896,12 @@ namespace lfs::core {
         const void* src = data_ptr();
 
         if (device_ == Device::CUDA) {
-            // API BOUNDARY: Sync before reading from GPU
-            cudaDeviceSynchronize();
+            // Sync before reading from GPU - use stream sync if available
+            if (stream_) {
+                cudaStreamSynchronize(stream_);
+            } else {
+                cudaDeviceSynchronize();
+            }
             CHECK_CUDA(cudaMemcpy(result.data(), src, bytes(), cudaMemcpyDeviceToHost));
         } else {
             std::memcpy(result.data(), src, bytes());
