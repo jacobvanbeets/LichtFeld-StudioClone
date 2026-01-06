@@ -31,6 +31,7 @@
 #include "io/exporter.hpp"
 #include "io/loader.hpp"
 #include "io/video/video_encoder.hpp"
+#include "io/video_frame_extractor.hpp"
 
 #include "input/input_controller.hpp"
 #include "internal/resource_paths.hpp"
@@ -116,6 +117,38 @@ namespace lfs::vis::gui {
         sequencer_panel_ = std::make_unique<SequencerPanel>(sequencer_controller_);
         resume_checkpoint_popup_ = std::make_unique<ResumeCheckpointPopup>();
         exit_confirmation_popup_ = std::make_unique<ExitConfirmationPopup>();
+        video_extractor_dialog_ = std::make_unique<lfs::gui::VideoExtractorDialog>();
+
+        // Wire up video extractor dialog callback
+        video_extractor_dialog_->setOnStartExtraction([this](const lfs::gui::VideoExtractionParams& params) {
+            auto* dialog = video_extractor_dialog_.get();
+            std::thread([params, dialog]() {
+                lfs::io::VideoFrameExtractor extractor;
+                
+                lfs::io::VideoFrameExtractor::Params extract_params;
+                extract_params.video_path = params.video_path;
+                extract_params.output_dir = params.output_dir;
+                extract_params.mode = params.mode;
+                extract_params.fps = params.fps;
+                extract_params.frame_interval = params.frame_interval;
+                extract_params.format = params.format;
+                extract_params.jpg_quality = params.jpg_quality;
+                
+                // Set progress callback
+                extract_params.progress_callback = [dialog](int current, int total) {
+                    dialog->updateProgress(current, total);
+                };
+
+                std::string error;
+                if (!extractor.extract(extract_params, error)) {
+                    LOG_ERROR("Video frame extraction failed: {}", error);
+                    dialog->setExtractionError(error);
+                } else {
+                    LOG_INFO("Video frame extraction completed successfully");
+                    dialog->setExtractionComplete();
+                }
+            }).detach();
+        });
 
         // Initialize window states
         window_states_["file_browser"] = false;
@@ -123,6 +156,7 @@ namespace lfs::vis::gui {
         window_states_["system_console"] = false;
         window_states_["training_tab"] = false;
         window_states_["export_dialog"] = false;
+        window_states_["video_extractor_dialog"] = false;
 
         // Initialize speed overlay state
         speed_overlay_visible_ = false;
@@ -176,6 +210,10 @@ namespace lfs::vis::gui {
 
         menu_bar_->setOnExport([this]() {
             window_states_["export_dialog"] = true;
+        });
+
+        menu_bar_->setOnExtractVideoFrames([this]() {
+            window_states_["video_extractor_dialog"] = true;
         });
 
         menu_bar_->setOnExportConfig([]() {
@@ -754,6 +792,11 @@ namespace lfs::vis::gui {
         // Export dialog
         if (window_states_["export_dialog"]) {
             export_dialog_->render(&window_states_["export_dialog"], viewer_->getSceneManager());
+        }
+
+        // Video extractor dialog
+        if (window_states_["video_extractor_dialog"]) {
+            video_extractor_dialog_->render(&window_states_["video_extractor_dialog"]);
         }
 
         // Utility toolbar (always visible)

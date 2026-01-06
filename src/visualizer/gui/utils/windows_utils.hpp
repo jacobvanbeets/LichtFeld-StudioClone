@@ -40,6 +40,7 @@ namespace lfs::vis::gui {
     std::filesystem::path SaveSpzFileDialog(const std::string& defaultName);
     std::filesystem::path SaveHtmlFileDialog(const std::string& defaultName);
     std::filesystem::path SaveMp4FileDialog(const std::string& defaultName);
+    std::filesystem::path OpenVideoFileDialog();
     std::filesystem::path SelectFolderDialog(const std::string& title = "Select Folder",
                                              const std::filesystem::path& startDir = {});
 

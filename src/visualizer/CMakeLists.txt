@@ -41,6 +41,7 @@ add_library(lfs_visualizer STATIC
         gui/windows/save_directory_popup.cpp
         gui/windows/resume_checkpoint_popup.cpp
         gui/windows/exit_confirmation_popup.cpp
+        gui/windows/video_extractor_dialog.cpp
 
         # Scene management
         scene/scene.cpp
