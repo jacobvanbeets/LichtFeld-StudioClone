@@ -42,6 +42,7 @@ add_library(lfs_visualizer STATIC
         gui/windows/resume_checkpoint_popup.cpp
         gui/windows/exit_confirmation_popup.cpp
         gui/windows/disk_space_error_dialog.cpp
+        gui/windows/video_extractor_dialog.cpp
 
         # Scene management
         scene/scene.cpp

@@ -25,6 +25,7 @@
 #include "windows/notification_popup.hpp"
 #include "windows/resume_checkpoint_popup.hpp"
 #include "windows/save_directory_popup.hpp"
+#include "windows/video_extractor_dialog.hpp"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <atomic>
@@ -129,6 +130,7 @@ namespace lfs::vis {
             std::unique_ptr<ResumeCheckpointPopup> resume_checkpoint_popup_;
             std::unique_ptr<ExitConfirmationPopup> exit_confirmation_popup_;
             std::unique_ptr<DiskSpaceErrorDialog> disk_space_error_dialog_;
+            std::unique_ptr<lfs::gui::VideoExtractorDialog> video_extractor_dialog_;
 
             // UI state only
             std::unordered_map<std::string, bool> window_states_;

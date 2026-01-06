@@ -185,6 +185,10 @@ namespace lfs::vis::gui {
                     on_import_config_();
                 }
                 ImGui::Separator();
+                if (ImGui::MenuItem("Extract Frames from Video...") && on_extract_video_frames_) {
+                    on_extract_video_frames_();
+                }
+                ImGui::Separator();
                 if (ImGui::MenuItem(LOC(Menu::File::EXPORT)) && on_export_) {
                     on_export_();
                 }
@@ -543,6 +547,10 @@ namespace lfs::vis::gui {
 
     void MenuBar::setOnExportConfig(std::function<void()> callback) {
         on_export_config_ = std::move(callback);
+    }
+
+    void MenuBar::setOnExtractVideoFrames(std::function<void()> callback) {
+        on_extract_video_frames_ = std::move(callback);
     }
 
     void MenuBar::setOnExit(std::function<void()> callback) {
