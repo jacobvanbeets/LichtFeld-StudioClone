@@ -13,6 +13,25 @@ else()
     message(WARNING "ImGuizmo not found at external/imguizmo - Gizmo controls will not be available")
 endif()
 
+# ImGuiColorTextEdit - Syntax highlighting text editor for ImGui
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ImGuiColorTextEdit/TextEditor.cpp")
+    message(STATUS "Adding ImGuiColorTextEdit from external/ImGuiColorTextEdit")
+    add_library(imgui_textedit STATIC
+        ImGuiColorTextEdit/TextEditor.cpp
+    )
+    target_include_directories(imgui_textedit PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImGuiColorTextEdit
+    )
+    target_link_libraries(imgui_textedit PUBLIC imgui::imgui)
+    set_target_properties(imgui_textedit PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+        POSITION_INDEPENDENT_CODE ON
+    )
+else()
+    message(WARNING "ImGuiColorTextEdit not found at external/ImGuiColorTextEdit")
+endif()
+
 # nvImageCodec - GPU-accelerated image codec library
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/nvImageCodec/CMakeLists.txt")
     message(STATUS "Adding nvImageCodec from external/nvImageCodec")

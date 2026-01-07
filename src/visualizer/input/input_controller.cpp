@@ -700,7 +700,9 @@ namespace lfs::vis {
         }
 
         // Handle key press/repeat actions through bindings
-        if ((action == GLFW_PRESS || action == GLFW_REPEAT) && !ImGui::IsAnyItemActive()) {
+        // Skip when ImGui wants text input (e.g., Python console, text fields)
+        if ((action == GLFW_PRESS || action == GLFW_REPEAT) && !ImGui::IsAnyItemActive() &&
+            !ImGui::GetIO().WantTextInput) {
             const auto tool_mode = getCurrentToolMode();
             const auto bound_action = bindings_.getActionForKey(tool_mode, key, mods);
 
@@ -1199,6 +1201,11 @@ namespace lfs::vis {
     bool InputController::shouldCameraHandleInput() const {
         // Don't handle if gizmo or splitter is active
         if (drag_mode_ == DragMode::Gizmo || drag_mode_ == DragMode::Splitter) {
+            return false;
+        }
+
+        // Block when ImGui wants keyboard input (text fields, etc.)
+        if (ImGui::GetIO().WantTextInput || ImGui::GetIO().WantCaptureKeyboard) {
             return false;
         }
 

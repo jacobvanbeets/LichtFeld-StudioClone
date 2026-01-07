@@ -39,8 +39,7 @@ set_target_properties(lfs_python_utils PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
-#nanobind module(Python import name \
-                 : lichtfeld)
+# nanobind module (Python import name: lichtfeld)
 nanobind_add_module(
     lfs_py
     STABLE_ABI
