@@ -59,6 +59,7 @@ add_library(spz_lib STATIC
 target_include_directories(spz_lib PUBLIC ${CMAKE_SOURCE_DIR}/external/spz)
 target_link_libraries(spz_lib PRIVATE ZLIB::ZLIB)
 target_compile_features(spz_lib PUBLIC cxx_std_17)
+set_target_properties(spz_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Video encoding library (FFmpeg + CUDA for GPU-accelerated encoding)
 find_package(PkgConfig REQUIRED)
@@ -98,6 +99,7 @@ set_target_properties(lfs_video PROPERTIES
         CUDA_RESOLVE_DEVICE_SYMBOLS ON
         CUDA_STANDARD 20
         CUDA_STANDARD_REQUIRED ON
+        POSITION_INDEPENDENT_CODE ON
 )
 
 target_compile_options(lfs_video PRIVATE
@@ -229,6 +231,9 @@ endif()
 
 # Set C++ standard
 target_compile_features(lfs_io PUBLIC cxx_std_23)
+
+# Enable position-independent code for shared library linking (Python module)
+set_target_properties(lfs_io PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Compiler options
 target_compile_options(lfs_io PRIVATE

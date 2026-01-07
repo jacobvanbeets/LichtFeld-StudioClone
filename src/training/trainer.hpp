@@ -91,14 +91,17 @@ namespace lfs::training {
         // just for viewer to get model
         const IStrategy& get_strategy() const { return *strategy_; }
 
-    // Mutable access for controlled callbacks (e.g., Python control layer)
-    IStrategy& get_strategy_mutable() { return *strategy_; }
+        // Mutable access for controlled callbacks (e.g., Python control layer)
+        IStrategy& get_strategy_mutable() { return *strategy_; }
 
         // Allow viewer to lock for rendering
         std::shared_mutex& getRenderMutex() const { return render_mutex_; }
 
         const lfs::core::param::TrainingParameters& getParams() const { return params_; }
         void setParams(const lfs::core::param::TrainingParameters& params) { params_ = params; }
+
+        // Get Scene (for Python bindings in headless mode)
+        lfs::vis::Scene* getScene() const { return scene_; }
 
         // Checkpoint methods
         std::expected<void, std::string> save_checkpoint(int iteration);

@@ -6,6 +6,7 @@
 #include "core/argument_parser.hpp"
 #include "core/logger.hpp"
 #include "core/tensor/internal/memory_pool.hpp"
+#include "training/control/control_boundary.hpp"
 #include "training/trainer.hpp"
 #include "training/training_setup.hpp"
 #include "visualizer/gui/panels/python_scripts_panel.hpp"
@@ -14,6 +15,9 @@
 #include <cstring>
 #ifdef WIN32
 #include <windows.h>
+#endif
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+#include "python/runner.hpp"
 #endif
 
 namespace lfs::core {
@@ -76,6 +80,17 @@ namespace lfs::core {
         }
 
         LOG_INFO("Headless training completed successfully");
+
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+        if (!params->python_scripts.empty()) {
+            // Clean up Python callbacks to avoid dangling references
+            lfs::python::finalize();
+            // Use _exit to skip static destruction which causes crashes with embedded Python
+            // and nanobind's static data. This is safe because training is complete.
+            _exit(0);
+        }
+#endif
+
         return 0;
     }
 

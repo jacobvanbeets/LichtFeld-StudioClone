@@ -65,6 +65,12 @@ option(BUILD_TESTS "Build tests" OFF)
 option(ENABLE_ALLOCATION_PROFILING "Enable tensor allocation profiling" OFF)
 option(BUILD_PYTHON_BINDINGS "Build Python bindings (nanobind)" OFF)
 
+# Enable position-independent code globally when building Python bindings
+# This is required for all static libraries that will be linked into the shared module
+if(BUILD_PYTHON_BINDINGS)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
 # Debug options
 option(ENABLE_TENSOR_VALIDATION "Enable runtime tensor NaN/Inf validation" OFF)
 option(ENABLE_CUDA_DEBUG_SYNC "Enable synchronous CUDA kernel checking (slow)" OFF)

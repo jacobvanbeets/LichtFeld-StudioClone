@@ -37,4 +37,9 @@ namespace lfs::python {
      */
     void install_output_redirect();
 
+    /**
+     * @brief Finalize Python interpreter. Call before program exit to avoid cleanup issues.
+     */
+    void finalize();
+
 } // namespace lfs::python

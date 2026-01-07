@@ -11,6 +11,7 @@
 #include <core/logger.hpp>
 
 #ifdef LFS_BUILD_PYTHON_BINDINGS
+#include "training/control/control_boundary.hpp"
 #include <Python.h>
 #include <mutex>
 #endif
@@ -86,15 +87,39 @@ sys.stderr = OutputCapture(True)
 #endif
     }
 
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+    static PyThreadState* g_main_thread_state = nullptr;
+#endif
+
     void ensure_initialized() {
 #ifdef LFS_BUILD_PYTHON_BINDINGS
         std::call_once(g_py_init_once, [] {
             install_output_capture();
             Py_Initialize();
             PyEval_InitThreads();
-            PyEval_SaveThread();
+            g_main_thread_state = PyEval_SaveThread();
             LOG_INFO("Python interpreter initialized and GIL released (SaveThread)");
         });
+#endif
+    }
+
+    void finalize() {
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+        if (g_main_thread_state && Py_IsInitialized()) {
+            // Restore the main thread state
+            PyEval_RestoreThread(g_main_thread_state);
+            g_main_thread_state = nullptr;
+
+            // Clear all callbacks that hold Python objects
+            // This prevents dangling nanobind::object references during static destruction
+            lfs::training::ControlBoundary::instance().clear_all();
+
+            // Note: We intentionally don't call Py_Finalize() here.
+            // Calling Py_Finalize with embedded nanobind modules can cause crashes
+            // during static destruction due to cleanup order issues.
+            // Since the program is exiting, the OS will clean up anyway.
+            LOG_INFO("Python callbacks cleared");
+        }
 #endif
     }
 

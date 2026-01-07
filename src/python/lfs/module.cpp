@@ -7,6 +7,9 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include "py_cameras.hpp"
+#include "py_scene.hpp"
+#include "py_splat_data.hpp"
 #include "py_tensor.hpp"
 
 #include "control/command_api.hpp"
@@ -14,6 +17,8 @@
 #include "core/logger.hpp"
 #include "training/strategies/istrategy.hpp"
 #include "training/trainer.hpp"
+#include "visualizer/core/services.hpp"
+#include "visualizer/scene/scene_manager.hpp"
 
 #include <string>
 #include <vector>
@@ -86,19 +91,20 @@ namespace {
         std::string phase() const {
             auto p = CommandCenter::instance().snapshot().phase;
             switch (p) {
-                case TrainingPhase::Idle: return "idle";
-                case TrainingPhase::IterationStart: return "iteration_start";
-                case TrainingPhase::Forward: return "forward";
-                case TrainingPhase::Backward: return "backward";
-                case TrainingPhase::OptimizerStep: return "optimizer_step";
-                case TrainingPhase::SafeControl: return "safe_control";
-                default: return "unknown";
+            case TrainingPhase::Idle: return "idle";
+            case TrainingPhase::IterationStart: return "iteration_start";
+            case TrainingPhase::Forward: return "forward";
+            case TrainingPhase::Backward: return "backward";
+            case TrainingPhase::OptimizerStep: return "optimizer_step";
+            case TrainingPhase::SafeControl: return "safe_control";
+            default: return "unknown";
             }
         }
 
         std::string strategy() const {
             auto snap = CommandCenter::instance().snapshot();
-            if (!snap.trainer) return "none";
+            if (!snap.trainer)
+                return "none";
             return snap.trainer->getParams().optimization.strategy;
         }
     };
@@ -107,19 +113,22 @@ namespace {
     struct PyGaussiansView {
         std::size_t count() const {
             auto snap = CommandCenter::instance().snapshot();
-            if (!snap.trainer) return 0;
+            if (!snap.trainer)
+                return 0;
             return snap.trainer->get_strategy_mutable().get_model().size();
         }
 
         int sh_degree() const {
             auto snap = CommandCenter::instance().snapshot();
-            if (!snap.trainer) return 0;
+            if (!snap.trainer)
+                return 0;
             return snap.trainer->get_strategy_mutable().get_model().get_active_sh_degree();
         }
 
         int max_sh_degree() const {
             auto snap = CommandCenter::instance().snapshot();
-            if (!snap.trainer) return 0;
+            if (!snap.trainer)
+                return 0;
             return snap.trainer->get_strategy_mutable().get_model().get_max_sh_degree();
         }
     };
@@ -152,7 +161,8 @@ namespace {
 
         float get_lr() const {
             auto snap = CommandCenter::instance().snapshot();
-            if (!snap.trainer) return 0.0f;
+            if (!snap.trainer)
+                return 0.0f;
             return snap.trainer->get_strategy_mutable().get_optimizer().get_lr();
         }
     };
@@ -165,8 +175,10 @@ namespace {
             cmd.target = CommandTarget::Model;
             cmd.selection = {SelectionKind::All};
             cmd.args["attribute"] = attr;
-            if (min_val) cmd.args["min"] = static_cast<double>(*min_val);
-            if (max_val) cmd.args["max"] = static_cast<double>(*max_val);
+            if (min_val)
+                cmd.args["min"] = static_cast<double>(*min_val);
+            if (max_val)
+                cmd.args["max"] = static_cast<double>(*max_val);
             auto result = CommandCenter::instance().execute(cmd);
             if (!result) {
                 LOG_ERROR("clamp failed: {}", result.error());
@@ -239,13 +251,24 @@ namespace {
         }
     };
 
+    // Thread-local Trainer pointer for get_scene() to access Scene during hooks
+    thread_local lfs::training::Trainer* g_current_trainer = nullptr;
+
+    // RAII guard to set/clear current trainer
+    struct TrainerGuard {
+        TrainerGuard(lfs::training::Trainer* t) { g_current_trainer = t; }
+        ~TrainerGuard() { g_current_trainer = nullptr; }
+    };
+
     // Hook registration helper
     std::size_t register_hook(ControlHook hook, nb::callable cb) {
-        if (!cb) return 0;
+        if (!cb)
+            return 0;
         nb::object ocb = nb::cast<nb::object>(cb);
         LOG_INFO("Python hook registered for hook {}", static_cast<int>(hook));
         return ControlBoundary::instance().register_callback(hook, [ocb, hook](const HookContext& ctx) {
             nb::gil_scoped_acquire guard;
+            TrainerGuard trainer_guard(ctx.trainer);
             LOG_DEBUG("Python hook invoke hook={} iter={}", static_cast<int>(hook), ctx.iteration);
             try {
                 nb::dict d;
@@ -258,6 +281,20 @@ namespace {
                 LOG_ERROR("Python hook threw: {}", e.what());
             }
         });
+    }
+
+    // Get Scene from current trainer (for use in hooks) or services (for GUI)
+    lfs::vis::Scene* get_scene_internal() {
+        // First try the current trainer (headless mode)
+        if (g_current_trainer) {
+            return g_current_trainer->getScene();
+        }
+        // Fall back to services (GUI mode)
+        auto* scene_manager = lfs::vis::services().sceneOrNull();
+        if (scene_manager) {
+            return &scene_manager->getScene();
+        }
+        return nullptr;
     }
 
 } // namespace
@@ -328,35 +365,48 @@ NB_MODULE(lichtfeld, m) {
         .def("request_stop", &PySession::request_stop, "Request training stop");
 
     // Convenience functions
-    m.def("context", []() { return PyContextView{}; }, "Get current training context");
-    m.def("gaussians", []() { return PyGaussiansView{}; }, "Get Gaussians info");
-    m.def("session", []() { return PySession{}; }, "Get training session");
+    m.def(
+        "context", []() { return PyContextView{}; }, "Get current training context");
+    m.def(
+        "gaussians", []() { return PyGaussiansView{}; }, "Get Gaussians info");
+    m.def(
+        "session", []() { return PySession{}; }, "Get training session");
 
     // Hook registration functions (decorator-style)
-    m.def("on_training_start", [](nb::callable cb) {
-        register_hook(ControlHook::TrainingStart, cb);
-        return cb;
-    }, nb::arg("callback"), "Decorator for training start handler");
+    m.def(
+        "on_training_start", [](nb::callable cb) {
+            register_hook(ControlHook::TrainingStart, cb);
+            return cb;
+        },
+        nb::arg("callback"), "Decorator for training start handler");
 
-    m.def("on_iteration_start", [](nb::callable cb) {
-        register_hook(ControlHook::IterationStart, cb);
-        return cb;
-    }, nb::arg("callback"), "Decorator for iteration start handler");
+    m.def(
+        "on_iteration_start", [](nb::callable cb) {
+            register_hook(ControlHook::IterationStart, cb);
+            return cb;
+        },
+        nb::arg("callback"), "Decorator for iteration start handler");
 
-    m.def("on_post_step", [](nb::callable cb) {
-        register_hook(ControlHook::PostStep, cb);
-        return cb;
-    }, nb::arg("callback"), "Decorator for post-step handler");
+    m.def(
+        "on_post_step", [](nb::callable cb) {
+            register_hook(ControlHook::PostStep, cb);
+            return cb;
+        },
+        nb::arg("callback"), "Decorator for post-step handler");
 
-    m.def("on_pre_optimizer_step", [](nb::callable cb) {
-        register_hook(ControlHook::PreOptimizerStep, cb);
-        return cb;
-    }, nb::arg("callback"), "Decorator for pre-optimizer handler");
+    m.def(
+        "on_pre_optimizer_step", [](nb::callable cb) {
+            register_hook(ControlHook::PreOptimizerStep, cb);
+            return cb;
+        },
+        nb::arg("callback"), "Decorator for pre-optimizer handler");
 
-    m.def("on_training_end", [](nb::callable cb) {
-        register_hook(ControlHook::TrainingEnd, cb);
-        return cb;
-    }, nb::arg("callback"), "Decorator for training end handler");
+    m.def(
+        "on_training_end", [](nb::callable cb) {
+            register_hook(ControlHook::TrainingEnd, cb);
+            return cb;
+        },
+        nb::arg("callback"), "Decorator for training end handler");
 
     // Submodule: lf.handlers for organized access
     auto handlers = m.def_submodule("handlers", "Event handlers");
@@ -387,4 +437,50 @@ NB_MODULE(lichtfeld, m) {
 
     // Register Tensor class
     lfs::python::register_tensor(m);
+
+    // Scene submodule
+    auto scene_module = m.def_submodule("scene", "Scene graph API");
+    lfs::python::register_splat_data(scene_module);
+    lfs::python::register_scene(scene_module);
+    lfs::python::register_cameras(scene_module);
+
+    // Get scene function - works in both headless (during hooks) and GUI mode
+    m.def(
+        "get_scene", []() -> std::optional<lfs::python::PyScene> {
+            auto* scene = get_scene_internal();
+            if (!scene) {
+                return std::nullopt;
+            }
+            return lfs::python::PyScene(scene);
+        },
+        "Get the current scene (None if not available)");
+
+    // Get train/val cameras from scene
+    m.def(
+        "train_cameras", []() -> std::optional<lfs::python::PyCameraDataset> {
+            auto* scene = get_scene_internal();
+            if (!scene) {
+                return std::nullopt;
+            }
+            auto dataset = scene->getTrainCameras();
+            if (!dataset) {
+                return std::nullopt;
+            }
+            return lfs::python::PyCameraDataset(dataset);
+        },
+        "Get training cameras (None if not available)");
+
+    m.def(
+        "val_cameras", []() -> std::optional<lfs::python::PyCameraDataset> {
+            auto* scene = get_scene_internal();
+            if (!scene) {
+                return std::nullopt;
+            }
+            auto dataset = scene->getValCameras();
+            if (!dataset) {
+                return std::nullopt;
+            }
+            return lfs::python::PyCameraDataset(dataset);
+        },
+        "Get validation cameras (None if not available)");
 }
