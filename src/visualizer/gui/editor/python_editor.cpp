@@ -103,8 +103,8 @@ namespace lfs::vis::editor {
     }
 
     void PythonEditor::updateAutocomplete() {
-        std::string word = getWordBeforeCursor();
-        std::string context = getContextBeforeCursor();
+        const std::string word = getWordBeforeCursor();
+        const std::string context = getContextBeforeCursor();
 
         // Don't show autocomplete for empty input unless explicitly triggered
         if (word.empty() && !autocomplete_triggered_) {
@@ -124,18 +124,18 @@ namespace lfs::vis::editor {
     }
 
     std::string PythonEditor::getWordBeforeCursor() const {
-        auto pos = editor_.GetCursorPosition();
-        auto text = editor_.GetCurrentLineText();
+        const auto pos = editor_.GetCursorPosition();
+        const auto text = editor_.GetCurrentLineText();
 
         if (text.empty() || pos.mColumn == 0) {
             return "";
         }
 
-        int col = std::min(pos.mColumn, static_cast<int>(text.length()));
+        const int col = std::min(pos.mColumn, static_cast<int>(text.length()));
         int start = col;
 
         while (start > 0) {
-            char c = text[start - 1];
+            const char c = text[start - 1];
             if (!std::isalnum(c) && c != '_') {
                 break;
             }
@@ -146,20 +146,20 @@ namespace lfs::vis::editor {
     }
 
     std::string PythonEditor::getContextBeforeCursor() const {
-        auto pos = editor_.GetCursorPosition();
-        auto text = editor_.GetCurrentLineText();
+        const auto pos = editor_.GetCursorPosition();
+        const auto text = editor_.GetCurrentLineText();
 
         if (text.empty() || pos.mColumn == 0) {
             return "";
         }
 
-        int col = std::min(pos.mColumn, static_cast<int>(text.length()));
-        int start = std::max(0, col - 50);
+        const int col = std::min(pos.mColumn, static_cast<int>(text.length()));
+        const int start = std::max(0, col - 50);
         return text.substr(start, col - start);
     }
 
     void PythonEditor::insertCompletion(const std::string& text) {
-        std::string word = getWordBeforeCursor();
+        const std::string word = getWordBeforeCursor();
 
         // Delete the partial word
         if (!word.empty()) {
@@ -201,8 +201,8 @@ namespace lfs::vis::editor {
 
         history_.push_back(cmd);
 
-        const size_t max_history = 100;
-        if (history_.size() > max_history) {
+        constexpr size_t MAX_HISTORY = 100;
+        if (history_.size() > MAX_HISTORY) {
             history_.erase(history_.begin());
         }
 

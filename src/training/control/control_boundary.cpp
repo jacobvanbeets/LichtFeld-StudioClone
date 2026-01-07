@@ -33,7 +33,7 @@ namespace lfs::training {
         }
 
         std::lock_guard<std::mutex> lock(mutex_);
-        auto it = callbacks_.find(hook);
+        const auto it = callbacks_.find(hook);
         if (it == callbacks_.end()) {
             return;
         }
@@ -47,11 +47,10 @@ namespace lfs::training {
     }
 
     void ControlBoundary::notify(ControlHook hook, const HookContext& ctx) {
-        // Copy callbacks under lock, then enqueue for deferred execution.
         std::vector<Registration> local;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            auto it = callbacks_.find(hook);
+            const auto it = callbacks_.find(hook);
             if (it != callbacks_.end()) {
                 local = it->second;
             }
@@ -83,10 +82,10 @@ namespace lfs::training {
             local.swap(pending_callbacks_);
         }
 
-        cudaError_t err = cudaSetDevice(0);
+        const cudaError_t err = cudaSetDevice(0);
         if (err != cudaSuccess) {
             LOG_ERROR("ControlBoundary: cudaSetDevice(0) failed: {}",
-                    cudaGetErrorString(err));
+                      cudaGetErrorString(err));
             return;
         }
 
@@ -98,8 +97,6 @@ namespace lfs::training {
             }
         }
     }
-
-
 
     void ControlBoundary::clear_all() {
         std::lock_guard<std::mutex> lock(mutex_);

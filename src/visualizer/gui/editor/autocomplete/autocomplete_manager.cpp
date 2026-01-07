@@ -98,17 +98,15 @@ namespace lfs::vis::editor {
         ImGui::PushStyleColor(ImGuiCol_Border, t.palette.border);
 
         if (ImGui::Begin("##autocomplete_popup", nullptr, flags)) {
-            // Limit visible items
-            const int max_visible = 8;
+            constexpr int MAX_VISIBLE = 8;
             const int num_items = static_cast<int>(completions_.size());
-            const int start_idx = std::max(0, selected_index_ - max_visible / 2);
-            const int end_idx = std::min(num_items, start_idx + max_visible);
+            const int start_idx = std::max(0, selected_index_ - MAX_VISIBLE / 2);
+            const int end_idx = std::min(num_items, start_idx + MAX_VISIBLE);
 
             for (int i = start_idx; i < end_idx; ++i) {
                 const auto& item = completions_[i];
-                bool is_selected = (i == selected_index_);
+                const bool is_selected = (i == selected_index_);
 
-                // Choose color based on kind
                 ImVec4 kind_color;
                 const char* kind_icon;
                 switch (item.kind) {
@@ -181,7 +179,7 @@ namespace lfs::vis::editor {
             }
 
             // Scroll indicator
-            if (num_items > max_visible) {
+            if (num_items > MAX_VISIBLE) {
                 ImGui::Spacing();
                 ImGui::TextColored(t.palette.text_dim, "  %d/%d", selected_index_ + 1, num_items);
             }

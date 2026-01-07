@@ -102,7 +102,7 @@ namespace {
         }
 
         std::string strategy() const {
-            auto snap = CommandCenter::instance().snapshot();
+            const auto snap = CommandCenter::instance().snapshot();
             if (!snap.trainer)
                 return "none";
             return snap.trainer->getParams().optimization.strategy;
@@ -112,21 +112,21 @@ namespace {
     // Gaussians info view
     struct PyGaussiansView {
         std::size_t count() const {
-            auto snap = CommandCenter::instance().snapshot();
+            const auto snap = CommandCenter::instance().snapshot();
             if (!snap.trainer)
                 return 0;
             return snap.trainer->get_strategy_mutable().get_model().size();
         }
 
         int sh_degree() const {
-            auto snap = CommandCenter::instance().snapshot();
+            const auto snap = CommandCenter::instance().snapshot();
             if (!snap.trainer)
                 return 0;
             return snap.trainer->get_strategy_mutable().get_model().get_active_sh_degree();
         }
 
         int max_sh_degree() const {
-            auto snap = CommandCenter::instance().snapshot();
+            const auto snap = CommandCenter::instance().snapshot();
             if (!snap.trainer)
                 return 0;
             return snap.trainer->get_strategy_mutable().get_model().get_max_sh_degree();
@@ -141,7 +141,7 @@ namespace {
             cmd.target = CommandTarget::Optimizer;
             cmd.selection = {SelectionKind::All};
             cmd.args["factor"] = static_cast<double>(factor);
-            auto result = CommandCenter::instance().execute(cmd);
+            const auto result = CommandCenter::instance().execute(cmd);
             if (!result) {
                 LOG_ERROR("scale_lr failed: {}", result.error());
             }
@@ -153,14 +153,14 @@ namespace {
             cmd.target = CommandTarget::Optimizer;
             cmd.selection = {SelectionKind::All};
             cmd.args["value"] = static_cast<double>(value);
-            auto result = CommandCenter::instance().execute(cmd);
+            const auto result = CommandCenter::instance().execute(cmd);
             if (!result) {
                 LOG_ERROR("set_lr failed: {}", result.error());
             }
         }
 
         float get_lr() const {
-            auto snap = CommandCenter::instance().snapshot();
+            const auto snap = CommandCenter::instance().snapshot();
             if (!snap.trainer)
                 return 0.0f;
             return snap.trainer->get_strategy_mutable().get_optimizer().get_lr();
@@ -179,7 +179,7 @@ namespace {
                 cmd.args["min"] = static_cast<double>(*min_val);
             if (max_val)
                 cmd.args["max"] = static_cast<double>(*max_val);
-            auto result = CommandCenter::instance().execute(cmd);
+            const auto result = CommandCenter::instance().execute(cmd);
             if (!result) {
                 LOG_ERROR("clamp failed: {}", result.error());
             }
@@ -192,7 +192,7 @@ namespace {
             cmd.selection = {SelectionKind::All};
             cmd.args["attribute"] = attr;
             cmd.args["factor"] = static_cast<double>(factor);
-            auto result = CommandCenter::instance().execute(cmd);
+            const auto result = CommandCenter::instance().execute(cmd);
             if (!result) {
                 LOG_ERROR("scale failed: {}", result.error());
             }
@@ -205,7 +205,7 @@ namespace {
             cmd.selection = {SelectionKind::All};
             cmd.args["attribute"] = attr;
             cmd.args["value"] = static_cast<double>(value);
-            auto result = CommandCenter::instance().execute(cmd);
+            const auto result = CommandCenter::instance().execute(cmd);
             if (!result) {
                 LOG_ERROR("set failed: {}", result.error());
             }
@@ -222,7 +222,7 @@ namespace {
             cmd.op = "pause";
             cmd.target = CommandTarget::Session;
             cmd.selection = {SelectionKind::All};
-            auto result = CommandCenter::instance().execute(cmd);
+            const auto result = CommandCenter::instance().execute(cmd);
             if (!result) {
                 LOG_ERROR("pause failed: {}", result.error());
             }
@@ -233,7 +233,7 @@ namespace {
             cmd.op = "resume";
             cmd.target = CommandTarget::Session;
             cmd.selection = {SelectionKind::All};
-            auto result = CommandCenter::instance().execute(cmd);
+            const auto result = CommandCenter::instance().execute(cmd);
             if (!result) {
                 LOG_ERROR("resume failed: {}", result.error());
             }
@@ -244,7 +244,7 @@ namespace {
             cmd.op = "request_stop";
             cmd.target = CommandTarget::Session;
             cmd.selection = {SelectionKind::All};
-            auto result = CommandCenter::instance().execute(cmd);
+            const auto result = CommandCenter::instance().execute(cmd);
             if (!result) {
                 LOG_ERROR("request_stop failed: {}", result.error());
             }
@@ -264,7 +264,7 @@ namespace {
     std::size_t register_hook(ControlHook hook, nb::callable cb) {
         if (!cb)
             return 0;
-        nb::object ocb = nb::cast<nb::object>(cb);
+        const nb::object ocb = nb::cast<nb::object>(cb);
         LOG_INFO("Python hook registered for hook {}", static_cast<int>(hook));
         return ControlBoundary::instance().register_callback(hook, [ocb, hook](const HookContext& ctx) {
             nb::gil_scoped_acquire guard;
@@ -290,7 +290,7 @@ namespace {
             return g_current_trainer->getScene();
         }
         // Fall back to services (GUI mode)
-        auto* scene_manager = lfs::vis::services().sceneOrNull();
+        auto* const scene_manager = lfs::vis::services().sceneOrNull();
         if (scene_manager) {
             return &scene_manager->getScene();
         }

@@ -62,12 +62,18 @@ namespace lfs::training {
         }
 
         std::optional<ParamType> param_type_from_attribute(const std::string& name) {
-            if (name == "means") return ParamType::Means;
-            if (name == "scaling") return ParamType::Scaling;
-            if (name == "rotation") return ParamType::Rotation;
-            if (name == "opacity") return ParamType::Opacity;
-            if (name == "sh0") return ParamType::Sh0;
-            if (name == "shN") return ParamType::ShN;
+            if (name == "means")
+                return ParamType::Means;
+            if (name == "scaling")
+                return ParamType::Scaling;
+            if (name == "rotation")
+                return ParamType::Rotation;
+            if (name == "opacity")
+                return ParamType::Opacity;
+            if (name == "sh0")
+                return ParamType::Sh0;
+            if (name == "shN")
+                return ParamType::ShN;
             return std::nullopt;
         }
     } // namespace
@@ -78,66 +84,58 @@ namespace lfs::training {
     }
 
     CommandCenter::CommandCenter() {
-        ops_.push_back({
-            .name = "set_attribute",
-            .target = CommandTarget::Model,
-            .selectors = {SelectionKind::All, SelectionKind::Range, SelectionKind::Indices},
-            .args = {{"attribute", ArgType::String, true, "Attribute name (means, scaling, rotation, opacity, sh0, shN)"},
-                     {"value", ArgType::Float, false, "Scalar value"},
-                     {"values", ArgType::FloatList, false, "Vector value (broadcast)"}},
-            .description = "Set attribute values for selected splats (scalar or per-dim vector)."});
+        ops_.push_back({.name = "set_attribute",
+                        .target = CommandTarget::Model,
+                        .selectors = {SelectionKind::All, SelectionKind::Range, SelectionKind::Indices},
+                        .args = {{"attribute", ArgType::String, true, "Attribute name (means, scaling, rotation, opacity, sh0, shN)"},
+                                 {"value", ArgType::Float, false, "Scalar value"},
+                                 {"values", ArgType::FloatList, false, "Vector value (broadcast)"}},
+                        .description = "Set attribute values for selected splats (scalar or per-dim vector)."});
 
-        ops_.push_back({
-            .name = "scale_attribute",
-            .target = CommandTarget::Model,
-            .selectors = {SelectionKind::All, SelectionKind::Range, SelectionKind::Indices},
-            .args = {{"attribute", ArgType::String, true, "Attribute name"},
-                     {"factor", ArgType::Float, true, "Multiplicative scale"}},
-            .description = "Scale attribute by factor for selected splats."});
+        ops_.push_back({.name = "scale_attribute",
+                        .target = CommandTarget::Model,
+                        .selectors = {SelectionKind::All, SelectionKind::Range, SelectionKind::Indices},
+                        .args = {{"attribute", ArgType::String, true, "Attribute name"},
+                                 {"factor", ArgType::Float, true, "Multiplicative scale"}},
+                        .description = "Scale attribute by factor for selected splats."});
 
-        ops_.push_back({
-            .name = "clamp_attribute",
-            .target = CommandTarget::Model,
-            .selectors = {SelectionKind::All, SelectionKind::Range, SelectionKind::Indices},
-            .args = {{"attribute", ArgType::String, true, "Attribute name"},
-                     {"min", ArgType::Float, false, "Optional min"},
-                     {"max", ArgType::Float, false, "Optional max"}},
-            .description = "Clamp attribute values for selected splats."});
+        ops_.push_back({.name = "clamp_attribute",
+                        .target = CommandTarget::Model,
+                        .selectors = {SelectionKind::All, SelectionKind::Range, SelectionKind::Indices},
+                        .args = {{"attribute", ArgType::String, true, "Attribute name"},
+                                 {"min", ArgType::Float, false, "Optional min"},
+                                 {"max", ArgType::Float, false, "Optional max"}},
+                        .description = "Clamp attribute values for selected splats."});
 
-        ops_.push_back({
-            .name = "set_lr",
-            .target = CommandTarget::Optimizer,
-            .selectors = {SelectionKind::All},
-            .args = {{"value", ArgType::Float, true, "Learning rate"}},
-            .description = "Set global learning rate."});
+        ops_.push_back({.name = "set_lr",
+                        .target = CommandTarget::Optimizer,
+                        .selectors = {SelectionKind::All},
+                        .args = {{"value", ArgType::Float, true, "Learning rate"}},
+                        .description = "Set global learning rate."});
 
-        ops_.push_back({
-            .name = "scale_lr",
-            .target = CommandTarget::Optimizer,
-            .selectors = {SelectionKind::All},
-            .args = {{"factor", ArgType::Float, true, "Scale factor"}},
-            .description = "Scale global learning rate."});
+        ops_.push_back({.name = "scale_lr",
+                        .target = CommandTarget::Optimizer,
+                        .selectors = {SelectionKind::All},
+                        .args = {{"factor", ArgType::Float, true, "Scale factor"}},
+                        .description = "Scale global learning rate."});
 
-        ops_.push_back({
-            .name = "pause",
-            .target = CommandTarget::Session,
-            .selectors = {SelectionKind::All},
-            .args = {},
-            .description = "Request pause."});
+        ops_.push_back({.name = "pause",
+                        .target = CommandTarget::Session,
+                        .selectors = {SelectionKind::All},
+                        .args = {},
+                        .description = "Request pause."});
 
-        ops_.push_back({
-            .name = "resume",
-            .target = CommandTarget::Session,
-            .selectors = {SelectionKind::All},
-            .args = {},
-            .description = "Request resume."});
+        ops_.push_back({.name = "resume",
+                        .target = CommandTarget::Session,
+                        .selectors = {SelectionKind::All},
+                        .args = {},
+                        .description = "Request resume."});
 
-        ops_.push_back({
-            .name = "request_stop",
-            .target = CommandTarget::Session,
-            .selectors = {SelectionKind::All},
-            .args = {},
-            .description = "Request graceful stop."});
+        ops_.push_back({.name = "request_stop",
+                        .target = CommandTarget::Session,
+                        .selectors = {SelectionKind::All},
+                        .args = {},
+                        .description = "Request graceful stop."});
 
         // Mutable fields
         mutable_fields_.push_back({"means", CommandTarget::Model, "[N,3]", "Gaussian means", true});
@@ -294,10 +292,10 @@ namespace lfs::training {
         auto mask_full = expand_mask(mask_rows, tensor.shape());
 
         if (std::holds_alternative<double>(value)) {
-            double v = std::get<double>(value);
-            auto mask_float = mask_full.to(tensor.dtype());
-            auto keep = mask_full.logical_not().to(tensor.dtype());
-            auto fill = make_full_like_mask(mask_full, v).to(tensor.dtype());
+            const double v = std::get<double>(value);
+            const auto mask_float = mask_full.to(tensor.dtype());
+            const auto keep = mask_full.logical_not().to(tensor.dtype());
+            const auto fill = make_full_like_mask(mask_full, v).to(tensor.dtype());
             tensor = tensor * keep + fill * mask_float;
             return {};
         }
@@ -310,11 +308,11 @@ namespace lfs::training {
             if (vec.size() != dim) {
                 return std::unexpected("Vector length mismatch with attribute dimension");
             }
-            std::vector<float> vec_f(vec.begin(), vec.end());
+            const std::vector<float> vec_f(vec.begin(), vec.end());
             auto value_tensor = core::Tensor::from_vector(vec_f, {1, static_cast<int>(dim)}, tensor.device());
             value_tensor = value_tensor.broadcast_to(tensor.shape());
-            auto mask_float = mask_full.to(tensor.dtype());
-            auto keep = mask_full.logical_not().to(tensor.dtype());
+            const auto mask_float = mask_full.to(tensor.dtype());
+            const auto keep = mask_full.logical_not().to(tensor.dtype());
             tensor = tensor * keep + value_tensor * mask_float;
             return {};
         }
@@ -322,10 +320,10 @@ namespace lfs::training {
     }
 
     std::expected<void, std::string> CommandCenter::apply_scale(core::Tensor& tensor, const core::Tensor& mask_rows, double factor) {
-        auto mask_full = expand_mask(mask_rows, tensor.shape());
-        auto mask_float = mask_full.to(tensor.dtype());
-        auto one = make_full_like_mask(mask_full, 1.0).to(tensor.dtype());
-        auto scale = make_full_like_mask(mask_full, factor).to(tensor.dtype());
+        const auto mask_full = expand_mask(mask_rows, tensor.shape());
+        const auto mask_float = mask_full.to(tensor.dtype());
+        const auto one = make_full_like_mask(mask_full, 1.0).to(tensor.dtype());
+        const auto scale = make_full_like_mask(mask_full, factor).to(tensor.dtype());
         tensor = tensor * (one + (scale - one) * mask_float);
         return {};
     }
@@ -334,9 +332,9 @@ namespace lfs::training {
         if (!minv && !maxv) {
             return std::unexpected("clamp_attribute requires min or max");
         }
-        auto mask_full = expand_mask(mask_rows, tensor.shape());
-        auto mask_float = mask_full.to(tensor.dtype());
-        auto keep = mask_full.logical_not().to(tensor.dtype());
+        const auto mask_full = expand_mask(mask_rows, tensor.shape());
+        const auto mask_float = mask_full.to(tensor.dtype());
+        const auto keep = mask_full.logical_not().to(tensor.dtype());
         auto clamped = tensor;
         if (minv && maxv) {
             clamped = tensor.clamp(static_cast<float>(*minv), static_cast<float>(*maxv));
@@ -353,19 +351,19 @@ namespace lfs::training {
         if (!view.trainer) {
             return std::unexpected("No active trainer available for model command");
         }
-    auto& strategy = view.trainer->get_strategy_mutable();
-    auto& model = strategy.get_model();
+        auto& strategy = view.trainer->get_strategy_mutable();
+        auto& model = strategy.get_model();
 
-    const auto attr_name = std::get<std::string>(cmd.args.at("attribute"));
+        const auto attr_name = std::get<std::string>(cmd.args.at("attribute"));
 
-        size_t rows = model.size();
+        const size_t rows = model.size();
         size_t row_dim = 0;
-        auto tensor_ref = resolve_attribute(model, attr_name, row_dim);
+        const auto tensor_ref = resolve_attribute(model, attr_name, row_dim);
         (void)row_dim;
         if (!tensor_ref) {
             return std::unexpected(tensor_ref.error());
         }
-        core::Tensor* tensor = *tensor_ref;
+        core::Tensor* const tensor = *tensor_ref;
         const size_t prev_capacity = tensor->capacity();
         auto mask = build_row_mask(cmd.selection, rows, tensor->device());
         if (!mask) {
@@ -373,8 +371,8 @@ namespace lfs::training {
         }
         std::expected<void, std::string> result;
         if (cmd.op == "set_attribute") {
-            auto it_scalar = cmd.args.find("value");
-            auto it_vec = cmd.args.find("values");
+            const auto it_scalar = cmd.args.find("value");
+            const auto it_vec = cmd.args.find("values");
             if (it_scalar == cmd.args.end() && it_vec == cmd.args.end()) {
                 return std::unexpected("set_attribute requires 'value' or 'values'");
             }
@@ -384,11 +382,11 @@ namespace lfs::training {
                 result = apply_set(*tensor, *mask, it_scalar->second);
             }
         } else if (cmd.op == "scale_attribute") {
-            auto it = cmd.args.find("factor");
+            const auto it = cmd.args.find("factor");
             if (it == cmd.args.end()) {
                 return std::unexpected("scale_attribute requires factor");
             }
-            double factor = std::get<double>(it->second);
+            const double factor = std::get<double>(it->second);
             result = apply_scale(*tensor, *mask, factor);
         } else if (cmd.op == "clamp_attribute") {
             std::optional<double> minv;
@@ -419,7 +417,6 @@ namespace lfs::training {
             if (desired_cap > 0 && tensor->capacity() < desired_cap) {
                 tensor->reserve(desired_cap);
             }
-
         }
 
         return result;
@@ -431,7 +428,7 @@ namespace lfs::training {
         }
         auto& opt = view.trainer->get_strategy_mutable().get_optimizer();
         if (cmd.op == "set_lr") {
-            auto it = cmd.args.find("value");
+            const auto it = cmd.args.find("value");
             if (it == cmd.args.end()) {
                 return std::unexpected("set_lr requires value");
             }
@@ -439,7 +436,7 @@ namespace lfs::training {
             return {};
         }
         if (cmd.op == "scale_lr") {
-            auto it = cmd.args.find("factor");
+            const auto it = cmd.args.find("factor");
             if (it == cmd.args.end()) {
                 return std::unexpected("scale_lr requires factor");
             }
@@ -481,8 +478,7 @@ namespace lfs::training {
             return std::unexpected("No active trainer; cannot execute command");
         }
 
-        // Basic selector validation
-        auto it_op = std::find_if(ops_.begin(), ops_.end(), [&](const OperationInfo& info) {
+        const auto it_op = std::find_if(ops_.begin(), ops_.end(), [&](const OperationInfo& info) {
             return info.name == cmd.op && info.target == cmd.target;
         });
         if (it_op == ops_.end()) {

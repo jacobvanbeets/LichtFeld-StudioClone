@@ -64,7 +64,7 @@ namespace lfs::python {
     }
 
     size_t PyTensor::size(int dim) const {
-        int resolved = dim < 0 ? static_cast<int>(tensor_.shape().rank()) + dim : dim;
+        const int resolved = dim < 0 ? static_cast<int>(tensor_.shape().rank()) + dim : dim;
         if (resolved < 0 || resolved >= static_cast<int>(tensor_.shape().rank())) {
             throw std::out_of_range("Dimension out of range");
         }
@@ -140,11 +140,11 @@ namespace lfs::python {
         }
 
         const auto& dims = cpu_tensor.shape().dims();
-        std::vector<size_t> shape_vec(dims.begin(), dims.end());
+        const std::vector<size_t> shape_vec(dims.begin(), dims.end());
 
         // Compute strides in bytes
         std::vector<int64_t> strides(dims.size());
-        size_t elem_size = 4; // Default float32
+        size_t elem_size = 4;
         switch (cpu_tensor.dtype()) {
         case DataType::Float32: elem_size = 4; break;
         case DataType::Float16: elem_size = 2; break;
@@ -163,8 +163,8 @@ namespace lfs::python {
 
         if (copy) {
             // Copy mode: allocate new buffer and copy data
-            size_t total_bytes = cpu_tensor.numel() * elem_size;
-            void* buffer = std::malloc(total_bytes);
+            const size_t total_bytes = cpu_tensor.numel() * elem_size;
+            void* const buffer = std::malloc(total_bytes);
             if (!buffer) {
                 throw std::bad_alloc();
             }
@@ -197,10 +197,10 @@ namespace lfs::python {
             }
         } else {
             // Zero-copy mode: use capsule to hold tensor reference
-            auto* tensor_copy = new Tensor(cpu_tensor);
-            nb::capsule owner(tensor_copy, [](void* p) noexcept { delete static_cast<Tensor*>(p); });
+            auto* const tensor_copy = new Tensor(cpu_tensor);
+            const nb::capsule owner(tensor_copy, [](void* p) noexcept { delete static_cast<Tensor*>(p); });
 
-            void* data = tensor_copy->data_ptr();
+            void* const data = tensor_copy->data_ptr();
 
             switch (cpu_tensor.dtype()) {
             case DataType::Float32:
@@ -232,11 +232,11 @@ namespace lfs::python {
         for (size_t i = 0; i < arr.ndim(); ++i) {
             shape_vec.push_back(arr.shape(i));
         }
-        TensorShape shape(shape_vec);
+        const TensorShape shape(shape_vec);
 
         // Determine dtype
         DataType dtype = DataType::Float32;
-        auto nb_dtype = arr.dtype();
+        const auto nb_dtype = arr.dtype();
         if (nb_dtype == nb::dtype<float>()) {
             dtype = DataType::Float32;
         } else if (nb_dtype == nb::dtype<int32_t>()) {

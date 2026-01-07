@@ -130,7 +130,7 @@ sys.stderr = OutputCapture(True)
     void install_output_redirect() {
 #ifdef LFS_BUILD_PYTHON_BINDINGS
         std::call_once(g_redirect_once, [] {
-            PyGILState_STATE gil = PyGILState_Ensure();
+            const PyGILState_STATE gil = PyGILState_Ensure();
             redirect_output();
             PyGILState_Release(gil);
         });
@@ -147,7 +147,7 @@ sys.stderr = OutputCapture(True)
 #else
         ensure_initialized();
 
-        PyGILState_STATE gil_state = PyGILState_Ensure();
+        const PyGILState_STATE gil_state = PyGILState_Ensure();
 
         // Install output redirect (calls redirect_output() once)
         std::call_once(g_redirect_once, [] { redirect_output(); });
@@ -193,7 +193,7 @@ sys.stderr = OutputCapture(True)
                 Py_XDECREF(py_parent);
             }
 
-            FILE* fp = fopen(script.string().c_str(), "r");
+            FILE* const fp = fopen(script.string().c_str(), "r");
             if (!fp) {
                 PyGILState_Release(gil_state);
                 return std::unexpected(std::format("Failed to open Python script: {}", script.string()));

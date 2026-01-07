@@ -5,26 +5,26 @@
 #include "trainer.hpp"
 #include "components/bilateral_grid.hpp"
 #include "components/sparsity_optimizer.hpp"
+#include "control/command_api.hpp"
+#include "control/control_boundary.hpp"
 #include "core/cuda/memory_arena.hpp"
 #include "core/events.hpp"
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
 #include "core/splat_data_export.hpp"
 #include "core/splat_data_transform.hpp"
-#include "control/control_boundary.hpp"
-#include "control/command_api.hpp"
 #include "core/tensor/internal/memory_pool.hpp"
 #include "io/cache_image_loader.hpp"
 #include "io/filesystem_utils.hpp"
 #include "lfs/kernels/ssim.cuh"
 #include "losses/losses.hpp"
 #include "optimizer/adam_optimizer.hpp"
+#include "python/runner.hpp"
 #include "rasterization/fast_rasterizer.hpp"
 #include "rasterization/gsplat_rasterizer.hpp"
 #include "strategies/default_strategy.hpp"
 #include "strategies/mcmc.hpp"
 #include "visualizer/scene/scene.hpp"
-#include "python/runner.hpp"
 
 #include <filesystem>
 
@@ -1252,11 +1252,6 @@ namespace lfs::training {
                 if (stop_token.stop_requested() || stop_requested_.load()) {
                     break;
                 }
-
-                // Wait for previous callback if still running
-                // if (callback_busy_.load()) {
-                //     cudaStreamSynchronize(callback_stream_);
-                // }
 
                 // Get next batch from dataloader
                 auto batch_opt = train_dataloader->next();

@@ -23,7 +23,7 @@ namespace {
 
     void setup_sys_path() {
         std::call_once(g_syspath_init_once, [] {
-            PyGILState_STATE gil = PyGILState_Ensure();
+            const PyGILState_STATE gil = PyGILState_Ensure();
 
             // Add build directory (where lichtfeld.so lives) to sys.path
             const std::filesystem::path build_python_dir =
@@ -62,13 +62,6 @@ namespace {
 
 namespace lfs::vis::gui::panels {
 
-    namespace {
-        // Color constants (legacy - kept for backward compatibility)
-        constexpr uint32_t COLOR_INPUT = 0xFF88FF88;
-        constexpr uint32_t COLOR_OUTPUT = 0xFFFFFFFF;
-        constexpr uint32_t COLOR_ERROR = 0xFF5555FF;
-    } // namespace
-
     PythonConsoleState::PythonConsoleState()
         : console_output_(std::make_unique<editor::ConsoleOutput>()),
           editor_(std::make_unique<editor::PythonEditor>()) {
@@ -81,13 +74,8 @@ namespace lfs::vis::gui::panels {
         return instance;
     }
 
-    void PythonConsoleState::addOutput(const std::string& text, uint32_t color) {
+    void PythonConsoleState::addOutput(const std::string& text, uint32_t /*color*/) {
         std::lock_guard lock(mutex_);
-        messages_.push_back({text, color, false});
-        while (messages_.size() > MAX_MESSAGES) {
-            messages_.pop_front();
-        }
-        // Also add to new console output
         if (console_output_) {
             console_output_->addOutput(text);
         }
@@ -95,10 +83,6 @@ namespace lfs::vis::gui::panels {
 
     void PythonConsoleState::addError(const std::string& text) {
         std::lock_guard lock(mutex_);
-        messages_.push_back({text, COLOR_ERROR, false});
-        while (messages_.size() > MAX_MESSAGES) {
-            messages_.pop_front();
-        }
         if (console_output_) {
             console_output_->addError(text);
         }
@@ -106,10 +90,6 @@ namespace lfs::vis::gui::panels {
 
     void PythonConsoleState::addInput(const std::string& text) {
         std::lock_guard lock(mutex_);
-        messages_.push_back({"> " + text, COLOR_INPUT, true});
-        while (messages_.size() > MAX_MESSAGES) {
-            messages_.pop_front();
-        }
         if (console_output_) {
             console_output_->addInput(text);
         }
@@ -117,7 +97,6 @@ namespace lfs::vis::gui::panels {
 
     void PythonConsoleState::clear() {
         std::lock_guard lock(mutex_);
-        messages_.clear();
         if (console_output_) {
             console_output_->clear();
         }
@@ -132,17 +111,6 @@ namespace lfs::vis::gui::panels {
         if (editor_) {
             editor_->addToHistory(cmd);
         }
-    }
-
-    std::string PythonConsoleState::getHistoryEntry(int offset) const {
-        std::lock_guard lock(mutex_);
-        if (command_history_.empty())
-            return "";
-        int idx = static_cast<int>(command_history_.size()) + offset;
-        if (idx >= 0 && idx < static_cast<int>(command_history_.size())) {
-            return command_history_[idx];
-        }
-        return "";
     }
 
     void PythonConsoleState::historyUp() {
@@ -227,12 +195,12 @@ namespace lfs::vis::gui::panels {
         }
 
         // Calculate sizes
-        const float input_height = 100.0f; // Height for multi-line input
+        constexpr float INPUT_HEIGHT = 100.0f;
         const float spacing = ImGui::GetStyle().ItemSpacing.y;
-        ImVec2 content_size = ImGui::GetContentRegionAvail();
+        const ImVec2 content_size = ImGui::GetContentRegionAvail();
 
         // Output area (takes remaining space minus input area)
-        ImVec2 output_size(content_size.x, content_size.y - input_height - spacing * 2);
+        const ImVec2 output_size(content_size.x, content_size.y - INPUT_HEIGHT - spacing * 2);
         if (auto* output = state.getConsoleOutput()) {
             output->render(output_size);
         }
@@ -244,8 +212,8 @@ namespace lfs::vis::gui::panels {
         ImGui::SameLine();
 
         // Input editor
-        ImVec2 input_size(content_size.x - ImGui::GetCursorPosX() + ImGui::GetStyle().WindowPadding.x,
-                          input_height);
+        const ImVec2 input_size(content_size.x - ImGui::GetCursorPosX() + ImGui::GetStyle().WindowPadding.x,
+                                INPUT_HEIGHT);
 
         if (auto* editor = state.getEditor()) {
             if (editor->render(input_size)) {
@@ -262,13 +230,13 @@ namespace lfs::vis::gui::panels {
                     state.addToHistory(cmd);
 
                     // Execute Python code
-                    PyGILState_STATE gil = PyGILState_Ensure();
+                    const PyGILState_STATE gil = PyGILState_Ensure();
 
                     // For multi-line code, use Py_file_input mode
-                    int start_mode = (cmd.find('\n') != std::string::npos) ? Py_file_input : Py_single_input;
+                    const int start_mode = (cmd.find('\n') != std::string::npos) ? Py_file_input : Py_single_input;
 
-                    PyObject* main_module = PyImport_AddModule("__main__");
-                    PyObject* globals = PyModule_GetDict(main_module);
+                    PyObject* const main_module = PyImport_AddModule("__main__");
+                    PyObject* const globals = PyModule_GetDict(main_module);
 
                     PyObject* result = PyRun_String(cmd.c_str(), start_mode, globals, globals);
 
