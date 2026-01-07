@@ -35,6 +35,11 @@ RUN apt-get update && \
         htop \
         ninja-build \
         software-properties-common && \
+        nasm && \
+        autoconf && \
+        autoconf-archive && \
+        automake && \
+        libtool && \
     add-apt-repository ppa:ubuntu-toolchain-r/test && \
     apt-get update && \
     apt-get install -y \

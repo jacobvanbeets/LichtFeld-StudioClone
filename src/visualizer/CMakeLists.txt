@@ -120,6 +120,11 @@ target_link_libraries(lfs_visualizer
         ${OPENGL_LIBRARIES}
 )
 
+# Python support: define LFS_BUILD_PYTHON_BINDINGS when bindings are enabled
+if(BUILD_PYTHON_BINDINGS)
+    target_compile_definitions(lfs_visualizer PRIVATE LFS_BUILD_PYTHON_BINDINGS)
+endif()
+
 # Set C++ standard
 target_compile_features(lfs_visualizer PUBLIC cxx_std_23)
 

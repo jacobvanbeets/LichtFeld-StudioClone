@@ -113,6 +113,11 @@ target_link_libraries(lfs_training
         $<$<BOOL:${BUILD_PYTHON_BINDINGS}>:lfs_python_utils>
 )
 
+# Python support: define LFS_BUILD_PYTHON_BINDINGS when bindings are enabled
+if(BUILD_PYTHON_BINDINGS)
+    target_compile_definitions(lfs_training PRIVATE LFS_BUILD_PYTHON_BINDINGS)
+endif()
+
 # Set C++ standard
 set_target_properties(lfs_training PROPERTIES
     CXX_STANDARD 23
