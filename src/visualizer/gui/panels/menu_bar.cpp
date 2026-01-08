@@ -184,6 +184,13 @@ namespace lfs::vis::gui {
                     on_import_config_();
                 }
                 ImGui::Separator();
+                if (ImGui::MenuItem("Save Project...") && on_save_project_) {
+                    on_save_project_();
+                }
+                if (ImGui::MenuItem("Load Project...") && on_load_project_) {
+                    on_load_project_();
+                }
+                ImGui::Separator();
                 if (ImGui::MenuItem(LOC(Menu::File::EXPORT)) && on_export_) {
                     on_export_();
                 }
@@ -530,6 +537,14 @@ namespace lfs::vis::gui {
 
     void MenuBar::setOnImportConfig(std::function<void()> callback) {
         on_import_config_ = std::move(callback);
+    }
+
+    void MenuBar::setOnSaveProject(std::function<void()> callback) {
+        on_save_project_ = std::move(callback);
+    }
+
+    void MenuBar::setOnLoadProject(std::function<void()> callback) {
+        on_load_project_ = std::move(callback);
     }
 
     void MenuBar::setOnExport(std::function<void()> callback) {

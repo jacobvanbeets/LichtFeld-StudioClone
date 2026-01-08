@@ -507,6 +507,63 @@ namespace lfs::vis::gui {
 #endif
     }
 
+    std::filesystem::path SaveProjectFileDialog(const std::string& defaultName) {
+#ifdef _WIN32
+        PWSTR filePath = nullptr;
+        COMDLG_FILTERSPEC rgSpec[] = {{L"LichtFeld Studio Project", L"*.lfsp"}};
+        const std::wstring wDefaultName = utils::utf8_to_wstring(defaultName);
+
+        if (SUCCEEDED(utils::saveFileNative(filePath, rgSpec, 1, wDefaultName.c_str()))) {
+            std::filesystem::path result(filePath);
+            CoTaskMemFree(filePath);
+            if (result.extension() != ".lfsp") {
+                result += ".lfsp";
+            }
+            return result;
+        }
+        return {};
+#else
+        const std::string escaped_name = shell_escape(defaultName + ".lfsp");
+        const std::string primary = "zenity --file-selection --save --confirm-overwrite "
+                                    "--file-filter='LichtFeld Studio Project|*.lfsp' "
+                                    "--filename=" +
+                                    escaped_name + " 2>/dev/null";
+        const std::string fallback = "kdialog --getsavefilename . 'LichtFeld Studio Project (*.lfsp)' 2>/dev/null";
+
+        const std::string result = runDialogCommand(primary, fallback);
+        if (result.empty())
+            return {};
+
+        std::filesystem::path path(result);
+        if (path.extension() != ".lfsp") {
+            path += ".lfsp";
+        }
+        return path;
+#endif
+    }
+
+    std::filesystem::path OpenProjectFileDialog() {
+#ifdef _WIN32
+        PWSTR filePath = nullptr;
+        COMDLG_FILTERSPEC rgSpec[] = {{L"LichtFeld Studio Project", L"*.lfsp"}};
+
+        if (SUCCEEDED(utils::selectFileNative(filePath, rgSpec, 1, false))) {
+            std::filesystem::path result(filePath);
+            CoTaskMemFree(filePath);
+            return result;
+        }
+        return {};
+#else
+        const std::string primary = "zenity --file-selection "
+                                    "--file-filter='LichtFeld Studio Project|*.lfsp' "
+                                    "--title='Open Project' 2>/dev/null";
+        const std::string fallback = "kdialog --getopenfilename . 'LichtFeld Studio Project (*.lfsp)' 2>/dev/null";
+
+        const std::string result = runDialogCommand(primary, fallback);
+        return result.empty() ? std::filesystem::path{} : std::filesystem::path(result);
+#endif
+    }
+
     std::filesystem::path OpenCheckpointFileDialog() {
 #ifdef _WIN32
         PWSTR filePath = nullptr;

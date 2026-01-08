@@ -88,6 +88,8 @@ add_library(lfs_io STATIC
         formats/html_viewer_resources.hpp
         formats/spz.hpp
         formats/spz.cpp
+        formats/project_file.hpp
+        formats/project_file.cpp
 
         # Concrete loader implementations
         loaders/ply_loader.hpp

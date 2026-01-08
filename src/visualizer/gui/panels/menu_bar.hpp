@@ -30,6 +30,8 @@ namespace lfs::vis::gui {
         void setOnImportPLY(std::function<void()> callback);
         void setOnImportCheckpoint(std::function<void()> callback);
         void setOnImportConfig(std::function<void()> callback);
+        void setOnSaveProject(std::function<void()> callback);
+        void setOnLoadProject(std::function<void()> callback);
         void setOnExport(std::function<void()> callback);
         void setOnExportConfig(std::function<void()> callback);
         void setOnExit(std::function<void()> callback);
@@ -78,6 +80,8 @@ namespace lfs::vis::gui {
         std::function<void()> on_import_ply_;
         std::function<void()> on_import_checkpoint_;
         std::function<void()> on_import_config_;
+        std::function<void()> on_save_project_;
+        std::function<void()> on_load_project_;
         std::function<void()> on_export_;
         std::function<void()> on_export_config_;
         std::function<void()> on_exit_;

@@ -27,6 +27,7 @@
 #include "gui/utils/windows_utils.hpp"
 #include "gui/windows/file_browser.hpp"
 #include "io/exporter.hpp"
+#include "io/formats/project_file.hpp"
 #include "io/loader.hpp"
 
 #include "input/input_controller.hpp"
@@ -184,6 +185,57 @@ namespace lfs::vis::gui {
             const auto path = OpenJsonFileDialog();
             if (!path.empty()) {
                 lfs::core::events::cmd::LoadConfigFile{.path = path}.emit();
+            }
+        });
+
+        menu_bar_->setOnSaveProject([this]() {
+            const auto path = SaveProjectFileDialog();
+            if (path.empty())
+                return;
+            
+            auto* scene_manager = viewer_->getSceneManager();
+            if (!scene_manager) {
+                LOG_ERROR("No scene manager");
+                return;
+            }
+
+            const auto& scene = scene_manager->getScene();
+            const auto result = lfs::io::save_project_file(path, scene);
+            if (!result) {
+                LOG_ERROR("Failed to save project: {}", result.error());
+            } else {
+                LOG_INFO("Project saved: {}", lfs::core::path_to_utf8(path));
+            }
+        });
+
+        menu_bar_->setOnLoadProject([this]() {
+            const auto path = OpenProjectFileDialog();
+            if (path.empty())
+                return;
+
+            auto* scene_manager = viewer_->getSceneManager();
+            if (!scene_manager) {
+                LOG_ERROR("No scene manager");
+                return;
+            }
+
+            auto& scene = scene_manager->getScene();
+            const auto result = lfs::io::load_project_file(path, scene);
+            if (!result) {
+                LOG_ERROR("Failed to load project: {}", result.error());
+            } else {
+                LOG_INFO("Project loaded: {}", lfs::core::path_to_utf8(path));
+                
+                // Update SceneManager's content type to SplatFiles
+                scene_manager->changeContentType(lfs::vis::SceneManager::ContentType::SplatFiles);
+                
+                // Emit SceneLoaded event
+                lfs::core::events::state::SceneLoaded{
+                    .scene = nullptr,
+                    .path = path,
+                    .type = lfs::core::events::state::SceneLoaded::Type::PLY,
+                    .num_gaussians = scene.getTotalGaussianCount()}
+                    .emit();
             }
         });
 
