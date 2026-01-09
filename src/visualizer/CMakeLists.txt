@@ -2,6 +2,9 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+# Fetch libvterm for terminal emulation
+include(${CMAKE_SOURCE_DIR}/cmake/FetchLibvterm.cmake)
+
 add_library(lfs_visualizer STATIC
         # Core
         visualizer.cpp
@@ -43,6 +46,10 @@ add_library(lfs_visualizer STATIC
         gui/editor/autocomplete/python_introspector.cpp
         gui/editor/python_editor.cpp
         gui/editor/console_output.cpp
+
+        # Terminal emulator
+        gui/terminal/pty_process.cpp
+        gui/terminal/terminal_widget.cpp
         gui/windows/file_browser.cpp
         gui/windows/image_preview.cpp
         gui/windows/export_dialog.cpp
@@ -123,6 +130,7 @@ target_link_libraries(lfs_visualizer
         OpenSSL::Crypto
         CUDA::cudart
         ${OPENGL_LIBRARIES}
+        vterm              # Terminal emulator (libvterm)
 )
 
 # Python support: define LFS_BUILD_PYTHON_BINDINGS when bindings are enabled
@@ -218,6 +226,7 @@ elseif (UNIX AND NOT APPLE)
             GL
             GLU
             X11
+            util  # PTY support (forkpty)
     )
 endif ()
 

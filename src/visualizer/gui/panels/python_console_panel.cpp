@@ -3,14 +3,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gui/panels/python_console_panel.hpp"
-#include "gui/editor/console_output.hpp"
 #include "gui/editor/python_editor.hpp"
+#include "gui/terminal/terminal_widget.hpp"
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "theme/theme.hpp"
 
+#include <chrono>
 #include <fstream>
 #include <sstream>
+#include <thread>
 #include <imgui.h>
 
 #ifdef LFS_BUILD_PYTHON_BINDINGS
@@ -26,6 +28,14 @@ namespace {
     std::once_flag g_console_init_once;
     std::once_flag g_syspath_init_once;
     std::once_flag g_scene_provider_once;
+
+    const char* getPythonExecutable() {
+#ifdef LFS_PYTHON_EXECUTABLE
+        return LFS_PYTHON_EXECUTABLE;
+#else
+        return "python3";
+#endif
+    }
 
     void setup_scene_provider() {
         std::call_once(g_scene_provider_once, [] {
@@ -60,15 +70,40 @@ namespace {
         std::call_once(g_console_init_once, [] {
             lfs::python::set_output_callback([](const std::string& text, bool is_error) {
                 auto& state = lfs::vis::gui::panels::PythonConsoleState::getInstance();
-                auto* output = state.getConsoleOutput();
+                auto* output = state.getOutputTerminal();
                 if (output) {
-                    output->appendOutput(text, is_error);
+                    // Use ANSI escape codes for error coloring
+                    if (is_error) {
+                        output->write("\033[31m"); // Red
+                        output->write(text);
+                        output->write("\033[0m"); // Reset
+                    } else {
+                        output->write(text);
+                    }
                 }
             });
         });
     }
 
+    // Check if a line is a top-level Python statement (shouldn't be indented at file scope)
+    bool is_toplevel_statement(const std::string& line) {
+        const std::string trimmed = line.substr(line.find_first_not_of(" \t") != std::string::npos
+                                                    ? line.find_first_not_of(" \t")
+                                                    : 0);
+        static const std::vector<std::string> keywords = {
+            "import ", "from ", "def ", "class ", "if ", "for ", "while ",
+            "try:", "with ", "async ", "@", "#", "\"\"\"", "'''"};
+        for (const auto& kw : keywords) {
+            if (trimmed.rfind(kw, 0) == 0)
+                return true;
+        }
+        // Also check for variable assignments at top level (no keyword prefix)
+        // Simple heuristic: if it contains '=' and doesn't start with whitespace originally
+        return false;
+    }
+
     // Remove common leading whitespace from all lines (like Python's textwrap.dedent)
+    // Also fixes lines that have unexpected indentation (e.g., from editor auto-indent on paste)
     std::string dedent(const std::string& text) {
         std::vector<std::string> lines;
         std::istringstream stream(text);
@@ -87,13 +122,46 @@ namespace {
             if (l.empty() || l.find_first_not_of(" \t") == std::string::npos) {
                 continue;
             }
-            size_t indent = l.find_first_not_of(" \t");
+            const size_t indent = l.find_first_not_of(" \t");
             if (indent < min_indent) {
                 min_indent = indent;
             }
         }
 
-        if (min_indent == 0 || min_indent == std::string::npos) {
+        // If min_indent is 0 but some lines have indent, check for broken paste
+        if (min_indent == 0) {
+            bool has_broken_indent = false;
+            for (const auto& l : lines) {
+                if (l.empty())
+                    continue;
+                const size_t indent = l.find_first_not_of(" \t");
+                if (indent > 0 && indent != std::string::npos && is_toplevel_statement(l)) {
+                    has_broken_indent = true;
+                    break;
+                }
+            }
+
+            if (has_broken_indent) {
+                // Fix by removing leading whitespace from top-level statements
+                std::ostringstream result;
+                for (size_t i = 0; i < lines.size(); ++i) {
+                    if (i > 0)
+                        result << '\n';
+                    const auto& l = lines[i];
+                    if (l.empty() || l.find_first_not_of(" \t") == std::string::npos) {
+                        result << l;
+                    } else if (is_toplevel_statement(l)) {
+                        result << l.substr(l.find_first_not_of(" \t"));
+                    } else {
+                        result << l;
+                    }
+                }
+                return result.str();
+            }
+            return text;
+        }
+
+        if (min_indent == std::string::npos) {
             return text;
         }
 
@@ -127,68 +195,48 @@ namespace {
             return;
         }
 
-        state.addInput(cmd);
         state.addToHistory(cmd);
 
-        const PyGILState_STATE gil = PyGILState_Ensure();
+        auto* output = state.getOutputTerminal();
+        if (!output)
+            return;
 
-        // For multi-line code, use Py_file_input mode
-        const int start_mode = (cmd.find('\n') != std::string::npos) ? Py_file_input : Py_single_input;
-
-        PyObject* const main_module = PyImport_AddModule("__main__");
-        PyObject* const globals = PyModule_GetDict(main_module);
-
-        PyObject* result = PyRun_String(cmd.c_str(), start_mode, globals, globals);
-
-        if (result) {
-            if (result != Py_None && start_mode == Py_single_input) {
-                PyObject* str = PyObject_Str(result);
-                if (str) {
-                    const char* output_str = PyUnicode_AsUTF8(str);
-                    if (output_str && output_str[0] != '\0') {
-                        state.addOutput(output_str);
-                    }
-                    Py_DECREF(str);
-                }
-            }
-            Py_DECREF(result);
-        } else {
-            PyErr_Print();
+        // Write code to temp file to handle multi-line scripts properly
+        const auto temp_dir = std::filesystem::temp_directory_path();
+        const auto script_path = temp_dir / "lichtfeld_script.py";
+        {
+            std::ofstream script_file(script_path);
+            script_file << cmd;
         }
 
-        PyGILState_Release(gil);
+        // Build the command
+        std::string full_cmd = std::string(getPythonExecutable()) + " \"" + script_path.string() + "\"";
+
+        // Spawn shell (PYTHONPATH is set by pty_process.cpp)
+        if (!output->is_running()) {
+#ifdef _WIN32
+            output->spawn("cmd.exe");
+            output->sendToPty("@echo off & prompt $S");
+#else
+            output->spawn("/bin/bash");
+            output->sendToPty("stty -echo; PS1='' PS2=''; clear");
+#endif
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        // Clear output on each new run
+        output->reset();
+        output->sendToPty(full_cmd);
+
+        // Switch to Output tab
+        state.setActiveTab(0);
     }
 
     void reset_python_state(lfs::vis::gui::panels::PythonConsoleState& state) {
-        const PyGILState_STATE gil = PyGILState_Ensure();
-
-        PyObject* main_module = PyImport_AddModule("__main__");
-        PyObject* globals = PyModule_GetDict(main_module);
-
-        // Get list of keys to delete (excluding builtins and standard items)
-        PyObject* keys = PyDict_Keys(globals);
-        if (keys) {
-            const Py_ssize_t len = PyList_Size(keys);
-            for (Py_ssize_t i = 0; i < len; i++) {
-                PyObject* key = PyList_GetItem(keys, i);
-                const char* key_str = PyUnicode_AsUTF8(key);
-                if (key_str) {
-                    // Skip builtins and special names
-                    if (key_str[0] == '_' && key_str[1] == '_') {
-                        continue;
-                    }
-                    if (std::string(key_str) == "builtins") {
-                        continue;
-                    }
-                    PyDict_DelItem(globals, key);
-                }
-            }
-            Py_DECREF(keys);
+        // Clear output terminal
+        auto* output = state.getOutputTerminal();
+        if (output) {
+            output->clear();
         }
-
-        PyGILState_Release(gil);
-
-        state.addInfo("Python state reset");
     }
 
     bool load_script(const std::filesystem::path& path, lfs::vis::gui::panels::PythonConsoleState& state) {
@@ -265,7 +313,8 @@ namespace {
 namespace lfs::vis::gui::panels {
 
     PythonConsoleState::PythonConsoleState()
-        : console_output_(std::make_unique<editor::ConsoleOutput>()),
+        : terminal_(std::make_unique<terminal::TerminalWidget>(80, 24)),
+          output_terminal_(std::make_unique<terminal::TerminalWidget>(80, 24)),
           editor_(std::make_unique<editor::PythonEditor>()) {
     }
 
@@ -278,36 +327,43 @@ namespace lfs::vis::gui::panels {
 
     void PythonConsoleState::addOutput(const std::string& text, uint32_t /*color*/) {
         std::lock_guard lock(mutex_);
-        if (console_output_) {
-            console_output_->addOutput(text);
+        if (output_terminal_) {
+            output_terminal_->write(text);
+            output_terminal_->write("\n");
         }
     }
 
     void PythonConsoleState::addError(const std::string& text) {
         std::lock_guard lock(mutex_);
-        if (console_output_) {
-            console_output_->addError(text);
+        if (output_terminal_) {
+            output_terminal_->write("\033[31m"); // Red
+            output_terminal_->write(text);
+            output_terminal_->write("\033[0m\n"); // Reset + newline
         }
     }
 
     void PythonConsoleState::addInput(const std::string& text) {
         std::lock_guard lock(mutex_);
-        if (console_output_) {
-            console_output_->addInput(text);
+        if (output_terminal_) {
+            output_terminal_->write("\033[32m>>> "); // Green prompt
+            output_terminal_->write(text);
+            output_terminal_->write("\033[0m\n"); // Reset + newline
         }
     }
 
     void PythonConsoleState::addInfo(const std::string& text) {
         std::lock_guard lock(mutex_);
-        if (console_output_) {
-            console_output_->addInfo(text);
+        if (output_terminal_) {
+            output_terminal_->write("\033[36m"); // Cyan
+            output_terminal_->write(text);
+            output_terminal_->write("\033[0m\n"); // Reset + newline
         }
     }
 
     void PythonConsoleState::clear() {
         std::lock_guard lock(mutex_);
-        if (console_output_) {
-            console_output_->clear();
+        if (output_terminal_) {
+            output_terminal_->clear();
         }
     }
 
@@ -344,8 +400,12 @@ namespace lfs::vis::gui::panels {
         }
     }
 
-    editor::ConsoleOutput* PythonConsoleState::getConsoleOutput() {
-        return console_output_.get();
+    terminal::TerminalWidget* PythonConsoleState::getTerminal() {
+        return terminal_.get();
+    }
+
+    terminal::TerminalWidget* PythonConsoleState::getOutputTerminal() {
+        return output_terminal_.get();
     }
 
     editor::PythonEditor* PythonConsoleState::getEditor() {
@@ -420,13 +480,13 @@ namespace lfs::vis::gui::panels {
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Edit")) {
-                if (ImGui::MenuItem("Clear Console", "Ctrl+L")) {
+                if (ImGui::MenuItem("Clear Output", "Ctrl+L")) {
                     state.clear();
                 }
                 ImGui::Separator();
-                if (ImGui::MenuItem("Copy Console Output")) {
-                    if (auto* output = state.getConsoleOutput()) {
-                        ImGui::SetClipboardText(output->getAllText().c_str());
+                if (ImGui::MenuItem("Copy Selection")) {
+                    if (auto* output = state.getOutputTerminal()) {
+                        ImGui::SetClipboardText(output->getSelection().c_str());
                     }
                 }
                 ImGui::EndMenu();
@@ -474,24 +534,30 @@ namespace lfs::vis::gui::panels {
 
             ImGui::SameLine();
 
-            // Stop button (for animations)
+            // Stop button (for animations and running scripts)
             const bool has_animation = python::has_frame_callback();
-            if (!has_animation) {
+            const bool has_running_script = state.getOutputTerminal() && state.getOutputTerminal()->is_running();
+            const bool can_stop = has_animation || has_running_script;
+            if (!can_stop) {
                 ImGui::BeginDisabled();
             }
             ImGui::PushStyleColor(ImGuiCol_Button, t.palette.error);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, lighten(t.palette.error, 0.1f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, darken(t.palette.error, 0.1f));
             if (ImGui::Button("Stop")) {
-                python::clear_frame_callback();
-                state.addOutput("Animation stopped.\n", false);
+                if (has_animation) {
+                    python::clear_frame_callback();
+                }
+                if (auto* output = state.getOutputTerminal()) {
+                    output->interrupt();
+                }
             }
             ImGui::PopStyleColor(3);
-            if (!has_animation) {
+            if (!can_stop) {
                 ImGui::EndDisabled();
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                ImGui::SetTooltip("Stop running animation");
+                ImGui::SetTooltip("Stop running script (Ctrl+C)");
             }
 
             ImGui::SameLine();
@@ -551,11 +617,19 @@ namespace lfs::vis::gui::panels {
                 ImGui::PushFont(ctx.fonts.monospace);
             }
 
+            // Check if terminal has focus - prevent editor from receiving input
+            bool terminal_has_focus = false;
+            if (auto* terminal = state.getTerminal()) {
+                terminal_has_focus = terminal->isFocused();
+            }
+
             if (auto* editor = state.getEditor()) {
+                // When terminal has focus, make editor read-only to prevent input capture
+                editor->setReadOnly(terminal_has_focus);
+
                 if (editor->render(editor_size)) {
                     // Ctrl+Enter was pressed - execute
                     execute_python_code(editor->getText(), state);
-                    editor->clear();
                 }
             }
 
@@ -589,26 +663,39 @@ namespace lfs::vis::gui::panels {
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(3);
 
-        // Console Output (bottom pane)
-        ImGui::BeginChild("##console_pane", ImVec2(content_avail.x, bottom_height), false);
+        // Bottom pane with tabs
+        ImGui::BeginChild("##bottom_pane", ImVec2(content_avail.x, bottom_height), false);
         {
-            ImGui::TextColored(t.palette.text_dim, "Console Output");
-            ImGui::Spacing();
+            if (ImGui::BeginTabBar("##console_tabs")) {
+                // Output tab (read-only terminal for script output)
+                if (ImGui::BeginTabItem("Output")) {
+                    state.setActiveTab(0);
 
-            const ImVec2 output_size(ImGui::GetContentRegionAvail().x,
-                                     ImGui::GetContentRegionAvail().y);
+                    if (auto* output = state.getOutputTerminal()) {
+                        // Don't auto-spawn - spawned on demand when running code
+                        output->setReadOnly(true);
+                        output->render(ctx.fonts.monospace);
+                    }
 
-            // Use monospace font for console output
-            if (ctx.fonts.monospace) {
-                ImGui::PushFont(ctx.fonts.monospace);
-            }
+                    ImGui::EndTabItem();
+                }
 
-            if (auto* output = state.getConsoleOutput()) {
-                output->render(output_size);
-            }
+                // Terminal tab (interactive Python REPL)
+                if (ImGui::BeginTabItem("Terminal")) {
+                    state.setActiveTab(1);
 
-            if (ctx.fonts.monospace) {
-                ImGui::PopFont();
+                    if (auto* terminal = state.getTerminal()) {
+                        // Auto-spawn Python on first use
+                        if (!terminal->is_running()) {
+                            terminal->spawn(getPythonExecutable());
+                        }
+                        terminal->render(ctx.fonts.monospace);
+                    }
+
+                    ImGui::EndTabItem();
+                }
+
+                ImGui::EndTabBar();
             }
         }
         ImGui::EndChild();
@@ -731,6 +818,35 @@ namespace lfs::vis::gui::panels {
 
         ImGui::SameLine();
 
+        // Stop button
+        {
+            const bool has_animation = python::has_frame_callback();
+            const bool has_running_script = state.getOutputTerminal() && state.getOutputTerminal()->is_running();
+            const bool can_stop = has_animation || has_running_script;
+            if (!can_stop) {
+                ImGui::BeginDisabled();
+            }
+            ImGui::PushStyleColor(ImGuiCol_Button, t.palette.error);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, lighten(t.palette.error, 0.1f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, darken(t.palette.error, 0.1f));
+            if (ImGui::Button("Stop")) {
+                if (has_animation) {
+                    python::clear_frame_callback();
+                }
+                if (auto* output = state.getOutputTerminal()) {
+                    output->interrupt();
+                }
+            }
+            ImGui::PopStyleColor(3);
+            if (!can_stop) {
+                ImGui::EndDisabled();
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("Stop running script (Ctrl+C)");
+        }
+
+        ImGui::SameLine();
+
         // Reset button
         if (ImGui::Button("Reset")) {
             reset_python_state(state);
@@ -775,10 +891,18 @@ namespace lfs::vis::gui::panels {
                 ImGui::PushFont(ctx.fonts.monospace);
             }
 
+            // Check if terminal has focus - prevent editor from receiving input
+            bool terminal_has_focus = false;
+            if (auto* terminal = state.getTerminal()) {
+                terminal_has_focus = terminal->isFocused();
+            }
+
             if (auto* editor = state.getEditor()) {
+                // When terminal has focus, make editor read-only to prevent input capture
+                editor->setReadOnly(terminal_has_focus);
+
                 if (editor->render(editor_size)) {
                     execute_python_code(editor->getText(), state);
-                    editor->clear();
                 }
             }
 
@@ -814,24 +938,41 @@ namespace lfs::vis::gui::panels {
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(3);
 
-        // Console Output (bottom pane)
-        ImGui::BeginChild("##docked_console_pane", ImVec2(content_avail.x, bottom_height), false);
+        // Bottom pane with tabs
+        ImGui::BeginChild("##docked_bottom_pane", ImVec2(content_avail.x, bottom_height), false);
         {
             ImGui::SetWindowFontScale(state.getFontScale());
 
-            const ImVec2 output_size(ImGui::GetContentRegionAvail().x,
-                                     ImGui::GetContentRegionAvail().y);
+            if (ImGui::BeginTabBar("##docked_console_tabs")) {
+                // Output tab (read-only terminal for script output)
+                if (ImGui::BeginTabItem("Output")) {
+                    state.setActiveTab(0);
 
-            if (ctx.fonts.monospace) {
-                ImGui::PushFont(ctx.fonts.monospace);
-            }
+                    if (auto* output = state.getOutputTerminal()) {
+                        // Don't auto-spawn - spawned on demand when running code
+                        output->setReadOnly(true);
+                        output->render(ctx.fonts.monospace);
+                    }
 
-            if (auto* output = state.getConsoleOutput()) {
-                output->render(output_size);
-            }
+                    ImGui::EndTabItem();
+                }
 
-            if (ctx.fonts.monospace) {
-                ImGui::PopFont();
+                // Terminal tab (interactive Python REPL)
+                if (ImGui::BeginTabItem("Terminal")) {
+                    state.setActiveTab(1);
+
+                    if (auto* terminal = state.getTerminal()) {
+                        // Auto-spawn Python on first use
+                        if (!terminal->is_running()) {
+                            terminal->spawn(getPythonExecutable());
+                        }
+                        terminal->render(ctx.fonts.monospace);
+                    }
+
+                    ImGui::EndTabItem();
+                }
+
+                ImGui::EndTabBar();
             }
 
             ImGui::SetWindowFontScale(1.0f);

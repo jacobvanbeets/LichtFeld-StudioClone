@@ -408,11 +408,24 @@ namespace lfs::vis::gui {
             font_small_ = load_font_with_cjk(regular_path, t.fonts.small_size * xscale);
             font_section_ = load_font_with_cjk(bold_path, t.fonts.section_size * xscale);
 
-            // Load monospace font for code editor
+            // Load monospace font for code editor with extended glyph ranges
             const auto monospace_path = lfs::vis::getAssetPath("fonts/JetBrainsMono-Regular.ttf");
             if (is_font_valid(monospace_path)) {
                 const std::string mono_path_utf8 = lfs::core::path_to_utf8(monospace_path);
-                font_monospace_ = io.Fonts->AddFontFromFileTTF(mono_path_utf8.c_str(), t.fonts.base_size * xscale);
+
+                // Build glyph ranges: default + box drawing + block elements
+                static const ImWchar ranges[] = {
+                    0x0020, 0x00FF, // Basic Latin + Latin Supplement
+                    0x2500, 0x257F, // Box Drawing
+                    0x2580, 0x259F, // Block Elements (used by tqdm, etc.)
+                    0x25A0, 0x25FF, // Geometric Shapes
+                    0x2190, 0x21FF, // Arrows
+                    0,
+                };
+
+                ImFontConfig config;
+                config.GlyphRanges = ranges;
+                font_monospace_ = io.Fonts->AddFontFromFileTTF(mono_path_utf8.c_str(), t.fonts.base_size * xscale, &config);
                 if (font_monospace_) {
                     LOG_INFO("Loaded monospace font: JetBrainsMono-Regular.ttf");
                 }

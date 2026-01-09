@@ -257,12 +257,12 @@ namespace lfs::python {
     }
 
     InstallResult PackageManager::uninstall(const std::string& package) {
-        if (!is_venv_ready())
-            return {.error = "Venv not initialized"};
+        if (!ensure_venv())
+            return {.error = "Failed to initialize venv"};
 
         std::lock_guard lock(m_mutex);
         LOG_INFO("Uninstalling {}", package);
-        return execute_uv({"pip", "uninstall", package, "--python", venv_python().string(), "-y"});
+        return execute_uv({"pip", "uninstall", package, "--python", venv_python().string()});
     }
 
     InstallResult PackageManager::install_torch(const std::string& cuda_version,

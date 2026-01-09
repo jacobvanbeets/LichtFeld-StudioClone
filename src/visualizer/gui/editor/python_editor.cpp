@@ -181,12 +181,14 @@ namespace lfs::vis::editor {
         }
 
         std::string& currentLine = lines[line];
+        const int lineLen = static_cast<int>(currentLine.length());
+        col = std::min(col, lineLen); // Clamp col to line length
         const int wordStart = col - static_cast<int>(word.length());
 
-        if (wordStart >= 0 && wordStart <= static_cast<int>(currentLine.length())) {
+        if (wordStart >= 0 && wordStart <= lineLen) {
             // Replace the partial word with the completion
             currentLine = currentLine.substr(0, wordStart) + completion +
-                          currentLine.substr(col);
+                          currentLine.substr(std::min(col, lineLen));
             editor_.SetTextLines(lines);
 
             // Move cursor to end of completion
@@ -257,6 +259,14 @@ namespace lfs::vis::editor {
             history_index_ = -1;
             setText(current_input_);
         }
+    }
+
+    void PythonEditor::setReadOnly(bool readonly) {
+        editor_.SetReadOnlyEnabled(readonly);
+    }
+
+    bool PythonEditor::isReadOnly() const {
+        return editor_.IsReadOnlyEnabled();
     }
 
 } // namespace lfs::vis::editor

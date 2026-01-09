@@ -44,6 +44,10 @@ namespace lfs::vis::editor {
         void focus() { request_focus_ = true; }
         bool isFocused() const { return is_focused_; }
 
+        // Read-only mode (prevents keyboard input)
+        void setReadOnly(bool readonly);
+        bool isReadOnly() const;
+
     private:
         void updateAutocomplete();
         std::string getWordBeforeCursor() const;

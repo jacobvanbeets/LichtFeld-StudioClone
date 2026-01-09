@@ -97,6 +97,26 @@ namespace lfs::core {
         return exe_dir;
     }
 
+    // Python module directory (lichtfeld.so)
+    inline std::filesystem::path getPythonModuleDir() {
+        const auto exe_dir = getExecutableDir();
+
+        // Production: exe in bin/, module in ../lib/python/
+        if (const auto prod = exe_dir.parent_path() / "lib" / "python";
+            std::filesystem::exists(prod / "lichtfeld.abi3.so") ||
+            std::filesystem::exists(prod / "lichtfeld.so")) {
+            return prod;
+        }
+
+        // Development: module in src/python/ relative to exe (build dir)
+        if (const auto dev = exe_dir / "src" / "python";
+            std::filesystem::exists(dev / "lichtfeld.abi3.so")) {
+            return dev;
+        }
+
+        return {};
+    }
+
     // nvImageCodec extensions directory
     inline std::filesystem::path getExtensionsDir() {
         const auto exe_dir = getExecutableDir();

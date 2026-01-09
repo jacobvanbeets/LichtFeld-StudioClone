@@ -15,8 +15,11 @@
 
 namespace lfs::vis::editor {
     class PythonEditor;
-    class ConsoleOutput;
 } // namespace lfs::vis::editor
+
+namespace lfs::vis::terminal {
+    class TerminalWidget;
+} // namespace lfs::vis::terminal
 
 namespace lfs::vis::gui::panels {
 
@@ -36,8 +39,17 @@ namespace lfs::vis::gui::panels {
         void historyDown();
         int historyIndex() const { return history_index_; }
 
-        editor::ConsoleOutput* getConsoleOutput();
+        terminal::TerminalWidget* getTerminal();
+        terminal::TerminalWidget* getOutputTerminal();
         editor::PythonEditor* getEditor();
+
+        // Tab selection (0 = Output, 1 = Terminal)
+        int getActiveTab() const { return active_tab_; }
+        void setActiveTab(int tab) { active_tab_ = tab; }
+
+        // Focus tracking for input routing
+        bool isTerminalFocused() const { return terminal_focused_; }
+        void setTerminalFocused(bool focused) { terminal_focused_ = focused; }
 
         // Script file management
         void setScriptPath(const std::filesystem::path& path) { script_path_ = path; }
@@ -61,8 +73,11 @@ namespace lfs::vis::gui::panels {
         mutable std::mutex mutex_;
         static constexpr size_t MAX_MESSAGES = 1000;
 
-        std::unique_ptr<editor::ConsoleOutput> console_output_;
+        std::unique_ptr<terminal::TerminalWidget> terminal_;
+        std::unique_ptr<terminal::TerminalWidget> output_terminal_;
         std::unique_ptr<editor::PythonEditor> editor_;
+        int active_tab_ = 0;
+        bool terminal_focused_ = false;
 
         // Script file tracking
         std::filesystem::path script_path_;

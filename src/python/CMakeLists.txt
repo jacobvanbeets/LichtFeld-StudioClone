@@ -32,6 +32,7 @@ target_link_libraries(lfs_python_utils
 target_compile_definitions(lfs_python_utils
     PUBLIC
         LFS_BUILD_PYTHON_BINDINGS
+        LFS_PYTHON_EXECUTABLE="${Python_EXECUTABLE}"
 )
 
 set_target_properties(lfs_python_utils PROPERTIES
