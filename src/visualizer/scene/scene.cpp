@@ -1259,17 +1259,34 @@ namespace lfs::vis {
         static const glm::mat4 IDENTITY{1.0f};
         if (splats.size() == 1 && splats[0].second == IDENTITY) {
             const auto* const src = splats[0].first;
-            auto result = std::make_unique<lfs::core::SplatData>(
-                src->get_max_sh_degree(),
-                src->means_raw().clone(),
-                src->sh0_raw().clone(),
-                src->shN_raw().is_valid() ? src->shN_raw().clone() : lfs::core::Tensor(),
-                src->scaling_raw().clone(),
-                src->rotation_raw().clone(),
-                src->opacity_raw().clone(),
-                src->get_scene_scale());
-            result->set_active_sh_degree(src->get_active_sh_degree());
-            return result;
+            
+            // Filter out deleted splats if deletion mask exists
+            if (src->has_deleted_mask()) {
+                const auto keep_mask = src->deleted().logical_not();
+                auto result = std::make_unique<lfs::core::SplatData>(
+                    src->get_max_sh_degree(),
+                    src->means_raw().index_select(0, keep_mask),
+                    src->sh0_raw().index_select(0, keep_mask),
+                    src->shN_raw().is_valid() ? src->shN_raw().index_select(0, keep_mask) : lfs::core::Tensor(),
+                    src->scaling_raw().index_select(0, keep_mask),
+                    src->rotation_raw().index_select(0, keep_mask),
+                    src->opacity_raw().index_select(0, keep_mask),
+                    src->get_scene_scale());
+                result->set_active_sh_degree(src->get_active_sh_degree());
+                return result;
+            } else {
+                auto result = std::make_unique<lfs::core::SplatData>(
+                    src->get_max_sh_degree(),
+                    src->means_raw().clone(),
+                    src->sh0_raw().clone(),
+                    src->shN_raw().is_valid() ? src->shN_raw().clone() : lfs::core::Tensor(),
+                    src->scaling_raw().clone(),
+                    src->rotation_raw().clone(),
+                    src->opacity_raw().clone(),
+                    src->get_scene_scale());
+                result->set_active_sh_degree(src->get_active_sh_degree());
+                return result;
+            }
         }
 
         const int shN_coeffs = (max_sh > 0) ? ((max_sh + 1) * (max_sh + 1) - 1) : 0;
@@ -1285,14 +1302,33 @@ namespace lfs::vis {
         float total_scale = 0.0f;
 
         for (const auto& [model, world_transform] : splats) {
+            // Filter out deleted splats first
+            lfs::core::Tensor means, sh0, shN, scaling, rotation, opacity;
+            if (model->has_deleted_mask()) {
+                const auto keep_mask = model->deleted().logical_not();
+                means = model->means_raw().index_select(0, keep_mask);
+                sh0 = model->sh0_raw().index_select(0, keep_mask);
+                shN = model->shN_raw().is_valid() ? model->shN_raw().index_select(0, keep_mask) : lfs::core::Tensor();
+                scaling = model->scaling_raw().index_select(0, keep_mask);
+                rotation = model->rotation_raw().index_select(0, keep_mask);
+                opacity = model->opacity_raw().index_select(0, keep_mask);
+            } else {
+                means = model->means_raw().clone();
+                sh0 = model->sh0_raw().clone();
+                shN = model->shN_raw().is_valid() ? model->shN_raw().clone() : lfs::core::Tensor();
+                scaling = model->scaling_raw().clone();
+                rotation = model->rotation_raw().clone();
+                opacity = model->opacity_raw().clone();
+            }
+            
             lfs::core::SplatData transformed(
                 model->get_max_sh_degree(),
-                model->means_raw().clone(),
-                model->sh0_raw().clone(),
-                model->shN_raw().is_valid() ? model->shN_raw().clone() : lfs::core::Tensor(),
-                model->scaling_raw().clone(),
-                model->rotation_raw().clone(),
-                model->opacity_raw().clone(),
+                std::move(means),
+                std::move(sh0),
+                std::move(shN),
+                std::move(scaling),
+                std::move(rotation),
+                std::move(opacity),
                 model->get_scene_scale());
 
             lfs::core::transform(transformed, world_transform);
