@@ -290,56 +290,41 @@ sys.stderr = OutputCapture(True)
 
         std::string result = code;
 
-        // Try black first, then autopep8, then basic cleanup
-        const char* format_code = R"(
+        const char* FORMAT_CODE = R"(
 def _lfs_format_code(code):
-    # Try black
     try:
         import black
         return black.format_str(code, mode=black.Mode())
     except ImportError:
-        pass
+        try:
+            import lichtfeld as lf
+            lf.packages.install("black")
+            import black
+            return black.format_str(code, mode=black.Mode())
+        except Exception:
+            return code
+    except black.InvalidInput:
+        return code
     except Exception:
-        pass
-
-    # Try autopep8
-    try:
-        import autopep8
-        return autopep8.fix_code(code)
-    except ImportError:
-        pass
-    except Exception:
-        pass
-
-    # Basic cleanup with textwrap.dedent
-    try:
-        import textwrap
-        return textwrap.dedent(code)
-    except Exception:
-        pass
-
-    return code
+        return code
 )";
 
-        // Execute the format function definition
-        PyRun_SimpleString(format_code);
+        PyRun_SimpleString(FORMAT_CODE);
 
-        // Get __main__ module
-        PyObject* main_module = PyImport_AddModule("__main__");
+        PyObject* const main_module = PyImport_AddModule("__main__");
         if (!main_module) {
             PyGILState_Release(gil);
             return code;
         }
 
-        PyObject* main_dict = PyModule_GetDict(main_module);
-        PyObject* format_func = PyDict_GetItemString(main_dict, "_lfs_format_code");
+        PyObject* const main_dict = PyModule_GetDict(main_module);
+        PyObject* const format_func = PyDict_GetItemString(main_dict, "_lfs_format_code");
         if (!format_func || !PyCallable_Check(format_func)) {
             PyGILState_Release(gil);
             return code;
         }
 
-        // Call the format function
-        PyObject* py_code = PyUnicode_FromString(code.c_str());
+        PyObject* const py_code = PyUnicode_FromString(code.c_str());
         PyObject* py_result = PyObject_CallFunctionObjArgs(format_func, py_code, nullptr);
         Py_DECREF(py_code);
 

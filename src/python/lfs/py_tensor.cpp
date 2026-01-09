@@ -1143,7 +1143,7 @@ namespace lfs::python {
     }
 
     nb::capsule PyTensor::dlpack(nb::object stream) const {
-        if (tensor_.device() == Device::CUDA && !stream.is_none()) {
+        if (tensor_.device() == Device::CUDA && stream.is_none()) {
             cudaDeviceSynchronize();
         }
 
@@ -1633,18 +1633,10 @@ namespace lfs::python {
             .def("to", &PyTensor::to_dtype, nb::arg("dtype"), "Convert to specified dtype")
 
             // Random tensor creation
-            .def_static("rand", &PyTensor::rand,
-                        nb::arg("shape"), nb::arg("device") = "cuda", nb::arg("dtype") = "float32",
-                        "Create tensor with uniform random values [0, 1)")
-            .def_static("randn", &PyTensor::randn,
-                        nb::arg("shape"), nb::arg("device") = "cuda", nb::arg("dtype") = "float32",
-                        "Create tensor with normal random values")
-            .def_static("empty", &PyTensor::empty,
-                        nb::arg("shape"), nb::arg("device") = "cuda", nb::arg("dtype") = "float32",
-                        "Create uninitialized tensor")
-            .def_static("randint", &PyTensor::randint,
-                        nb::arg("low"), nb::arg("high"), nb::arg("shape"), nb::arg("device") = "cuda",
-                        "Create tensor with random integers")
+            .def_static("rand", &PyTensor::rand, nb::arg("shape"), nb::arg("device") = "cuda", nb::arg("dtype") = "float32", "Create tensor with uniform random values [0, 1)")
+            .def_static("randn", &PyTensor::randn, nb::arg("shape"), nb::arg("device") = "cuda", nb::arg("dtype") = "float32", "Create tensor with normal random values")
+            .def_static("empty", &PyTensor::empty, nb::arg("shape"), nb::arg("device") = "cuda", nb::arg("dtype") = "float32", "Create uninitialized tensor")
+            .def_static("randint", &PyTensor::randint, nb::arg("low"), nb::arg("high"), nb::arg("shape"), nb::arg("device") = "cuda", "Create tensor with random integers")
 
             // *_like variants
             .def_static("zeros_like", &PyTensor::zeros_like, nb::arg("other"), "Create zeros tensor like other")

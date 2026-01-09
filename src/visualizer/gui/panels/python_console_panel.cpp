@@ -85,101 +85,6 @@ namespace {
         });
     }
 
-    // Check if a line is a top-level Python statement (shouldn't be indented at file scope)
-    bool is_toplevel_statement(const std::string& line) {
-        const std::string trimmed = line.substr(line.find_first_not_of(" \t") != std::string::npos
-                                                    ? line.find_first_not_of(" \t")
-                                                    : 0);
-        static const std::vector<std::string> keywords = {
-            "import ", "from ", "def ", "class ", "if ", "for ", "while ",
-            "try:", "with ", "async ", "@", "#", "\"\"\"", "'''"};
-        for (const auto& kw : keywords) {
-            if (trimmed.rfind(kw, 0) == 0)
-                return true;
-        }
-        // Also check for variable assignments at top level (no keyword prefix)
-        // Simple heuristic: if it contains '=' and doesn't start with whitespace originally
-        return false;
-    }
-
-    // Remove common leading whitespace from all lines (like Python's textwrap.dedent)
-    // Also fixes lines that have unexpected indentation (e.g., from editor auto-indent on paste)
-    std::string dedent(const std::string& text) {
-        std::vector<std::string> lines;
-        std::istringstream stream(text);
-        std::string line;
-        while (std::getline(stream, line)) {
-            lines.push_back(line);
-        }
-
-        if (lines.empty()) {
-            return text;
-        }
-
-        // Find minimum indentation (ignoring empty lines)
-        size_t min_indent = std::string::npos;
-        for (const auto& l : lines) {
-            if (l.empty() || l.find_first_not_of(" \t") == std::string::npos) {
-                continue;
-            }
-            const size_t indent = l.find_first_not_of(" \t");
-            if (indent < min_indent) {
-                min_indent = indent;
-            }
-        }
-
-        // If min_indent is 0 but some lines have indent, check for broken paste
-        if (min_indent == 0) {
-            bool has_broken_indent = false;
-            for (const auto& l : lines) {
-                if (l.empty())
-                    continue;
-                const size_t indent = l.find_first_not_of(" \t");
-                if (indent > 0 && indent != std::string::npos && is_toplevel_statement(l)) {
-                    has_broken_indent = true;
-                    break;
-                }
-            }
-
-            if (has_broken_indent) {
-                // Fix by removing leading whitespace from top-level statements
-                std::ostringstream result;
-                for (size_t i = 0; i < lines.size(); ++i) {
-                    if (i > 0)
-                        result << '\n';
-                    const auto& l = lines[i];
-                    if (l.empty() || l.find_first_not_of(" \t") == std::string::npos) {
-                        result << l;
-                    } else if (is_toplevel_statement(l)) {
-                        result << l.substr(l.find_first_not_of(" \t"));
-                    } else {
-                        result << l;
-                    }
-                }
-                return result.str();
-            }
-            return text;
-        }
-
-        if (min_indent == std::string::npos) {
-            return text;
-        }
-
-        // Remove common indentation
-        std::ostringstream result;
-        for (size_t i = 0; i < lines.size(); ++i) {
-            if (i > 0) {
-                result << '\n';
-            }
-            if (lines[i].size() > min_indent) {
-                result << lines[i].substr(min_indent);
-            } else if (!lines[i].empty() && lines[i].find_first_not_of(" \t") != std::string::npos) {
-                result << lines[i];
-            }
-        }
-        return result.str();
-    }
-
     void execute_python_code(const std::string& code, lfs::vis::gui::panels::PythonConsoleState& state) {
         std::string cmd = code;
 
@@ -187,9 +92,6 @@ namespace {
         while (!cmd.empty() && (cmd.back() == '\n' || cmd.back() == '\r' || cmd.back() == ' ')) {
             cmd.pop_back();
         }
-
-        // Remove common leading indentation
-        cmd = dedent(cmd);
 
         if (cmd.empty()) {
             return;
@@ -769,6 +671,18 @@ namespace lfs::vis::gui::panels {
         // Toolbar
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 4));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 4));
+
+        if (ImGui::Button("New")) {
+            if (auto* editor = state.getEditor()) {
+                editor->clear();
+            }
+            state.setScriptPath({});
+            state.setModified(false);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Clear editor (Ctrl+N)");
+
+        ImGui::SameLine();
 
         // Load button
         if (ImGui::Button("Load")) {

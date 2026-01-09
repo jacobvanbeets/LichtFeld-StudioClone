@@ -109,6 +109,7 @@ set(TEST_FILES
     test_tensor_ops.cpp
     test_tensor_memory.cpp
     test_tensor_reduction.cpp
+    test_tensor_reduction_alignment.cpp
     test_isolation.cpp
     test_tensor_views.cpp
     test_tensor_math.cpp
