@@ -5,6 +5,8 @@
 #include "py_ui.hpp"
 #include "control/command_api.hpp"
 #include "core/logger.hpp"
+#include "core/property_registry.hpp"
+#include "py_params.hpp"
 #include "python/ui_hooks.hpp"
 #include "visualizer/theme/theme.hpp"
 
@@ -330,6 +332,114 @@ namespace lfs::python {
         ImGui::End();
     }
 
+    // RNA-style property widget
+    std::tuple<bool, nb::object> PyUILayout::prop(nb::object data,
+                                                  const std::string& prop_id,
+                                                  std::optional<std::string> text) {
+        using namespace lfs::core::prop;
+
+        // Check if data is PyOptimizationParams
+        if (!nb::isinstance<PyOptimizationParams>(data)) {
+            throw std::runtime_error("prop() currently only supports OptimizationParams");
+        }
+
+        auto& params = nb::cast<PyOptimizationParams&>(data);
+        auto* meta = PropertyRegistry::instance().get_property("optimization", prop_id);
+        if (!meta) {
+            throw std::runtime_error("Unknown property: " + prop_id);
+        }
+
+        std::string display_name = text.value_or(meta->name);
+        bool changed = false;
+        nb::object new_value;
+
+        switch (meta->type) {
+        case PropType::Float: {
+            float current = nb::cast<float>(params.get(prop_id));
+            auto [c, nv] = (meta->ui_hint == PropUIHint::Slider)
+                               ? slider_float(display_name, current,
+                                              static_cast<float>(meta->min_value),
+                                              static_cast<float>(meta->max_value))
+                               : drag_float(display_name, current,
+                                            static_cast<float>(meta->step),
+                                            static_cast<float>(meta->min_value),
+                                            static_cast<float>(meta->max_value));
+            changed = c;
+            new_value = nb::cast(nv);
+            break;
+        }
+        case PropType::Int: {
+            int current = nb::cast<int>(params.get(prop_id));
+            auto [c, nv] = (meta->ui_hint == PropUIHint::Slider)
+                               ? slider_int(display_name, current,
+                                            static_cast<int>(meta->min_value),
+                                            static_cast<int>(meta->max_value))
+                               : drag_int(display_name, current, 1.0f,
+                                          static_cast<int>(meta->min_value),
+                                          static_cast<int>(meta->max_value));
+            changed = c;
+            new_value = nb::cast(nv);
+            break;
+        }
+        case PropType::SizeT: {
+            int current = static_cast<int>(nb::cast<size_t>(params.get(prop_id)));
+            auto [c, nv] = drag_int(display_name, current, 1.0f,
+                                    static_cast<int>(meta->min_value),
+                                    static_cast<int>(meta->max_value));
+            changed = c;
+            new_value = nb::cast(static_cast<size_t>(nv));
+            break;
+        }
+        case PropType::Bool: {
+            bool current = nb::cast<bool>(params.get(prop_id));
+            auto [c, nv] = checkbox(display_name, current);
+            changed = c;
+            new_value = nb::cast(nv);
+            break;
+        }
+        case PropType::String: {
+            std::string current = nb::cast<std::string>(params.get(prop_id));
+            auto [c, nv] = input_text(display_name, current);
+            changed = c;
+            new_value = nb::cast(nv);
+            break;
+        }
+        case PropType::Enum: {
+            int current = nb::cast<int>(params.get(prop_id));
+            std::vector<std::string> items;
+            int current_idx = 0;
+            for (size_t i = 0; i < meta->enum_items.size(); ++i) {
+                items.push_back(meta->enum_items[i].name);
+                if (meta->enum_items[i].value == current) {
+                    current_idx = static_cast<int>(i);
+                }
+            }
+            auto [c, new_idx] = combo(display_name, current_idx, items);
+            changed = c;
+            if (changed && new_idx >= 0 && new_idx < static_cast<int>(meta->enum_items.size())) {
+                new_value = nb::cast(meta->enum_items[new_idx].value);
+            } else {
+                new_value = nb::cast(current);
+            }
+            break;
+        }
+        default:
+            throw std::runtime_error("Unsupported property type for prop()");
+        }
+
+        // Show tooltip on hover
+        if (!meta->description.empty() && is_item_hovered()) {
+            set_tooltip(meta->description);
+        }
+
+        // Update property if changed
+        if (changed && !meta->is_readonly()) {
+            params.set(prop_id, new_value);
+        }
+
+        return {changed, new_value};
+    }
+
     // PyPanelRegistry implementation
     PyPanelRegistry& PyPanelRegistry::instance() {
         static PyPanelRegistry registry;
@@ -339,17 +449,30 @@ namespace lfs::python {
     void PyPanelRegistry::register_panel(nb::object panel_class) {
         std::lock_guard lock(mutex_);
 
-        // Extract panel attributes
+        // Helper to get attribute with panel_ prefix, falling back to bl_ for backward compat
+        auto get_panel_attr = [&panel_class](const char* panel_name,
+                                             const char* bl_name) -> std::optional<nb::object> {
+            if (nb::hasattr(panel_class, panel_name)) {
+                return panel_class.attr(panel_name);
+            }
+            if (nb::hasattr(panel_class, bl_name)) {
+                return panel_class.attr(bl_name);
+            }
+            return std::nullopt;
+        };
+
+        // Extract panel attributes (panel_ prefix, bl_ for backward compat)
         std::string label = "Python Panel";
         PanelSpace space = PanelSpace::Floating;
         int order = 100;
+        std::string category;
 
-        if (nb::hasattr(panel_class, "bl_label")) {
-            label = nb::cast<std::string>(panel_class.attr("bl_label"));
+        if (auto v = get_panel_attr("panel_label", "bl_label")) {
+            label = nb::cast<std::string>(*v);
         }
 
-        if (nb::hasattr(panel_class, "bl_space")) {
-            std::string space_str = nb::cast<std::string>(panel_class.attr("bl_space"));
+        if (auto v = get_panel_attr("panel_space", "bl_space")) {
+            std::string space_str = nb::cast<std::string>(*v);
             if (space_str == "SIDE_PANEL") {
                 space = PanelSpace::SidePanel;
             } else if (space_str == "FLOATING") {
@@ -359,14 +482,16 @@ namespace lfs::python {
             }
         }
 
-        if (nb::hasattr(panel_class, "bl_order")) {
-            order = nb::cast<int>(panel_class.attr("bl_order"));
+        if (auto v = get_panel_attr("panel_order", "bl_order")) {
+            order = nb::cast<int>(*v);
         }
 
-        // Check if already registered
+        if (auto v = get_panel_attr("panel_category", "bl_category")) {
+            category = nb::cast<std::string>(*v);
+        }
+
         for (auto& p : panels_) {
             if (p.label == label) {
-                LOG_WARN("Panel '{}' already registered, updating", label);
                 p.panel_class = panel_class;
                 p.panel_instance = panel_class();
                 p.space = space;
@@ -387,37 +512,28 @@ namespace lfs::python {
         info.enabled = true;
 
         panels_.push_back(std::move(info));
-
-        // Sort by order
-        std::sort(panels_.begin(), panels_.end(), [](const PyPanelInfo& a, const PyPanelInfo& b) {
-            return a.order < b.order;
-        });
-
-        LOG_INFO("Registered Python panel: '{}' (space={}, order={})", label, static_cast<int>(space), order);
+        std::sort(panels_.begin(), panels_.end(),
+                  [](const PyPanelInfo& a, const PyPanelInfo& b) { return a.order < b.order; });
     }
 
     void PyPanelRegistry::unregister_panel(nb::object panel_class) {
         std::lock_guard lock(mutex_);
 
         std::string label;
-        if (nb::hasattr(panel_class, "bl_label")) {
+        if (nb::hasattr(panel_class, "panel_label")) {
+            label = nb::cast<std::string>(panel_class.attr("panel_label"));
+        } else if (nb::hasattr(panel_class, "bl_label")) {
             label = nb::cast<std::string>(panel_class.attr("bl_label"));
         }
 
-        auto it = std::remove_if(panels_.begin(), panels_.end(), [&label](const PyPanelInfo& p) {
-            return p.label == label;
-        });
-
-        if (it != panels_.end()) {
-            panels_.erase(it, panels_.end());
-            LOG_INFO("Unregistered Python panel: '{}'", label);
-        }
+        panels_.erase(std::remove_if(panels_.begin(), panels_.end(),
+                                     [&label](const PyPanelInfo& p) { return p.label == label; }),
+                      panels_.end());
     }
 
     void PyPanelRegistry::unregister_all() {
         std::lock_guard lock(mutex_);
         panels_.clear();
-        LOG_INFO("Unregistered all Python panels");
     }
 
     void PyPanelRegistry::draw_panels(PanelSpace space) {
@@ -437,8 +553,6 @@ namespace lfs::python {
             if (panel.space != space || !panel.enabled) {
                 continue;
             }
-
-            LOG_DEBUG("Drawing Python panel '{}' (space={})", panel.label, static_cast<int>(space));
 
             try {
                 // Check poll() if defined
@@ -598,9 +712,6 @@ namespace lfs::python {
         entry.position = position;
 
         hooks_[key].push_back(std::move(entry));
-
-        LOG_INFO("Added UI hook: {}:{} (position={})",
-                 panel, section, position == PyHookPosition::Prepend ? "prepend" : "append");
     }
 
     void PyUIHookRegistry::remove_hook(const std::string& panel,
@@ -615,43 +726,27 @@ namespace lfs::python {
         }
 
         auto& hooks = it->second;
-        hooks.erase(
-            std::remove_if(hooks.begin(), hooks.end(),
-                           [&callback](const HookEntry& entry) {
-                               return entry.callback.is(callback);
-                           }),
-            hooks.end());
-
-        LOG_INFO("Removed UI hook: {}:{}", panel, section);
+        hooks.erase(std::remove_if(hooks.begin(), hooks.end(),
+                                   [&callback](const HookEntry& entry) {
+                                       return entry.callback.is(callback);
+                                   }),
+                    hooks.end());
     }
 
     void PyUIHookRegistry::clear_hooks(const std::string& panel, const std::string& section) {
         std::lock_guard lock(mutex_);
 
         if (section.empty()) {
-            // Clear all hooks for this panel
-            std::vector<std::string> to_remove;
             const std::string prefix = panel + ":";
-            for (const auto& [key, _] : hooks_) {
-                if (key.starts_with(prefix)) {
-                    to_remove.push_back(key);
-                }
-            }
-            for (const auto& key : to_remove) {
-                hooks_.erase(key);
-            }
-            LOG_INFO("Cleared all UI hooks for panel: {}", panel);
+            std::erase_if(hooks_, [&prefix](const auto& kv) { return kv.first.starts_with(prefix); });
         } else {
-            const std::string key = panel + ":" + section;
-            hooks_.erase(key);
-            LOG_INFO("Cleared UI hooks: {}:{}", panel, section);
+            hooks_.erase(panel + ":" + section);
         }
     }
 
     void PyUIHookRegistry::clear_all() {
         std::lock_guard lock(mutex_);
         hooks_.clear();
-        LOG_INFO("Cleared all UI hooks");
     }
 
     void PyUIHookRegistry::invoke(const std::string& panel,
@@ -679,14 +774,6 @@ namespace lfs::python {
             return;
         }
 
-        static int invoke_log_count = 0;
-        if (invoke_log_count < 5) {
-            LOG_INFO("PyUIHookRegistry::invoke {}:{} with {} callbacks", panel, section, callbacks_to_invoke.size());
-            invoke_log_count++;
-        }
-
-        // GIL should already be held when calling from Python panels
-        // For C++ invocation, acquire GIL
         nb::gil_scoped_acquire gil;
 
         for (const auto& cb : callbacks_to_invoke) {
@@ -804,7 +891,11 @@ namespace lfs::python {
             .def("pop_id", &PyUILayout::pop_id)
             // Window
             .def("begin_window", &PyUILayout::begin_window, nb::arg("title"), nb::arg("open") = nullptr)
-            .def("end_window", &PyUILayout::end_window);
+            .def("end_window", &PyUILayout::end_window)
+            // RNA-style property widget
+            .def("prop", &PyUILayout::prop, nb::arg("data"), nb::arg("prop_id"),
+                 nb::arg("text") = nb::none(),
+                 "Draw a property widget based on metadata (auto-selects widget type)");
 
         // Theme types
         nb::class_<PyThemePalette>(m, "ThemePalette")
@@ -969,19 +1060,18 @@ namespace lfs::python {
             return PyPanelRegistry::instance().has_panels(space);
         });
 
-        // Register the Python hook invoker callback
+        // Register cleanup callback for proper shutdown
+        set_python_cleanup_callback([]() {
+            PyPanelRegistry::instance().unregister_all();
+            PyUIHookRegistry::instance().clear_all();
+        });
+
         set_python_hook_invoker([](const std::string& panel, const std::string& section, bool prepend) {
             auto& registry = PyUIHookRegistry::instance();
             if (registry.has_hooks(panel, section)) {
-                static int call_count = 0;
-                if (call_count < 5) {
-                    LOG_INFO("Invoking Python hooks for {}:{} (prepend={})", panel, section, prepend);
-                    call_count++;
-                }
                 registry.invoke(panel, section, prepend ? PyHookPosition::Prepend : PyHookPosition::Append);
             }
         });
-        LOG_INFO("Python UI hook system initialized");
     }
 
 } // namespace lfs::python

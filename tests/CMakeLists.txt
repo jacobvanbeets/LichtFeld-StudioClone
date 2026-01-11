@@ -214,6 +214,7 @@ set(TEST_FILES
     test_fastgs_fuzz.cpp
     test_python_io.cpp
     test_extended_unary_ops_vs_torch.cpp
+    test_property_system.cpp
 )
 
 # Build test sources list

@@ -12,6 +12,7 @@
 #include <core/logger.hpp>
 
 #ifdef LFS_BUILD_PYTHON_BINDINGS
+#include "py_panel_registry.hpp"
 #include "training/control/control_boundary.hpp"
 #include <Python.h>
 #include <mutex>
@@ -142,20 +143,50 @@ sys.stderr = OutputCapture(True)
     void finalize() {
 #ifdef LFS_BUILD_PYTHON_BINDINGS
         if (g_main_thread_state && Py_IsInitialized()) {
-            // Restore the main thread state
+            // Restore the main thread state (reacquire GIL)
             PyEval_RestoreThread(g_main_thread_state);
             g_main_thread_state = nullptr;
 
-            // Clear all callbacks that hold Python objects
-            // This prevents dangling nanobind::object references during static destruction
+            // Clear all callbacks that hold Python objects (nanobind::object)
+            // This must be done while GIL is held since nanobind::object
+            // destructor decrements Python reference counts
             lfs::training::ControlBoundary::instance().clear_all();
 
-            // Note: We intentionally don't call Py_Finalize() here.
-            // Calling Py_Finalize with embedded nanobind modules can cause crashes
-            // during static destruction due to cleanup order issues.
-            // Since the program is exiting, the OS will clean up anyway.
-            LOG_INFO("Python callbacks cleared");
+            // Clear frame callback if set
+            clear_frame_callback();
+
+            // Clear Python UI registries that hold nb::object references
+            // These singletons would otherwise destroy nb::objects during
+            // static destruction, after Python is gone
+            invoke_python_cleanup();
+
+            // Run garbage collection to clean up cycles
+            PyGC_Collect();
+
+            // NOTE: We intentionally do NOT call Py_FinalizeEx() here.
+            // nanobind stores type information in static storage that gets
+            // destroyed during C++ static destruction (after main returns).
+            // If we call Py_FinalizeEx(), Python type objects are destroyed,
+            // and then nanobind's static destructors crash trying to access them.
+            //
+            // By not calling Py_FinalizeEx():
+            // 1. All our callbacks and references are properly cleaned up above
+            // 2. Python interpreter stays alive until program exit
+            // 3. OS reclaims all memory when process exits (no actual leak)
+            // 4. No crashes during static destruction
+            //
+            // This is a known limitation of embedding Python with nanobind.
+            // The memory "leak" is only until process exit.
+            LOG_INFO("Python cleanup completed (interpreter left running for safe exit)");
         }
+#endif
+    }
+
+    bool was_python_used() {
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+        return g_main_thread_state != nullptr || Py_IsInitialized();
+#else
+        return false;
 #endif
     }
 

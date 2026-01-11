@@ -124,6 +124,12 @@ namespace lfs::python {
         // Window control (for floating panels)
         bool begin_window(const std::string& title, bool* open = nullptr);
         void end_window();
+
+        // RNA-style property widget (auto-generates from metadata)
+        // Returns (changed, new_value) - draws widget based on property type
+        std::tuple<bool, nb::object> prop(nb::object data,
+                                          const std::string& prop_id,
+                                          std::optional<std::string> text = std::nullopt);
     };
 
     // Panel info stored in registry

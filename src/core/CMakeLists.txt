@@ -22,6 +22,7 @@ set(CORE_SOURCES
         image_io.cpp
         logger.cpp
         parameters.cpp
+        property_registry.cpp
         splat_data.cpp
         splat_data_export.cpp
         splat_data_mirror.cpp

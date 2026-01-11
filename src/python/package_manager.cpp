@@ -300,33 +300,8 @@ namespace lfs::python {
         if (!ensure_venv())
             return {.error = "Failed to create venv"};
 
-        std::string cuda_tag = cuda_version;
-        if (cuda_tag == "auto") {
-            const auto info = core::check_cuda_version();
-            if (info.query_failed) {
-                cuda_tag = "cu128";
-            } else if (info.major >= 12) {
-                if (info.minor >= 8)
-                    cuda_tag = "cu128";
-                else if (info.minor >= 4)
-                    cuda_tag = "cu124";
-                else
-                    cuda_tag = "cu121";
-            } else if (info.major == 11 && info.minor >= 8) {
-                cuda_tag = "cu118";
-            } else {
-                cuda_tag = "cu118";
-            }
-            LOG_INFO("CUDA {}.{} -> {}", info.major, info.minor, cuda_tag);
-        } else if (cuda_tag == "12.8") {
-            cuda_tag = "cu128";
-        } else if (cuda_tag == "12.4") {
-            cuda_tag = "cu124";
-        } else if (cuda_tag == "12.1") {
-            cuda_tag = "cu121";
-        } else if (cuda_tag == "11.8") {
-            cuda_tag = "cu118";
-        }
+        const std::string cuda_tag = core::get_pytorch_cuda_tag(cuda_version);
+        LOG_INFO("PyTorch CUDA tag: {}", cuda_tag);
 
         std::string package = "torch";
         if (!torch_version.empty())
@@ -459,33 +434,8 @@ namespace lfs::python {
             return false;
         }
 
-        std::string cuda_tag = cuda_version;
-        if (cuda_tag == "auto") {
-            const auto info = core::check_cuda_version();
-            if (info.query_failed) {
-                cuda_tag = "cu128";
-            } else if (info.major >= 12) {
-                if (info.minor >= 8)
-                    cuda_tag = "cu128";
-                else if (info.minor >= 4)
-                    cuda_tag = "cu124";
-                else
-                    cuda_tag = "cu121";
-            } else if (info.major == 11 && info.minor >= 8) {
-                cuda_tag = "cu118";
-            } else {
-                cuda_tag = "cu118";
-            }
-            LOG_INFO("CUDA {}.{} -> {}", info.major, info.minor, cuda_tag);
-        } else if (cuda_tag == "12.8") {
-            cuda_tag = "cu128";
-        } else if (cuda_tag == "12.4") {
-            cuda_tag = "cu124";
-        } else if (cuda_tag == "12.1") {
-            cuda_tag = "cu121";
-        } else if (cuda_tag == "11.8") {
-            cuda_tag = "cu118";
-        }
+        const std::string cuda_tag = core::get_pytorch_cuda_tag(cuda_version);
+        LOG_INFO("PyTorch CUDA tag (async): {}", cuda_tag);
 
         std::string package = "torch";
         if (!torch_version.empty())

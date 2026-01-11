@@ -14,6 +14,12 @@
 #include "visualizer/scene/scene.hpp"
 #include "visualizer/visualizer.hpp"
 
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+#include "python/runner.hpp"
+#include "visualizer/gui/panels/python_scripts_panel.hpp"
+#endif
+
+#include <cstdlib>
 #include <cuda_runtime.h>
 #include <rasterization_api.h>
 
@@ -49,6 +55,14 @@ namespace lfs::app {
             }
 
             auto trainer = std::make_unique<training::Trainer>(scene);
+
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+            if (!params->python_scripts.empty()) {
+                trainer->set_python_scripts(params->python_scripts);
+                vis::gui::panels::PythonScriptManagerState::getInstance().setScripts(params->python_scripts);
+            }
+#endif
+
             if (const auto result = trainer->initialize(*params); !result) {
                 LOG_ERROR("Failed to initialize trainer: {}", result.error());
                 return 1;
@@ -58,10 +72,25 @@ namespace lfs::app {
 
             if (const auto result = trainer->train(); !result) {
                 LOG_ERROR("Training error: {}", result.error());
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+                if (!params->python_scripts.empty()) {
+                    python::finalize();
+                    std::_Exit(1);
+                }
+#endif
                 return 1;
             }
 
             LOG_INFO("Headless training completed");
+
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+            if (!params->python_scripts.empty()) {
+                python::finalize();
+                // Use _Exit to skip static destruction and avoid nanobind crashes.
+                // All data is saved, callbacks cleaned up, so this is safe.
+                std::_Exit(0);
+            }
+#endif
             return 0;
         }
 
@@ -97,6 +126,12 @@ namespace lfs::app {
                 LOG_INFO("CUDA-GL interop disabled");
                 lfs::rendering::disableInterop();
             }
+
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+            if (!params->python_scripts.empty()) {
+                vis::gui::panels::PythonScriptManagerState::getInstance().setScripts(params->python_scripts);
+            }
+#endif
 
             if (params->optimization.no_splash) {
                 warmupCuda();

@@ -48,6 +48,12 @@ namespace lfs::python {
     void finalize();
 
     /**
+     * @brief Check if Python was used in this session.
+     * @return true if Python scripts were executed.
+     */
+    bool was_python_used();
+
+    /**
      * @brief Format Python code using black, autopep8, or basic cleanup.
      * @param code The Python code to format.
      * @return Formatted code, or original if formatting fails.

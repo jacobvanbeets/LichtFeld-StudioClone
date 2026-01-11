@@ -83,11 +83,8 @@ namespace lfs::core {
 
 #ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!params->python_scripts.empty()) {
-            // Clean up Python callbacks to avoid dangling references
+            // Clean up Python interpreter and all callbacks
             lfs::python::finalize();
-            // Use _exit to skip static destruction which causes crashes with embedded Python
-            // and nanobind's static data. This is safe because training is complete.
-            _exit(0);
         }
 #endif
 
