@@ -76,6 +76,7 @@ namespace lfs::python {
 
         try {
             nb::module_::import_("lfs_plugins").attr("register_builtin_panels")();
+            get_plugin_manager().attr("load_all")();
         } catch (...) {
         }
     }

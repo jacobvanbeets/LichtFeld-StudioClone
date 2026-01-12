@@ -12,6 +12,9 @@ add_subdirectory(tensor)
 # Contains: memory_arena, lanczos_resize, core_kernels (kmeans, morton)
 add_subdirectory(cuda)
 
+# Event bridge shared library (solves singleton duplication between exe and Python module)
+add_subdirectory(event_bridge)
+
 # Core module - fundamental data structures and utilities
 # Note: lfs_tensor library is now in src/core/tensor
 set(CORE_SOURCES
@@ -74,6 +77,7 @@ endif()
 
 target_link_libraries(lfs_core
     PUBLIC
+        lfs_event_bridge # Shared event bus for Python module interop
         lfs_core_cuda   # Unified CUDA library (tensor, memory arena, kernels, lanczos)
         lfs_geometry    # For events.hpp -> bounding_box.hpp
         TBB::tbb

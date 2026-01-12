@@ -19,6 +19,7 @@
 
 #include "control/command_api.hpp"
 #include "control/control_boundary.hpp"
+#include "core/events.hpp"
 #include "core/logger.hpp"
 #include "python/runner.hpp"
 #include "training/strategies/istrategy.hpp"
@@ -483,6 +484,39 @@ NB_MODULE(lichtfeld, m) {
 
     // Plugin system (pure Python implementation, C++ bindings for convenience)
     lfs::python::register_plugins(m);
+
+    // Logging submodule
+    auto log_module = m.def_submodule("log", "Logging utilities");
+    log_module.def(
+        "info",
+        [](const std::string& msg) { LOG_INFO("[Python] {}", msg); },
+        nb::arg("message"),
+        "Log an info message");
+    log_module.def(
+        "debug",
+        [](const std::string& msg) { LOG_DEBUG("[Python] {}", msg); },
+        nb::arg("message"),
+        "Log a debug message");
+    log_module.def(
+        "warn",
+        [](const std::string& msg) { LOG_WARN("[Python] {}", msg); },
+        nb::arg("message"),
+        "Log a warning message");
+    log_module.def(
+        "error",
+        [](const std::string& msg) { LOG_ERROR("[Python] {}", msg); },
+        nb::arg("message"),
+        "Log an error message");
+
+    auto app_module = m.def_submodule("app", "Application-level operations");
+    app_module.def(
+        "open",
+        [](const std::string& path_str) {
+            namespace cmd = lfs::core::events::cmd;
+            cmd::LoadFile{.path = path_str, .is_dataset = true}.emit();
+        },
+        nb::arg("path"),
+        "Open a dataset or file in the application");
 
     // Get scene function - works in both headless (during hooks) and GUI mode
     m.def(

@@ -34,7 +34,6 @@ namespace lfs::vis::gui {
         void setOnExportConfig(std::function<void()> callback);
         void setOnExit(std::function<void()> callback);
         void setOnShowPythonConsole(std::function<void()> callback);
-        void setOnShowPythonScripts(std::function<void()> callback);
 
         // Permission check for New Project (returns true if clearing is allowed)
         void setCanClearCheck(std::function<bool()> check);
@@ -43,6 +42,7 @@ namespace lfs::vis::gui {
         void renderAboutWindow();
         void renderInputSettingsWindow();
         void renderDebugWindow();
+        void renderPluginInstallPopup();
 
         void setInputBindings(input::InputBindings* bindings) { input_bindings_ = bindings; }
 
@@ -84,13 +84,16 @@ namespace lfs::vis::gui {
         std::function<void()> on_export_config_;
         std::function<void()> on_exit_;
         std::function<void()> on_show_python_console_;
-        std::function<void()> on_show_python_scripts_;
         std::function<bool()> can_clear_;
 
         bool show_about_window_ = false;
         bool show_getting_started_ = false;
         bool show_input_settings_ = false;
         bool show_debug_window_ = false;
+        bool show_plugin_install_popup_ = false;
+        std::string plugin_install_url_;
+        std::string plugin_status_message_;
+        bool plugin_status_is_error_ = false;
 
         input::InputBindings* input_bindings_ = nullptr;
 

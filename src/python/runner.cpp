@@ -132,6 +132,22 @@ sys.stderr = OutputCapture(True)
                 PyList_Insert(sys_path, 0, py_path);
                 Py_DECREF(py_path);
                 LOG_INFO("Added user packages dir to Python path: {}", user_packages.string());
+
+                const std::filesystem::path scripts_dir = std::filesystem::path(PROJECT_ROOT_PATH) / "scripts";
+                if (std::filesystem::exists(scripts_dir)) {
+                    PyObject* const scripts_path = PyUnicode_FromString(scripts_dir.string().c_str());
+                    PyList_Insert(sys_path, 0, scripts_path);
+                    Py_DECREF(scripts_path);
+                    LOG_DEBUG("Added scripts dir to Python path: {}", scripts_dir.string());
+                }
+
+                const std::filesystem::path build_py_dir = std::filesystem::path(PROJECT_ROOT_PATH) / "build" / "src" / "python";
+                if (std::filesystem::exists(build_py_dir)) {
+                    PyObject* const build_path = PyUnicode_FromString(build_py_dir.string().c_str());
+                    PyList_Insert(sys_path, 0, build_path);
+                    Py_DECREF(build_path);
+                    LOG_DEBUG("Added build dir to Python path: {}", build_py_dir.string());
+                }
             }
 
             g_main_thread_state = PyEval_SaveThread();

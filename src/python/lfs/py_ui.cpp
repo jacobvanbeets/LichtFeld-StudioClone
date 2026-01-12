@@ -71,11 +71,16 @@ namespace lfs::python {
         ImGui::TextColored(tuple_to_imvec4(color), "%s", text.c_str());
     }
 
+    void PyUILayout::text_selectable(const std::string& text, const float height) {
+        constexpr ImGuiInputTextFlags FLAGS = ImGuiInputTextFlags_ReadOnly;
+        const float h = height > 0 ? height : ImGui::GetTextLineHeight() * 3;
+        ImGui::InputTextMultiline("##selectable", const_cast<char*>(text.c_str()), text.size() + 1, ImVec2(-1, h), FLAGS);
+    }
+
     void PyUILayout::bullet_text(const std::string& text) {
         ImGui::BulletText("%s", text.c_str());
     }
 
-    // Buttons
     bool PyUILayout::button(const std::string& label, std::tuple<float, float> size) {
         return ImGui::Button(label.c_str(), {std::get<0>(size), std::get<1>(size)});
     }
@@ -156,6 +161,40 @@ namespace lfs::python {
         int v = value;
         bool changed = ImGui::InputInt(label.c_str(), &v);
         return {changed, v};
+    }
+
+    std::tuple<bool, std::string> PyUILayout::path_input(const std::string& label, const std::string& value,
+                                                         const bool folder_mode, const std::string& dialog_title) {
+        char buffer[INPUT_TEXT_BUFFER_SIZE];
+        std::strncpy(buffer, value.c_str(), sizeof(buffer) - 1);
+        buffer[sizeof(buffer) - 1] = '\0';
+
+        const float available = ImGui::GetContentRegionAvail().x;
+        const float button_width = ImGui::CalcTextSize("...").x + ImGui::GetStyle().FramePadding.x * 2;
+        const float input_width = available - button_width - ImGui::GetStyle().ItemSpacing.x;
+
+        ImGui::SetNextItemWidth(input_width);
+        bool changed = ImGui::InputText(label.c_str(), buffer, sizeof(buffer));
+
+        ImGui::SameLine();
+        const std::string btn_id = "...##" + label + "_browse";
+        if (ImGui::Button(btn_id.c_str())) {
+            const std::filesystem::path start_path = value.empty() ? std::filesystem::path{} : std::filesystem::path{value};
+            std::filesystem::path result;
+            if (folder_mode) {
+                result = lfs::vis::gui::SelectFolderDialog(
+                    dialog_title.empty() ? "Select Folder" : dialog_title, start_path);
+            } else {
+                result = lfs::vis::gui::OpenImageFileDialog(start_path);
+            }
+            if (!result.empty()) {
+                std::strncpy(buffer, result.string().c_str(), sizeof(buffer) - 1);
+                buffer[sizeof(buffer) - 1] = '\0';
+                changed = true;
+            }
+        }
+
+        return {changed, std::string(buffer)};
     }
 
     // Color
@@ -624,6 +663,37 @@ namespace lfs::python {
         return false;
     }
 
+    void PyPanelRegistry::draw_single_panel(const std::string& label) {
+        PyPanelInfo panel_copy;
+        bool found = false;
+        {
+            std::lock_guard lock(mutex_);
+            for (const auto& panel : panels_) {
+                if (panel.label == label && panel.enabled) {
+                    panel_copy = panel;
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!found) {
+            LOG_DEBUG("Panel '{}' not found or disabled", label);
+            return;
+        }
+
+        nb::gil_scoped_acquire gil;
+
+        try {
+            PyUILayout layout;
+            panel_copy.panel_instance.attr("draw")(layout);
+        } catch (const nb::python_error& e) {
+            LOG_ERROR("Python panel '{}' Python error: {}", panel_copy.label, e.what());
+        } catch (const std::exception& e) {
+            LOG_ERROR("Python panel '{}' error: {}", panel_copy.label, e.what());
+        }
+    }
+
     std::vector<std::string> PyPanelRegistry::get_panel_names(PanelSpace space) const {
         std::lock_guard lock(mutex_);
         std::vector<std::string> names;
@@ -833,6 +903,7 @@ namespace lfs::python {
             .def("label", &PyUILayout::label, nb::arg("text"))
             .def("heading", &PyUILayout::heading, nb::arg("text"))
             .def("text_colored", &PyUILayout::text_colored, nb::arg("text"), nb::arg("color"))
+            .def("text_selectable", &PyUILayout::text_selectable, nb::arg("text"), nb::arg("height") = 0.0f)
             .def("bullet_text", &PyUILayout::bullet_text, nb::arg("text"))
             // Buttons
             .def("button", &PyUILayout::button, nb::arg("label"), nb::arg("size") = std::make_tuple(0.0f, 0.0f))
@@ -853,6 +924,8 @@ namespace lfs::python {
             .def("input_text", &PyUILayout::input_text, nb::arg("label"), nb::arg("value"))
             .def("input_float", &PyUILayout::input_float, nb::arg("label"), nb::arg("value"))
             .def("input_int", &PyUILayout::input_int, nb::arg("label"), nb::arg("value"))
+            .def("path_input", &PyUILayout::path_input, nb::arg("label"), nb::arg("value"),
+                 nb::arg("folder_mode") = true, nb::arg("dialog_title") = "")
             // Color
             .def("color_edit3", &PyUILayout::color_edit3, nb::arg("label"), nb::arg("color"))
             .def("color_edit4", &PyUILayout::color_edit4, nb::arg("label"), nb::arg("color"))
@@ -1066,13 +1139,34 @@ namespace lfs::python {
             nb::arg("start_dir") = "",
             "Open a file dialog to select an image file. Returns empty string if cancelled.");
 
+        m.def(
+            "open_folder_dialog",
+            [](const std::string& title, const std::string& start_dir) -> std::string {
+                std::filesystem::path start_path;
+                if (!start_dir.empty()) {
+                    start_path = start_dir;
+                }
+                auto result = lfs::vis::gui::SelectFolderDialog(title, start_path);
+                return result.empty() ? "" : result.string();
+            },
+            nb::arg("title") = "Select Folder", nb::arg("start_dir") = "",
+            "Open a folder selection dialog. Returns empty string if cancelled.");
+
         // Register callbacks for the visualizer to call into the Python panel system
         set_panel_draw_callback([](PanelSpace space) {
             PyPanelRegistry::instance().draw_panels(space);
         });
 
+        set_panel_draw_single_callback([](const std::string& label) {
+            PyPanelRegistry::instance().draw_single_panel(label);
+        });
+
         set_panel_has_callback([](PanelSpace space) {
             return PyPanelRegistry::instance().has_panels(space);
+        });
+
+        set_panel_names_callback([](PanelSpace space) {
+            return PyPanelRegistry::instance().get_panel_names(space);
         });
 
         // Register cleanup callback for proper shutdown

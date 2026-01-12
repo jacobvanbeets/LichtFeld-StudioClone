@@ -12,25 +12,50 @@ message(STATUS "Configuring Python components (runner + nanobind module)")
 find_package(Python REQUIRED COMPONENTS Interpreter Development Development.Module Development.SABIModule)
 find_package(nanobind CONFIG REQUIRED)
 
+# Shared library for panel registry - must be shared to avoid duplicate statics
+# when linked into both the main executable and the Python module
+add_library(lfs_panel_registry SHARED
+    py_panel_registry.cpp
+)
+
+target_include_directories(lfs_panel_registry
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(lfs_panel_registry
+    PUBLIC
+        Python::Python
+)
+
+set_target_properties(lfs_panel_registry PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_STANDARD 23
+    CXX_STANDARD_REQUIRED ON
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+# Static library for other Python utilities
 add_library(lfs_python_utils STATIC
     runner.cpp
     package_manager.cpp
     subprocess.cpp
     uv_runner.cpp
-    py_panel_registry.cpp
     ui_hooks.cpp
 )
 
 target_include_directories(lfs_python_utils
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/src # for includes like "python/runner.hpp"
+        ${CMAKE_SOURCE_DIR}/src
 )
 
 target_link_libraries(lfs_python_utils
     PUBLIC
         Python::Python
         lfs_core
+        lfs_panel_registry
 )
 
 target_compile_definitions(lfs_python_utils
@@ -74,12 +99,14 @@ set_target_properties(lfs_py PROPERTIES
 #When building a shared library(nanobind module), all symbols must be resolved at link time
 target_link_libraries(lfs_py PRIVATE
     lfs_core
+    lfs_event_bridge    # Explicit: shared event bus for Python<->C++ events
     lfs_tensor
     lfs_tensor_kernels
     lfs_training
     lfs_geometry
     lfs_io
     lfs_visualizer
+    lfs_panel_registry
     OpenImageIO::OpenImageIO
     CUDA::cudart
     CUDA::cublas

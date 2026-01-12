@@ -22,7 +22,6 @@
 #include "gui/localization_manager.hpp"
 #include "gui/panels/main_panel.hpp"
 #include "gui/panels/python_console_panel.hpp"
-#include "gui/panels/python_scripts_panel.hpp"
 #include "gui/panels/scene_panel.hpp"
 #include "gui/panels/sequencer_settings_panel.hpp"
 #include "gui/panels/tools_panel.hpp"
@@ -131,7 +130,6 @@ namespace lfs::vis::gui {
         window_states_["training_tab"] = false;
         window_states_["export_dialog"] = false;
         window_states_["python_console"] = false;
-        window_states_["python_scripts"] = false;
 
         // Initialize speed overlay state
         speed_overlay_visible_ = false;
@@ -223,10 +221,6 @@ namespace lfs::vis::gui {
 
         menu_bar_->setOnShowPythonConsole([this]() {
             window_states_["python_console"] = !window_states_["python_console"];
-        });
-
-        menu_bar_->setOnShowPythonScripts([this]() {
-            window_states_["python_scripts"] = !window_states_["python_scripts"];
         });
 
         // Export dialog: when user clicks Export, show native file dialog and perform export
@@ -840,14 +834,49 @@ namespace lfs::vis::gui {
                             ImGui::EndChild();
                             ImGui::EndTabItem();
                         }
+                        for (const auto& panel_name : python::get_python_panel_names(python::PanelSpace::SidePanel)) {
+                            if (ImGui::BeginTabItem(panel_name.c_str())) {
+                                const std::string child_id = "##" + panel_name + "Panel";
+                                if (ImGui::BeginChild(child_id.c_str(), {0, 0}, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground)) {
+                                    auto* const sm = ctx.viewer->getSceneManager();
+                                    python::draw_python_panel(panel_name, sm ? &sm->getScene() : nullptr);
+                                }
+                                ImGui::EndChild();
+                                ImGui::EndTabItem();
+                            }
+                        }
                         ImGui::EndTabBar();
                     }
                 } else {
-                    widgets::SectionHeader(LOC(lichtfeld::Strings::Window::RENDERING), ctx.fonts);
-                    if (ImGui::BeginChild("##RenderingPanel", {0, 0}, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground)) {
-                        draw_rendering();
+                    if (python::has_python_panels(python::PanelSpace::SidePanel)) {
+                        if (ImGui::BeginTabBar("##BottomTabsNoTrainer")) {
+                            if (ImGui::BeginTabItem(LOC(lichtfeld::Strings::Window::RENDERING))) {
+                                if (ImGui::BeginChild("##RenderingPanel", {0, 0}, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground)) {
+                                    draw_rendering();
+                                }
+                                ImGui::EndChild();
+                                ImGui::EndTabItem();
+                            }
+                            for (const auto& panel_name : python::get_python_panel_names(python::PanelSpace::SidePanel)) {
+                                if (ImGui::BeginTabItem(panel_name.c_str())) {
+                                    const std::string child_id = "##" + panel_name + "Panel";
+                                    if (ImGui::BeginChild(child_id.c_str(), {0, 0}, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground)) {
+                                        auto* const sm = ctx.viewer->getSceneManager();
+                                        python::draw_python_panel(panel_name, sm ? &sm->getScene() : nullptr);
+                                    }
+                                    ImGui::EndChild();
+                                    ImGui::EndTabItem();
+                                }
+                            }
+                            ImGui::EndTabBar();
+                        }
+                    } else {
+                        widgets::SectionHeader(LOC(lichtfeld::Strings::Window::RENDERING), ctx.fonts);
+                        if (ImGui::BeginChild("##RenderingPanel", {0, 0}, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground)) {
+                            draw_rendering();
+                        }
+                        ImGui::EndChild();
                     }
-                    ImGui::EndChild();
                 }
                 ImGui::PopStyleColor();
             }
@@ -873,9 +902,6 @@ namespace lfs::vis::gui {
 
         // Python console - now rendered as docked panel, handled in renderDockedPythonConsole
         // (floating mode removed)
-
-        if (window_states_["python_scripts"])
-            panels::DrawPythonScriptsPanel(ctx, &window_states_["python_scripts"]);
 
         renderPythonPanels(ctx);
 
@@ -2696,14 +2722,13 @@ namespace lfs::vis::gui {
             }
         });
 
-        // Async dataset import
         cmd::LoadFile::when([this](const auto& cmd) {
             if (!cmd.is_dataset) {
                 return;
             }
             const auto* const data_loader = viewer_->getDataLoader();
             if (!data_loader) {
-                LOG_ERROR("No data loader service");
+                LOG_ERROR("LoadFile: no data loader");
                 return;
             }
             startAsyncImport(cmd.path, data_loader->getParameters());
@@ -2755,7 +2780,6 @@ namespace lfs::vis::gui {
             }
         });
 
-        // Focus training panel when trainer is ready (dataset or checkpoint loaded)
         internal::TrainerReady::when([this](const auto&) {
             focus_training_panel_ = true;
         });

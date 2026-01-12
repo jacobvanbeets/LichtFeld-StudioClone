@@ -26,6 +26,11 @@ using namespace lichtfeld::Strings;
 
 #include <cstdlib>
 
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+#include "python/runner.hpp"
+#include <Python.h>
+#endif
+
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include <httplib.h>
 
@@ -232,11 +237,121 @@ namespace lfs::vis::gui {
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Python Console", "Ctrl+`")) {
-                    if (on_show_python_console_) on_show_python_console_();
+                    if (on_show_python_console_)
+                        on_show_python_console_();
                 }
-                if (ImGui::MenuItem("Python Scripts")) {
-                    if (on_show_python_scripts_) on_show_python_scripts_();
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+                if (ImGui::BeginMenu("Plugins")) {
+                    lfs::python::ensure_initialized();
+                    const PyGILState_STATE gil = PyGILState_Ensure();
+
+                    PyObject* const lf_mod = PyImport_ImportModule("lichtfeld");
+                    if (!lf_mod) {
+                        PyErr_Clear();
+                        ImGui::TextDisabled("Python module not available");
+                    } else {
+                        PyObject* const plugins_mod = PyObject_GetAttrString(lf_mod, "plugins");
+                        if (!plugins_mod) {
+                            PyErr_Clear();
+                            ImGui::TextDisabled("Plugin system unavailable");
+                        } else {
+                            PyObject* const discovered = PyObject_CallMethod(plugins_mod, "discover", "");
+                            if (!discovered || !PyList_Check(discovered)) {
+                                PyErr_Clear();
+                                Py_XDECREF(discovered);
+                                ImGui::TextDisabled("Plugin discovery failed");
+                            } else {
+                                const Py_ssize_t count = PyList_Size(discovered);
+
+                                if (count == 0) {
+                                    ImGui::TextDisabled("No plugins installed");
+                                } else {
+                                    for (Py_ssize_t i = 0; i < count; ++i) {
+                                        PyObject* const info = PyList_GetItem(discovered, i);
+
+                                        PyObject* const py_name = PyObject_GetAttrString(info, "name");
+                                        PyObject* const py_version = PyObject_GetAttrString(info, "version");
+                                        PyObject* const py_desc = PyObject_GetAttrString(info, "description");
+                                        PyObject* const py_path = PyObject_GetAttrString(info, "path");
+                                        PyObject* const py_path_str = py_path ? PyObject_Str(py_path) : nullptr;
+
+                                        const char* const name = py_name ? PyUnicode_AsUTF8(py_name) : "unknown";
+                                        const char* const version = py_version ? PyUnicode_AsUTF8(py_version) : "";
+                                        const char* const desc = py_desc ? PyUnicode_AsUTF8(py_desc) : "";
+                                        const char* const path = py_path_str ? PyUnicode_AsUTF8(py_path_str) : "";
+
+                                        PyObject* const state_obj = PyObject_CallMethod(plugins_mod, "get_state", "s", name);
+                                        bool is_loaded = false;
+                                        if (state_obj && state_obj != Py_None) {
+                                            PyObject* const state_val = PyObject_GetAttrString(state_obj, "value");
+                                            if (state_val) {
+                                                const char* const state_str = PyUnicode_AsUTF8(state_val);
+                                                is_loaded = state_str && strcmp(state_str, "active") == 0;
+                                                Py_DECREF(state_val);
+                                            }
+                                        }
+                                        Py_XDECREF(state_obj);
+
+                                        ImGui::PushID(static_cast<int>(i));
+                                        if (ImGui::BeginMenu(name)) {
+                                            ImGui::TextDisabled("v%s", version);
+                                            if (desc && desc[0]) {
+                                                ImGui::TextWrapped("%s", desc);
+                                            }
+                                            ImGui::TextDisabled("Path: %s", path);
+                                            ImGui::Separator();
+
+                                            if (is_loaded) {
+                                                ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "Active");
+                                                if (ImGui::MenuItem("Reload")) {
+                                                    PyObject_CallMethod(plugins_mod, "reload", "s", name);
+                                                    PyErr_Clear();
+                                                }
+                                                if (ImGui::MenuItem("Unload")) {
+                                                    PyObject_CallMethod(plugins_mod, "unload", "s", name);
+                                                    PyErr_Clear();
+                                                }
+                                            } else {
+                                                if (ImGui::MenuItem("Load")) {
+                                                    PyObject_CallMethod(plugins_mod, "load", "s", name);
+                                                    PyErr_Clear();
+                                                }
+                                            }
+                                            ImGui::Separator();
+                                            if (ImGui::MenuItem("Uninstall")) {
+                                                PyObject_CallMethod(plugins_mod, "uninstall", "s", name);
+                                                PyErr_Clear();
+                                            }
+                                            ImGui::EndMenu();
+                                        }
+                                        ImGui::PopID();
+
+                                        Py_XDECREF(py_path_str);
+                                        Py_XDECREF(py_path);
+                                        Py_XDECREF(py_desc);
+                                        Py_XDECREF(py_version);
+                                        Py_XDECREF(py_name);
+                                    }
+                                }
+                                Py_DECREF(discovered);
+                            }
+                            Py_DECREF(plugins_mod);
+                        }
+                        Py_DECREF(lf_mod);
+                    }
+                    PyErr_Clear();
+
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Install from GitHub...")) {
+                        show_plugin_install_popup_ = true;
+                        plugin_install_url_.clear();
+                        plugin_status_message_.clear();
+                    }
+
+                    PyGILState_Release(gil);
+                    ImGui::EndMenu();
                 }
+#endif
                 ImGui::Separator();
                 if (ImGui::MenuItem(LOC(Menu::View::DEBUG_INFO))) {
                     show_debug_window_ = true;
@@ -270,6 +385,7 @@ namespace lfs::vis::gui {
         renderAboutWindow();
         renderInputSettingsWindow();
         renderDebugWindow();
+        renderPluginInstallPopup();
     }
 
     void MenuBar::openURL(const char* url) {
@@ -553,10 +669,6 @@ namespace lfs::vis::gui {
 
     void MenuBar::setOnShowPythonConsole(std::function<void()> callback) {
         on_show_python_console_ = std::move(callback);
-    }
-
-    void MenuBar::setOnShowPythonScripts(std::function<void()> callback) {
-        on_show_python_scripts_ = std::move(callback);
     }
 
     void MenuBar::setCanClearCheck(std::function<bool()> check) {
@@ -1206,6 +1318,100 @@ namespace lfs::vis::gui {
 
         ImGui::PopStyleColor(5);
         ImGui::PopStyleVar(3);
+    }
+
+    void MenuBar::renderPluginInstallPopup() {
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+        if (!show_plugin_install_popup_)
+            return;
+
+        lfs::python::ensure_initialized();
+
+        const float scale = getDpiScale();
+        const auto& t = theme();
+
+        ImGui::SetNextWindowSize({400.0f * scale, 0}, ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f * scale, 16.0f * scale));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, withAlpha(t.palette.surface, 0.98f));
+
+        if (ImGui::Begin("Install Plugin", &show_plugin_install_popup_,
+                         ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize)) {
+
+            ImGui::Text("GitHub URL or shorthand:");
+            ImGui::SetNextItemWidth(-1);
+
+            char buf[512];
+            strncpy(buf, plugin_install_url_.c_str(), sizeof(buf) - 1);
+            buf[sizeof(buf) - 1] = '\0';
+            if (ImGui::InputText("##url", buf, sizeof(buf))) {
+                plugin_install_url_ = buf;
+            }
+
+            ImGui::Spacing();
+            ImGui::TextDisabled("Examples: owner/repo, github:owner/repo");
+            ImGui::Spacing();
+
+            if (!plugin_status_message_.empty()) {
+                if (plugin_status_is_error_) {
+                    ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s", plugin_status_message_.c_str());
+                } else {
+                    ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.3f, 1.0f), "%s", plugin_status_message_.c_str());
+                }
+                ImGui::Spacing();
+            }
+
+            if (ImGui::Button("Install", ImVec2(100 * scale, 0))) {
+                if (!plugin_install_url_.empty()) {
+                    const PyGILState_STATE gil = PyGILState_Ensure();
+
+                    PyObject* const lf_mod = PyImport_ImportModule("lichtfeld");
+                    if (lf_mod) {
+                        PyObject* const plugins_mod = PyObject_GetAttrString(lf_mod, "plugins");
+                        if (plugins_mod) {
+                            PyObject* const result = PyObject_CallMethod(plugins_mod, "install", "s", plugin_install_url_.c_str());
+                            if (result) {
+                                const char* const name = PyUnicode_AsUTF8(result);
+                                plugin_status_message_ = std::string("Installed: ") + (name ? name : "");
+                                plugin_status_is_error_ = false;
+                                plugin_install_url_.clear();
+                                Py_DECREF(result);
+                            } else {
+                                PyObject *type, *value, *tb;
+                                PyErr_Fetch(&type, &value, &tb);
+                                if (value) {
+                                    PyObject* const str = PyObject_Str(value);
+                                    if (str) {
+                                        plugin_status_message_ = PyUnicode_AsUTF8(str);
+                                        Py_DECREF(str);
+                                    }
+                                    Py_XDECREF(type);
+                                    Py_XDECREF(value);
+                                    Py_XDECREF(tb);
+                                } else {
+                                    plugin_status_message_ = "Install failed";
+                                }
+                                plugin_status_is_error_ = true;
+                            }
+                            Py_DECREF(plugins_mod);
+                        }
+                        Py_DECREF(lf_mod);
+                    }
+                    PyErr_Clear();
+
+                    PyGILState_Release(gil);
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(100 * scale, 0))) {
+                show_plugin_install_popup_ = false;
+            }
+        }
+        ImGui::End();
+
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
+#endif
     }
 
 } // namespace lfs::vis::gui

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #pragma once
-#include "core/event_bus.hpp"
+#include "core/event_bridge/event_bridge.hpp"
 #include "geometry/bounding_box.hpp"
 #include <filesystem>
 #include <glm/glm.hpp>
@@ -22,18 +22,18 @@ namespace lfs::core {
                               SPZ,
                               HTML_VIEWER };
 
-// Clean event macro - uses lfs::core::event::bus()
+// Event macro using shared event bridge (solves singleton duplication between exe and Python module)
 #define EVENT(Name, ...)                                   \
     struct Name {                                          \
         using event_id = Name;                             \
         __VA_ARGS__                                        \
                                                            \
         void emit() const {                                \
-            ::lfs::core::event::bus().emit(*this);         \
+            ::lfs::event::emit(*this);                     \
         }                                                  \
                                                            \
         static auto when(auto&& handler) {                 \
-            return ::lfs::core::event::bus().when<Name>(   \
+            return ::lfs::event::when<Name>(               \
                 std::forward<decltype(handler)>(handler)); \
         }                                                  \
     }
@@ -234,12 +234,12 @@ namespace lfs::core {
     // ============================================================================
     // Convenience functions
     // ============================================================================
-    template <event::Event E>
+    template <::lfs::event::Event E>
     inline void emit(const E& event) {
         event.emit();
     }
 
-    template <event::Event E>
+    template <::lfs::event::Event E>
     inline auto when(auto&& handler) {
         return E::when(std::forward<decltype(handler)>(handler));
     }

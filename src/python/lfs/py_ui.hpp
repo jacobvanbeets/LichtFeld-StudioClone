@@ -46,6 +46,7 @@ namespace lfs::python {
         void label(const std::string& text);
         void heading(const std::string& text);
         void text_colored(const std::string& text, std::tuple<float, float, float, float> color);
+        void text_selectable(const std::string& text, float height = 0);
         void bullet_text(const std::string& text);
 
         // Buttons
@@ -74,6 +75,8 @@ namespace lfs::python {
         std::tuple<bool, std::string> input_text(const std::string& label, const std::string& value);
         std::tuple<bool, float> input_float(const std::string& label, float value);
         std::tuple<bool, int> input_int(const std::string& label, int value);
+        std::tuple<bool, std::string> path_input(const std::string& label, const std::string& value,
+                                                 bool folder_mode = true, const std::string& dialog_title = "");
 
         // Color
         std::tuple<bool, std::tuple<float, float, float>> color_edit3(const std::string& label,
@@ -152,6 +155,7 @@ namespace lfs::python {
         void unregister_all();
 
         void draw_panels(PanelSpace space);
+        void draw_single_panel(const std::string& label);
         bool has_panels(PanelSpace space) const;
 
         std::vector<std::string> get_panel_names(PanelSpace space) const;
