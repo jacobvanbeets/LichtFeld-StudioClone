@@ -12,7 +12,6 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
 namespace lfs::io {
@@ -99,7 +98,8 @@ namespace lfs::io {
                 int frame_step = 1;
                 if (params.mode == ExtractionMode::FPS) {
                     frame_step = static_cast<int>(video_fps / params.fps);
-                    if (frame_step < 1) frame_step = 1;
+                    if (frame_step < 1)
+                        frame_step = 1;
                 } else {
                     frame_step = params.frame_interval;
                 }
@@ -144,23 +144,23 @@ namespace lfs::io {
                                 if (frame_count % frame_step == 0) {
                                     // Convert to RGB
                                     sws_scale(sws_ctx, frame->data, frame->linesize, 0, codec_ctx->height,
-                                             rgb_frame->data, rgb_frame->linesize);
+                                              rgb_frame->data, rgb_frame->linesize);
 
                                     // Save frame
-                                    std::filesystem::path filename = params.output_dir / 
-                                        (std::string("frame_") + std::to_string(saved_count + 1) +
-                                         (params.format == ImageFormat::PNG ? ".png" : ".jpg"));
+                                    std::filesystem::path filename = params.output_dir /
+                                                                     (std::string("frame_") + std::to_string(saved_count + 1) +
+                                                                      (params.format == ImageFormat::PNG ? ".png" : ".jpg"));
 
                                     // Write image using stb_image_write
                                     bool write_success = false;
                                     if (params.format == ImageFormat::PNG) {
                                         write_success = stbi_write_png(filename.string().c_str(), rgb_frame->width, rgb_frame->height, 3,
-                                                      rgb_frame->data[0], rgb_frame->linesize[0]) != 0;
+                                                                       rgb_frame->data[0], rgb_frame->linesize[0]) != 0;
                                     } else {
                                         write_success = stbi_write_jpg(filename.string().c_str(), rgb_frame->width, rgb_frame->height, 3,
-                                                      rgb_frame->data[0], params.jpg_quality) != 0;
+                                                                       rgb_frame->data[0], params.jpg_quality) != 0;
                                     }
-                                    
+
                                     if (!write_success) {
                                         LOG_ERROR("Failed to write frame {}", saved_count + 1);
                                     }
@@ -184,28 +184,28 @@ namespace lfs::io {
                 while (avcodec_receive_frame(codec_ctx, frame) == 0) {
                     if (frame_count % frame_step == 0) {
                         sws_scale(sws_ctx, frame->data, frame->linesize, 0, codec_ctx->height,
-                                 rgb_frame->data, rgb_frame->linesize);
+                                  rgb_frame->data, rgb_frame->linesize);
 
-                        std::filesystem::path filename = params.output_dir / 
-                            (std::string("frame_") + std::to_string(saved_count + 1) +
-                             (params.format == ImageFormat::PNG ? ".png" : ".jpg"));
+                        std::filesystem::path filename = params.output_dir /
+                                                         (std::string("frame_") + std::to_string(saved_count + 1) +
+                                                          (params.format == ImageFormat::PNG ? ".png" : ".jpg"));
 
                         // Write image using stb_image_write
                         bool write_success = false;
                         if (params.format == ImageFormat::PNG) {
                             write_success = stbi_write_png(filename.string().c_str(), rgb_frame->width, rgb_frame->height, 3,
-                                              rgb_frame->data[0], rgb_frame->linesize[0]) != 0;
+                                                           rgb_frame->data[0], rgb_frame->linesize[0]) != 0;
                         } else {
                             write_success = stbi_write_jpg(filename.string().c_str(), rgb_frame->width, rgb_frame->height, 3,
-                                              rgb_frame->data[0], params.jpg_quality) != 0;
+                                                           rgb_frame->data[0], params.jpg_quality) != 0;
                         }
-                        
+
                         if (!write_success) {
                             LOG_ERROR("Failed to write frame {}", saved_count + 1);
                         }
 
                         saved_count++;
-                        
+
                         if (params.progress_callback) {
                             int estimated_total = static_cast<int>(total_frames / frame_step);
                             params.progress_callback(saved_count, estimated_total);
@@ -228,12 +228,18 @@ namespace lfs::io {
 
             } catch (const std::exception& e) {
                 // Cleanup on error
-                if (sws_ctx) sws_freeContext(sws_ctx);
-                if (frame) av_frame_free(&frame);
-                if (rgb_frame) av_frame_free(&rgb_frame);
-                if (packet) av_packet_free(&packet);
-                if (codec_ctx) avcodec_free_context(&codec_ctx);
-                if (fmt_ctx) avformat_close_input(&fmt_ctx);
+                if (sws_ctx)
+                    sws_freeContext(sws_ctx);
+                if (frame)
+                    av_frame_free(&frame);
+                if (rgb_frame)
+                    av_frame_free(&rgb_frame);
+                if (packet)
+                    av_packet_free(&packet);
+                if (codec_ctx)
+                    avcodec_free_context(&codec_ctx);
+                if (fmt_ctx)
+                    avformat_close_input(&fmt_ctx);
 
                 error = e.what();
                 return false;
