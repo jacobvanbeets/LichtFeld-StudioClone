@@ -136,6 +136,13 @@ namespace lfs::vis::gui {
                 extract_params.frame_interval = params.frame_interval;
                 extract_params.format = params.format;
                 extract_params.jpg_quality = params.jpg_quality;
+                extract_params.start_time = params.start_time;
+                extract_params.end_time = params.end_time;
+                extract_params.resolution_mode = params.resolution_mode;
+                extract_params.scale = params.scale;
+                extract_params.custom_width = params.custom_width;
+                extract_params.custom_height = params.custom_height;
+                extract_params.filename_pattern = params.filename_pattern;
 
                 extract_params.progress_callback = [dialog](int current, int total) {
                     dialog->updateProgress(current, total);
@@ -2738,6 +2745,13 @@ namespace lfs::vis::gui {
                ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) ||
                ImGui::GetIO().WantCaptureMouse ||
                ImGui::GetIO().WantCaptureKeyboard;
+    }
+
+    bool GuiManager::needsAnimationFrame() const {
+        if (video_extractor_dialog_ && video_extractor_dialog_->isVideoPlaying()) {
+            return true;
+        }
+        return false;
     }
 
     void GuiManager::setFileSelectedCallback(std::function<void(const std::filesystem::path&, bool)> callback) {

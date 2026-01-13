@@ -416,9 +416,10 @@ namespace lfs::vis {
         const bool is_training = trainer_manager_ && trainer_manager_->isRunning();
         const bool needs_render = rendering_manager_->needsRender();
         const bool continuous_input = input_controller_ && input_controller_->isContinuousInputActive();
+        const bool needs_animation = gui_manager_ && gui_manager_->needsAnimationFrame();
 
-        if (needs_render || continuous_input) {
-            // Dirty or active input (WASD/orbit/pan): poll for smooth interaction
+        if (needs_render || continuous_input || needs_animation) {
+            // Dirty, active input (WASD/orbit/pan), or animation: poll for smooth interaction
             window_manager_->pollEvents();
         } else if (is_training) {
             // Training: short wait for UI responsiveness

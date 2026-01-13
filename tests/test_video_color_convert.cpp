@@ -1,10 +1,10 @@
 /* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <gtest/gtest.h>
-#include <cuda_runtime.h>
-#include <vector>
 #include <cmath>
+#include <cuda_runtime.h>
+#include <gtest/gtest.h>
+#include <vector>
 
 #include "core/tensor.hpp"
 #include "io/video/color_convert.cuh"
@@ -12,17 +12,17 @@
 
 namespace {
 
-constexpr int TOLERANCE = 2;
+    constexpr int TOLERANCE = 2;
 
-// BT.601 reference implementation
-void rgbToYuvReference(const int r, const int g, const int b, int& y, int& u, int& v) {
-    y = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-    u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
-    v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
-    y = std::clamp(y, 0, 255);
-    u = std::clamp(u, 0, 255);
-    v = std::clamp(v, 0, 255);
-}
+    // BT.601 reference implementation
+    void rgbToYuvReference(const int r, const int g, const int b, int& y, int& u, int& v) {
+        y = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
+        u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
+        v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
+        y = std::clamp(y, 0, 255);
+        u = std::clamp(u, 0, 255);
+        v = std::clamp(v, 0, 255);
+    }
 
 } // namespace
 
@@ -177,7 +177,7 @@ TEST_F(VideoColorConvertTest, SolidRedNv12) {
 TEST_F(VideoColorConvertTest, Nv12WithPitch) {
     constexpr int WIDTH = 1920;
     constexpr int HEIGHT = 1080;
-    constexpr int Y_PITCH = ((WIDTH + 255) / 256) * 256;  // Aligned to 256
+    constexpr int Y_PITCH = ((WIDTH + 255) / 256) * 256; // Aligned to 256
     constexpr int UV_PITCH = Y_PITCH;
 
     std::vector<float> rgb_host(WIDTH * HEIGHT * 3);
@@ -312,4 +312,104 @@ TEST_F(VideoColorConvertTest, FullHDExportSimulation) {
 
     cudaFree(y_gpu);
     cudaFree(uv_gpu);
+}
+
+// BT.601 YUV to RGB reference implementation
+void yuvToRgbReference(const int y, const int u, const int v, int& r, int& g, int& b) {
+    const int c = y - 16;
+    const int d = u - 128;
+    const int e = v - 128;
+    r = std::clamp((298 * c + 409 * e + 128) >> 8, 0, 255);
+    g = std::clamp((298 * c - 100 * d - 208 * e + 128) >> 8, 0, 255);
+    b = std::clamp((298 * c + 516 * d + 128) >> 8, 0, 255);
+}
+
+TEST_F(VideoColorConvertTest, Nv12ToRgbSolidRed) {
+    constexpr int WIDTH = 4;
+    constexpr int HEIGHT = 4;
+
+    int y_val, u_val, v_val;
+    rgbToYuvReference(255, 0, 0, y_val, u_val, v_val);
+
+    std::vector<uint8_t> y_host(WIDTH * HEIGHT, static_cast<uint8_t>(y_val));
+    std::vector<uint8_t> uv_host((HEIGHT / 2) * WIDTH);
+    for (int i = 0; i < (HEIGHT / 2) * (WIDTH / 2); ++i) {
+        uv_host[i * 2] = static_cast<uint8_t>(u_val);
+        uv_host[i * 2 + 1] = static_cast<uint8_t>(v_val);
+    }
+
+    uint8_t* y_gpu = nullptr;
+    uint8_t* uv_gpu = nullptr;
+    uint8_t* rgb_gpu = nullptr;
+
+    cudaMalloc(&y_gpu, WIDTH * HEIGHT);
+    cudaMalloc(&uv_gpu, (HEIGHT / 2) * WIDTH);
+    cudaMalloc(&rgb_gpu, WIDTH * HEIGHT * 3);
+
+    cudaMemcpy(y_gpu, y_host.data(), WIDTH * HEIGHT, cudaMemcpyHostToDevice);
+    cudaMemcpy(uv_gpu, uv_host.data(), (HEIGHT / 2) * WIDTH, cudaMemcpyHostToDevice);
+
+    lfs::io::video::nv12ToRgbCuda(y_gpu, uv_gpu, rgb_gpu, WIDTH, HEIGHT, 0, 0, nullptr);
+    cudaDeviceSynchronize();
+
+    std::vector<uint8_t> rgb_host(WIDTH * HEIGHT * 3);
+    cudaMemcpy(rgb_host.data(), rgb_gpu, WIDTH * HEIGHT * 3, cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < WIDTH * HEIGHT; ++i) {
+        EXPECT_NEAR(rgb_host[i * 3], 255, TOLERANCE + 1);
+        EXPECT_NEAR(rgb_host[i * 3 + 1], 0, TOLERANCE + 1);
+        EXPECT_NEAR(rgb_host[i * 3 + 2], 0, TOLERANCE + 1);
+    }
+
+    cudaFree(y_gpu);
+    cudaFree(uv_gpu);
+    cudaFree(rgb_gpu);
+}
+
+TEST_F(VideoColorConvertTest, Nv12ToRgbRoundtrip) {
+    constexpr int WIDTH = 64;
+    constexpr int HEIGHT = 64;
+
+    std::vector<float> rgb_original(WIDTH * HEIGHT * 3);
+    for (int y = 0; y < HEIGHT; ++y) {
+        for (int x = 0; x < WIDTH; ++x) {
+            const int idx = (y * WIDTH + x) * 3;
+            rgb_original[idx] = static_cast<float>(x) / (WIDTH - 1);
+            rgb_original[idx + 1] = static_cast<float>(y) / (HEIGHT - 1);
+            rgb_original[idx + 2] = 0.5f;
+        }
+    }
+
+    float* rgb_float_gpu = nullptr;
+    uint8_t* y_gpu = nullptr;
+    uint8_t* uv_gpu = nullptr;
+    uint8_t* rgb_uint8_gpu = nullptr;
+
+    cudaMalloc(&rgb_float_gpu, WIDTH * HEIGHT * 3 * sizeof(float));
+    cudaMalloc(&y_gpu, WIDTH * HEIGHT);
+    cudaMalloc(&uv_gpu, (HEIGHT / 2) * WIDTH);
+    cudaMalloc(&rgb_uint8_gpu, WIDTH * HEIGHT * 3);
+
+    cudaMemcpy(rgb_float_gpu, rgb_original.data(), WIDTH * HEIGHT * 3 * sizeof(float), cudaMemcpyHostToDevice);
+
+    lfs::io::video::rgbToNv12Cuda(rgb_float_gpu, y_gpu, uv_gpu, WIDTH, HEIGHT, 0, 0, nullptr);
+    lfs::io::video::nv12ToRgbCuda(y_gpu, uv_gpu, rgb_uint8_gpu, WIDTH, HEIGHT, 0, 0, nullptr);
+    cudaDeviceSynchronize();
+
+    std::vector<uint8_t> rgb_result(WIDTH * HEIGHT * 3);
+    cudaMemcpy(rgb_result.data(), rgb_uint8_gpu, WIDTH * HEIGHT * 3, cudaMemcpyDeviceToHost);
+
+    int max_diff = 0;
+    for (int i = 0; i < WIDTH * HEIGHT * 3; ++i) {
+        int expected = static_cast<int>(rgb_original[i] * 255.0f + 0.5f);
+        int diff = std::abs(rgb_result[i] - expected);
+        max_diff = std::max(max_diff, diff);
+    }
+
+    EXPECT_LE(max_diff, 4);
+
+    cudaFree(rgb_float_gpu);
+    cudaFree(y_gpu);
+    cudaFree(uv_gpu);
+    cudaFree(rgb_uint8_gpu);
 }

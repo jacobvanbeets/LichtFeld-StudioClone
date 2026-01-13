@@ -155,6 +155,10 @@ add_library(lfs_io STATIC
         # Video frame extraction
         video_frame_extractor.hpp
         video_frame_extractor.cpp
+
+        # Video playback for preview
+        video_player.hpp
+        video_player.cpp
 )
 
 # Set include directories

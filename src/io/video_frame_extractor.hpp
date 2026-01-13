@@ -11,13 +11,19 @@
 namespace lfs::io {
 
     enum class ExtractionMode {
-        FPS,      // Extract at specific FPS
-        INTERVAL  // Extract every N frames
+        FPS,     // Extract at specific FPS
+        INTERVAL // Extract every N frames
     };
 
     enum class ImageFormat {
         PNG,
         JPG
+    };
+
+    enum class ResolutionMode {
+        Original,
+        Scale,
+        Custom
     };
 
     class VideoFrameExtractor {
@@ -33,7 +39,20 @@ namespace lfs::io {
             int frame_interval = 1;
             ImageFormat format = ImageFormat::PNG;
             int jpg_quality = 95;
-            std::function<void(int, int)> progress_callback;  // (current, total)
+            std::function<void(int, int)> progress_callback; // (current, total)
+
+            // Trim range
+            double start_time = 0.0;
+            double end_time = -1.0; // -1 means end of video
+
+            // Resolution
+            ResolutionMode resolution_mode = ResolutionMode::Original;
+            float scale = 1.0f;
+            int custom_width = 0;
+            int custom_height = 0;
+
+            // Output naming
+            std::string filename_pattern = "frame_%d"; // %d = frame number
         };
 
         bool extract(const Params& params, std::string& error);

@@ -65,6 +65,7 @@ namespace lfs::vis {
             // State queries
             bool wantsInput() const;
             bool isAnyWindowActive() const;
+            bool needsAnimationFrame() const;
 
             // Window visibility
             void showWindow(const std::string& name, bool show = true);
