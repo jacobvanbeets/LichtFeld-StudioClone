@@ -9,6 +9,7 @@
 
 #include "py_cameras.hpp"
 #include "py_io.hpp"
+#include "py_mcp.hpp"
 #include "py_packages.hpp"
 #include "py_params.hpp"
 #include "py_plugins.hpp"
@@ -551,6 +552,9 @@ NB_MODULE(lichtfeld, m) {
     // Plugin system (pure Python implementation, C++ bindings for convenience)
     lfs::python::register_plugins(m);
 
+    // MCP (Model Context Protocol) tool registration
+    lfs::python::register_mcp(m);
+
     // Logging submodule
     auto log_module = m.def_submodule("log", "Logging utilities");
     log_module.def(
@@ -840,5 +844,5 @@ Example:
         // Utilities
         "run", "list_scene", "mat4", "help",
         // Submodules
-        "scene", "io", "packages");
+        "scene", "io", "packages", "mcp");
 }

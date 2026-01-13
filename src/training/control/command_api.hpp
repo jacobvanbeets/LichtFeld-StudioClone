@@ -85,6 +85,11 @@ namespace lfs::training {
         Trainer* trainer = nullptr; // non-owning
     };
 
+    struct LossHistoryPoint {
+        int iteration;
+        float loss;
+    };
+
     class CommandCenter {
     public:
         static CommandCenter& instance();
@@ -94,6 +99,8 @@ namespace lfs::training {
         void update_snapshot(const HookContext& ctx, int max_iterations, bool is_paused, bool is_running, bool stop_requested, TrainingPhase phase);
 
         [[nodiscard]] TrainingSnapshot snapshot() const;
+        [[nodiscard]] std::vector<LossHistoryPoint> loss_history() const;
+        void clear_loss_history();
 
         std::expected<void, std::string> execute(const Command& cmd);
 
@@ -128,6 +135,8 @@ namespace lfs::training {
         mutable std::mutex mutex_;
         TrainingSnapshot snapshot_{};
         std::atomic<TrainingPhase> phase_{TrainingPhase::Idle};
+        std::vector<LossHistoryPoint> loss_history_;
+        int last_recorded_iteration_ = -1;
     };
 
 } // namespace lfs::training

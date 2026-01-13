@@ -162,6 +162,11 @@ namespace lfs::training {
         snapshot_.is_running = is_running;
         snapshot_.stop_requested = stop_requested;
         snapshot_.phase = phase;
+
+        if (ctx.iteration > last_recorded_iteration_ && ctx.loss > 0.0f) {
+            loss_history_.push_back({ctx.iteration, ctx.loss});
+            last_recorded_iteration_ = ctx.iteration;
+        }
     }
 
     TrainingSnapshot CommandCenter::snapshot() const {
@@ -169,6 +174,17 @@ namespace lfs::training {
         TrainingSnapshot snap = snapshot_;
         snap.phase = phase_.load(std::memory_order_relaxed);
         return snap;
+    }
+
+    std::vector<LossHistoryPoint> CommandCenter::loss_history() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return loss_history_;
+    }
+
+    void CommandCenter::clear_loss_history() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        loss_history_.clear();
+        last_recorded_iteration_ = -1;
     }
 
     std::vector<OperationInfo> CommandCenter::operations(std::optional<CommandTarget> target) const {

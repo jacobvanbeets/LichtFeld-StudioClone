@@ -318,6 +318,7 @@ add_subdirectory(src/rendering)  # Rendering module (lfs::rendering namespace)
 add_subdirectory(src/sequencer)  # Sequencer module (lfs::sequencer namespace)
 add_subdirectory(src/visualizer) # Visualizer module (lfs::vis namespace)
 add_subdirectory(src/geometry)   # Geometry utilities
+add_subdirectory(src/mcp)        # MCP server (AI agent integration)
 if(BUILD_PYTHON_BINDINGS)
     add_subdirectory(src/python)
 endif()
@@ -364,6 +365,7 @@ target_link_libraries(${PROJECT_NAME}
         lfs_geometry       # For EuclideanTransform
         lfs_core           # Core library
         lfs_io             # For CacheLoader
+        lfs_mcp            # MCP server for AI agent integration
         fastlfs_backend    # Rasterizer and optimizer
         $<$<BOOL:${BUILD_PYTHON_BINDINGS}>:lfs_python_utils>  # Python integration
 

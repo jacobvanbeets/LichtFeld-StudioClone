@@ -85,6 +85,7 @@ nanobind_add_module(
     lfs/py_params.cpp
     lfs/py_plugins.cpp
     lfs/py_ui.cpp
+    lfs/py_mcp.cpp
 )
 
 set_target_properties(lfs_py PROPERTIES
@@ -106,6 +107,7 @@ target_link_libraries(lfs_py PRIVATE
     lfs_geometry
     lfs_io
     lfs_visualizer
+    lfs_mcp
     lfs_panel_registry
     OpenImageIO::OpenImageIO
     CUDA::cudart

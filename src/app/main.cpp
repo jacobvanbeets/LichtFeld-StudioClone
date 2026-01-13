@@ -5,9 +5,34 @@
 #include "app/application.hpp"
 #include "core/argument_parser.hpp"
 #include "core/converter.hpp"
+#include "core/event_bridge/command_center_bridge.hpp"
 #include "core/logger.hpp"
+#include "mcp/mcp_server.hpp"
+#include "mcp/mcp_training_context.hpp"
+#include "training/control/command_api.hpp"
 
 #include <print>
+
+namespace {
+
+    int runMcpServer(const lfs::core::args::McpMode& mode) {
+        lfs::event::CommandCenterBridge::instance().set(&lfs::training::CommandCenter::instance());
+
+        if (mode.scene_path) {
+            LOG_INFO("MCP server starting with scene: {}", mode.scene_path->string());
+        } else {
+            LOG_INFO("MCP server starting (no scene loaded)");
+        }
+
+        lfs::mcp::McpServer server;
+        server.run_stdio();
+
+        lfs::mcp::TrainingContext::instance().shutdown();
+
+        return 0;
+    }
+
+} // namespace
 
 int main(int argc, char* argv[]) {
     auto result = lfs::core::args::parse_args(argc, argv);
@@ -25,6 +50,8 @@ int main(int argc, char* argv[]) {
             return 0;
         } else if constexpr (std::is_same_v<T, lfs::core::args::ConvertMode>) {
             return lfs::core::run_converter(mode.params);
+        } else if constexpr (std::is_same_v<T, lfs::core::args::McpMode>) {
+            return runMcpServer(mode);
         } else if constexpr (std::is_same_v<T, lfs::core::args::TrainingMode>) {
             LOG_INFO("LichtFeld Studio");
             lfs::app::Application app;
