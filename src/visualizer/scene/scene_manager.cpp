@@ -382,6 +382,10 @@ namespace lfs::vis {
         }
     }
 
+    size_t SceneManager::consolidateNodeModels() {
+        return scene_.consolidateNodeModels();
+    }
+
     void SceneManager::removePLY(const std::string& name, const bool keep_children) {
         const auto& training_name = scene_.getTrainingModelNodeName();
 
@@ -1439,6 +1443,9 @@ namespace lfs::vis {
         state.model_transforms = scene_.getVisibleNodeTransforms();
         state.transform_indices = scene_.getTransformIndices();
         state.visible_splat_count = state.model_transforms.size();
+
+        // Get node visibility mask (for consolidated models)
+        state.node_visibility_mask = scene_.getNodeVisibilityMask();
 
         // Get selection mask
         state.selection_mask = scene_.getSelectionMask();

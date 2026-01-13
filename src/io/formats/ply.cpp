@@ -564,9 +564,6 @@ namespace lfs::io {
                 host_shN.resize(N * Bn * ply_constants::COLOR_CHANNELS);
                 extract_sh_coefficients_to_host(vertex_data, layout, layout.rest_offsets,
                                                 layout.rest_count, ply_constants::COLOR_CHANNELS, host_shN.data());
-            } else {
-                shN_dim1 = ply_constants::SH_DEGREE_3_REST_COEFFS;
-                host_shN.resize(N * ply_constants::SH_DEGREE_3_REST_COEFFS * ply_constants::COLOR_CHANNELS, 0.0f);
             }
 
             // Extract other properties

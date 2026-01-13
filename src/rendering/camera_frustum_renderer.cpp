@@ -163,7 +163,7 @@ namespace lfs::rendering {
             for (int lon = 0; lon <= LON_SEGS; ++lon) {
                 const float phi = static_cast<float>(lon) / LON_SEGS * 2.0f * glm::pi<float>();
                 const glm::vec3 pos(RADIUS * sin_t * std::sin(phi), RADIUS * cos_t, -RADIUS * sin_t * std::cos(phi));
-                const glm::vec2 uv(static_cast<float>(lon) / LON_SEGS, static_cast<float>(lat) / LAT_SEGS);
+                const glm::vec2 uv(static_cast<float>(lon) / LON_SEGS, 1.0f - static_cast<float>(lat) / LAT_SEGS);
                 vertices.push_back({pos, uv});
             }
         }
