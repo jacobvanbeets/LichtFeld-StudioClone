@@ -33,6 +33,7 @@
 #include "io/exporter.hpp"
 #include "io/loader.hpp"
 #include "io/video/video_encoder.hpp"
+#include "io/video_frame_extractor.hpp"
 #include "sequencer/keyframe.hpp"
 
 #include "input/input_controller.hpp"
@@ -123,6 +124,44 @@ namespace lfs::vis::gui {
         resume_checkpoint_popup_ = std::make_unique<ResumeCheckpointPopup>();
         exit_confirmation_popup_ = std::make_unique<ExitConfirmationPopup>();
         disk_space_error_dialog_ = std::make_unique<DiskSpaceErrorDialog>();
+        video_extractor_dialog_ = std::make_unique<lfs::gui::VideoExtractorDialog>();
+
+        // Wire up video extractor dialog callback
+        video_extractor_dialog_->setOnStartExtraction([this](const lfs::gui::VideoExtractionParams& params) {
+            auto* dialog = video_extractor_dialog_.get();
+            std::thread([params, dialog]() {
+                lfs::io::VideoFrameExtractor extractor;
+
+                lfs::io::VideoFrameExtractor::Params extract_params;
+                extract_params.video_path = params.video_path;
+                extract_params.output_dir = params.output_dir;
+                extract_params.mode = params.mode;
+                extract_params.fps = params.fps;
+                extract_params.frame_interval = params.frame_interval;
+                extract_params.format = params.format;
+                extract_params.jpg_quality = params.jpg_quality;
+                extract_params.start_time = params.start_time;
+                extract_params.end_time = params.end_time;
+                extract_params.resolution_mode = params.resolution_mode;
+                extract_params.scale = params.scale;
+                extract_params.custom_width = params.custom_width;
+                extract_params.custom_height = params.custom_height;
+                extract_params.filename_pattern = params.filename_pattern;
+
+                extract_params.progress_callback = [dialog](int current, int total) {
+                    dialog->updateProgress(current, total);
+                };
+
+                std::string error;
+                if (!extractor.extract(extract_params, error)) {
+                    LOG_ERROR("Video frame extraction failed: {}", error);
+                    dialog->setExtractionError(error);
+                } else {
+                    LOG_INFO("Video frame extraction completed successfully");
+                    dialog->setExtractionComplete();
+                }
+            }).detach();
+        });
 
         // Initialize window states
         window_states_["file_browser"] = false;
@@ -131,6 +170,7 @@ namespace lfs::vis::gui {
         window_states_["training_tab"] = false;
         window_states_["export_dialog"] = false;
         window_states_["python_console"] = false;
+        window_states_["video_extractor_dialog"] = false;
 
         // Initialize speed overlay state
         speed_overlay_visible_ = false;
@@ -200,6 +240,10 @@ namespace lfs::vis::gui {
 
         menu_bar_->setOnExport([this]() {
             window_states_["export_dialog"] = true;
+        });
+
+        menu_bar_->setOnExtractVideoFrames([this]() {
+            window_states_["video_extractor_dialog"] = true;
         });
 
         menu_bar_->setOnExportConfig([]() {
@@ -909,8 +953,10 @@ namespace lfs::vis::gui {
             export_dialog_->render(&window_states_["export_dialog"], viewer_->getSceneManager());
         }
 
-        // Python console - now rendered as docked panel, handled in renderDockedPythonConsole
-        // (floating mode removed)
+        // Video extractor dialog
+        if (window_states_["video_extractor_dialog"]) {
+            video_extractor_dialog_->render(&window_states_["video_extractor_dialog"]);
+        }
 
         renderPythonPanels(ctx);
 
@@ -2877,6 +2923,13 @@ namespace lfs::vis::gui {
                ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) ||
                ImGui::GetIO().WantCaptureMouse ||
                ImGui::GetIO().WantCaptureKeyboard;
+    }
+
+    bool GuiManager::needsAnimationFrame() const {
+        if (video_extractor_dialog_ && video_extractor_dialog_->isVideoPlaying()) {
+            return true;
+        }
+        return false;
     }
 
     void GuiManager::setFileSelectedCallback(std::function<void(const std::filesystem::path&, bool)> callback) {

@@ -433,6 +433,30 @@ namespace lfs::vis::gui {
 #endif
     }
 
+    std::filesystem::path OpenVideoFileDialog() {
+#ifdef _WIN32
+        PWSTR filePath = nullptr;
+        COMDLG_FILTERSPEC rgSpec[] = {{L"Video Files", L"*.mp4;*.avi;*.mov;*.mkv;*.webm;*.flv;*.wmv"}, 
+                                      {L"All Files", L"*.*"}};
+
+        if (SUCCEEDED(utils::selectFileNative(filePath, rgSpec, 2))) {
+            std::filesystem::path result(filePath);
+            CoTaskMemFree(filePath);
+            return result;
+        }
+        return {};
+#else
+        const std::string primary = "zenity --file-selection "
+                                    "--file-filter='Video Files|*.mp4 *.avi *.mov *.mkv *.webm *.flv *.wmv' "
+                                    "--file-filter='All Files|*' "
+                                    "2>/dev/null";
+        const std::string fallback = "kdialog --getopenfilename . 'Video Files (*.mp4 *.avi *.mov *.mkv *.webm *.flv *.wmv)' 2>/dev/null";
+
+        const std::string result = runDialogCommand(primary, fallback);
+        return result.empty() ? std::filesystem::path{} : std::filesystem::path(result);
+#endif
+    }
+
     std::filesystem::path SelectFolderDialog(const std::string& title, const std::filesystem::path& startDir) {
 #ifdef _WIN32
         HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);

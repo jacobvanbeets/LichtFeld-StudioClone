@@ -823,8 +823,6 @@ namespace lfs::vis {
     }
 
     void RenderingManager::renderFrame(const RenderContext& context, SceneManager* scene_manager) {
-        framerate_controller_.beginFrame();
-
         if (!initialized_) {
             initialize();
         }
@@ -851,7 +849,6 @@ namespace lfs::vis {
             // Still clear to prevent trails
             glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            framerate_controller_.endFrame();
             return;
         }
 
@@ -951,10 +948,13 @@ namespace lfs::vis {
         if (context.viewport_region) {
             glDisable(GL_SCISSOR_TEST);
         }
-        framerate_controller_.endFrame();
     }
 
     void RenderingManager::doFullRender(const RenderContext& context, SceneManager* scene_manager, const lfs::core::SplatData* model) {
+        const bool count_frame = model != nullptr;
+        if (count_frame) {
+            framerate_controller_.beginFrame();
+        }
         LOG_TIMER_TRACE("RenderingManager::doFullRender");
 
         render_count_++;
@@ -1003,6 +1003,9 @@ namespace lfs::vis {
             }
 
             renderOverlays(context);
+            if (count_frame) {
+                framerate_controller_.endFrame();
+            }
             return;
         }
 
@@ -1107,6 +1110,9 @@ namespace lfs::vis {
                     if (cached_filtered_point_cloud_) {
                         point_cloud_to_render = cached_filtered_point_cloud_.get();
                     } else {
+                        if (count_frame) {
+                            framerate_controller_.endFrame();
+                        }
                         return;
                     }
                     break;
@@ -1195,6 +1201,9 @@ namespace lfs::vis {
 
         // Always render overlays
         renderOverlays(context);
+        if (count_frame) {
+            framerate_controller_.endFrame();
+        }
     }
 
     std::optional<lfs::rendering::SplitViewRequest>

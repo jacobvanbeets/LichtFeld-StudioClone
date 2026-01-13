@@ -425,10 +425,10 @@ namespace lfs::vis {
         const bool is_training = trainer_manager_ && trainer_manager_->isRunning();
         const bool needs_render = rendering_manager_->needsRender();
         const bool continuous_input = input_controller_ && input_controller_->isContinuousInputActive();
-        const bool has_animation = python::has_frame_callback();
+        const bool has_python_animation = python::has_frame_callback();
+        const bool needs_gui_animation = gui_manager_ && gui_manager_->needsAnimationFrame();
 
-        if (needs_render || continuous_input || has_animation) {
-            // Dirty or active input (WASD/orbit/pan): poll for smooth interaction
+        if (needs_render || continuous_input || has_python_animation || needs_gui_animation) {
             window_manager_->pollEvents();
         } else if (is_training) {
             // Training: short wait for UI responsiveness

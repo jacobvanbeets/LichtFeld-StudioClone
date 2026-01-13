@@ -32,6 +32,7 @@ namespace lfs::vis::gui {
         void setOnImportConfig(std::function<void()> callback);
         void setOnExport(std::function<void()> callback);
         void setOnExportConfig(std::function<void()> callback);
+        void setOnExtractVideoFrames(std::function<void()> callback);
         void setOnExit(std::function<void()> callback);
         void setOnShowPythonConsole(std::function<void()> callback);
 
@@ -82,6 +83,7 @@ namespace lfs::vis::gui {
         std::function<void()> on_import_config_;
         std::function<void()> on_export_;
         std::function<void()> on_export_config_;
+        std::function<void()> on_extract_video_frames_;
         std::function<void()> on_exit_;
         std::function<void()> on_show_python_console_;
         std::function<bool()> can_clear_;

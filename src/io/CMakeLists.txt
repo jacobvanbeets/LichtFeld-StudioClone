@@ -153,6 +153,14 @@ add_library(lfs_io STATIC
         nvcodec_image_loader.cpp
         pipelined_image_loader.cpp
         stb_image_impl.cpp
+
+        # Video frame extraction
+        video_frame_extractor.hpp
+        video_frame_extractor.cpp
+
+        # Video playback for preview
+        video_player.hpp
+        video_player.cpp
 )
 
 # Set include directories
@@ -222,6 +230,7 @@ target_link_libraries(lfs_io
         lfs_io_cuda            # IO-specific CUDA kernels (morton, k-means)
         lfs_core_cuda          # Core CUDA utilities (lanczos_resize for nvcodec)
         spz_lib                # Niantic SPZ compressed format
+        PkgConfig::FFMPEG      # FFmpeg for video frame extraction
 )
 
 # Link nvImageCodec if available
