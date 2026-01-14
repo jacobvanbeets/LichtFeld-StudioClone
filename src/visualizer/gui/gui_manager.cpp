@@ -2939,7 +2939,7 @@ namespace lfs::vis::gui {
 
             ImGui::Spacing();
             if (!path_str.empty()) {
-                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%s", path_str.c_str());
+                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Path: %s", path_str.c_str());
             }
             ImGui::Spacing();
 
@@ -2960,7 +2960,9 @@ namespace lfs::vis::gui {
 
             if (!error.empty()) {
                 ImGui::Spacing();
+                ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + overlay_width - ImGui::GetStyle().WindowPadding.x * 2.0f);
                 ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", error.c_str());
+                ImGui::PopTextWrapPos();
             }
 
             if (show_completion && !is_active) {
