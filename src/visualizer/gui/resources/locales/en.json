@@ -266,7 +266,8 @@
     "no_actions": "(No actions)",
     "no_groups_available": "No groups available",
     "delete_node": "Delete",
-    "cannot_delete_training": "Cannot delete while training is in progress"
+    "cannot_delete_training": "Cannot delete while training is in progress",
+    "background": "Background"
   },
 
   "export": {
@@ -647,7 +648,17 @@
     "sparsity": "Sparsity:",
     "gut": "GUT:",
     "mip_filter": "Mip Filter:",
+    "bg_settings": "Background Settings",
+    "bg_mode": "Mode:",
+    "bg_mode_color": "Color",
+    "bg_mode_modulation": "Modulation",
+    "bg_mode_image": "Image",
+    "bg_mode_random": "Random",
     "bg_modulation": "BG Modulation:",
+    "bg_color": "Color:",
+    "bg_image": "Image:",
+    "bg_image_browse": "Browse...",
+    "bg_image_clear": "Clear",
     "evaluation": "Evaluation:",
     "init_opacity": "Init Opacity:",
     "init_scaling": "Init Scaling:",

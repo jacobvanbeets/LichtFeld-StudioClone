@@ -117,6 +117,7 @@ namespace lfs::vis {
             // PLY scene graph rendering - queries Scene directly
             void renderPLYSceneGraph(const UIContext* ctx);
             void renderModelsFolder(const Scene& scene, const std::unordered_set<std::string>& selected_names);
+            void renderBackgroundSection();
             void renderModelNode(const SceneNode& node, const Scene& scene,
                                  const std::unordered_set<std::string>& selected_names, int depth = 0);
             void renderNodeChildren(NodeId parent_id, const Scene& scene,

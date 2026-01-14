@@ -39,7 +39,7 @@ namespace lichtfeld::Strings {
             inline constexpr const char* GETTING_STARTED = "menu.help.getting_started";
             inline constexpr const char* ABOUT = "menu.help.about";
         } // namespace Help
-    } // namespace Menu
+    }     // namespace Menu
 
     namespace Window {
         inline constexpr const char* GETTING_STARTED = "window.getting_started";
@@ -99,7 +99,7 @@ namespace lichtfeld::Strings {
             inline constexpr const char* ENABLED = "about.interop.enabled";
             inline constexpr const char* DISABLED = "about.interop.disabled";
         } // namespace Interop
-    } // namespace About
+    }     // namespace About
 
     namespace Training {
         namespace Section {
@@ -287,7 +287,7 @@ namespace lichtfeld::Strings {
             inline constexpr const char* ADD = "training.button.add";
             inline constexpr const char* REMOVE = "training.button.remove";
         } // namespace Button
-    } // namespace Training
+    }     // namespace Training
 
     namespace Scene {
         inline constexpr const char* ADD_PLY = "scene.add_ply";
@@ -321,6 +321,7 @@ namespace lichtfeld::Strings {
         inline constexpr const char* NO_GROUPS_AVAILABLE = "scene.no_groups_available";
         inline constexpr const char* DELETE_NODE = "scene.delete_node";
         inline constexpr const char* CANNOT_DELETE_TRAINING = "scene.cannot_delete_training";
+        inline constexpr const char* BACKGROUND = "scene.background";
     } // namespace Scene
 
     namespace Export {
@@ -713,7 +714,17 @@ namespace lichtfeld::Strings {
         inline constexpr const char* SPARSITY = "training_params.sparsity";
         inline constexpr const char* GUT = "training_params.gut";
         inline constexpr const char* MIP_FILTER = "training_params.mip_filter";
+        inline constexpr const char* BG_SETTINGS = "training_params.bg_settings";
+        inline constexpr const char* BG_MODE = "training_params.bg_mode";
+        inline constexpr const char* BG_MODE_COLOR = "training_params.bg_mode_color";
+        inline constexpr const char* BG_MODE_MODULATION = "training_params.bg_mode_modulation";
+        inline constexpr const char* BG_MODE_IMAGE = "training_params.bg_mode_image";
+        inline constexpr const char* BG_MODE_RANDOM = "training_params.bg_mode_random";
         inline constexpr const char* BG_MODULATION = "training_params.bg_modulation";
+        inline constexpr const char* BG_COLOR = "training_params.bg_color";
+        inline constexpr const char* BG_IMAGE = "training_params.bg_image";
+        inline constexpr const char* BG_IMAGE_BROWSE = "training_params.bg_image_browse";
+        inline constexpr const char* BG_IMAGE_CLEAR = "training_params.bg_image_clear";
         inline constexpr const char* EVALUATION = "training_params.evaluation";
         inline constexpr const char* INIT_OPACITY = "training_params.init_opacity";
         inline constexpr const char* INIT_SCALING = "training_params.init_scaling";

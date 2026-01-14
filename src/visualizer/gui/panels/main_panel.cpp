@@ -8,6 +8,10 @@
 #include "core/events.hpp"
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
+#include "core/parameter_manager.hpp"
+#include "core/parameters.hpp"
+#include "core/path_utils.hpp"
+#include "core/services.hpp"
 #include "gui/dpi_scale.hpp"
 #include "gui/localization_manager.hpp"
 #include "gui/panels/main_panel.hpp"
@@ -15,6 +19,7 @@
 #include "gui/panels/training_panel.hpp"
 #include "gui/string_keys.hpp"
 #include "gui/ui_widgets.hpp"
+#include "gui/utils/windows_utils.hpp"
 #include "internal/resource_paths.hpp"
 #include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
@@ -31,6 +36,7 @@ namespace lfs::vis::gui::panels {
 
     using namespace lfs::core::events;
     using namespace lichtfeld::Strings;
+    using lfs::vis::services;
 
     namespace {
         // Selection group icons (Tabler Icons - MIT license)
@@ -138,6 +144,7 @@ namespace lfs::vis::gui::panels {
         // Background Color
         ImGui::Separator();
         ImGui::Text("%s", LOC(MainPanel::BACKGROUND));
+
         float bg_color[3] = {settings.background_color.x, settings.background_color.y, settings.background_color.z};
         if (ImGui::ColorEdit3(LOC(MainPanel::COLOR), bg_color)) {
             settings.background_color = glm::vec3(bg_color[0], bg_color[1], bg_color[2]);

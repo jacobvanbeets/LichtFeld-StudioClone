@@ -1424,15 +1424,99 @@ namespace lfs::vis::gui::panels {
                 widgets::SetThemedTooltip("%s", LOC(Training::Tooltip::MIP_FILTER));
             }
 
-            // BG Modulation
+            // Background Mode
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::Text("%s", LOC(TrainingParams::BG_MODULATION));
+            ImGui::Text("%s", LOC(MainPanel::BACKGROUND));
             ImGui::TableNextColumn();
-            if (can_edit) {
-                ImGui::Checkbox("##bg_modulation", &opt_params.bg_modulation);
-            } else {
-                ImGui::Text("%s", opt_params.bg_modulation ? "Enabled" : "Disabled");
+            {
+                const char* bg_mode_items[] = {
+                    LOC(TrainingParams::BG_MODE_COLOR),
+                    LOC(TrainingParams::BG_MODE_MODULATION),
+                    LOC(TrainingParams::BG_MODE_IMAGE),
+                    LOC(TrainingParams::BG_MODE_RANDOM)};
+                int bg_mode_idx = 0;
+                switch (opt_params.bg_mode) {
+                case lfs::core::param::BackgroundMode::Modulation:
+                    bg_mode_idx = 1;
+                    break;
+                case lfs::core::param::BackgroundMode::Image:
+                    bg_mode_idx = 2;
+                    break;
+                case lfs::core::param::BackgroundMode::Random:
+                    bg_mode_idx = 3;
+                    break;
+                default:
+                    bg_mode_idx = 0;
+                    break;
+                }
+                ImGui::BeginDisabled(!can_edit);
+                if (ImGui::Combo("##bg_mode", &bg_mode_idx, bg_mode_items, IM_ARRAYSIZE(bg_mode_items))) {
+                    switch (bg_mode_idx) {
+                    case 1:
+                        opt_params.bg_mode = lfs::core::param::BackgroundMode::Modulation;
+                        opt_params.bg_modulation = true;
+                        break;
+                    case 2:
+                        opt_params.bg_mode = lfs::core::param::BackgroundMode::Image;
+                        opt_params.bg_modulation = false;
+                        break;
+                    case 3:
+                        opt_params.bg_mode = lfs::core::param::BackgroundMode::Random;
+                        opt_params.bg_modulation = false;
+                        break;
+                    default:
+                        opt_params.bg_mode = lfs::core::param::BackgroundMode::SolidColor;
+                        opt_params.bg_modulation = false;
+                        break;
+                    }
+                }
+                ImGui::EndDisabled();
+            }
+
+            // Background Color - only for SolidColor/Modulation modes
+            if (opt_params.bg_mode == lfs::core::param::BackgroundMode::SolidColor ||
+                opt_params.bg_mode == lfs::core::param::BackgroundMode::Modulation) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("%s", LOC(TrainingParams::BG_COLOR));
+                ImGui::TableNextColumn();
+                ImGui::BeginDisabled(!can_edit);
+                float bg_color[3] = {opt_params.bg_color[0], opt_params.bg_color[1], opt_params.bg_color[2]};
+                if (ImGui::ColorEdit3("##bg_color", bg_color, ImGuiColorEditFlags_NoInputs)) {
+                    opt_params.bg_color = {bg_color[0], bg_color[1], bg_color[2]};
+                }
+                ImGui::EndDisabled();
+            }
+
+            // Background Image path - only for Image mode
+            if (opt_params.bg_mode == lfs::core::param::BackgroundMode::Image) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("%s", LOC(TrainingParams::BG_IMAGE));
+                ImGui::TableNextColumn();
+                const std::string display_name = opt_params.bg_image_path.empty()
+                                                     ? "(none)"
+                                                     : lfs::core::path_to_utf8(opt_params.bg_image_path.filename());
+                ImGui::Text("%s", display_name.c_str());
+                if (!opt_params.bg_image_path.empty() && ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", lfs::core::path_to_utf8(opt_params.bg_image_path).c_str());
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(!can_edit);
+                if (ImGui::Button(LOC(TrainingParams::BG_IMAGE_BROWSE))) {
+                    const auto selected = OpenImageFileDialog();
+                    if (!selected.empty()) {
+                        opt_params.bg_image_path = selected;
+                    }
+                }
+                if (!opt_params.bg_image_path.empty()) {
+                    ImGui::SameLine();
+                    if (ImGui::Button(LOC(TrainingParams::BG_IMAGE_CLEAR))) {
+                        opt_params.bg_image_path.clear();
+                    }
+                }
+                ImGui::EndDisabled();
             }
             if (ImGui::IsItemHovered()) {
                 widgets::SetThemedTooltip("%s", LOC(Training::Tooltip::BG_MODULATION));

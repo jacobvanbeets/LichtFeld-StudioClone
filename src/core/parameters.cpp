@@ -91,6 +91,13 @@ namespace lfs::core {
             opt_json["prune_ratio"] = prune_ratio;
             opt_json["bg_modulation"] = bg_modulation;
 
+            static constexpr const char* BG_MODE_NAMES[] = {"solid_color", "modulation", "image", "random"};
+            opt_json["bg_mode"] = BG_MODE_NAMES[static_cast<int>(bg_mode)];
+            opt_json["bg_color"] = {bg_color[0], bg_color[1], bg_color[2]};
+            if (!bg_image_path.empty()) {
+                opt_json["bg_image_path"] = path_to_utf8(bg_image_path);
+            }
+
             // Mask parameters
             static constexpr const char* MASK_MODE_NAMES[] = {"none", "segment", "ignore", "alpha_consistent"};
             opt_json["mask_mode"] = MASK_MODE_NAMES[static_cast<int>(mask_mode)];
@@ -261,6 +268,25 @@ namespace lfs::core {
             }
             if (json.contains("gut")) {
                 params.gut = json["gut"];
+            }
+
+            if (json.contains("bg_mode")) {
+                const std::string mode = json["bg_mode"];
+                if (mode == "solid_color") {
+                    params.bg_mode = BackgroundMode::SolidColor;
+                } else if (mode == "modulation") {
+                    params.bg_mode = BackgroundMode::Modulation;
+                } else if (mode == "image") {
+                    params.bg_mode = BackgroundMode::Image;
+                } else if (mode == "random") {
+                    params.bg_mode = BackgroundMode::Random;
+                }
+            }
+            if (json.contains("bg_color") && json["bg_color"].is_array() && json["bg_color"].size() == 3) {
+                params.bg_color = {json["bg_color"][0], json["bg_color"][1], json["bg_color"][2]};
+            }
+            if (json.contains("bg_image_path")) {
+                params.bg_image_path = utf8_to_path(json["bg_image_path"].get<std::string>());
             }
 
             // Mask parameters

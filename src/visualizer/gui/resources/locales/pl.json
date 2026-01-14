@@ -266,7 +266,8 @@
     "no_actions": "(Brak akcji)",
     "no_groups_available": "Brak dostępnych grup",
     "delete_node": "Usuń",
-    "cannot_delete_training": "Nie można usunąć podczas treningu"
+    "cannot_delete_training": "Nie można usunąć podczas treningu",
+    "background": "Tło"
   },
 
   "export": {
@@ -632,9 +633,19 @@
     "mask_threshold": "  Mask Threshold:",
     "sparsity": "Sparsity:",
     "gut": "GUT:",
-    "mip_filter": "Mip Filter:",
-    "bg_modulation": "BG Modulation:",
-    "evaluation": "Evaluation:",
+    "mip_filter": "Filtr Mip:",
+    "bg_settings": "Ustawienia Tła",
+    "bg_mode": "Tryb:",
+    "bg_mode_color": "Kolor",
+    "bg_mode_modulation": "Modulacja",
+    "bg_mode_image": "Obraz",
+    "bg_mode_random": "Losowy",
+    "bg_modulation": "Modulacja Tła:",
+    "bg_color": "Kolor:",
+    "bg_image": "Obraz:",
+    "bg_image_browse": "Przeglądaj...",
+    "bg_image_clear": "Wyczyść",
+    "evaluation": "Ewaluacja:",
     "init_opacity": "Init Opacity:",
     "init_scaling": "Init Scaling:",
     "random_init": "Random Init:",

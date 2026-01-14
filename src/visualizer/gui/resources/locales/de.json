@@ -266,7 +266,8 @@
     "no_actions": "(Keine Aktionen)",
     "no_groups_available": "Keine Gruppen verfügbar",
     "delete_node": "Löschen",
-    "cannot_delete_training": "Löschen während des Trainings nicht möglich"
+    "cannot_delete_training": "Löschen während des Trainings nicht möglich",
+    "background": "Hintergrund"
   },
 
   "export": {
@@ -633,7 +634,17 @@
     "sparsity": "Sparsity:",
     "gut": "GUT:",
     "mip_filter": "Mip Filter:",
+    "bg_settings": "Hintergrund-Einstellungen",
+    "bg_mode": "Modus:",
+    "bg_mode_color": "Farbe",
+    "bg_mode_modulation": "Modulation",
+    "bg_mode_image": "Bild",
+    "bg_mode_random": "Zufällig",
     "bg_modulation": "HG Modulation:",
+    "bg_color": "Farbe:",
+    "bg_image": "Bild:",
+    "bg_image_browse": "Durchsuchen...",
+    "bg_image_clear": "Löschen",
     "evaluation": "Evaluierung:",
     "init_opacity": "Init Opazität:",
     "init_scaling": "Init Skalierung:",

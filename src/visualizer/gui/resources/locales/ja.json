@@ -266,7 +266,8 @@
     "no_actions": "(操作なし)",
     "no_groups_available": "利用可能なグループがありません",
     "delete_node": "削除",
-    "cannot_delete_training": "トレーニング中は削除できません"
+    "cannot_delete_training": "トレーニング中は削除できません",
+    "background": "背景"
   },
 
   "export": {
@@ -632,9 +633,19 @@
     "mask_threshold": "  Mask Threshold:",
     "sparsity": "Sparsity:",
     "gut": "GUT:",
-    "mip_filter": "Mip Filter:",
-    "bg_modulation": "BG Modulation:",
-    "evaluation": "Evaluation:",
+    "mip_filter": "Mipフィルター:",
+    "bg_settings": "背景設定",
+    "bg_mode": "モード:",
+    "bg_mode_color": "色",
+    "bg_mode_modulation": "変調",
+    "bg_mode_image": "画像",
+    "bg_mode_random": "ランダム",
+    "bg_modulation": "背景変調:",
+    "bg_color": "色:",
+    "bg_image": "画像:",
+    "bg_image_browse": "参照...",
+    "bg_image_clear": "クリア",
+    "evaluation": "評価:",
     "init_opacity": "Init Opacity:",
     "init_scaling": "Init Scaling:",
     "random_init": "Random Init:",

@@ -266,7 +266,8 @@
     "no_actions": "(Geen acties)",
     "no_groups_available": "Geen groepen beschikbaar",
     "delete_node": "Verwijderen",
-    "cannot_delete_training": "Kan niet verwijderen tijdens actieve training"
+    "cannot_delete_training": "Kan niet verwijderen tijdens training",
+    "background": "Achtergrond"
   },
 
   "export": {
@@ -633,8 +634,18 @@
     "sparsity": "Sparsity:",
     "gut": "GUT:",
     "mip_filter": "Mip Filter:",
-    "bg_modulation": "BG Modulation:",
-    "evaluation": "Evaluation:",
+    "bg_settings": "Achtergrond Instellingen",
+    "bg_mode": "Modus:",
+    "bg_mode_color": "Kleur",
+    "bg_mode_modulation": "Modulatie",
+    "bg_mode_image": "Afbeelding",
+    "bg_mode_random": "Willekeurig",
+    "bg_modulation": "Achtergrond Modulatie:",
+    "bg_color": "Kleur:",
+    "bg_image": "Afbeelding:",
+    "bg_image_browse": "Bladeren...",
+    "bg_image_clear": "Wissen",
+    "evaluation": "Evaluatie:",
     "init_opacity": "Init Opacity:",
     "init_scaling": "Init Scaling:",
     "random_init": "Random Init:",

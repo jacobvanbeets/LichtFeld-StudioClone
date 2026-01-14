@@ -266,7 +266,8 @@
     "no_actions": "(无操作)",
     "no_groups_available": "没有可用的组",
     "delete_node": "删除",
-    "cannot_delete_training": "训练进行中无法删除"
+    "cannot_delete_training": "训练进行中无法删除",
+    "background": "背景"
   },
 
   "export": {
@@ -632,9 +633,19 @@
     "mask_threshold": "  Mask Threshold:",
     "sparsity": "Sparsity:",
     "gut": "GUT:",
-    "mip_filter": "Mip Filter:",
-    "bg_modulation": "BG Modulation:",
-    "evaluation": "Evaluation:",
+    "mip_filter": "Mip过滤器:",
+    "bg_settings": "背景设置",
+    "bg_mode": "模式:",
+    "bg_mode_color": "颜色",
+    "bg_mode_modulation": "调制",
+    "bg_mode_image": "图像",
+    "bg_mode_random": "随机",
+    "bg_modulation": "背景调制:",
+    "bg_color": "颜色:",
+    "bg_image": "图像:",
+    "bg_image_browse": "浏览...",
+    "bg_image_clear": "清除",
+    "evaluation": "评估:",
     "init_opacity": "Init Opacity:",
     "init_scaling": "Init Scaling:",
     "random_init": "Random Init:",
