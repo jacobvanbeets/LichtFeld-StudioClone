@@ -2,8 +2,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "timeline.hpp"
-#include "interpolation.hpp"
 #include "core/logger.hpp"
+#include "interpolation.hpp"
 #include <algorithm>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -13,7 +13,7 @@ namespace lfs::sequencer {
     namespace {
         constexpr int JSON_VERSION = 1;
         constexpr int DEFAULT_EASING_VALUE = 3; // EASE_IN_OUT
-    }
+    }                                           // namespace
 
     void Timeline::addKeyframe(const Keyframe& keyframe) {
         keyframes_.push_back(keyframe);
@@ -21,26 +21,31 @@ namespace lfs::sequencer {
     }
 
     void Timeline::removeKeyframe(const size_t index) {
-        if (index >= keyframes_.size()) return;
+        if (index >= keyframes_.size())
+            return;
         keyframes_.erase(keyframes_.begin() + static_cast<ptrdiff_t>(index));
     }
 
     void Timeline::setKeyframeTime(const size_t index, const float new_time, const bool sort) {
-        if (index >= keyframes_.size()) return;
+        if (index >= keyframes_.size())
+            return;
         keyframes_[index].time = new_time;
-        if (sort) sortKeyframes();
+        if (sort)
+            sortKeyframes();
     }
 
     void Timeline::updateKeyframe(const size_t index, const glm::vec3& position,
-                                   const glm::quat& rotation, const float fov) {
-        if (index >= keyframes_.size()) return;
+                                  const glm::quat& rotation, const float fov) {
+        if (index >= keyframes_.size())
+            return;
         keyframes_[index].position = position;
         keyframes_[index].rotation = rotation;
         keyframes_[index].fov = fov;
     }
 
     void Timeline::setKeyframeEasing(const size_t index, const EasingType easing) {
-        if (index >= keyframes_.size()) return;
+        if (index >= keyframes_.size())
+            return;
         keyframes_[index].easing = easing;
     }
 
@@ -83,13 +88,11 @@ namespace lfs::sequencer {
             j["keyframes"] = nlohmann::json::array();
 
             for (const auto& kf : keyframes_) {
-                j["keyframes"].push_back({
-                    {"time", kf.time},
-                    {"position", {kf.position.x, kf.position.y, kf.position.z}},
-                    {"rotation", {kf.rotation.w, kf.rotation.x, kf.rotation.y, kf.rotation.z}},
-                    {"fov", kf.fov},
-                    {"easing", static_cast<int>(kf.easing)}
-                });
+                j["keyframes"].push_back({{"time", kf.time},
+                                          {"position", {kf.position.x, kf.position.y, kf.position.z}},
+                                          {"rotation", {kf.rotation.w, kf.rotation.x, kf.rotation.y, kf.rotation.z}},
+                                          {"fov", kf.fov},
+                                          {"easing", static_cast<int>(kf.easing)}});
             }
 
             std::ofstream file(path);

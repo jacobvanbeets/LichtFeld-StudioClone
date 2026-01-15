@@ -111,9 +111,9 @@ namespace lfs::training {
         void deserialize(std::istream& is);
         void reserve_capacity(size_t capacity);
 
-    // Control notifications for external mutations
-    void reset_state(ParamType type);
-    void invalidate_state(ParamType type);
+        // Control notifications for external mutations
+        void reset_state(ParamType type);
+        void invalidate_state(ParamType type);
 
     private:
         AdamConfig config_;

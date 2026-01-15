@@ -6,12 +6,13 @@
 
 namespace lfs::vis {
 
-namespace {
-constexpr float LOOP_KEYFRAME_OFFSET = 1.0f;
-} // namespace
+    namespace {
+        constexpr float LOOP_KEYFRAME_OFFSET = 1.0f;
+    } // namespace
 
     void SequencerController::play() {
-        if (timeline_.empty()) return;
+        if (timeline_.empty())
+            return;
         if (state_ == PlaybackState::STOPPED) {
             playhead_ = timeline_.startTime();
             reverse_direction_ = false;
@@ -68,7 +69,8 @@ constexpr float LOOP_KEYFRAME_OFFSET = 1.0f;
     }
 
     void SequencerController::addLoopKeyframe() {
-        if (timeline_.size() < 2) return;
+        if (timeline_.size() < 2)
+            return;
         removeLoopKeyframe();
 
         const auto& first = timeline_.keyframes().front();
@@ -93,7 +95,8 @@ constexpr float LOOP_KEYFRAME_OFFSET = 1.0f;
     }
 
     void SequencerController::updateLoopKeyframe() {
-        if (loop_mode_ != LoopMode::LOOP || timeline_.size() < 2) return;
+        if (loop_mode_ != LoopMode::LOOP || timeline_.size() < 2)
+            return;
 
         const auto& keyframes = timeline_.keyframes();
         const auto& first = keyframes.front();
@@ -130,33 +133,33 @@ constexpr float LOOP_KEYFRAME_OFFSET = 1.0f;
         playhead_ += delta;
 
         switch (loop_mode_) {
-            case LoopMode::ONCE:
-                if (playhead_ >= end) {
-                    playhead_ = end;
-                    state_ = PlaybackState::STOPPED;
-                } else if (playhead_ < start) {
-                    playhead_ = start;
-                    state_ = PlaybackState::STOPPED;
-                }
-                break;
+        case LoopMode::ONCE:
+            if (playhead_ >= end) {
+                playhead_ = end;
+                state_ = PlaybackState::STOPPED;
+            } else if (playhead_ < start) {
+                playhead_ = start;
+                state_ = PlaybackState::STOPPED;
+            }
+            break;
 
-            case LoopMode::LOOP:
-                if (playhead_ >= end) {
-                    playhead_ = start + (playhead_ - end);
-                } else if (playhead_ < start) {
-                    playhead_ = end - (start - playhead_);
-                }
-                break;
+        case LoopMode::LOOP:
+            if (playhead_ >= end) {
+                playhead_ = start + (playhead_ - end);
+            } else if (playhead_ < start) {
+                playhead_ = end - (start - playhead_);
+            }
+            break;
 
-            case LoopMode::PING_PONG:
-                if (playhead_ >= end) {
-                    playhead_ = end - (playhead_ - end);
-                    reverse_direction_ = true;
-                } else if (playhead_ < start) {
-                    playhead_ = start + (start - playhead_);
-                    reverse_direction_ = false;
-                }
-                break;
+        case LoopMode::PING_PONG:
+            if (playhead_ >= end) {
+                playhead_ = end - (playhead_ - end);
+                reverse_direction_ = true;
+            } else if (playhead_ < start) {
+                playhead_ = start + (start - playhead_);
+                reverse_direction_ = false;
+            }
+            break;
         }
         return true;
     }
@@ -166,12 +169,14 @@ constexpr float LOOP_KEYFRAME_OFFSET = 1.0f;
     }
 
     void SequencerController::updateSelectedKeyframe(const glm::vec3& position, const glm::quat& rotation, const float fov) {
-        if (!selected_keyframe_ || *selected_keyframe_ >= timeline_.size()) return;
+        if (!selected_keyframe_ || *selected_keyframe_ >= timeline_.size())
+            return;
         timeline_.updateKeyframe(*selected_keyframe_, position, rotation, fov);
     }
 
     void SequencerController::removeSelectedKeyframe() {
-        if (!selected_keyframe_) return;
+        if (!selected_keyframe_)
+            return;
         timeline_.removeKeyframe(*selected_keyframe_);
         deselectKeyframe();
     }

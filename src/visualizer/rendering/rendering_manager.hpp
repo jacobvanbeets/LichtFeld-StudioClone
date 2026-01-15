@@ -164,12 +164,12 @@ namespace lfs::vis {
 
         // Render preview to external texture (for PiP preview)
         bool renderPreviewFrame(SceneManager* scene_manager,
-                               const glm::mat3& camera_rotation,
-                               const glm::vec3& camera_position,
-                               float fov,
-                               unsigned int target_fbo,
-                               unsigned int target_texture,
-                               int width, int height);
+                                const glm::mat3& camera_rotation,
+                                const glm::vec3& camera_position,
+                                float fov,
+                                unsigned int target_fbo,
+                                unsigned int target_texture,
+                                int width, int height);
 
         void markDirty();
 
@@ -190,7 +190,8 @@ namespace lfs::vis {
                 selection_flash_active_.store(false);
             }
 
-            if (overlay_animation_active_.load()) return true;
+            if (overlay_animation_active_.load())
+                return true;
             return needs_render_.load();
         }
 

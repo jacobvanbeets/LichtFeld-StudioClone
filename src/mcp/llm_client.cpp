@@ -3,15 +3,12 @@
 
 #include "llm_client.hpp"
 
-#include "core/logger.hpp"
-
 #define CPPHTTPLIB_OPENSSL_SUPPORT
 #include "httplib/httplib.h"
 
 #include <nlohmann/json.hpp>
 
 #include <cstdlib>
-#include <thread>
 
 namespace lfs::mcp {
 
@@ -270,20 +267,6 @@ namespace lfs::mcp {
             error_resp.error = result.error();
             return error_resp;
         });
-    }
-
-    void LLMClient::complete_async(const LLMRequest& request, LLMCallback callback) {
-        std::thread([this, request, callback]() {
-            auto result = impl_->do_request(request);
-            LLMResponse resp;
-            if (result) {
-                resp = *result;
-            } else {
-                resp.success = false;
-                resp.error = result.error();
-            }
-            callback(resp);
-        }).detach();
     }
 
     bool LLMClient::is_configured() const { return !impl_->api_key.empty(); }

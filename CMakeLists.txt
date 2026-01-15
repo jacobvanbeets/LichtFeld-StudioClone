@@ -552,11 +552,19 @@ message(STATUS "Post-build: Resources will be copied to \${BUILD_DIR}/resources/
 if(UNIX)
     target_link_libraries(${PROJECT_NAME} PRIVATE GL GLU)
 
-    set_target_properties(${PROJECT_NAME} PROPERTIES
-            INSTALL_RPATH "$ORIGIN:$ORIGIN/lib:${CUDAToolkit_LIBRARY_DIR}"
-            BUILD_WITH_INSTALL_RPATH TRUE
-            INSTALL_RPATH_USE_LINK_PATH TRUE
-    )
+    if(BUILD_PORTABLE)
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+                INSTALL_RPATH "$ORIGIN:$ORIGIN/lib"
+                BUILD_WITH_INSTALL_RPATH TRUE
+                INSTALL_RPATH_USE_LINK_PATH FALSE
+        )
+    else()
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+                INSTALL_RPATH "$ORIGIN:$ORIGIN/lib:${CUDAToolkit_LIBRARY_DIR}"
+                BUILD_WITH_INSTALL_RPATH TRUE
+                INSTALL_RPATH_USE_LINK_PATH TRUE
+        )
+    endif()
 
 elseif(WIN32)
     # On Windows, DLLs in the same directory as the .exe are automatically found

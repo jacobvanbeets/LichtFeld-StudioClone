@@ -94,7 +94,7 @@ namespace lfs::core {
             EVENT(ApplySelectionMask, std::vector<uint8_t> mask;);
             // Sequencer
             EVENT(SequencerAddKeyframe, );
-            EVENT(SequencerUpdateKeyframe, );  // Update selected keyframe to current camera
+            EVENT(SequencerUpdateKeyframe, ); // Update selected keyframe to current camera
             EVENT(SequencerPlayPause, );
             EVENT(SequencerExportVideo, int width; int height; int framerate; int crf;);
         } // namespace cmd
@@ -232,7 +232,7 @@ namespace lfs::core {
             EVENT(TrainingReadyToStart, );
             EVENT(WindowFocusLost, );
         } // namespace internal
-    } // namespace events
+    }     // namespace events
 
     // ============================================================================
     // Convenience functions

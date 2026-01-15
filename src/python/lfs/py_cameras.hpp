@@ -4,15 +4,15 @@
 
 #pragma once
 
-#include "py_tensor.hpp"
 #include "core/camera.hpp"
+#include "py_tensor.hpp"
 #include "training/dataset.hpp"
+#include <memory>
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
-#include <memory>
 #include <optional>
 
 namespace nb = nanobind;
@@ -91,7 +91,8 @@ namespace lfs::python {
 
         std::optional<PyCamera> get_camera_by_filename(const std::string& filename) {
             auto cam_opt = dataset_->get_camera_by_filename(filename);
-            if (!cam_opt) return std::nullopt;
+            if (!cam_opt)
+                return std::nullopt;
             return PyCamera(*cam_opt);
         }
 

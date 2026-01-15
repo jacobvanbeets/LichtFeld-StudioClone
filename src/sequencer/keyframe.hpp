@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include <cstdint>
 
 namespace lfs::sequencer {
 
@@ -25,7 +25,7 @@ namespace lfs::sequencer {
         glm::quat rotation = IDENTITY_ROTATION;
         float fov = DEFAULT_FOV;
         EasingType easing = EasingType::EASE_IN_OUT;
-        bool is_loop_point = false;  // Loop closure keyframe (copies first keyframe)
+        bool is_loop_point = false; // Loop closure keyframe (copies first keyframe)
 
         [[nodiscard]] bool operator<(const Keyframe& other) const { return time < other.time; }
     };

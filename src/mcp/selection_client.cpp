@@ -12,9 +12,14 @@
 #include <windows.h>
 #else
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
 #endif
+
+namespace {
+    constexpr int SOCKET_TIMEOUT_SEC = 5;
+}
 
 namespace lfs::mcp {
 
@@ -67,24 +72,65 @@ namespace lfs::mcp {
 
     std::expected<std::string, std::string> SelectionClient::send_command(const std::string& json_command) {
         const std::string pipe_name = socket_path_to_pipe_name(socket_path_);
-        HANDLE pipe = CreateFileA(pipe_name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+
+        if (!WaitNamedPipeA(pipe_name.c_str(), SOCKET_TIMEOUT_SEC * 1000)) {
+            return std::unexpected("GUI not running (timeout waiting for pipe)");
+        }
+
+        HANDLE pipe = CreateFileA(pipe_name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
         if (pipe == INVALID_HANDLE_VALUE)
             return std::unexpected("GUI not running");
 
-        DWORD bytes_written = 0;
-        if (!WriteFile(pipe, json_command.c_str(), static_cast<DWORD>(json_command.size()), &bytes_written, nullptr)) {
+        OVERLAPPED overlapped = {};
+        overlapped.hEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+        if (!overlapped.hEvent) {
             CloseHandle(pipe);
-            return std::unexpected("Failed to send command");
+            return std::unexpected("Failed to create event");
         }
+
+        DWORD bytes_written = 0;
+        if (!WriteFile(pipe, json_command.c_str(), static_cast<DWORD>(json_command.size()), &bytes_written, &overlapped)) {
+            if (GetLastError() == ERROR_IO_PENDING) {
+                if (WaitForSingleObject(overlapped.hEvent, SOCKET_TIMEOUT_SEC * 1000) != WAIT_OBJECT_0) {
+                    CancelIo(pipe);
+                    CloseHandle(overlapped.hEvent);
+                    CloseHandle(pipe);
+                    return std::unexpected("Write timeout");
+                }
+                GetOverlappedResult(pipe, &overlapped, &bytes_written, FALSE);
+            } else {
+                CloseHandle(overlapped.hEvent);
+                CloseHandle(pipe);
+                return std::unexpected("Failed to send command");
+            }
+        }
+
+        ResetEvent(overlapped.hEvent);
 
         char buffer[RECV_BUFFER_SIZE];
         DWORD bytes_read = 0;
-        if (!ReadFile(pipe, buffer, sizeof(buffer) - 1, &bytes_read, nullptr) || bytes_read == 0) {
-            CloseHandle(pipe);
-            return std::unexpected("No response from GUI");
+        if (!ReadFile(pipe, buffer, sizeof(buffer) - 1, &bytes_read, &overlapped)) {
+            if (GetLastError() == ERROR_IO_PENDING) {
+                if (WaitForSingleObject(overlapped.hEvent, SOCKET_TIMEOUT_SEC * 1000) != WAIT_OBJECT_0) {
+                    CancelIo(pipe);
+                    CloseHandle(overlapped.hEvent);
+                    CloseHandle(pipe);
+                    return std::unexpected("Read timeout");
+                }
+                GetOverlappedResult(pipe, &overlapped, &bytes_read, FALSE);
+            } else {
+                CloseHandle(overlapped.hEvent);
+                CloseHandle(pipe);
+                return std::unexpected("No response from GUI");
+            }
         }
 
+        CloseHandle(overlapped.hEvent);
         CloseHandle(pipe);
+
+        if (bytes_read == 0)
+            return std::unexpected("No response from GUI");
+
         buffer[bytes_read] = '\0';
         return std::string(buffer);
     }
@@ -119,6 +165,12 @@ namespace lfs::mcp {
             return std::unexpected("GUI not running");
         }
 
+        struct timeval tv;
+        tv.tv_sec = SOCKET_TIMEOUT_SEC;
+        tv.tv_usec = 0;
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
         if (write(fd, json_command.c_str(), json_command.size()) < 0) {
             close(fd);
             return std::unexpected("Failed to send command");
@@ -129,7 +181,7 @@ namespace lfs::mcp {
         close(fd);
 
         if (bytes_read <= 0)
-            return std::unexpected("No response from GUI");
+            return std::unexpected("No response from GUI (timeout or error)");
 
         buffer[bytes_read] = '\0';
         return std::string(buffer);

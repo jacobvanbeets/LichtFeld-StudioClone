@@ -4,7 +4,6 @@
 #pragma once
 
 #include <expected>
-#include <functional>
 #include <future>
 #include <memory>
 #include <optional>
@@ -46,8 +45,6 @@ namespace lfs::mcp {
         std::string error;
     };
 
-    using LLMCallback = std::function<void(const LLMResponse&)>;
-
     class LLMClient {
     public:
         LLMClient();
@@ -61,8 +58,6 @@ namespace lfs::mcp {
         std::expected<LLMResponse, std::string> complete(const LLMRequest& request);
 
         std::future<LLMResponse> complete_async(const LLMRequest& request);
-
-        void complete_async(const LLMRequest& request, LLMCallback callback);
 
         bool is_configured() const;
 

@@ -118,8 +118,8 @@ namespace lfs::gui {
         if (pixels_per_frame >= MIN_TICK_SPACING) {
             const ImU32 color = lfs::vis::toU32WithAlpha(t.palette.warning, 0.7f);
             const float time_step = (mode_selection_ == 0)
-                ? 1.0f / fps_
-                : static_cast<float>(frame_interval_) / static_cast<float>(player_->fps());
+                                        ? 1.0f / fps_
+                                        : static_cast<float>(frame_interval_) / static_cast<float>(player_->fps());
             const float px_per_sec = width / dur_f;
 
             for (int i = 0; i < frame_count; ++i) {

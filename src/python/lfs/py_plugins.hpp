@@ -10,6 +10,6 @@ namespace nb = nanobind;
 
 namespace lfs::python {
 
-void register_plugins(nb::module_& m);
+    void register_plugins(nb::module_& m);
 
 } // namespace lfs::python

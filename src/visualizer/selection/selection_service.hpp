@@ -11,61 +11,63 @@
 
 namespace lfs::vis {
 
-class SceneManager;
-class RenderingManager;
+    class SceneManager;
+    class RenderingManager;
 
-namespace command {
-class CommandHistory;
-}
+    namespace command {
+        class CommandHistory;
+    }
 
-enum class SelectionMode { Replace, Add, Remove };
+    enum class SelectionMode { Replace,
+                               Add,
+                               Remove };
 
-struct SelectionResult {
-    bool success = false;
-    size_t affected_count = 0;
-    std::string error;
-};
+    struct SelectionResult {
+        bool success = false;
+        size_t affected_count = 0;
+        std::string error;
+    };
 
-class SelectionService {
-public:
-    SelectionService(SceneManager* scene_manager, RenderingManager* rendering_manager,
-                     command::CommandHistory* command_history);
-    ~SelectionService();
+    class SelectionService {
+    public:
+        SelectionService(SceneManager* scene_manager, RenderingManager* rendering_manager,
+                         command::CommandHistory* command_history);
+        ~SelectionService();
 
-    SelectionService(const SelectionService&) = delete;
-    SelectionService& operator=(const SelectionService&) = delete;
+        SelectionService(const SelectionService&) = delete;
+        SelectionService& operator=(const SelectionService&) = delete;
 
-    [[nodiscard]] SelectionResult selectRect(float x0, float y0, float x1, float y1, SelectionMode mode,
-                                             int camera_index = 0);
+        [[nodiscard]] SelectionResult selectRect(float x0, float y0, float x1, float y1, SelectionMode mode,
+                                                 int camera_index = 0);
 
-    [[nodiscard]] SelectionResult selectPolygon(const core::Tensor& vertices, SelectionMode mode, int camera_index = 0);
+        [[nodiscard]] SelectionResult selectPolygon(const core::Tensor& vertices, SelectionMode mode, int camera_index = 0);
 
-    [[nodiscard]] SelectionResult applyMask(const std::vector<uint8_t>& mask, SelectionMode mode);
-    [[nodiscard]] SelectionResult applyMask(const core::Tensor& mask, SelectionMode mode);
+        [[nodiscard]] SelectionResult applyMask(const std::vector<uint8_t>& mask, SelectionMode mode);
+        [[nodiscard]] SelectionResult applyMask(const core::Tensor& mask, SelectionMode mode);
 
-    void beginStroke();
-    [[nodiscard]] core::Tensor* getStrokeSelection();
-    [[nodiscard]] SelectionResult finalizeStroke(SelectionMode mode, const std::vector<bool>& node_mask = {});
-    void cancelStroke();
+        void beginStroke();
+        [[nodiscard]] core::Tensor* getStrokeSelection();
+        [[nodiscard]] SelectionResult finalizeStroke(SelectionMode mode, const std::vector<bool>& node_mask = {});
+        void cancelStroke();
 
-    [[nodiscard]] bool isStrokeActive() const { return stroke_active_; }
-    [[nodiscard]] size_t getTotalGaussianCount() const;
-    [[nodiscard]] bool hasScreenPositions() const;
-    [[nodiscard]] std::shared_ptr<core::Tensor> getScreenPositions() const;
+        [[nodiscard]] bool isStrokeActive() const { return stroke_active_; }
+        [[nodiscard]] size_t getTotalGaussianCount() const;
+        [[nodiscard]] bool hasScreenPositions() const;
+        [[nodiscard]] std::shared_ptr<core::Tensor> getScreenPositions() const;
 
-private:
-    static constexpr size_t LOCKED_GROUPS_SIZE = 8;
+    private:
+        static constexpr size_t LOCKED_GROUPS_SIZE = 8;
 
-    [[nodiscard]] core::Tensor applyModeLogic(const core::Tensor& stroke, SelectionMode mode) const;
-    void createUndoCommand(std::shared_ptr<core::Tensor> old_mask, std::shared_ptr<core::Tensor> new_mask);
+        [[nodiscard]] core::Tensor applyModeLogic(const core::Tensor& stroke, SelectionMode mode) const;
+        void createUndoCommand(std::shared_ptr<core::Tensor> old_mask, std::shared_ptr<core::Tensor> new_mask);
 
-    SceneManager* scene_manager_;
-    RenderingManager* rendering_manager_;
-    command::CommandHistory* command_history_;
+        SceneManager* scene_manager_;
+        RenderingManager* rendering_manager_;
+        command::CommandHistory* command_history_;
 
-    bool stroke_active_ = false;
-    core::Tensor stroke_selection_;
-    std::shared_ptr<core::Tensor> selection_before_stroke_;
-};
+        bool stroke_active_ = false;
+        core::Tensor stroke_selection_;
+        std::shared_ptr<core::Tensor> selection_before_stroke_;
+    };
 
 } // namespace lfs::vis

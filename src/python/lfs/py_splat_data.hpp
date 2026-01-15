@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "py_tensor.hpp"
 #include "core/splat_data.hpp"
+#include "py_tensor.hpp"
 #include <nanobind/nanobind.h>
 #include <optional>
 

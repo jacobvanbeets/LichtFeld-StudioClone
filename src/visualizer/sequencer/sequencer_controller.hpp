@@ -62,7 +62,7 @@ namespace lfs::vis {
         [[nodiscard]] LoopMode loopMode() const { return loop_mode_; }
         void setLoopMode(LoopMode mode) { loop_mode_ = mode; }
         void toggleLoop();
-        void updateLoopKeyframe();  // Sync loop keyframe with first keyframe
+        void updateLoopKeyframe(); // Sync loop keyframe with first keyframe
 
         [[nodiscard]] float playbackSpeed() const { return playback_speed_; }
         void setPlaybackSpeed(const float speed) { playback_speed_ = std::clamp(speed, MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED); }

@@ -49,9 +49,12 @@ namespace lfs::mcp {
         void resume_training();
 
         bool is_loaded() const { return scene_ != nullptr; }
-        bool is_training() const { return training_thread_.joinable(); }
+        bool is_training() const { return training_thread_ != nullptr; }
 
-        vis::Scene* scene() { return scene_.get(); }
+        std::shared_ptr<vis::Scene> scene() {
+            std::lock_guard lock(mutex_);
+            return scene_;
+        }
         training::Trainer* trainer() { return trainer_.get(); }
         const core::param::TrainingParameters& params() const { return params_; }
         core::param::TrainingParameters& params_mutable() { return params_; }
@@ -62,11 +65,13 @@ namespace lfs::mcp {
         TrainingContext() = default;
         ~TrainingContext();
 
-        std::unique_ptr<vis::Scene> scene_;
+        // shared_ptr allows tool lambdas to hold references across async boundaries.
+        // INVARIANT: stop_training() must complete before scene_.reset().
+        std::shared_ptr<vis::Scene> scene_;
         std::unique_ptr<training::Trainer> trainer_;
         core::param::TrainingParameters params_;
 
-        std::thread training_thread_;
+        std::unique_ptr<std::jthread> training_thread_;
         std::mutex mutex_;
     };
 

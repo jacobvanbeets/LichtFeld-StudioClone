@@ -3,10 +3,10 @@
 #pragma once
 
 #include "control_boundary.hpp"
-#include "training/trainer.hpp"
-#include "training/optimizer/adam_optimizer.hpp"
 #include "core/splat_data.hpp"
 #include "core/tensor.hpp"
+#include "training/optimizer/adam_optimizer.hpp"
+#include "training/trainer.hpp"
 
 #include <atomic>
 #include <expected>
@@ -18,9 +18,13 @@
 
 namespace lfs::training {
 
-    enum class CommandTarget { Model, Optimizer, Session };
+    enum class CommandTarget { Model,
+                               Optimizer,
+                               Session };
 
-    enum class SelectionKind { All, Range, Indices };
+    enum class SelectionKind { All,
+                               Range,
+                               Indices };
 
     struct Selection {
         SelectionKind kind = SelectionKind::All;
@@ -38,7 +42,12 @@ namespace lfs::training {
         SafeControl
     };
 
-    enum class ArgType { Int, Float, Bool, String, IntList, FloatList };
+    enum class ArgType { Int,
+                         Float,
+                         Bool,
+                         String,
+                         IntList,
+                         FloatList };
 
     using ArgValue = std::variant<int64_t, double, bool, std::string, std::vector<int64_t>, std::vector<double>>;
 
@@ -104,9 +113,9 @@ namespace lfs::training {
 
         std::expected<void, std::string> execute(const Command& cmd);
 
-    // Enqueue a command to be executed later on the training thread.
-    void enqueue_command(const Command& cmd);
-    void drain_enqueued(TrainingSnapshot& view);
+        // Enqueue a command to be executed later on the training thread.
+        void enqueue_command(const Command& cmd);
+        void drain_enqueued(TrainingSnapshot& view);
 
         std::vector<OperationInfo> operations(std::optional<CommandTarget> target = std::nullopt) const;
         std::vector<MutableFieldInfo> mutables(std::optional<CommandTarget> target = std::nullopt) const;
@@ -124,13 +133,13 @@ namespace lfs::training {
         static std::expected<void, std::string> apply_scale(core::Tensor& tensor, const core::Tensor& mask_rows, double factor);
         static std::expected<void, std::string> apply_clamp(core::Tensor& tensor, const core::Tensor& mask_rows, const std::optional<double>& minv, const std::optional<double>& maxv);
 
-    static std::expected<core::Tensor*, std::string> resolve_attribute(lfs::core::SplatData& model, const std::string& name, size_t& row_dim_out);
+        static std::expected<core::Tensor*, std::string> resolve_attribute(lfs::core::SplatData& model, const std::string& name, size_t& row_dim_out);
 
         // Registry
         std::vector<OperationInfo> ops_;
         std::vector<MutableFieldInfo> mutable_fields_;
 
-    std::vector<Command> pending_commands_;
+        std::vector<Command> pending_commands_;
 
         mutable std::mutex mutex_;
         TrainingSnapshot snapshot_{};

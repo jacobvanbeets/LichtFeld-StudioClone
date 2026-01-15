@@ -27,7 +27,7 @@ namespace lfs::vis {
 
     namespace {
         constexpr int GPU_ALIGNMENT = 16; // 16-pixel alignment for GPU texture efficiency
-    } // namespace
+    }                                     // namespace
 
     using namespace lfs::core::events;
 
@@ -787,10 +787,12 @@ namespace lfs::vis {
                                               const unsigned int fbo,
                                               [[maybe_unused]] const unsigned int texture,
                                               const int width, const int height) {
-        if (!initialized_ || !engine_) return false;
+        if (!initialized_ || !engine_)
+            return false;
 
         const auto* const model = scene_manager ? scene_manager->getModelForRendering() : nullptr;
-        if (!model || model->size() == 0) return false;
+        if (!model || model->size() == 0)
+            return false;
 
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         glViewport(0, 0, width, height);

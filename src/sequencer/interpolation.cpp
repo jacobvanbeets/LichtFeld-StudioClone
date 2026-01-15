@@ -28,14 +28,14 @@ namespace lfs::sequencer {
     float applyEasing(const float t, const EasingType easing) {
         const float clamped = std::clamp(t, 0.0f, 1.0f);
         switch (easing) {
-            case EasingType::LINEAR:
-                return clamped;
-            case EasingType::EASE_IN:
-                return easeIn(clamped);
-            case EasingType::EASE_OUT:
-                return easeOut(clamped);
-            case EasingType::EASE_IN_OUT:
-                return easeInOut(clamped);
+        case EasingType::LINEAR:
+            return clamped;
+        case EasingType::EASE_IN:
+            return easeIn(clamped);
+        case EasingType::EASE_OUT:
+            return easeOut(clamped);
+        case EasingType::EASE_IN_OUT:
+            return easeInOut(clamped);
         }
         return clamped;
     }
@@ -46,12 +46,10 @@ namespace lfs::sequencer {
         const float t) {
         const float t2 = t * t;
         const float t3 = t2 * t;
-        return 0.5f * (
-            (2.0f * p1) +
-            (-p0 + p2) * t +
-            (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
-            (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3
-        );
+        return 0.5f * ((2.0f * p1) +
+                       (-p0 + p2) * t +
+                       (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+                       (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
     }
 
     CameraState interpolateSpline(std::span<const Keyframe> keyframes, const float time) {
@@ -67,7 +65,8 @@ namespace lfs::sequencer {
         // Find segment containing time
         size_t i = 0;
         for (; i < keyframes.size() - 1; ++i) {
-            if (clamped_time <= keyframes[i + 1].time) break;
+            if (clamped_time <= keyframes[i + 1].time)
+                break;
         }
         if (i >= keyframes.size() - 1) {
             i = keyframes.size() - 2;
@@ -88,8 +87,7 @@ namespace lfs::sequencer {
         return {
             catmullRom(k0.position, k1.position, k2.position, k3.position, eased_t),
             glm::slerp(k1.rotation, k2.rotation, eased_t),
-            glm::mix(k1.fov, k2.fov, eased_t)
-        };
+            glm::mix(k1.fov, k2.fov, eased_t)};
     }
 
     std::vector<glm::vec3> generatePathPoints(

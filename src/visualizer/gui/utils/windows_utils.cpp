@@ -436,7 +436,7 @@ namespace lfs::vis::gui {
     std::filesystem::path OpenVideoFileDialog() {
 #ifdef _WIN32
         PWSTR filePath = nullptr;
-        COMDLG_FILTERSPEC rgSpec[] = {{L"Video Files", L"*.mp4;*.avi;*.mov;*.mkv;*.webm;*.flv;*.wmv"}, 
+        COMDLG_FILTERSPEC rgSpec[] = {{L"Video Files", L"*.mp4;*.avi;*.mov;*.mkv;*.webm;*.flv;*.wmv"},
                                       {L"All Files", L"*.*"}};
 
         if (SUCCEEDED(utils::selectFileNative(filePath, rgSpec, 2))) {

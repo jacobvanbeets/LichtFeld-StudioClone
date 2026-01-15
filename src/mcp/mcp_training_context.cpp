@@ -18,6 +18,7 @@
 #include "training/training_setup.hpp"
 
 #include <fstream>
+#include <sstream>
 
 namespace lfs::mcp {
 
@@ -73,7 +74,7 @@ namespace lfs::mcp {
         params_ = params;
         params_.dataset.data_path = path;
 
-        scene_ = std::make_unique<vis::Scene>();
+        scene_ = std::make_shared<vis::Scene>();
 
         if (auto result = training::loadTrainingDataIntoScene(params_, *scene_); !result) {
             scene_.reset();
@@ -120,7 +121,7 @@ namespace lfs::mcp {
             return std::unexpected(splat_result.error());
         }
 
-        scene_ = std::make_unique<vis::Scene>();
+        scene_ = std::make_shared<vis::Scene>();
         scene_->setTrainingModel(
             std::make_unique<core::SplatData>(std::move(*splat_result)),
             "checkpoint");
@@ -221,7 +222,9 @@ namespace lfs::mcp {
         try {
             auto [image, alpha] = rendering::rasterize_tensor(*camera, *model, bg);
 
-            auto temp_path = std::filesystem::temp_directory_path() / "mcp_render.png";
+            std::ostringstream oss;
+            oss << "mcp_render_" << std::this_thread::get_id() << ".png";
+            auto temp_path = std::filesystem::temp_directory_path() / oss.str();
             core::save_image(temp_path, image);
 
             std::ifstream file(temp_path, std::ios::binary | std::ios::ate);
@@ -300,12 +303,12 @@ namespace lfs::mcp {
             return std::unexpected("No trainer initialized");
         }
 
-        if (training_thread_.joinable()) {
+        if (training_thread_) {
             return std::unexpected("Training already running");
         }
 
-        training_thread_ = std::thread([this]() {
-            auto result = trainer_->train();
+        training_thread_ = std::make_unique<std::jthread>([this](std::stop_token stop) {
+            auto result = trainer_->train(stop);
             if (!result) {
                 LOG_ERROR("Training error: {}", result.error());
             }
@@ -316,11 +319,9 @@ namespace lfs::mcp {
     }
 
     void TrainingContext::stop_training() {
-        if (training_thread_.joinable()) {
-            if (trainer_) {
-                trainer_->request_stop();
-            }
-            training_thread_.join();
+        if (training_thread_) {
+            training_thread_->request_stop();
+            training_thread_.reset();
         }
     }
 
@@ -382,7 +383,7 @@ namespace lfs::mcp {
                 response["success"] = true;
                 response["path"] = path.string();
 
-                auto* scene = TrainingContext::instance().scene();
+                auto scene = TrainingContext::instance().scene();
                 if (scene) {
                     response["num_gaussians"] = scene->getTotalGaussianCount();
                 }
@@ -595,7 +596,7 @@ namespace lfs::mcp {
                     return json{{"error", screen_pos_result.error()}};
                 }
 
-                auto* scene = ctx.scene();
+                auto scene = ctx.scene();
                 if (!scene) {
                     return json{{"error", "No scene loaded"}};
                 }
@@ -657,7 +658,7 @@ namespace lfs::mcp {
                     return json{{"error", screen_pos_result.error()}};
                 }
 
-                auto* scene = ctx.scene();
+                auto scene = ctx.scene();
                 if (!scene) {
                     return json{{"error", "No scene loaded"}};
                 }
@@ -740,7 +741,7 @@ namespace lfs::mcp {
                     return json{{"error", screen_pos_result.error()}};
                 }
 
-                auto* scene = ctx.scene();
+                auto scene = ctx.scene();
                 if (!scene) {
                     return json{{"error", "No scene loaded"}};
                 }
@@ -788,7 +789,7 @@ namespace lfs::mcp {
                 .description = "Get current selection (returns selected Gaussian indices)",
                 .input_schema = {.type = "object", .properties = json::object(), .required = {}}},
             [](const json&) -> json {
-                auto* scene = TrainingContext::instance().scene();
+                auto scene = TrainingContext::instance().scene();
                 if (!scene) {
                     return json{{"error", "No scene loaded"}};
                 }
@@ -816,7 +817,7 @@ namespace lfs::mcp {
                 .description = "Clear all selection",
                 .input_schema = {.type = "object", .properties = json::object(), .required = {}}},
             [](const json&) -> json {
-                auto* scene = TrainingContext::instance().scene();
+                auto scene = TrainingContext::instance().scene();
                 if (!scene) {
                     return json{{"error", "No scene loaded"}};
                 }
@@ -981,7 +982,7 @@ namespace lfs::mcp {
                     return json{{"error", screen_pos_result.error()}};
                 }
 
-                auto* scene = ctx.scene();
+                auto scene = ctx.scene();
                 if (!scene) {
                     return json{{"error", "No scene loaded"}};
                 }
