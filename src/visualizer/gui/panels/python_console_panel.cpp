@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <mutex>
 
+#include "core/executable_path.hpp"
 #include "core/services.hpp"
 #include "python/package_manager.hpp"
 #include "python/py_panel_registry.hpp"
@@ -43,15 +44,15 @@ namespace {
         std::call_once(g_syspath_init_once, [] {
             const PyGILState_STATE gil = PyGILState_Ensure();
 
-            const std::filesystem::path build_python_dir =
-                std::filesystem::path(PROJECT_ROOT_PATH) / "build" / "src" / "python";
-
-            PyObject* sys_path = PySys_GetObject("path");
-            if (sys_path) {
-                PyObject* py_path = PyUnicode_FromString(build_python_dir.string().c_str());
-                if (py_path) {
-                    PyList_Insert(sys_path, 0, py_path);
-                    Py_DECREF(py_path);
+            const auto python_module_dir = lfs::core::getPythonModuleDir();
+            if (!python_module_dir.empty()) {
+                PyObject* sys_path = PySys_GetObject("path");
+                if (sys_path) {
+                    PyObject* py_path = PyUnicode_FromString(python_module_dir.string().c_str());
+                    if (py_path) {
+                        PyList_Insert(sys_path, 0, py_path);
+                        Py_DECREF(py_path);
+                    }
                 }
             }
 

@@ -685,6 +685,19 @@ install(FILES "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/lichtfeld-splash-lo
 install(FILES "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/core11-logo.png" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
 install(FILES "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/core11-logo-dark.png" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
 
+# Plugin development documentation
+if(BUILD_PYTHON_BINDINGS)
+    set(DOC_INSTALL_DIR "${CMAKE_INSTALL_DATADIR}/doc/LichtFeld-Studio")
+    install(FILES
+        "${CMAKE_SOURCE_DIR}/docs/PYTHON_API.md"
+        "${CMAKE_SOURCE_DIR}/docs/plugin-system.md"
+        "${CMAKE_SOURCE_DIR}/docs/plugin-use-cases.md"
+        "${CMAKE_SOURCE_DIR}/docs/plugin-dev-workflow.md"
+        DESTINATION "${DOC_INSTALL_DIR}"
+        OPTIONAL
+    )
+endif()
+
 if(TARGET nvimgcodec)
     install(TARGETS nvimgcodec LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
     if(TARGET nvjpeg_ext)

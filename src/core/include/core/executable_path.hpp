@@ -97,20 +97,24 @@ namespace lfs::core {
         return exe_dir;
     }
 
-    // Python module directory (lichtfeld.so)
+    // Python module directory (lichtfeld.so/.pyd)
     inline std::filesystem::path getPythonModuleDir() {
         const auto exe_dir = getExecutableDir();
 
+        auto module_exists = [](const std::filesystem::path& dir) {
+            return std::filesystem::exists(dir / "lichtfeld.abi3.so") ||
+                   std::filesystem::exists(dir / "lichtfeld.so") ||
+                   std::filesystem::exists(dir / "lichtfeld.pyd") ||
+                   std::filesystem::exists(dir / "lichtfeld.abi3.pyd");
+        };
+
         // Production: exe in bin/, module in ../lib/python/
-        if (const auto prod = exe_dir.parent_path() / "lib" / "python";
-            std::filesystem::exists(prod / "lichtfeld.abi3.so") ||
-            std::filesystem::exists(prod / "lichtfeld.so")) {
+        if (const auto prod = exe_dir.parent_path() / "lib" / "python"; module_exists(prod)) {
             return prod;
         }
 
         // Development: module in src/python/ relative to exe (build dir)
-        if (const auto dev = exe_dir / "src" / "python";
-            std::filesystem::exists(dev / "lichtfeld.abi3.so")) {
+        if (const auto dev = exe_dir / "src" / "python"; module_exists(dev)) {
             return dev;
         }
 

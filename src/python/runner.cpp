@@ -9,6 +9,7 @@
 #include <format>
 #include <string>
 
+#include <core/executable_path.hpp>
 #include <core/logger.hpp>
 
 #ifdef LFS_BUILD_PYTHON_BINDINGS
@@ -201,18 +202,12 @@ sys.stderr = OutputCapture(True)
                 Py_DECREF(py_path);
                 LOG_INFO("Added user packages dir to Python path: {}", user_packages.string());
 
-                const std::filesystem::path build_py_dir = std::filesystem::path(PROJECT_ROOT_PATH) / "build" / "src" / "python";
-                if (std::filesystem::exists(build_py_dir)) {
-                    PyObject* const build_path = PyUnicode_FromString(build_py_dir.string().c_str());
-                    PyList_Insert(sys_path, 0, build_path);
-                    Py_DECREF(build_path);
-                }
-
-                const std::filesystem::path src_py_dir = std::filesystem::path(PROJECT_ROOT_PATH) / "src" / "python";
-                if (std::filesystem::exists(src_py_dir)) {
-                    PyObject* const src_path = PyUnicode_FromString(src_py_dir.string().c_str());
-                    PyList_Insert(sys_path, 0, src_path);
-                    Py_DECREF(src_path);
+                const auto python_module_dir = lfs::core::getPythonModuleDir();
+                if (!python_module_dir.empty()) {
+                    PyObject* const py_mod_path = PyUnicode_FromString(python_module_dir.string().c_str());
+                    PyList_Insert(sys_path, 0, py_mod_path);
+                    Py_DECREF(py_mod_path);
+                    LOG_INFO("Added Python module dir to path: {}", python_module_dir.string());
                 }
             }
 
@@ -330,16 +325,16 @@ sys.stderr = OutputCapture(True)
         // Install output redirect (calls redirect_output() once)
         std::call_once(g_redirect_once, [] { redirect_output(); });
 
-        // Add build directory (where lichtfeld.so lives) to sys.path
+        // Add Python module directory (where lichtfeld.so lives) to sys.path
         {
-            const std::filesystem::path build_python_dir =
-                std::filesystem::path(PROJECT_ROOT_PATH) / "build" / "src" / "python";
-
-            PyObject* sys_path = PySys_GetObject("path"); // borrowed
-            PyObject* py_path = PyUnicode_FromString(build_python_dir.string().c_str());
-            PyList_Append(sys_path, py_path);
-            Py_DECREF(py_path);
-            LOG_DEBUG("Added {} to Python path", build_python_dir.string());
+            const auto python_module_dir = lfs::core::getPythonModuleDir();
+            if (!python_module_dir.empty()) {
+                PyObject* sys_path = PySys_GetObject("path"); // borrowed
+                PyObject* py_path = PyUnicode_FromString(python_module_dir.string().c_str());
+                PyList_Append(sys_path, py_path);
+                Py_DECREF(py_path);
+                LOG_DEBUG("Added {} to Python path", python_module_dir.string());
+            }
         }
 
         // Pre-import lichtfeld module to catch any initialization errors early

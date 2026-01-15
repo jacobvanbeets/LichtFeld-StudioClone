@@ -170,3 +170,34 @@ include(${CMAKE_SOURCE_DIR}/cmake/FetchUV.cmake)
 fetch_uv()
 copy_uv_to_build()
 install_uv()
+
+# =============================================================================
+# INSTALLATION - Python SDK components for plugin development
+# =============================================================================
+set(PYTHON_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/python")
+
+# Install lichtfeld Python module (.so/.pyd)
+install(TARGETS lfs_py
+    LIBRARY DESTINATION "${PYTHON_INSTALL_DIR}"
+    RUNTIME DESTINATION "${PYTHON_INSTALL_DIR}"  # Windows DLLs
+)
+
+# Install lfs_panel_registry shared library (required by lichtfeld module)
+install(TARGETS lfs_panel_registry
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"  # Windows DLLs
+)
+
+# Install lfs_plugins Python package
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lfs_plugins"
+    DESTINATION "${PYTHON_INSTALL_DIR}"
+    FILES_MATCHING PATTERN "*.py"
+)
+
+# Install type stubs for IDE support (if built)
+if(BUILD_PYTHON_STUBS)
+    install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/typings/"
+        DESTINATION "${PYTHON_INSTALL_DIR}"
+        OPTIONAL  # May not exist if stub generation failed
+    )
+endif()
