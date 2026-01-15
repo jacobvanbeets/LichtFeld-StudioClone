@@ -204,7 +204,7 @@ namespace lfs::python {
 
     void PyScene::set_node_transform_tensor(const std::string& name, const PyTensor& transform) {
         const auto& t = transform.tensor();
-        assert(t.dim() == 2 && t.size(0) == 4 && t.size(1) == 4);
+        assert(t.ndim() == 2 && t.size(0) == 4 && t.size(1) == 4);
         auto cpu_t = t.device() == core::Device::CUDA ? t.cpu() : t;
         auto contiguous = cpu_t.contiguous();
         const float* data = contiguous.ptr<float>();
