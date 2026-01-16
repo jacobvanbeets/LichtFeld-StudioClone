@@ -160,23 +160,19 @@ if(BUILD_PYTHON_STUBS)
         endif()
 
         if(BUILD_PYTHON_STUBS)
-            # Build PATH with all required DLL directories
-            set(STUBGEN_DLL_PATHS
-                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin"
-                "${CMAKE_BINARY_DIR}"
-            )
-            # Add CUDA bin if available
+            # Build PATH string for DLL loading - use generator expressions for config-specific dirs
+            # Include: vcpkg bins, build output dir (where lfs_panel_registry.dll is), CUDA
+            set(STUBGEN_STATIC_PATHS "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin")
             if(DEFINED ENV{CUDA_PATH})
-                list(APPEND STUBGEN_DLL_PATHS "$ENV{CUDA_PATH}/bin")
+                set(STUBGEN_STATIC_PATHS "${STUBGEN_STATIC_PATHS}\\;$ENV{CUDA_PATH}/bin")
             elseif(CUDAToolkit_BIN_DIR)
-                list(APPEND STUBGEN_DLL_PATHS "${CUDAToolkit_BIN_DIR}")
+                set(STUBGEN_STATIC_PATHS "${STUBGEN_STATIC_PATHS}\\;${CUDAToolkit_BIN_DIR}")
             endif()
-            list(JOIN STUBGEN_DLL_PATHS "\\;" STUBGEN_PATH_STR)
 
             add_custom_command(
                 OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed
                 COMMAND ${CMAKE_COMMAND} -E env
-                        "PATH=${STUBGEN_PATH_STR}\\;$ENV{PATH}"
+                        "PATH=$<TARGET_FILE_DIR:lfs_panel_registry>\\;${STUBGEN_STATIC_PATHS}\\;$ENV{PATH}"
                         "PYTHONPATH=$<TARGET_FILE_DIR:lfs_py>"
                         "${Python_EXECUTABLE}" "${NB_STUBGEN}"
                         -m lichtfeld
@@ -184,7 +180,7 @@ if(BUILD_PYTHON_STUBS)
                         -O ${CMAKE_CURRENT_BINARY_DIR}/typings
                         -r
                 WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-                DEPENDS lfs_py "${NB_STUBGEN}"
+                DEPENDS lfs_py lfs_panel_registry "${NB_STUBGEN}"
                 COMMENT "Generating Python stubs for lichtfeld (Windows)"
             )
             add_custom_target(lichtfeld_stub ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed)
