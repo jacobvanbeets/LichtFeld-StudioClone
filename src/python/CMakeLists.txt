@@ -175,13 +175,14 @@ if(BUILD_PYTHON_STUBS)
 
             add_custom_command(
                 OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed
-                COMMAND ${CMAKE_COMMAND} -E env "PATH=${STUBGEN_PATH_STR}\\;$ENV{PATH}"
+                COMMAND ${CMAKE_COMMAND} -E env
+                        "PATH=${STUBGEN_PATH_STR}\\;$ENV{PATH}"
+                        "PYTHONPATH=$<TARGET_FILE_DIR:lfs_py>"
                         "${Python_EXECUTABLE}" "${NB_STUBGEN}"
                         -m lichtfeld
                         -M ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed
                         -O ${CMAKE_CURRENT_BINARY_DIR}/typings
                         -r
-                        -P ${CMAKE_CURRENT_BINARY_DIR}
                 WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
                 DEPENDS lfs_py "${NB_STUBGEN}"
                 COMMENT "Generating Python stubs for lichtfeld (Windows)"
