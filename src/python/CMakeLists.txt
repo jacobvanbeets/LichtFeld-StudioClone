@@ -149,41 +149,45 @@ option(BUILD_PYTHON_STUBS "Generate Python type stubs (requires loading the modu
 if(BUILD_PYTHON_STUBS)
     if(WIN32)
         # On Windows, we need to set PATH for DLL loading before running stubgen
-        # Find the stubgen script
-        get_target_property(NB_DIR nanobind-static SOURCE_DIR)
+        # Find the stubgen script (NB_DIR is set by find_package(nanobind))
         if(EXISTS "${NB_DIR}/src/stubgen.py")
             set(NB_STUBGEN "${NB_DIR}/src/stubgen.py")
-        else()
+        elseif(EXISTS "${NB_DIR}/stubgen.py")
             set(NB_STUBGEN "${NB_DIR}/stubgen.py")
+        else()
+            message(WARNING "nanobind stubgen.py not found at ${NB_DIR}, disabling stub generation")
+            set(BUILD_PYTHON_STUBS OFF)
         endif()
 
-        # Build PATH with all required DLL directories
-        set(STUBGEN_DLL_PATHS
-            "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin"
-            "${CMAKE_BINARY_DIR}"
-        )
-        # Add CUDA bin if available
-        if(DEFINED ENV{CUDA_PATH})
-            list(APPEND STUBGEN_DLL_PATHS "$ENV{CUDA_PATH}/bin")
-        elseif(CUDAToolkit_BIN_DIR)
-            list(APPEND STUBGEN_DLL_PATHS "${CUDAToolkit_BIN_DIR}")
-        endif()
-        list(JOIN STUBGEN_DLL_PATHS "\\;" STUBGEN_PATH_STR)
+        if(BUILD_PYTHON_STUBS)
+            # Build PATH with all required DLL directories
+            set(STUBGEN_DLL_PATHS
+                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin"
+                "${CMAKE_BINARY_DIR}"
+            )
+            # Add CUDA bin if available
+            if(DEFINED ENV{CUDA_PATH})
+                list(APPEND STUBGEN_DLL_PATHS "$ENV{CUDA_PATH}/bin")
+            elseif(CUDAToolkit_BIN_DIR)
+                list(APPEND STUBGEN_DLL_PATHS "${CUDAToolkit_BIN_DIR}")
+            endif()
+            list(JOIN STUBGEN_DLL_PATHS "\\;" STUBGEN_PATH_STR)
 
-        add_custom_command(
-            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed
-            COMMAND ${CMAKE_COMMAND} -E env "PATH=${STUBGEN_PATH_STR}\\;$ENV{PATH}"
-                    "${Python_EXECUTABLE}" "${NB_STUBGEN}"
-                    -m lichtfeld
-                    -M ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed
-                    -O ${CMAKE_CURRENT_BINARY_DIR}/typings
-                    -r
-                    -P ${CMAKE_CURRENT_BINARY_DIR}
-            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-            DEPENDS lfs_py "${NB_STUBGEN}"
-            COMMENT "Generating Python stubs for lichtfeld (Windows)"
-        )
-        add_custom_target(lichtfeld_stub ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed)
+            add_custom_command(
+                OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed
+                COMMAND ${CMAKE_COMMAND} -E env "PATH=${STUBGEN_PATH_STR}\\;$ENV{PATH}"
+                        "${Python_EXECUTABLE}" "${NB_STUBGEN}"
+                        -m lichtfeld
+                        -M ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed
+                        -O ${CMAKE_CURRENT_BINARY_DIR}/typings
+                        -r
+                        -P ${CMAKE_CURRENT_BINARY_DIR}
+                WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+                DEPENDS lfs_py "${NB_STUBGEN}"
+                COMMENT "Generating Python stubs for lichtfeld (Windows)"
+            )
+            add_custom_target(lichtfeld_stub ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/typings/lichtfeld/py.typed)
+        endif()
     else()
         nanobind_add_stub(lichtfeld_stub
             MODULE lichtfeld
