@@ -78,6 +78,7 @@ set(TRAINING_NEW_SOURCES
     strategies/strategy_utils.cpp
     strategies/adc.cpp
     strategies/mcmc.cpp
+    strategies/strategy_factory.cpp
     rasterization/fast_rasterizer.cpp
     rasterization/gsplat_rasterizer.cpp
     components/bilateral_grid.cpp

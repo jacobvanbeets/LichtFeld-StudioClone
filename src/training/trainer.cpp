@@ -28,6 +28,7 @@
 #include "rasterization/gsplat_rasterizer.hpp"
 #include "strategies/adc.hpp"
 #include "strategies/mcmc.hpp"
+#include "strategies/strategy_factory.hpp"
 #include "visualizer/scene/scene.hpp"
 
 #include <filesystem>
@@ -407,13 +408,12 @@ namespace lfs::training {
                     return std::unexpected("Scene has no training model set");
                 }
 
-                if (params.optimization.strategy == "mcmc") {
-                    strategy_ = std::make_unique<MCMC>(*model);
-                    LOG_DEBUG("Created MCMC strategy from Scene model");
-                } else {
-                    strategy_ = std::make_unique<ADC>(*model);
-                    LOG_DEBUG("Created ADC strategy from Scene model");
+                auto result = StrategyFactory::instance().create(params.optimization.strategy, *model);
+                if (!result) {
+                    return std::unexpected(result.error());
                 }
+                strategy_ = std::move(*result);
+                LOG_DEBUG("Created {} strategy from Scene model", params.optimization.strategy);
             }
 
             auto& splat = strategy_->get_model();
