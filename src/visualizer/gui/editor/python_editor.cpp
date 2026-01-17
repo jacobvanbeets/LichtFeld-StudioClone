@@ -86,7 +86,13 @@ namespace lfs::vis::editor {
                 editor_.GetCursorPosition(line, col);
                 ImVec2 popup_pos = ImGui::GetItemRectMin();
                 popup_pos.y += (line + 1) * ImGui::GetTextLineHeightWithSpacing();
-                popup_pos.x += 50;
+
+                // Calculate X position using font metrics
+                const float charWidth = ImGui::CalcTextSize("M").x;
+                const float gutterWidth = ImGui::CalcTextSize("9999").x + 16.0f;
+                const std::string word = getWordBeforeCursor();
+                const int wordStartCol = col - static_cast<int>(word.length());
+                popup_pos.x += gutterWidth + (wordStartCol * charWidth);
 
                 std::string selected;
                 if (autocomplete_.renderPopup(popup_pos, selected)) {
@@ -201,6 +207,22 @@ namespace lfs::vis::editor {
 
     std::string PythonEditor::getText() const {
         return editor_.GetText();
+    }
+
+    std::string PythonEditor::getTextStripped() const {
+        auto lines = editor_.GetTextLines();
+        std::string result;
+        for (size_t i = 0; i < lines.size(); ++i) {
+            std::string& line = lines[i];
+            while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) {
+                line.pop_back();
+            }
+            result += line;
+            if (i + 1 < lines.size()) {
+                result += '\n';
+            }
+        }
+        return result;
     }
 
     void PythonEditor::setText(const std::string& text) {

@@ -53,12 +53,18 @@ namespace lfs::python {
      */
     bool was_python_used();
 
+    struct FormatResult {
+        std::string code;
+        std::string error;
+        bool success = false;
+    };
+
     /**
-     * @brief Format Python code using black, autopep8, or basic cleanup.
+     * @brief Format Python code using black.
      * @param code The Python code to format.
-     * @return Formatted code, or original if formatting fails.
+     * @return FormatResult with formatted code or error message.
      */
-    std::string format_python_code(const std::string& code);
+    FormatResult format_python_code(const std::string& code);
 
     /**
      * @brief Set a callback to be called each frame. Used for animations.

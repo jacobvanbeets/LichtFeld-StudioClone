@@ -3,16 +3,66 @@
 
 #include "static_providers.hpp"
 #include <algorithm>
+#include <optional>
 
 namespace lfs::vis::editor {
 
     namespace {
 
-        bool startsWith(const std::string& str, const std::string& prefix) {
-            if (prefix.size() > str.size())
-                return false;
-            return std::equal(prefix.begin(), prefix.end(), str.begin(),
-                              [](char a, char b) { return std::tolower(a) == std::tolower(b); });
+        bool isWordBoundary(const std::string& str, size_t pos) {
+            if (pos == 0)
+                return true;
+            const char prev = str[pos - 1];
+            const char curr = str[pos];
+            if (prev == '_')
+                return true;
+            if (std::islower(prev) && std::isupper(curr))
+                return true;
+            return false;
+        }
+
+        std::optional<int> fuzzyScore(const std::string& str, const std::string& pattern) {
+            if (pattern.empty())
+                return 1000;
+            if (pattern.size() > str.size())
+                return std::nullopt;
+
+            int score = 0;
+            size_t patternIdx = 0;
+            bool isPrefix = true;
+            int boundaryMatches = 0;
+
+            for (size_t i = 0; i < str.size() && patternIdx < pattern.size(); ++i) {
+                const char s = std::tolower(static_cast<unsigned char>(str[i]));
+                const char p = std::tolower(static_cast<unsigned char>(pattern[patternIdx]));
+
+                if (s == p) {
+                    if (i == patternIdx) {
+                        score += 10;
+                    }
+
+                    if (isWordBoundary(str, i)) {
+                        ++boundaryMatches;
+                        score += 5;
+                    }
+
+                    ++patternIdx;
+                } else {
+                    isPrefix = false;
+                }
+            }
+
+            if (patternIdx < pattern.size()) {
+                return std::nullopt;
+            }
+
+            if (isPrefix) {
+                score += 100;
+            }
+
+            score += boundaryMatches * 10;
+
+            return score;
         }
 
     } // namespace
@@ -59,8 +109,8 @@ namespace lfs::vis::editor {
 
         std::vector<CompletionItem> results;
         for (const auto& [kw, desc] : keywords) {
-            if (prefix.empty() || startsWith(kw, prefix)) {
-                results.push_back({kw, kw, desc, CompletionKind::Keyword, 100});
+            if (auto score = fuzzyScore(kw, prefix)) {
+                results.push_back({kw, kw, desc, CompletionKind::Keyword, *score});
             }
         }
         return results;
@@ -151,8 +201,8 @@ namespace lfs::vis::editor {
 
         std::vector<CompletionItem> results;
         for (const auto& [name, sig, desc] : builtins) {
-            if (prefix.empty() || startsWith(name, prefix)) {
-                results.push_back({name, sig, desc, CompletionKind::Builtin, 90});
+            if (auto score = fuzzyScore(name, prefix)) {
+                results.push_back({name, sig, desc, CompletionKind::Builtin, *score});
             }
         }
         return results;
@@ -273,8 +323,8 @@ namespace lfs::vis::editor {
 
         auto addMatching = [&](const auto& items, int basePriority) {
             for (const auto& [name, sig, desc, kind] : items) {
-                if (prefix.empty() || startsWith(name, prefix)) {
-                    results.push_back({name, sig, desc, kind, basePriority});
+                if (auto score = fuzzyScore(name, prefix)) {
+                    results.push_back({name, sig, desc, kind, basePriority + *score});
                 }
             }
         };

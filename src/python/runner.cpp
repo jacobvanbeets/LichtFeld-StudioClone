@@ -299,9 +299,13 @@ _add_dll_dirs()
                 }
             }
 
-            // Only save thread state if we initialized Python ourselves.
-            // When Python was externally initialized (e.g., by .pyd loading on Windows),
-            // we don't own the main thread state and shouldn't try to save/restore it.
+            // Load plugins BEFORE releasing the GIL - the .pyd initialization code
+            // needs valid thread state to access Python internals (PyImport_GetModuleDict etc.)
+            LOG_INFO("Loading plugins while holding GIL...");
+            ensure_plugins_loaded();
+            LOG_INFO("Plugin loading complete");
+
+            // Now release the GIL for other threads
             if (g_we_initialized_python) {
                 g_main_thread_state = PyEval_SaveThread();
                 LOG_INFO("GIL released (main thread state saved)");
@@ -310,19 +314,6 @@ _add_dll_dirs()
                 LOG_INFO("External Python init - using PyGILState for GIL management");
             }
         });
-
-        // Load plugins after Python is initialized (idempotent, safe to call multiple times)
-        // This ensures builtin panels like Plugin Manager are registered
-        LOG_INFO("Acquiring GIL for plugin loading...");
-        std::fflush(stdout);
-        std::fflush(stderr);
-        const PyGILState_STATE gil = PyGILState_Ensure();
-        LOG_INFO("GIL acquired successfully");
-        LOG_INFO("GIL acquired, loading plugins...");
-        ensure_plugins_loaded();
-        LOG_INFO("Plugin loading complete, releasing GIL...");
-        PyGILState_Release(gil);
-        LOG_INFO("GIL released after plugin loading");
 #endif
     }
 
@@ -511,24 +502,24 @@ _add_dll_dirs()
 #endif
     }
 
-    std::string format_python_code(const std::string& code) {
+    FormatResult format_python_code(const std::string& code) {
 #ifndef LFS_BUILD_PYTHON_BINDINGS
-        return code;
+        return {code, "", true};
 #else
         if (code.empty())
-            return code;
+            return {code, "", true};
 
         auto& pm = PackageManager::instance();
         if (!pm.is_installed("black")) {
             if (!pm.ensure_venv()) {
                 LOG_ERROR("Failed to create venv for black");
-                return code;
+                return {code, "Failed to create venv for black", false};
             }
             LOG_INFO("Installing black...");
             const auto install_result = pm.install("black");
             if (!install_result.success) {
                 LOG_ERROR("Failed to install black: {}", install_result.error);
-                return code;
+                return {code, install_result.error, false};
             }
             update_python_path();
         }
@@ -543,8 +534,7 @@ def _lfs_format_code(code):
     try:
         import black
     except ImportError as e:
-        print(f"[format] ImportError: {e}", file=sys.stderr)
-        return None
+        return (None, f"ImportError: {e}")
 
     # Normalize unicode characters that break parsing (from copy-paste)
     replacements = {
@@ -572,7 +562,7 @@ def _lfs_format_code(code):
         lines.pop()
 
     if not lines:
-        return code
+        return (code, None)
 
     # Convert tabs to spaces consistently
     lines = [line.replace('\t', '    ') for line in lines]
@@ -584,7 +574,7 @@ def _lfs_format_code(code):
             indents.append(len(line) - len(line.lstrip()))
 
     if not indents:
-        return code
+        return (code, None)
 
     # If first line has 0 indent but others have consistent indent,
     # this is likely a copy-paste issue - use the mode of other indents
@@ -614,11 +604,9 @@ def _lfs_format_code(code):
     cleaned = '\n'.join(dedented)
 
     try:
-        return black.format_str(cleaned, mode=black.Mode())
+        return (black.format_str(cleaned, mode=black.Mode()), None)
     except Exception as e:
-        print(f"[format] Error: {e}", file=sys.stderr)
-        print(f"[format] Code was:\n{repr(cleaned)}", file=sys.stderr)
-        return None
+        return (None, str(e))
 )";
 
         PyRun_SimpleString(FORMAT_CODE);
@@ -626,30 +614,47 @@ def _lfs_format_code(code):
         PyObject* const main_module = PyImport_AddModule("__main__");
         if (!main_module) {
             PyGILState_Release(gil);
-            return code;
+            return {code, "Failed to get __main__ module", false};
         }
 
         PyObject* const main_dict = PyModule_GetDict(main_module);
         PyObject* const format_func = PyDict_GetItemString(main_dict, "_lfs_format_code");
         if (!format_func || !PyCallable_Check(format_func)) {
             PyGILState_Release(gil);
-            return code;
+            return {code, "Format function not found", false};
         }
 
-        std::string result = code;
+        FormatResult result{code, "", false};
         PyObject* const py_code = PyUnicode_FromString(code.c_str());
         PyObject* const py_result = PyObject_CallFunctionObjArgs(format_func, py_code, nullptr);
         Py_DECREF(py_code);
 
-        if (py_result) {
-            if (PyUnicode_Check(py_result)) {
-                const char* const formatted = PyUnicode_AsUTF8(py_result);
-                if (formatted)
-                    result = formatted;
+        if (py_result && PyTuple_Check(py_result) && PyTuple_Size(py_result) == 2) {
+            PyObject* formatted = PyTuple_GetItem(py_result, 0);
+            PyObject* error = PyTuple_GetItem(py_result, 1);
+
+            if (formatted && PyUnicode_Check(formatted)) {
+                const char* const str = PyUnicode_AsUTF8(formatted);
+                if (str) {
+                    result.code = str;
+                    result.success = true;
+                }
             }
+
+            if (error && !Py_IsNone(error) && PyUnicode_Check(error)) {
+                const char* const err = PyUnicode_AsUTF8(error);
+                if (err) {
+                    result.error = err;
+                    result.success = false;
+                }
+            }
+
             Py_DECREF(py_result);
         } else {
-            PyErr_Clear();
+            if (PyErr_Occurred()) {
+                PyErr_Clear();
+            }
+            result.error = "Format function returned unexpected result";
         }
 
         PyGILState_Release(gil);

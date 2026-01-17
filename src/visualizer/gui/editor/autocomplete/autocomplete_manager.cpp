@@ -78,8 +78,19 @@ namespace lfs::vis::editor {
         const auto& t = theme();
         bool selected = false;
 
+        // Calculate dynamic width from content
+        float maxWidth = 200.0f;
+        for (const auto& item : completions_) {
+            float itemWidth = ImGui::CalcTextSize(item.text.c_str()).x;
+            if (!item.display.empty() && item.display != item.text) {
+                itemWidth += ImGui::CalcTextSize(item.display.c_str()).x + 20.0f;
+            }
+            maxWidth = std::max(maxWidth, itemWidth + 60.0f);
+        }
+        maxWidth = std::min(maxWidth, 500.0f);
+
         ImGui::SetNextWindowPos(anchor_pos, ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(350, 0), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(maxWidth, 0), ImGuiCond_Always);
         ImGui::SetNextWindowBgAlpha(1.0f);
 
         // Don't steal focus from the editor - NoFocusOnAppearing + Tooltip flags handle z-order
@@ -183,6 +194,10 @@ namespace lfs::vis::editor {
                 ImGui::Spacing();
                 ImGui::TextColored(t.palette.text_dim, "  %d/%d", selected_index_ + 1, num_items);
             }
+
+            // Keyboard hints
+            ImGui::Separator();
+            ImGui::TextColored(t.palette.text_dim, "Tab accept | Esc dismiss");
         }
         ImGui::End();
 
@@ -193,15 +208,14 @@ namespace lfs::vis::editor {
     }
 
     void AutocompleteManager::selectNext() {
-        if (!completions_.empty()) {
-            selected_index_ = (selected_index_ + 1) % static_cast<int>(completions_.size());
+        if (!completions_.empty() && selected_index_ < static_cast<int>(completions_.size()) - 1) {
+            ++selected_index_;
         }
     }
 
     void AutocompleteManager::selectPrevious() {
-        if (!completions_.empty()) {
-            selected_index_ = (selected_index_ - 1 + static_cast<int>(completions_.size())) %
-                              static_cast<int>(completions_.size());
+        if (selected_index_ > 0) {
+            --selected_index_;
         }
     }
 

@@ -161,7 +161,7 @@ namespace {
             return false;
         }
 
-        file << editor->getText();
+        file << editor->getTextStripped();
         file.close();
 
         state.setScriptPath(path);
@@ -457,7 +457,7 @@ namespace lfs::vis::gui::panels {
             if (ImGui::BeginMenu("Run")) {
                 if (ImGui::MenuItem("Run Script", "F5")) {
                     if (auto* editor = state.getEditor()) {
-                        execute_python_code(editor->getText(), state);
+                        execute_python_code(editor->getTextStripped(), state);
                     }
                 }
                 ImGui::Separator();
@@ -487,7 +487,7 @@ namespace lfs::vis::gui::panels {
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, darken(t.palette.success, 0.1f));
             if (ImGui::Button("Run") || ImGui::IsKeyPressed(ImGuiKey_F5, false)) {
                 if (auto* editor = state.getEditor()) {
-                    execute_python_code(editor->getText(), state);
+                    execute_python_code(editor->getTextStripped(), state);
                 }
             }
             ImGui::PopStyleColor(3);
@@ -603,7 +603,7 @@ namespace lfs::vis::gui::panels {
 
                 if (editor->render(editor_size)) {
                     // Ctrl+Enter was pressed - execute
-                    execute_python_code(editor->getText(), state);
+                    execute_python_code(editor->getTextStripped(), state);
                 }
             }
 
@@ -858,9 +858,13 @@ namespace lfs::vis::gui::panels {
         // Format button
         if (ImGui::Button("Format")) {
             if (auto* editor = state.getEditor()) {
-                const std::string formatted = lfs::python::format_python_code(editor->getText());
-                editor->setText(formatted);
-                state.setModified(true);
+                const auto result = lfs::python::format_python_code(editor->getTextStripped());
+                if (result.success) {
+                    editor->setText(result.code);
+                    state.setModified(true);
+                } else if (!result.error.empty()) {
+                    state.addError("[Format] " + result.error);
+                }
             }
         }
         if (ImGui::IsItemHovered())
@@ -876,7 +880,7 @@ namespace lfs::vis::gui::panels {
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, darken(t.palette.success, 0.1f));
         if (ImGui::Button("Run") || ImGui::IsKeyPressed(ImGuiKey_F5, false)) {
             if (auto* editor = state.getEditor()) {
-                execute_python_code(editor->getText(), state);
+                execute_python_code(editor->getTextStripped(), state);
             }
         }
         ImGui::PopStyleColor(3);
@@ -987,7 +991,7 @@ namespace lfs::vis::gui::panels {
                 editor->setReadOnly(block_editor_input);
 
                 if (editor->render(editor_size)) {
-                    execute_python_code(editor->getText(), state);
+                    execute_python_code(editor->getTextStripped(), state);
                 }
             }
 
@@ -1142,9 +1146,13 @@ namespace lfs::vis::gui::panels {
             }
             if (ImGui::GetIO().KeyShift && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
                 if (auto* editor = state.getEditor()) {
-                    const std::string formatted = lfs::python::format_python_code(editor->getText());
-                    editor->setText(formatted);
-                    state.setModified(true);
+                    const auto result = lfs::python::format_python_code(editor->getTextStripped());
+                    if (result.success) {
+                        editor->setText(result.code);
+                        state.setModified(true);
+                    } else if (!result.error.empty()) {
+                        state.addError("[Format] " + result.error);
+                    }
                 }
             }
             // Font scaling: Ctrl++ / Ctrl+= to increase, Ctrl+- to decrease, Ctrl+0 to reset

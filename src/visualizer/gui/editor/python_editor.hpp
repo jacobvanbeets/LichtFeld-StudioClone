@@ -26,6 +26,7 @@ namespace lfs::vis::editor {
 
         // Get/set text
         std::string getText() const;
+        std::string getTextStripped() const;
         void setText(const std::string& text);
         void clear();
 
