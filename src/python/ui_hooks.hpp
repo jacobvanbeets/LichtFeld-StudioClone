@@ -54,11 +54,7 @@ namespace lfs::python {
     std::vector<std::string> get_registered_hook_points();
 
     // Python hook invoker (C-style pointer for DLL boundary safety)
-#ifdef _WIN32
-    using PythonHookInvoker = void (__cdecl*)(const char* panel, const char* section, bool prepend);
-#else
     using PythonHookInvoker = void (*)(const char* panel, const char* section, bool prepend);
-#endif
 
     void set_python_hook_invoker(PythonHookInvoker invoker);
     void clear_python_hook_invoker();
