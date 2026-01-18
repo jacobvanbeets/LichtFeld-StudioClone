@@ -8,6 +8,11 @@
 #include <cstdio>
 #include <mutex>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 #ifdef LFS_BUILD_PYTHON_BINDINGS
 #include <Python.h>
 #endif
@@ -192,6 +197,9 @@ namespace lfs::python {
     }
 
     void draw_python_panels(PanelSpace space, lfs::vis::Scene* /* scene */) {
+        std::fprintf(stderr, "[pyrt] draw_python_panels: space=%d, callback=%p\n",
+                     static_cast<int>(space), reinterpret_cast<void*>(g_draw_callback));
+        std::fflush(stderr);
         if (!g_draw_callback)
             return;
 #ifdef LFS_BUILD_PYTHON_BINDINGS
@@ -206,7 +214,12 @@ namespace lfs::python {
     }
 
     bool has_python_panels(PanelSpace space) {
+        std::fprintf(stderr, "[pyrt] has_python_panels: space=%d\n", static_cast<int>(space));
+        std::fflush(stderr);
+
         if (g_ensure_initialized_callback) {
+            std::fprintf(stderr, "[pyrt] has_python_panels: calling ensure_initialized\n");
+            std::fflush(stderr);
             g_ensure_initialized_callback();
         }
 
@@ -217,6 +230,8 @@ namespace lfs::python {
             const PyGILState_STATE gil = PyGILState_Ensure();
             const bool result = g_has_callback(space);
             PyGILState_Release(gil);
+            std::fprintf(stderr, "[pyrt] has_python_panels: result=%d\n", result);
+            std::fflush(stderr);
             return result;
 #else
             return g_has_callback(space);
@@ -226,6 +241,9 @@ namespace lfs::python {
     }
 
     std::vector<std::string> get_python_panel_names(PanelSpace space) {
+        std::fprintf(stderr, "[pyrt] get_python_panel_names: space=%d\n", static_cast<int>(space));
+        std::fflush(stderr);
+
         if (g_ensure_initialized_callback) {
             g_ensure_initialized_callback();
         }
@@ -250,10 +268,23 @@ namespace lfs::python {
 #ifdef LFS_BUILD_PYTHON_BINDINGS
         PyGILState_Release(gil);
 #endif
+        std::fprintf(stderr, "[pyrt] get_python_panel_names: returning %zu names\n", result.size());
+        std::fflush(stderr);
         return result;
     }
 
+    // Test callback defined in this DLL to verify calling convention works
+    static void test_callback(const char* label) {
+        std::fprintf(stderr, "[pyrt] TEST_CALLBACK ENTERED OK! label='%s'\n", label ? label : "(null)");
+        std::fflush(stderr);
+    }
+
     void draw_python_panel(const std::string& name, lfs::vis::Scene* /* scene */) {
+        std::fprintf(stderr, "\n[pyrt] ============ draw_python_panel START ============\n");
+        std::fprintf(stderr, "[pyrt] name='%s' (length=%zu)\n", name.c_str(), name.length());
+        std::fprintf(stderr, "[pyrt] name.c_str() address: %p\n", static_cast<const void*>(name.c_str()));
+        std::fflush(stderr);
+
         // First call: dump full state to detect DLL mismatch
         static bool first_call = true;
         if (first_call) {
@@ -261,40 +292,96 @@ namespace lfs::python {
             first_call = false;
         }
 
-        std::fprintf(stderr, "[pyrt] draw_python_panel('%s'): DLL_ID=%p, callback=%p\n",
-                     name.c_str(), DLL_INSTANCE_ID,
-                     reinterpret_cast<void*>(g_draw_single_callback));
+        std::fprintf(stderr, "[pyrt] DLL_INSTANCE_ID=%p\n", DLL_INSTANCE_ID);
+        std::fprintf(stderr, "[pyrt] g_draw_single_callback=%p\n", reinterpret_cast<void*>(g_draw_single_callback));
+        std::fprintf(stderr, "[pyrt] &g_draw_single_callback=%p\n", reinterpret_cast<void*>(&g_draw_single_callback));
         std::fflush(stderr);
 
         if (!g_draw_single_callback) {
             std::fprintf(stderr, "[pyrt] ERROR: g_draw_single_callback is NULL!\n");
-            std::fprintf(stderr, "[pyrt] This means exe and pyd loaded DIFFERENT copies of lfs_python_runtime.dll\n");
-            std::fprintf(stderr, "[pyrt] Check that both load from the same path.\n");
+            std::fprintf(stderr, "[pyrt] ============ draw_python_panel END (NULL callback) ============\n\n");
             std::fflush(stderr);
             return;
         }
 
 #ifdef LFS_BUILD_PYTHON_BINDINGS
+        std::fprintf(stderr, "[pyrt] Python state check:\n");
+        std::fprintf(stderr, "[pyrt]   Py_IsInitialized() = %d\n", Py_IsInitialized());
+        std::fprintf(stderr, "[pyrt]   is_gil_state_ready() = %d\n", is_gil_state_ready());
+        std::fflush(stderr);
+
         if (!Py_IsInitialized() || !is_gil_state_ready()) {
-            std::fprintf(stderr, "[pyrt] Python not ready: init=%d, gil=%d\n",
-                         Py_IsInitialized(), is_gil_state_ready());
+            std::fprintf(stderr, "[pyrt] Python not ready, returning\n");
+            std::fprintf(stderr, "[pyrt] ============ draw_python_panel END (Py not ready) ============\n\n");
             std::fflush(stderr);
             return;
         }
 
+        std::fprintf(stderr, "[pyrt] Acquiring GIL via PyGILState_Ensure()...\n");
+        std::fflush(stderr);
         const PyGILState_STATE gil = PyGILState_Ensure();
-        std::fprintf(stderr, "[pyrt] Calling callback %p('%s')...\n",
-                     reinterpret_cast<void*>(g_draw_single_callback), name.c_str());
+        std::fprintf(stderr, "[pyrt] GIL acquired, state=%d\n", static_cast<int>(gil));
+        std::fflush(stderr);
+
+        // TEST: First call our local test_callback to verify calling convention works
+        std::fprintf(stderr, "[pyrt] ---- TEST: Calling LOCAL test_callback ----\n");
+        std::fprintf(stderr, "[pyrt] test_callback address: %p\n", reinterpret_cast<void*>(&test_callback));
+        std::fflush(stderr);
+        test_callback(name.c_str());
+        std::fprintf(stderr, "[pyrt] ---- TEST: LOCAL test_callback SUCCEEDED ----\n");
+        std::fflush(stderr);
+
+        // Now call the actual callback from pyd
+        std::fprintf(stderr, "[pyrt] ---- NOW CALLING PYD CALLBACK ----\n");
+        std::fprintf(stderr, "[pyrt] g_draw_single_callback = %p\n", reinterpret_cast<void*>(g_draw_single_callback));
+
+#ifdef _WIN32
+        // Check if callback address is valid on Windows
+        MEMORY_BASIC_INFORMATION mbi;
+        if (VirtualQuery(reinterpret_cast<void*>(g_draw_single_callback), &mbi, sizeof(mbi))) {
+            std::fprintf(stderr, "[pyrt] Memory info for callback:\n");
+            std::fprintf(stderr, "[pyrt]   BaseAddress: %p\n", mbi.BaseAddress);
+            std::fprintf(stderr, "[pyrt]   AllocationBase: %p\n", mbi.AllocationBase);
+            std::fprintf(stderr, "[pyrt]   RegionSize: %zu\n", mbi.RegionSize);
+            std::fprintf(stderr, "[pyrt]   State: %lx (MEM_COMMIT=1000, MEM_FREE=10000, MEM_RESERVE=2000)\n", mbi.State);
+            std::fprintf(stderr, "[pyrt]   Protect: %lx (PAGE_EXECUTE_READ=20, PAGE_EXECUTE_READWRITE=40)\n", mbi.Protect);
+            std::fprintf(stderr, "[pyrt]   Type: %lx (MEM_IMAGE=1000000, MEM_MAPPED=40000, MEM_PRIVATE=20000)\n", mbi.Type);
+            std::fflush(stderr);
+
+            if (mbi.State != MEM_COMMIT) {
+                std::fprintf(stderr, "[pyrt] ERROR: Memory not committed!\n");
+                std::fflush(stderr);
+            }
+            if (!(mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) {
+                std::fprintf(stderr, "[pyrt] ERROR: Memory not executable! Protect=%lx\n", mbi.Protect);
+                std::fflush(stderr);
+            }
+        } else {
+            std::fprintf(stderr, "[pyrt] ERROR: VirtualQuery failed! GetLastError=%lu\n", GetLastError());
+            std::fflush(stderr);
+        }
+#endif
+
+        std::fprintf(stderr, "[pyrt] Argument: name.c_str() = %p = '%s'\n",
+                     static_cast<const void*>(name.c_str()), name.c_str());
+        std::fprintf(stderr, "[pyrt] About to call: g_draw_single_callback(\"%s\")\n", name.c_str());
+        std::fprintf(stderr, "[pyrt] >>>>> CALLING NOW <<<<<\n");
         std::fflush(stderr);
 
         g_draw_single_callback(name.c_str());
 
-        std::fprintf(stderr, "[pyrt] Callback returned OK\n");
+        std::fprintf(stderr, "[pyrt] >>>>> CALLBACK RETURNED <<<<<\n");
+        std::fprintf(stderr, "[pyrt] Releasing GIL...\n");
         std::fflush(stderr);
         PyGILState_Release(gil);
+        std::fprintf(stderr, "[pyrt] GIL released\n");
 #else
+        std::fprintf(stderr, "[pyrt] (Non-Python build) Calling callback directly\n");
+        std::fflush(stderr);
         g_draw_single_callback(name.c_str());
 #endif
+        std::fprintf(stderr, "[pyrt] ============ draw_python_panel END (SUCCESS) ============\n\n");
+        std::fflush(stderr);
     }
 
 } // namespace lfs::python

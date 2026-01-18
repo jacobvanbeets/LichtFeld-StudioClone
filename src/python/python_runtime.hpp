@@ -34,13 +34,20 @@ namespace lfs::python {
     };
 
     // Panel callbacks (C-style function pointers for DLL boundary safety)
-    using DrawPanelsCallback = void (*)(PanelSpace);
-    using DrawSinglePanelCallback = void (*)(const char*);
-    using HasPanelsCallback = bool (*)(PanelSpace);
-    using CleanupCallback = void (*)();
-    using EnsureInitializedCallback = void (*)();
-    using PanelNameVisitor = void (*)(const char* name, void* user_data);
-    using GetPanelNamesCallback = void (*)(PanelSpace, PanelNameVisitor, void* user_data);
+    // Use explicit calling convention on Windows to avoid ABI mismatches
+#ifdef _WIN32
+#define LFS_CALLBACK __cdecl
+#else
+#define LFS_CALLBACK
+#endif
+
+    using DrawPanelsCallback = void (LFS_CALLBACK*)(PanelSpace);
+    using DrawSinglePanelCallback = void (LFS_CALLBACK*)(const char*);
+    using HasPanelsCallback = bool (LFS_CALLBACK*)(PanelSpace);
+    using CleanupCallback = void (LFS_CALLBACK*)();
+    using EnsureInitializedCallback = void (LFS_CALLBACK*)();
+    using PanelNameVisitor = void (LFS_CALLBACK*)(const char* name, void* user_data);
+    using GetPanelNamesCallback = void (LFS_CALLBACK*)(PanelSpace, PanelNameVisitor, void* user_data);
 
     // Register callbacks from the Python module
     LFS_PYTHON_RUNTIME_API void set_ensure_initialized_callback(EnsureInitializedCallback cb);
