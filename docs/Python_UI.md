@@ -38,7 +38,7 @@ class MyPanel:
             self.apply_settings()
 
 # Register the panel
-lf.register_panel(MyPanel)
+lf.ui.register_panel(MyPanel)
 ```
 
 ### Panel Spaces
@@ -52,13 +52,13 @@ lf.register_panel(MyPanel)
 ### Panel Management
 
 ```python
-lf.register_panel(MyPanel)
-lf.unregister_panel(MyPanel)
-lf.unregister_all_panels()
+lf.ui.register_panel(MyPanel)
+lf.ui.unregister_panel(MyPanel)
+lf.ui.unregister_all_panels()
 
-lf.set_panel_enabled("My Custom Panel", False)
-lf.is_panel_enabled("My Custom Panel")
-lf.get_panel_names("SIDE_PANEL")  # List panels in a space
+lf.ui.set_panel_enabled("My Custom Panel", False)
+lf.ui.is_panel_enabled("My Custom Panel")
+lf.ui.get_panel_names("SIDE_PANEL")  # List panels in a space
 ```
 
 ### Poll Context
@@ -290,12 +290,12 @@ Inject custom UI into existing panels:
 
 ```python
 # Decorator style
-@lf.hook("training", "status")
+@lf.ui.hook("training", "status")
 def add_custom_info(ui):
     ui.separator()
     ui.label("Custom training info")
 
-@lf.hook("training", "controls", position="prepend")
+@lf.ui.hook("training", "controls", position="prepend")
 def add_before(ui):
     ui.label("Prepended content")
 
@@ -303,14 +303,14 @@ def add_before(ui):
 def my_hook(ui):
     ui.label("Hook content")
 
-lf.add_hook("panel_name", "section_name", my_hook, position="append")
-lf.remove_hook("panel_name", "section_name", my_hook)
-lf.clear_hooks("panel_name", "section_name")
-lf.clear_hooks("panel_name")  # Clear all sections
-lf.clear_all_hooks()
+lf.ui.add_hook("panel_name", "section_name", my_hook, position="append")
+lf.ui.remove_hook("panel_name", "section_name", my_hook)
+lf.ui.clear_hooks("panel_name", "section_name")
+lf.ui.clear_hooks("panel_name")  # Clear all sections
+lf.ui.clear_all_hooks()
 
 # List registered hook points
-points = lf.get_hook_points()
+points = lf.ui.get_hook_points()
 ```
 
 ---
@@ -319,12 +319,12 @@ points = lf.get_hook_points()
 
 ```python
 # Folder selection
-folder = lf.open_folder_dialog("Select Output Folder", "/default/path")
+folder = lf.ui.open_folder_dialog("Select Output Folder", "/default/path")
 if folder:
     print(f"Selected: {folder}")
 
 # Image file selection
-image = lf.open_image_dialog("/images")
+image = lf.ui.open_image_dialog("/images")
 if image:
     print(f"Selected: {image}")
 ```
@@ -336,7 +336,7 @@ if image:
 Access the current UI theme colors and sizes:
 
 ```python
-theme = lf.theme()
+theme = lf.ui.theme()
 
 # Palette (all are RGBA tuples)
 theme.palette.background
@@ -365,13 +365,13 @@ theme.sizes.item_spacing     # (x, y)
 ## Tool Switching
 
 ```python
-lf.set_tool("selection")
-lf.set_tool("translate")
-lf.set_tool("rotate")
-lf.set_tool("scale")
-lf.set_tool("brush")
-lf.set_tool("cropbox")
-lf.set_tool("none")
+lf.ui.set_tool("selection")
+lf.ui.set_tool("translate")
+lf.ui.set_tool("rotate")
+lf.ui.set_tool("scale")
+lf.ui.set_tool("brush")
+lf.ui.set_tool("cropbox")
+lf.ui.set_tool("none")
 ```
 
 ---
@@ -465,7 +465,7 @@ class GaussianFilterPanel:
         self.opacity_threshold = 0.01
         self.scale_threshold = 0.001
 
-lf.register_panel(GaussianFilterPanel)
+lf.ui.register_panel(GaussianFilterPanel)
 ```
 
 ---
