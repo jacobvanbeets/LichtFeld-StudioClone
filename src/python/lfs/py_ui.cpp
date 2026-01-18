@@ -716,39 +716,49 @@ namespace lfs::python {
     }
 
     void PyPanelRegistry::draw_single_panel(const std::string& label) {
+        LOG_INFO("draw_single_panel: entering for '{}'", label);
+
         PyPanelInfo panel_copy;
         bool found = false;
         {
+            LOG_INFO("draw_single_panel: acquiring mutex");
             std::lock_guard lock(mutex_);
+            LOG_INFO("draw_single_panel: mutex acquired, searching {} panels", panels_.size());
             for (const auto& panel : panels_) {
                 if (panel.label == label && panel.enabled) {
+                    LOG_INFO("draw_single_panel: found panel, copying");
                     panel_copy = panel;
+                    LOG_INFO("draw_single_panel: panel copied");
                     found = true;
                     break;
                 }
             }
         }
+        LOG_INFO("draw_single_panel: mutex released, found={}", found);
 
         if (!found) {
             LOG_INFO("Panel '{}' not found or disabled", label);
             return;
         }
 
+        LOG_INFO("draw_single_panel: checking is_valid");
         if (!panel_copy.panel_instance.is_valid()) {
             LOG_ERROR("Panel '{}' has invalid instance", label);
             return;
         }
 
+        LOG_INFO("draw_single_panel: checking hasattr draw");
         if (!nb::hasattr(panel_copy.panel_instance, "draw")) {
             LOG_ERROR("Panel '{}' has no draw method", label);
             return;
         }
 
-        LOG_INFO("Drawing panel '{}'", label);
+        LOG_INFO("draw_single_panel: calling draw() for '{}'", label);
 
         try {
             PyUILayout layout;
             panel_copy.panel_instance.attr("draw")(layout);
+            LOG_INFO("draw_single_panel: draw() completed for '{}'", label);
         } catch (const nb::python_error& e) {
             LOG_ERROR("Python panel '{}' Python error: {}", panel_copy.label, e.what());
         } catch (const std::exception& e) {
