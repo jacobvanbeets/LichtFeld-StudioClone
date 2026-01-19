@@ -34,28 +34,6 @@ namespace lfs::python {
         ImVec4 tuple_to_imvec4(const std::tuple<float, float, float, float>& t) {
             return {std::get<0>(t), std::get<1>(t), std::get<2>(t), std::get<3>(t)};
         }
-
-        // Ensure ImGui context is set (required for Windows DLL boundaries)
-        // Called once at init, not per-frame
-        bool g_imgui_context_initialized = false;
-
-        void ensure_imgui_context() {
-            if (g_imgui_context_initialized) {
-                return;
-            }
-
-            void* shared_ctx = get_imgui_context();
-            if (!shared_ctx) {
-                return;
-            }
-
-            void* current_ctx = ImGui::GetCurrentContext();
-            if (current_ctx != shared_ctx) {
-                ImGui::SetCurrentContext(static_cast<ImGuiContext*>(shared_ctx));
-            }
-
-            g_imgui_context_initialized = true;
-        }
     } // namespace
 
     bool PyPanelContext::is_training() const {
@@ -663,9 +641,6 @@ namespace lfs::python {
             return;
         }
 
-        // Ensure ImGui context is set (Windows DLL boundary fix)
-        ensure_imgui_context();
-
         // GIL is already held by caller (py_panel_registry.cpp)
 
         for (auto& panel : panels_copy) {
@@ -770,25 +745,11 @@ namespace lfs::python {
             return;
         }
 
-        ensure_imgui_context();
-
         try {
             PyUILayout layout;
             panel_copy.panel_instance.attr("draw")(layout);
         } catch (const nb::python_error&) {
-            PyObject *type, *value, *tb;
-            PyErr_Fetch(&type, &value, &tb);
-            if (value) {
-                PyObject* str = PyObject_Str(value);
-                if (str) {
-                    const char* msg = PyUnicode_AsUTF8(str);
-                    LOG_ERROR("Python panel '{}' error: {}", label, msg ? msg : "(unknown)");
-                    Py_DECREF(str);
-                }
-            }
-            Py_XDECREF(type);
-            Py_XDECREF(value);
-            Py_XDECREF(tb);
+            LOG_ERROR("Python panel '{}' error: {}", label, extract_python_error());
         } catch (const std::exception& e) {
             LOG_ERROR("Python panel '{}' error: {}", label, e.what());
         }
@@ -944,9 +905,6 @@ namespace lfs::python {
         if (callbacks_to_invoke.empty()) {
             return;
         }
-
-        // Ensure ImGui context is set (Windows DLL boundary fix)
-        ensure_imgui_context();
 
         nb::gil_scoped_acquire gil;
 
@@ -1284,6 +1242,14 @@ namespace lfs::python {
                 lfs::core::events::tools::SetToolbarTool{.tool_mode = static_cast<int>(it->second)}.emit();
             },
             nb::arg("tool"), "Switch to a toolbar tool (none, selection, translate, rotate, scale, mirror, brush, align, cropbox)");
+
+        // UI context preparation (Windows DLL boundary fix)
+        set_prepare_ui_context_callback([]() {
+            void* ctx = get_imgui_context();
+            if (ctx) {
+                ImGui::SetCurrentContext(static_cast<ImGuiContext*>(ctx));
+            }
+        });
 
         // Panel system callbacks
         set_panel_draw_callback([](PanelSpace space) {

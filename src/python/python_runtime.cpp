@@ -20,6 +20,7 @@ namespace lfs::python {
         HasPanelsCallback g_has_callback = nullptr;
         GetPanelNamesCallback g_panel_names_callback = nullptr;
         CleanupCallback g_cleanup_callback = nullptr;
+        PrepareUIContextCallback g_prepare_ui_context = nullptr;
 
         // Operation context (short-lived, per-call)
         void* g_scene_for_python = nullptr;
@@ -145,11 +146,40 @@ namespace lfs::python {
         g_has_callback = nullptr;
         g_panel_names_callback = nullptr;
         g_cleanup_callback = nullptr;
+        g_prepare_ui_context = nullptr;
     }
 
-    void debug_dump_callbacks(const char* /* caller */) {
-        // Debug function - no-op in release builds
+    void set_prepare_ui_context_callback(PrepareUIContextCallback cb) {
+        g_prepare_ui_context = cb;
     }
+
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+    std::string extract_python_error() {
+        PyObject *type, *value, *tb;
+        PyErr_Fetch(&type, &value, &tb);
+        std::string msg = "(unknown error)";
+
+        if (value) {
+            PyObject* str = PyObject_Str(value);
+            if (str) {
+                const char* c_msg = PyUnicode_AsUTF8(str);
+                if (c_msg) {
+                    msg = c_msg;
+                }
+                Py_DECREF(str);
+            }
+        }
+
+        Py_XDECREF(type);
+        Py_XDECREF(value);
+        Py_XDECREF(tb);
+        return msg;
+    }
+#else
+    std::string extract_python_error() {
+        return "(Python bindings not enabled)";
+    }
+#endif
 
     void invoke_python_cleanup() {
         if (g_cleanup_callback) {
@@ -163,6 +193,11 @@ namespace lfs::python {
 #ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return;
+
+        if (g_prepare_ui_context) {
+            g_prepare_ui_context();
+        }
+
         const PyGILState_STATE gil = PyGILState_Ensure();
         g_draw_callback(space);
         PyGILState_Release(gil);
@@ -227,6 +262,10 @@ namespace lfs::python {
 #ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready()) {
             return;
+        }
+
+        if (g_prepare_ui_context) {
+            g_prepare_ui_context();
         }
 
         const PyGILState_STATE gil = PyGILState_Ensure();

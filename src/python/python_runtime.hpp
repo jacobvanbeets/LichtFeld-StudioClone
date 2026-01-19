@@ -51,8 +51,12 @@ namespace lfs::python {
     LFS_PYTHON_RUNTIME_API void set_python_cleanup_callback(CleanupCallback cb);
     LFS_PYTHON_RUNTIME_API void clear_panel_callbacks();
 
-    // Debug: dumps callback addresses to stderr (detects duplicate DLL loading)
-    LFS_PYTHON_RUNTIME_API void debug_dump_callbacks(const char* caller);
+    // UI context preparation - called before any UI callbacks (Windows DLL boundary fix)
+    using PrepareUIContextCallback = void (*)();
+    LFS_PYTHON_RUNTIME_API void set_prepare_ui_context_callback(PrepareUIContextCallback cb);
+
+    // Safe Python error extraction - avoids nanobind::python_error::what() crash on Windows
+    LFS_PYTHON_RUNTIME_API std::string extract_python_error();
 
     // C++ interface for the visualizer
     LFS_PYTHON_RUNTIME_API void draw_python_panels(PanelSpace space, lfs::vis::Scene* scene = nullptr);
