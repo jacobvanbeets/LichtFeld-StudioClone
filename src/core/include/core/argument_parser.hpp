@@ -19,12 +19,13 @@ namespace lfs::core::args {
         param::ConvertParameters params;
     };
     struct HelpMode {};
+    struct VersionMode {};
     struct WarmupMode {}; // JIT compile PTX kernels and exit
     struct McpMode {
         std::optional<std::filesystem::path> scene_path;
     };
 
-    using ParsedArgs = std::variant<TrainingMode, ConvertMode, HelpMode, WarmupMode, McpMode>;
+    using ParsedArgs = std::variant<TrainingMode, ConvertMode, HelpMode, VersionMode, WarmupMode, McpMode>;
 
     std::expected<ParsedArgs, std::string> parse_args(int argc, const char* const argv[]);
 

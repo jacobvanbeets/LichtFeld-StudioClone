@@ -47,6 +47,9 @@ int main(int argc, char* argv[]) {
 
         if constexpr (std::is_same_v<T, lfs::core::args::HelpMode>) {
             return 0;
+        } else if constexpr (std::is_same_v<T, lfs::core::args::VersionMode>) {
+            std::println("LichtFeld Studio {} ({})", GIT_TAGGED_VERSION, GIT_COMMIT_HASH_SHORT);
+            return 0;
         } else if constexpr (std::is_same_v<T, lfs::core::args::WarmupMode>) {
             return 0;
         } else if constexpr (std::is_same_v<T, lfs::core::args::ConvertMode>) {
