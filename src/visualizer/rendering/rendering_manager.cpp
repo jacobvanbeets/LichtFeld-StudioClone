@@ -28,7 +28,7 @@ namespace lfs::vis {
 
     namespace {
         constexpr int GPU_ALIGNMENT = 16; // 16-pixel alignment for GPU texture efficiency
-    }                                     // namespace
+    } // namespace
 
     using namespace lfs::core::events;
 
