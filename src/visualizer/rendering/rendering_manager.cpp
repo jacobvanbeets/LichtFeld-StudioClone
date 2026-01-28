@@ -53,54 +53,42 @@ namespace lfs::vis {
             return r;
         }
 
-        lfs::core::Tensor applyStandaloneAppearance(
-            const lfs::core::Tensor& rgb,
-            Scene& scene,
-            int camera_uid,
-            const PPISPOverrides& overrides) {
-
+        lfs::core::Tensor applyStandaloneAppearance(const lfs::core::Tensor& rgb, Scene& scene,
+                                                    const int camera_uid, const PPISPOverrides& overrides,
+                                                    const bool use_controller = true) {
             auto* ppisp = scene.getAppearancePPISP();
             if (!ppisp) {
                 return rgb;
             }
 
-            auto input = rgb;
-            bool was_hwc = false;
-            if (input.ndim() == 3 && input.shape()[2] == 3) {
-                input = input.permute({2, 0, 1}).contiguous();
-                was_hwc = true;
-            }
+            const bool was_hwc = (rgb.ndim() == 3 && rgb.shape()[2] == 3);
+            const auto input = was_hwc ? rgb.permute({2, 0, 1}).contiguous() : rgb;
+            const bool is_training_camera = (camera_uid >= 0 && camera_uid < ppisp->num_frames());
+            const bool has_controller = use_controller && scene.hasAppearanceController();
 
             lfs::core::Tensor result;
 
-            bool is_training_camera = (camera_uid >= 0 && camera_uid < ppisp->num_frames());
-
-            if (is_training_camera) {
-                if (overrides.isIdentity()) {
-                    result = ppisp->apply(input, camera_uid, camera_uid);
-                } else {
-                    result = ppisp->apply_with_overrides(input, camera_uid, camera_uid, toRenderOverrides(overrides));
-                }
-            } else if (scene.hasAppearanceController()) {
+            if (has_controller) {
                 auto* pool = scene.getAppearanceControllerPool();
                 const int controller_idx = camera_uid >= 0 ? camera_uid % pool->num_cameras() : 0;
-                auto input_batch = input.unsqueeze(0);
-                auto params = pool->predict(controller_idx, input_batch, 1.0f);
-                if (overrides.isIdentity()) {
-                    result = ppisp->apply_with_controller_params(input, params, 0);
-                } else {
-                    result = ppisp->apply_with_controller_params_and_overrides(input, params, 0,
-                                                                               toRenderOverrides(overrides));
-                }
+                const auto params = pool->predict(controller_idx, input.unsqueeze(0), 1.0f);
+                result = overrides.isIdentity()
+                             ? ppisp->apply_with_controller_params(input, params, 0)
+                             : ppisp->apply_with_controller_params_and_overrides(input, params, 0,
+                                                                                 toRenderOverrides(overrides));
+            } else if (is_training_camera) {
+                result = overrides.isIdentity() ? ppisp->apply(input, camera_uid, camera_uid)
+                                                : ppisp->apply_with_overrides(input, camera_uid, camera_uid,
+                                                                              toRenderOverrides(overrides));
             } else {
-                return rgb;
+                const int fallback_camera = ppisp->any_camera_id();
+                const int fallback_frame = ppisp->any_frame_uid();
+                result = overrides.isIdentity() ? ppisp->apply(input, fallback_camera, fallback_frame)
+                                                : ppisp->apply_with_overrides(input, fallback_camera, fallback_frame,
+                                                                              toRenderOverrides(overrides));
             }
 
-            if (was_hwc && result.is_valid()) {
-                result = result.permute({1, 2, 0}).contiguous();
-            }
-
-            return result;
+            return (was_hwc && result.is_valid()) ? result.permute({1, 2, 0}).contiguous() : result;
         }
     } // namespace
 
@@ -876,7 +864,7 @@ namespace lfs::vis {
 
         auto render_result = engine_->renderGaussians(*model, request);
 
-        // Apply PPISP correction if enabled in settings (off by default for fast viewport)
+        // Apply PPISP correction if enabled via checkbox
         if (render_result && render_result->image && settings_.apply_appearance_correction) {
             bool applied = false;
 
@@ -892,8 +880,9 @@ namespace lfs::vis {
                         trainer_overrides.wb_tint = settings_.ppisp_overrides.wb_tint;
                         trainer_overrides.gamma_multiplier = settings_.ppisp_overrides.gamma_multiplier;
                     }
+                    const bool use_controller = (settings_.ppisp_mode == RenderSettings::PPISPMode::AUTO);
                     auto corrected = trainer->applyPPISPForViewport(
-                        *render_result->image, current_camera_id_, trainer_overrides);
+                        *render_result->image, current_camera_id_, trainer_overrides, use_controller);
                     render_result->image = std::make_shared<lfs::core::Tensor>(std::move(corrected));
                     applied = true;
                 }
@@ -905,8 +894,9 @@ namespace lfs::vis {
                     const auto& overrides = (settings_.ppisp_mode == RenderSettings::PPISPMode::MANUAL)
                                                 ? settings_.ppisp_overrides
                                                 : PPISPOverrides{};
+                    const bool use_controller = (settings_.ppisp_mode == RenderSettings::PPISPMode::AUTO);
                     auto corrected = applyStandaloneAppearance(
-                        *render_result->image, scene, current_camera_id_, overrides);
+                        *render_result->image, scene, current_camera_id_, overrides, use_controller);
                     if (corrected.is_valid()) {
                         render_result->image = std::make_shared<lfs::core::Tensor>(std::move(corrected));
                     }

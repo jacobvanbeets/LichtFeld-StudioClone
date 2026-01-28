@@ -360,8 +360,9 @@ namespace lfs::vis {
                 controller_pool->allocate_buffers(DEFAULT_MAX_H, DEFAULT_MAX_W);
             }
 
-            // Store in scene for rendering
+            const bool has_controller = (controller_pool != nullptr);
             scene_.setAppearanceModel(std::move(ppisp), std::move(controller_pool));
+            ui::AppearanceModelLoaded{.has_controller = has_controller}.emit();
 
         } catch (const std::exception& e) {
             LOG_ERROR("Failed to load PPISP companion: {}", e.what());

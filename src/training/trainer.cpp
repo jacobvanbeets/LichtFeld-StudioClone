@@ -1747,10 +1747,9 @@ namespace lfs::training {
             LOG_WARN("Failed to save checkpoint: {}", ckpt_result.error());
         }
 
-        // Save PPISP companion file alongside PLY only if controller was enabled
-        if (ppisp_ && params_.optimization.ppisp_use_controller && controller_to_save) {
-            auto ppisp_path = get_ppisp_companion_path(ply_options.output_path);
-            auto ppisp_result = save_ppisp_file(ppisp_path, *ppisp_, controller_to_save);
+        if (ppisp_) {
+            const auto ppisp_path = get_ppisp_companion_path(ply_options.output_path);
+            const auto ppisp_result = save_ppisp_file(ppisp_path, *ppisp_, controller_to_save);
             if (!ppisp_result) {
                 LOG_WARN("Failed to save PPISP file: {}", ppisp_result.error());
             }
@@ -1774,52 +1773,41 @@ namespace lfs::training {
                                               bilateral_grid_.get(), ppisp_.get(), controller_to_save);
     }
 
-    lfs::core::Tensor Trainer::applyPPISPForViewport(const lfs::core::Tensor& rgb, int camera_uid,
-                                                     const PPISPViewportOverrides& overrides) const {
-        if (!ppisp_ || !params_.optimization.use_ppisp) {
+    lfs::core::Tensor Trainer::applyPPISPForViewport(const lfs::core::Tensor& rgb, const int camera_uid,
+                                                     const PPISPViewportOverrides& overrides,
+                                                     const bool use_controller) const {
+        if (!ppisp_ || !params_.optimization.use_ppisp || rgb.shape().rank() != 3) {
             return rgb;
         }
 
-        // Determine input format: [C,H,W] or [H,W,C]
-        const auto& shape = rgb.shape();
-        if (shape.rank() != 3) {
-            return rgb;
-        }
-
-        bool is_chw = (shape[0] == 3);
-        lfs::core::Tensor rgb_chw = is_chw ? rgb : rgb.permute({2, 0, 1}).contiguous();
+        const bool is_chw = (rgb.shape()[0] == 3);
+        const auto rgb_chw = is_chw ? rgb : rgb.permute({2, 0, 1}).contiguous();
+        const bool is_training_camera = ppisp_->is_known_frame(camera_uid);
+        const bool has_controller = ppisp_controller_pool_ && params_.optimization.ppisp_use_controller;
 
         lfs::core::Tensor result;
 
-        const bool is_training_camera = ppisp_->is_known_frame(camera_uid);
-
-        if (is_training_camera) {
-            const int camera_id = ppisp_->camera_for_frame(camera_uid);
-            if (overrides.isIdentity()) {
-                result = ppisp_->apply(rgb_chw, camera_id, camera_uid);
-            } else {
-                result = ppisp_->apply_with_overrides(rgb_chw, camera_id, camera_uid, toRenderOverrides(overrides));
-            }
-        } else if (ppisp_controller_pool_ && params_.optimization.ppisp_use_controller) {
+        if (use_controller && has_controller) {
             constexpr int CONTROLLER_IDX = 0;
-            auto controller_params = ppisp_controller_pool_->predict(CONTROLLER_IDX, rgb_chw.unsqueeze(0), 1.0f);
-            if (overrides.isIdentity()) {
-                result = ppisp_->apply_with_controller_params(rgb_chw, controller_params, CONTROLLER_IDX);
-            } else {
-                result = ppisp_->apply_with_controller_params_and_overrides(rgb_chw, controller_params, CONTROLLER_IDX,
-                                                                            toRenderOverrides(overrides));
-            }
+            const auto controller_params = ppisp_controller_pool_->predict(CONTROLLER_IDX, rgb_chw.unsqueeze(0), 1.0f);
+            result = overrides.isIdentity()
+                         ? ppisp_->apply_with_controller_params(rgb_chw, controller_params, CONTROLLER_IDX)
+                         : ppisp_->apply_with_controller_params_and_overrides(rgb_chw, controller_params, CONTROLLER_IDX,
+                                                                              toRenderOverrides(overrides));
+        } else if (is_training_camera) {
+            const int camera_id = ppisp_->camera_for_frame(camera_uid);
+            result = overrides.isIdentity() ? ppisp_->apply(rgb_chw, camera_id, camera_uid)
+                                            : ppisp_->apply_with_overrides(rgb_chw, camera_id, camera_uid,
+                                                                           toRenderOverrides(overrides));
         } else {
-            // No controller available - return uncorrected
-            return rgb;
+            const int fallback_camera = ppisp_->any_camera_id();
+            const int fallback_frame = ppisp_->any_frame_uid();
+            result = overrides.isIdentity() ? ppisp_->apply(rgb_chw, fallback_camera, fallback_frame)
+                                            : ppisp_->apply_with_overrides(rgb_chw, fallback_camera, fallback_frame,
+                                                                           toRenderOverrides(overrides));
         }
 
-        // Convert back to original format if needed
-        if (!is_chw) {
-            result = result.permute({1, 2, 0}).contiguous();
-        }
-
-        return result;
+        return is_chw ? result : result.permute({1, 2, 0}).contiguous();
     }
 
     void Trainer::save_final_ply_and_checkpoint(const int iteration) {

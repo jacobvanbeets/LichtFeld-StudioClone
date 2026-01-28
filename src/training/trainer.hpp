@@ -134,14 +134,16 @@ namespace lfs::training {
 
         /// Apply PPISP correction to a rendered image for viewport display
         /// @param rgb rendered image [C,H,W] or [H,W,C]
-        /// @param camera_uid camera UID (-1 for novel view using controller)
+        /// @param camera_uid camera UID (-1 for novel view)
         /// @param overrides user-controlled adjustments (exposure, vignette, WB, gamma)
+        /// @param use_controller if true, use controller for novel views; if false, use learned params
         /// @return corrected image, or input if PPISP not enabled
         lfs::core::Tensor applyPPISPForViewport(const lfs::core::Tensor& rgb, int camera_uid,
-                                                const PPISPViewportOverrides& overrides = {}) const;
+                                                const PPISPViewportOverrides& overrides = {},
+                                                bool use_controller = true) const;
 
-        /// Check if PPISP is enabled and initialized
-        bool hasPPISP() const { return ppisp_ != nullptr && params_.optimization.use_ppisp; }
+        /// Check if PPISP is enabled, initialized, and ready for rendering
+        bool hasPPISP() const { return ppisp_ != nullptr && params_.optimization.use_ppisp && ppisp_->isFinalized(); }
 
         /// Check if PPISP controller is enabled and ready for novel views
         bool hasPPISPController() const { return ppisp_controller_pool_ != nullptr && params_.optimization.ppisp_use_controller; }

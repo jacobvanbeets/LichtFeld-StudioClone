@@ -201,6 +201,7 @@ namespace lfs::core {
                   std::optional<bool> equirectangular;);
             EVENT(RenderModeChanged, std::string old_mode; std::string new_mode;);
             EVENT(PointCloudModeChanged, bool enabled; float voxel_size;);
+            EVENT(AppearanceModelLoaded, bool has_controller;);
             EVENT(GridSettingsChanged,
                   bool enabled;
                   int plane;
@@ -235,7 +236,7 @@ namespace lfs::core {
             EVENT(TrainingReadyToStart, );
             EVENT(WindowFocusLost, );
         } // namespace internal
-    } // namespace events
+    }     // namespace events
 
     // ============================================================================
     // Convenience functions

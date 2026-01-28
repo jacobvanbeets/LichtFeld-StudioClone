@@ -4,6 +4,7 @@
 #pragma once
 #include "core/tensor.hpp"
 #include "lfs/kernels/ppisp.cuh"
+#include <cassert>
 #include <cmath>
 #include <istream>
 #include <ostream>
@@ -137,6 +138,19 @@ namespace lfs::training {
         double get_lr() const { return current_lr_; }
         int64_t get_step() const { return step_; }
         const Config& get_config() const { return config_; }
+        bool isFinalized() const { return finalized_; }
+
+        /// Get any valid camera ID (for fallback rendering)
+        int any_camera_id() const {
+            assert(!camera_id_to_idx_.empty());
+            return camera_id_to_idx_.begin()->first;
+        }
+
+        /// Get any valid frame UID (for fallback rendering)
+        int any_frame_uid() const {
+            assert(!uid_to_frame_idx_.empty());
+            return uid_to_frame_idx_.begin()->first;
+        }
 
         /// Get learned parameters for a specific frame as [1,9] tensor
         /// Returns: [exposure, color_params[0:8]] for distillation target
