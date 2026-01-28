@@ -172,6 +172,7 @@ namespace {
             ::args::Group rendering_group(parser, "RENDERING OPTIONS:");
             ::args::Flag enable_mip(rendering_group, "enable_mip", "Enable mip filter (anti-aliasing)", {"enable-mip"});
             ::args::Flag use_bilateral_grid(rendering_group, "bilateral_grid", "Enable bilateral grid filtering", {"bilateral-grid"});
+            ::args::Flag ppisp_controller(rendering_group, "ppisp_controller", "Enable PPISP controller for novel views", {"ppisp-controller"});
             ::args::Flag bg_modulation(rendering_group, "bg_modulation", "Enable sinusoidal background modulation", {"bg-modulation"});
             ::args::Flag gut(rendering_group, "gut", "Enable GUT mode", {"gut"});
 
@@ -492,6 +493,7 @@ namespace {
                                         // Capture flag states
                                         enable_mip_flag = bool(enable_mip),
                                         use_bilateral_grid_flag = bool(use_bilateral_grid),
+                                        ppisp_controller_flag = bool(ppisp_controller),
                                         enable_eval_flag = bool(enable_eval),
                                         headless_flag = bool(headless),
                                         auto_train_flag = bool(auto_train),
@@ -544,6 +546,7 @@ namespace {
 
                 setFlag(enable_mip_flag, opt.mip_filter);
                 setFlag(use_bilateral_grid_flag, opt.use_bilateral_grid);
+                setFlag(ppisp_controller_flag, opt.ppisp_use_controller);
                 setFlag(enable_eval_flag, opt.enable_eval);
                 setFlag(headless_flag, opt.headless);
                 setFlag(auto_train_flag, opt.auto_train);
@@ -599,6 +602,18 @@ namespace {
         }
     }
 
+    void apply_ppisp_defaults(lfs::core::param::TrainingParameters& params) {
+        auto& opt = params.optimization;
+        if (!opt.ppisp_use_controller)
+            return;
+
+        if (opt.ppisp_controller_activation_step < 0) {
+            constexpr int CONTROLLER_TRAINING_ITERS = 5000;
+            opt.ppisp_controller_activation_step =
+                std::max(0, static_cast<int>(opt.iterations) - CONTROLLER_TRAINING_ITERS);
+        }
+    }
+
     std::vector<std::string> convert_args(int argc, const char* const argv[]) {
         return std::vector<std::string>(argv, argv + argc);
     }
@@ -645,6 +660,7 @@ lfs::core::args::parse_args_and_params(int argc, const char* const argv[]) {
         apply_overrides();
     }
     apply_step_scaling(*params);
+    apply_ppisp_defaults(*params);
 
     return params;
 }

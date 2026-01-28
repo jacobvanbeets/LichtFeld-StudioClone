@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -468,36 +469,41 @@ namespace lfs::io {
         LOG_TIMER_TRACE("Read images.txt");
         auto lines = read_text_file(file_path);
 
-        if (lines.size() % 2 != 0) {
-            LOG_ERROR("images.txt should have an even number of lines");
-            throw std::runtime_error("images.txt should have an even number of lines");
-        }
-
-        uint64_t n_images = lines.size() / 2;
-        LOG_DEBUG("Reading {} images from text file", n_images);
         std::vector<ImageData> images;
-        images.reserve(n_images);
+        images.reserve(lines.size());
 
-        for (uint64_t i = 0; i < n_images; ++i) {
-            const auto& line = lines[i * 2];
-            const auto tokens = split_string(line, ' ');
-
-            if (tokens.size() != 10) {
-                LOG_ERROR("Invalid format in images.txt line {}", i * 2 + 1);
-                throw std::runtime_error("Invalid format in images.txt");
-            }
+        for (size_t line_idx = 0; line_idx < lines.size(); ++line_idx) {
+            const auto& line = lines[line_idx];
+            std::istringstream iss(line);
 
             ImageData img;
-            img.image_id = std::stoul(tokens[0]);
-            img.qvec = {std::stof(tokens[1]), std::stof(tokens[2]),
-                        std::stof(tokens[3]), std::stof(tokens[4])};
-            img.tvec = {std::stof(tokens[5]), std::stof(tokens[6]), std::stof(tokens[7])};
-            img.camera_id = std::stoul(tokens[8]);
-            img.name = tokens[9];
+            if (!(iss >> img.image_id >> img.qvec[0] >> img.qvec[1] >> img.qvec[2] >> img.qvec[3] >> img.tvec[0] >> img.tvec[1] >> img.tvec[2] >> img.camera_id)) {
+                continue;
+            }
+
+            iss >> std::ws;
+            if (!std::getline(iss, img.name) || img.name.empty()) {
+                continue;
+            }
+
+            auto dot_pos = img.name.rfind('.');
+            if (dot_pos == std::string::npos || dot_pos == img.name.size() - 1) {
+                continue;
+            }
+            bool has_extension = std::isalpha(static_cast<unsigned char>(img.name[dot_pos + 1]));
+            if (!has_extension) {
+                continue;
+            }
 
             images.push_back(std::move(img));
         }
 
+        if (images.empty()) {
+            LOG_ERROR("No valid images found in {}", lfs::core::path_to_utf8(file_path));
+            throw std::runtime_error("No valid images in images.txt");
+        }
+
+        LOG_DEBUG("Read {} images from text file", images.size());
         return images;
     }
 
@@ -847,7 +853,8 @@ namespace lfs::io {
                 mask_path,
                 cam_data.width,
                 cam_data.height,
-                static_cast<int>(i));
+                static_cast<int>(i),
+                static_cast<int>(img.camera_id));
 
             cameras.push_back(std::move(camera));
         }

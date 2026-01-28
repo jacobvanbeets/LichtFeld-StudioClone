@@ -204,11 +204,14 @@ namespace lfs::vis {
             return false;
         }
 
-        float split_pos = services().renderingOrNull()->getSettings().split_position;
-        float split_x = viewport_bounds_.x + viewport_bounds_.width * split_pos;
+        const auto viewport_size = glm::ivec2(static_cast<int>(viewport_bounds_.width),
+                                              static_cast<int>(viewport_bounds_.height));
+        const auto content = services().renderingOrNull()->getContentBounds(viewport_size);
+        const float split_pos = services().renderingOrNull()->getSettings().split_position;
+        const float split_x = viewport_bounds_.x + content.x + content.width * split_pos;
 
-        // Hit area matches the visual handle width (24 pixels wide, so 12 on each side)
-        return std::abs(x - split_x) < 12.0;
+        constexpr float SPLITTER_HIT_HALF_WIDTH = 12.0f;
+        return std::abs(x - split_x) < SPLITTER_HIT_HALF_WIDTH;
     }
 
     // Core handlers
@@ -511,13 +514,12 @@ namespace lfs::vis {
         // Track if we moved significantly
         glm::dvec2 current_pos{x, y};
 
-        // Handle splitter dragging
         if (drag_mode_ == DragMode::Splitter && services().renderingOrNull()) {
-            double delta = x - splitter_start_x_;
-            float new_pos = splitter_start_pos_ + static_cast<float>(delta / viewport_bounds_.width);
-
-            // FIX: Allow dragging all the way to the edges - no margins!
-            new_pos = std::clamp(new_pos, 0.0f, 1.0f);
+            const auto viewport_size = glm::ivec2(static_cast<int>(viewport_bounds_.width),
+                                                  static_cast<int>(viewport_bounds_.height));
+            const auto content = services().renderingOrNull()->getContentBounds(viewport_size);
+            const double delta = x - splitter_start_x_;
+            const float new_pos = std::clamp(splitter_start_pos_ + static_cast<float>(delta / content.width), 0.0f, 1.0f);
 
             ui::SplitPositionChanged{.position = new_pos}.emit();
             last_mouse_pos_ = {x, y};
@@ -1179,8 +1181,25 @@ namespace lfs::vis {
         glm::mat3 cam_to_world_R = glm::transpose(world_to_cam_R);
         glm::vec3 cam_to_world_T = -cam_to_world_R * world_to_cam_T;
 
-        viewport_.camera.R = cam_to_world_R;
-        viewport_.camera.t = cam_to_world_T;
+        // Apply scene transform (handles user rotation/translation of the scene)
+        glm::mat4 scene_transform(1.0f);
+        if (auto* scene_mgr = services().sceneOrNull()) {
+            auto visible_transforms = scene_mgr->getScene().getVisibleNodeTransforms();
+            if (!visible_transforms.empty()) {
+                scene_transform = visible_transforms[0];
+            }
+        }
+
+        // Extract rotation part of scene transform
+        glm::mat3 scene_R(scene_transform);
+        glm::vec3 scene_T(scene_transform[3]);
+
+        // Apply scene transform to camera pose
+        glm::mat3 final_R = scene_R * cam_to_world_R;
+        glm::vec3 final_T = scene_R * cam_to_world_T + scene_T;
+
+        viewport_.camera.R = final_R;
+        viewport_.camera.t = final_T;
 
         // Update pivot point to be in front of camera
         viewport_.camera.updatePivotFromCamera();
@@ -1211,8 +1230,9 @@ namespace lfs::vis {
         const bool is_equirectangular =
             cam_data->camera_model_type() == lfs::core::CameraModelType::EQUIRECTANGULAR;
 
+        const auto focal_mm = lfs::rendering::vFovToFocalLength(fov_y_deg);
         ui::RenderSettingsChanged{
-            .fov = is_equirectangular ? std::nullopt : std::optional(fov_y_deg),
+            .focal_length_mm = is_equirectangular ? std::nullopt : std::optional(focal_mm),
             .equirectangular = is_equirectangular}
             .emit();
 

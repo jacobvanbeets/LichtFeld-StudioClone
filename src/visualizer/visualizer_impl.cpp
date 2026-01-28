@@ -166,6 +166,7 @@ namespace lfs::vis {
                 trainer_manager_->waitForCompletion();
             }
             const auto& path = scene_manager_->getDatasetPath();
+            const auto& init_path = data_loader_->getParameters().init_path;
             if (path.empty()) {
                 LOG_ERROR("Cannot reset: empty path");
                 return;
@@ -176,6 +177,7 @@ namespace lfs::vis {
                 if (trainer_manager_) {
                     params.dataset = trainer_manager_->getEditableDatasetParams();
                     params.dataset.data_path = path;
+                    params.init_path = init_path;
                 }
                 data_loader_->setParameters(params);
             }
@@ -218,6 +220,16 @@ namespace lfs::vis {
         ui::PointCloudModeChanged::when([this](const auto&) {
             if (window_manager_) {
                 window_manager_->requestRedraw();
+            }
+        });
+
+        ui::AppearanceModelLoaded::when([this](const auto& e) {
+            if (rendering_manager_) {
+                auto settings = rendering_manager_->getSettings();
+                settings.apply_appearance_correction = true;
+                settings.ppisp_mode =
+                    e.has_controller ? RenderSettings::PPISPMode::AUTO : RenderSettings::PPISPMode::MANUAL;
+                rendering_manager_->updateSettings(settings);
             }
         });
 
@@ -350,7 +362,7 @@ namespace lfs::vis {
                 info.translation = {T.x, T.y, T.z};
                 info.width = viewport_.windowSize.x;
                 info.height = viewport_.windowSize.y;
-                info.fov = settings.fov;
+                info.fov = lfs::rendering::focalLengthToVFov(settings.focal_length_mm);
                 return info;
             });
 

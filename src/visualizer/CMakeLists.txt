@@ -132,6 +132,7 @@ target_link_libraries(lfs_visualizer
         glad::glad
         glfw
         imgui::imgui
+        implot::implot
         imguizmo::imguizmo # 3D manipulation gizmo
         imgui_textedit     # Syntax highlighting text editor
         glm::glm

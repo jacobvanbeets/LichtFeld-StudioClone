@@ -35,6 +35,7 @@
 #include "io/video/video_encoder.hpp"
 #include "io/video_frame_extractor.hpp"
 #include "sequencer/keyframe.hpp"
+#include <implot.h>
 
 #include "input/input_controller.hpp"
 #include "internal/resource_paths.hpp"
@@ -362,6 +363,7 @@ namespace lfs::vis::gui {
         // ImGui initialization
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
+        ImPlot::CreateContext();
 
         // Share ImGui context with Python module (required for Windows DLL boundaries)
         ImGuiContext* ctx = ImGui::GetCurrentContext();
@@ -635,6 +637,7 @@ namespace lfs::vis::gui {
         if (ImGui::GetCurrentContext()) {
             ImGui_ImplOpenGL3_Shutdown();
             ImGui_ImplGlfw_Shutdown();
+            ImPlot::DestroyContext();
             ImGui::DestroyContext();
         }
     }
@@ -1086,8 +1089,8 @@ namespace lfs::vis::gui {
         if (selection_tool && selection_tool->isEnabled() && !ui_hidden_) {
             selection_tool->renderUI(ctx, nullptr);
 
-            // Mini-toolbar for gizmo operation when crop filter is enabled
-            if (selection_tool->isCropFilterEnabled()) {
+            // Mini-toolbar for gizmo operation when crop box is selected
+            if (selection_tool->isCropBoxSelected()) {
                 renderCropGizmoMiniToolbar(ctx);
             }
         }
@@ -1699,7 +1702,7 @@ namespace lfs::vis::gui {
         const glm::mat4 view = viewport.getViewMatrix();
         const glm::ivec2 vp_size(static_cast<int>(viewport_size_.x), static_cast<int>(viewport_size_.y));
         const glm::mat4 projection = lfs::rendering::createProjectionMatrix(
-            vp_size, settings.fov, settings.orthographic, settings.ortho_scale);
+            vp_size, lfs::rendering::focalLengthToVFov(settings.focal_length_mm), settings.orthographic, settings.ortho_scale);
 
         const glm::mat3 rot_mat = glm::mat3_cast(kf->rotation);
         glm::mat4 gizmo_matrix(rot_mat);
@@ -2926,17 +2929,8 @@ namespace lfs::vis::gui {
         NodeId cropbox_id = NULL_NODE;
         const SceneNode* cropbox_node = nullptr;
 
-        const auto* const selection_tool = ctx.viewer->getSelectionTool();
-        const bool crop_filter_active = selection_tool && selection_tool->isEnabled() &&
-                                        selection_tool->isCropFilterEnabled();
-
         if (scene_manager->getSelectedNodeType() == NodeType::CROPBOX) {
             cropbox_id = scene_manager->getSelectedNodeCropBoxId();
-        } else if (crop_filter_active) {
-            const auto& visible = scene_manager->getScene().getVisibleCropBoxes();
-            if (!visible.empty()) {
-                cropbox_id = visible[0].node_id;
-            }
         }
 
         if (cropbox_id == NULL_NODE)
@@ -2952,8 +2946,8 @@ namespace lfs::vis::gui {
         auto& viewport = ctx.viewer->getViewport();
         const glm::mat4 view = viewport.getViewMatrix();
         const glm::ivec2 vp_size(static_cast<int>(viewport_size_.x), static_cast<int>(viewport_size_.y));
-        const glm::mat4 projection = lfs::rendering::createProjectionMatrix(
-            vp_size, settings.fov, settings.orthographic, settings.ortho_scale);
+        const glm::mat4 projection = lfs::rendering::createProjectionMatrixFromFocal(
+            vp_size, settings.focal_length_mm, settings.orthographic, settings.ortho_scale);
 
         // Get cropbox state from scene graph
         const glm::vec3 cropbox_min = cropbox_node->cropbox->min;
@@ -3197,17 +3191,8 @@ namespace lfs::vis::gui {
         NodeId ellipsoid_id = NULL_NODE;
         const SceneNode* ellipsoid_node = nullptr;
 
-        const auto* const selection_tool = ctx.viewer->getSelectionTool();
-        const bool crop_filter_active = selection_tool && selection_tool->isEnabled() &&
-                                        selection_tool->isCropFilterEnabled();
-
         if (scene_manager->getSelectedNodeType() == NodeType::ELLIPSOID) {
             ellipsoid_id = scene_manager->getSelectedNodeEllipsoidId();
-        } else if (crop_filter_active) {
-            const auto& visible = scene_manager->getScene().getVisibleEllipsoids();
-            if (!visible.empty()) {
-                ellipsoid_id = visible[0].node_id;
-            }
         }
 
         if (ellipsoid_id == NULL_NODE)
@@ -3223,8 +3208,8 @@ namespace lfs::vis::gui {
         auto& viewport = ctx.viewer->getViewport();
         const glm::mat4 view = viewport.getViewMatrix();
         const glm::ivec2 vp_size(static_cast<int>(viewport_size_.x), static_cast<int>(viewport_size_.y));
-        const glm::mat4 projection = lfs::rendering::createProjectionMatrix(
-            vp_size, settings.fov, settings.orthographic, settings.ortho_scale);
+        const glm::mat4 projection = lfs::rendering::createProjectionMatrixFromFocal(
+            vp_size, settings.focal_length_mm, settings.orthographic, settings.ortho_scale);
 
         const glm::vec3 radii = ellipsoid_node->ellipsoid->radii;
         const glm::mat4 world_transform = scene_manager->getScene().getWorldTransform(ellipsoid_id);
@@ -3431,8 +3416,8 @@ namespace lfs::vis::gui {
         auto& viewport = ctx.viewer->getViewport();
         const glm::mat4 view = viewport.getViewMatrix();
         const glm::ivec2 vp_size(static_cast<int>(viewport_size_.x), static_cast<int>(viewport_size_.y));
-        const glm::mat4 projection = lfs::rendering::createProjectionMatrix(
-            vp_size, settings.fov, settings.orthographic, settings.ortho_scale);
+        const glm::mat4 projection = lfs::rendering::createProjectionMatrixFromFocal(
+            vp_size, settings.focal_length_mm, settings.orthographic, settings.ortho_scale);
 
         const bool use_world_space =
             (gizmo_toolbar_state_.transform_space == panels::TransformSpace::World) || is_multi_selection;
@@ -4589,7 +4574,7 @@ namespace lfs::vis::gui {
                     request.viewport.rotation = glm::mat3_cast(cam_state.rotation);
                     request.viewport.translation = cam_state.position;
                     request.viewport.size = {width, height};
-                    request.viewport.fov = cam_state.fov;
+                    request.viewport.focal_length_mm = lfs::rendering::vFovToFocalLength(cam_state.fov);
                     request.background_color = render_settings.background_color;
                     request.sh_degree = render_settings.sh_degree;
                     request.scaling_modifier = render_settings.scaling_modifier;
