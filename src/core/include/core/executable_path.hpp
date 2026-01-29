@@ -104,14 +104,13 @@ namespace lfs::core {
         auto module_exists = [](const std::filesystem::path& dir) {
             // Check various naming patterns nanobind might produce
             for (const auto& name : {
-                "lichtfeld.abi3.so",
-                "lichtfeld.so",
-                "lichtfeld.cpython-312-x86_64-linux-gnu.so",
-                "lichtfeld.pyd",
-                "lichtfeld.abi3.pyd",
-                "lichtfeld.cp312-win_amd64.pyd",
-                "lichtfeld.cp311-win_amd64.pyd"
-            }) {
+                     "lichtfeld.abi3.so",
+                     "lichtfeld.so",
+                     "lichtfeld.cpython-312-x86_64-linux-gnu.so",
+                     "lichtfeld.pyd",
+                     "lichtfeld.abi3.pyd",
+                     "lichtfeld.cp312-win_amd64.pyd",
+                     "lichtfeld.cp311-win_amd64.pyd"}) {
                 if (std::filesystem::exists(dir / name)) {
                     return true;
                 }
@@ -171,6 +170,32 @@ namespace lfs::core {
             return exe_dir / "vcpkg_installed" / "x64-linux";
         }
 #endif
+
+        return {};
+    }
+
+    // Type stubs directory (lichtfeld/*.pyi)
+    inline std::filesystem::path getTypingsDir() {
+        const auto exe_dir = getExecutableDir();
+
+        auto stubs_exist = [](const std::filesystem::path& dir) {
+            return std::filesystem::exists(dir / "lichtfeld" / "__init__.pyi");
+        };
+
+        // Production: exe in bin/, stubs in ../lib/python/lichtfeld/
+        if (const auto prod = exe_dir.parent_path() / "lib" / "python"; stubs_exist(prod)) {
+            return prod;
+        }
+
+        // Development: stubs in src/python/typings/ relative to exe
+        if (const auto dev = exe_dir / "src" / "python" / "typings"; stubs_exist(dev)) {
+            return dev;
+        }
+
+        // Portable build: stubs alongside exe
+        if (stubs_exist(exe_dir)) {
+            return exe_dir;
+        }
 
         return {};
     }

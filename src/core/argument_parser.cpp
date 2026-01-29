@@ -197,6 +197,8 @@ namespace {
             ::args::Flag auto_train(ui_group, "train", "Start training immediately on startup", {"train"});
             ::args::Flag no_splash(ui_group, "no_splash", "Skip splash screen on startup", {"no-splash"});
             ::args::Flag no_interop(ui_group, "no_interop", "Disable CUDA-GL interop (use CPU fallback for display)", {"no-interop"});
+            ::args::Flag debug_python(ui_group, "debug_python", "Start debugpy listener on port 5678 for plugin debugging", {"debug-python"});
+            ::args::ValueFlag<int> debug_python_port(ui_group, "port", "Port for debugpy listener (default: 5678)", {"debug-python-port"});
 
             // =============================================================================
             // LOGGING
@@ -518,6 +520,8 @@ namespace {
                                         auto_train_flag = bool(auto_train),
                                         no_splash_flag = bool(no_splash),
                                         no_interop_flag = bool(no_interop),
+                                        debug_python_flag = bool(debug_python),
+                                        debug_python_port_val = debug_python_port ? std::optional<int>(::args::get(debug_python_port)) : std::optional<int>(),
                                         enable_save_eval_images_flag = bool(enable_save_eval_images),
                                         bg_modulation_flag = bool(bg_modulation),
                                         random_flag = bool(random),
@@ -542,8 +546,10 @@ namespace {
                 setVal(iterations_val, opt.iterations);
                 setVal(resize_factor_val, ds.resize_factor);
                 setVal(max_width_val, ds.max_width);
-                if (no_cpu_cache_flag) ds.loading_params.use_cpu_memory = false;
-                if (no_fs_cache_flag) ds.loading_params.use_fs_cache = false;
+                if (no_cpu_cache_flag)
+                    ds.loading_params.use_cpu_memory = false;
+                if (no_fs_cache_flag)
+                    ds.loading_params.use_fs_cache = false;
                 setVal(max_cap_val, opt.max_cap);
                 setVal(images_folder_val, ds.images);
                 setVal(test_every_val, ds.test_every);
@@ -571,6 +577,8 @@ namespace {
                 setFlag(auto_train_flag, opt.auto_train);
                 setFlag(no_splash_flag, opt.no_splash);
                 setFlag(no_interop_flag, opt.no_interop);
+                setFlag(debug_python_flag, opt.debug_python);
+                setVal(debug_python_port_val, opt.debug_python_port);
                 setFlag(enable_save_eval_images_flag, opt.enable_save_eval_images);
                 setFlag(bg_modulation_flag, opt.bg_modulation);
                 setFlag(random_flag, opt.random);
@@ -738,6 +746,42 @@ lfs::core::args::parse_args(const int argc, const char* const argv[]) {
 
         if (arg1 == "convert") {
             // Handle convert subcommand below
+        } else if (arg1 == "plugin") {
+            if (argc < 3) {
+                return std::unexpected("Usage: LichtFeld-Studio plugin <create|check|list> [name]");
+            }
+
+            const std::string_view subcmd = argv[2];
+            PluginMode mode;
+
+            if (subcmd == "create") {
+                if (argc < 4) {
+                    return std::unexpected("Usage: LichtFeld-Studio plugin create <name>");
+                }
+                mode.command = PluginMode::Command::CREATE;
+                mode.name = argv[3];
+            } else if (subcmd == "check") {
+                if (argc < 4) {
+                    return std::unexpected("Usage: LichtFeld-Studio plugin check <name>");
+                }
+                mode.command = PluginMode::Command::CHECK;
+                mode.name = argv[3];
+            } else if (subcmd == "list") {
+                mode.command = PluginMode::Command::LIST;
+            } else if (subcmd == "-h" || subcmd == "--help") {
+                std::print(R"(Usage: LichtFeld-Studio plugin <command> [name]
+
+Commands:
+  create <name>   Create plugin with venv and VS Code config
+  check <name>    Validate plugin structure
+  list            List installed plugins
+)");
+                return HelpMode{};
+            } else {
+                return std::unexpected(std::format("Unknown plugin command: {}", subcmd));
+            }
+
+            return mode;
         } else {
             auto result = parse_args_and_params(argc, argv);
             if (!result)

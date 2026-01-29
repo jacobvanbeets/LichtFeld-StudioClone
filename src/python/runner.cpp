@@ -336,6 +336,39 @@ _add_dll_dirs()
 #endif
     }
 
+    bool start_debugpy(const int port) {
+#ifndef LFS_BUILD_PYTHON_BINDINGS
+        (void)port;
+        return false;
+#else
+        ensure_initialized();
+
+        auto& pm = PackageManager::instance();
+        if (!pm.is_installed("debugpy")) {
+            LOG_INFO("Installing debugpy...");
+            const auto result = pm.install("debugpy");
+            if (!result.success) {
+                LOG_ERROR("Failed to install debugpy: {}", result.error);
+                return false;
+            }
+            update_python_path();
+        }
+
+        const PyGILState_STATE gil = PyGILState_Ensure();
+        const std::string code = std::format("import debugpy; debugpy.listen(('0.0.0.0', {}))", port);
+        const int rc = PyRun_SimpleString(code.c_str());
+        PyGILState_Release(gil);
+
+        if (rc != 0) {
+            LOG_ERROR("Failed to start debugpy on port {}", port);
+            return false;
+        }
+
+        LOG_INFO("debugpy listening on port {}", port);
+        return true;
+#endif
+    }
+
     void finalize() {
 #ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized()) {

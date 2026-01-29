@@ -195,10 +195,13 @@ class PluginManager:
         module = types.ModuleType(module_name)
         module.__file__ = str(entry_file)
         module.__loader__ = importlib.machinery.SourceFileLoader(module_name, str(entry_file))
-        module.__package__ = MODULE_PREFIX
-        module.__spec__ = importlib.util.spec_from_file_location(module_name, entry_file, loader=module.__loader__)
+        module.__package__ = module_name
+        module.__path__ = [str(plugin.info.path)]
+        module.__spec__ = importlib.util.spec_from_file_location(module_name, entry_file, loader=module.__loader__, submodule_search_locations=[str(plugin.info.path)])
 
         sys.modules[module_name] = module
+        self._register_subpackages(module_name, plugin.info.path)
+
         try:
             exec(code, module.__dict__)
         except Exception:
@@ -229,6 +232,24 @@ class PluginManager:
         # Windows layout
         sp = venv / "Lib" / "site-packages"
         return sp if sp.exists() else None
+
+    def _register_subpackages(self, module_name: str, plugin_path: Path) -> None:
+        """Register subpackages for relative imports."""
+        for subdir in plugin_path.iterdir():
+            if not subdir.is_dir() or not (subdir / "__init__.py").exists():
+                continue
+            subpkg_name = f"{module_name}.{subdir.name}"
+            if subpkg_name in sys.modules:
+                continue
+            subpkg = types.ModuleType(subpkg_name)
+            subpkg.__file__ = str(subdir / "__init__.py")
+            subpkg.__package__ = module_name
+            subpkg.__path__ = [str(subdir)]
+            subpkg.__spec__ = importlib.util.spec_from_file_location(
+                subpkg_name, subdir / "__init__.py",
+                submodule_search_locations=[str(subdir)]
+            )
+            sys.modules[subpkg_name] = subpkg
 
     def unload(self, name: str) -> bool:
         """Unload a plugin."""

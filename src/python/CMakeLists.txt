@@ -52,6 +52,7 @@ set_target_properties(lfs_python_runtime PROPERTIES
 add_library(lfs_python_utils STATIC
     runner.cpp
     package_manager.cpp
+    plugin_runner.cpp
     subprocess.cpp
     uv_runner.cpp
     ui_hooks.cpp

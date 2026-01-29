@@ -37,6 +37,8 @@ namespace lfs::python {
      */
     void ensure_initialized();
 
+    bool start_debugpy(int port = 5678);
+
     /**
      * @brief Install Python stdout/stderr redirect. Call after Python is initialized.
      */

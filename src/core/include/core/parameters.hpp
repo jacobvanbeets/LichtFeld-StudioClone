@@ -59,6 +59,8 @@ namespace lfs::core {
             bool auto_train = false;                          // Start training immediately on startup
             bool no_splash = false;                           // Skip splash screen on startup
             bool no_interop = false;                          // Disable CUDA-GL interop (use CPU fallback)
+            bool debug_python = false;                        // Start debugpy listener for plugin debugging
+            int debug_python_port = 5678;                     // Port for debugpy listener
             std::string strategy = "mcmc";                    // Optimization strategy: mcmc, adc.
 
             // Mask parameters

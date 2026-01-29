@@ -9,6 +9,7 @@
 
 #include "../package_manager.hpp"
 #include "../runner.hpp"
+#include "core/executable_path.hpp"
 
 namespace lfs::python {
 
@@ -166,6 +167,14 @@ namespace lfs::python {
             "is_busy",
             []() { return PackageManager::instance().has_running_operation(); },
             "Check if async operation is running");
+
+        pkg.def(
+            "typings_dir",
+            []() -> std::string {
+                const auto dir = lfs::core::getTypingsDir();
+                return dir.empty() ? "" : dir.string();
+            },
+            "Get path to type stubs directory (empty if not found)");
     }
 
 } // namespace lfs::python
