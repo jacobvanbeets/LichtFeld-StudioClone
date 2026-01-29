@@ -95,6 +95,11 @@ namespace lfs::sequencer {
                                           {"easing", static_cast<int>(kf.easing)}});
             }
 
+            // Save animation clip if present
+            if (clip_) {
+                j["animation_clip"] = clip_->toJson();
+            }
+
             std::ofstream file(path);
             if (!file.is_open()) {
                 LOG_ERROR("Failed to open timeline file: {}", path);
@@ -130,6 +135,11 @@ namespace lfs::sequencer {
                 keyframes_.push_back(kf);
             }
 
+            // Load animation clip if present
+            if (j.contains("animation_clip")) {
+                clip_ = std::make_unique<AnimationClip>(AnimationClip::fromJson(j["animation_clip"]));
+            }
+
             sortKeyframes();
             LOG_INFO("Loaded {} keyframes from {}", keyframes_.size(), path);
             return true;
@@ -137,6 +147,28 @@ namespace lfs::sequencer {
             LOG_ERROR("Timeline load failed: {}", e.what());
             return false;
         }
+    }
+
+    void Timeline::setAnimationClip(std::unique_ptr<AnimationClip> clip) { clip_ = std::move(clip); }
+
+    AnimationClip& Timeline::ensureAnimationClip() {
+        if (!clip_) {
+            clip_ = std::make_unique<AnimationClip>("default");
+        }
+        return *clip_;
+    }
+
+    std::unordered_map<std::string, AnimationValue> Timeline::evaluateClip(float time) const {
+        if (!clip_) {
+            return {};
+        }
+        return clip_->evaluate(time);
+    }
+
+    float Timeline::totalDuration() const {
+        float camera_duration = duration();
+        float clip_duration = clip_ ? clip_->duration() : 0.0f;
+        return std::max(camera_duration, clip_duration);
     }
 
 } // namespace lfs::sequencer

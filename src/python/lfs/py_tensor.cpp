@@ -4,6 +4,7 @@
 
 #include "py_tensor.hpp"
 #include "core/logger.hpp"
+#include "python/python_runtime.hpp"
 
 #include <cstring>
 #include <cuda_runtime.h>
@@ -113,15 +114,28 @@ namespace lfs::python {
 
     PyTensor::~PyTensor() = default;
 
+    PyTensor PyTensor::view_of(core::Tensor& t, uint64_t generation) {
+        PyTensor pt(t, false);
+        pt.source_gen_ = generation;
+        return pt;
+    }
+
+    void PyTensor::validate() const {
+        if (source_gen_ != 0 && source_gen_ != context().scene_generation)
+            throw std::runtime_error("Tensor data invalidated - scene changed");
+    }
+
     PyTensor::PyTensor(const PyTensor& other)
         : tensor_(other.tensor_),
           owns_data_(other.owns_data_),
+          source_gen_(other.source_gen_),
           dlpack_managed_(other.dlpack_managed_) {}
 
     PyTensor& PyTensor::operator=(const PyTensor& other) {
         if (this != &other) {
             tensor_ = other.tensor_;
             owns_data_ = other.owns_data_;
+            source_gen_ = other.source_gen_;
             dlpack_managed_ = other.dlpack_managed_;
         }
         return *this;
@@ -130,12 +144,14 @@ namespace lfs::python {
     PyTensor::PyTensor(PyTensor&& other) noexcept
         : tensor_(std::move(other.tensor_)),
           owns_data_(other.owns_data_),
+          source_gen_(other.source_gen_),
           dlpack_managed_(std::move(other.dlpack_managed_)) {}
 
     PyTensor& PyTensor::operator=(PyTensor&& other) noexcept {
         if (this != &other) {
             tensor_ = std::move(other.tensor_);
             owns_data_ = other.owns_data_;
+            source_gen_ = other.source_gen_;
             dlpack_managed_ = std::move(other.dlpack_managed_);
         }
         return *this;
@@ -195,6 +211,7 @@ namespace lfs::python {
     }
 
     PyTensor PyTensor::cpu() const {
+        validate();
         if (tensor_.device() == Device::CPU) {
             return PyTensor(tensor_);
         }
@@ -222,6 +239,7 @@ namespace lfs::python {
     }
 
     float PyTensor::item() const {
+        validate();
         if (tensor_.numel() != 1) {
             throw std::runtime_error("item() requires a tensor with exactly 1 element");
         }
@@ -236,6 +254,7 @@ namespace lfs::python {
     }
 
     int64_t PyTensor::item_int() const {
+        validate();
         if (tensor_.numel() != 1) {
             throw std::runtime_error("item() requires a tensor with exactly 1 element");
         }
@@ -248,6 +267,7 @@ namespace lfs::python {
     }
 
     bool PyTensor::item_bool() const {
+        validate();
         if (tensor_.numel() != 1) {
             throw std::runtime_error("item() requires a tensor with exactly 1 element");
         }
@@ -258,6 +278,7 @@ namespace lfs::python {
     }
 
     nb::object PyTensor::numpy(bool copy) const {
+        validate();
         Tensor cpu_tensor = tensor_.device() == Device::CUDA ? tensor_.cpu() : tensor_;
 
         // Ensure contiguous
@@ -546,17 +567,27 @@ namespace lfs::python {
     }
 
     void PyTensor::setitem(const nb::object& key, const nb::object& value) {
-        // Get the value tensor
+        bool is_scalar_value = false;
+        float scalar_value = 0.0f;
         Tensor val_tensor;
+
         if (nb::isinstance<PyTensor>(value)) {
             val_tensor = nb::cast<PyTensor>(value).tensor();
         } else if (nb::isinstance<nb::float_>(value) || nb::isinstance<nb::int_>(value)) {
-            float scalar = nb::cast<float>(value);
-            // Create scalar tensor
-            val_tensor = Tensor::full({1}, scalar, tensor_.device(), tensor_.dtype());
+            is_scalar_value = true;
+            scalar_value = nb::cast<float>(value);
+            val_tensor = Tensor::full({1}, scalar_value, tensor_.device(), tensor_.dtype());
         } else {
             throw std::runtime_error("Unsupported value type for setitem");
         }
+
+        auto assign_to_target = [&](Tensor& target) {
+            if (is_scalar_value) {
+                target.fill_(scalar_value);
+            } else {
+                target.copy_from(val_tensor);
+            }
+        };
 
         // Single integer index
         if (nb::isinstance<nb::int_>(key)) {
@@ -567,7 +598,8 @@ namespace lfs::python {
             if (idx < 0 || idx >= static_cast<int64_t>(tensor_.shape()[0])) {
                 throw std::out_of_range("Index out of range");
             }
-            tensor_.slice(0, static_cast<size_t>(idx), static_cast<size_t>(idx + 1)).copy_from(val_tensor);
+            Tensor target = tensor_.slice(0, static_cast<size_t>(idx), static_cast<size_t>(idx + 1));
+            assign_to_target(target);
             return;
         }
 
@@ -580,7 +612,39 @@ namespace lfs::python {
                 throw std::runtime_error("Step != 1 not yet supported");
             }
 
-            tensor_.slice(0, static_cast<size_t>(info.start), static_cast<size_t>(info.stop)).copy_from(val_tensor);
+            Tensor target = tensor_.slice(0, static_cast<size_t>(info.start), static_cast<size_t>(info.stop));
+            assign_to_target(target);
+            return;
+        }
+
+        // Tuple of indices/slices
+        if (nb::isinstance<nb::tuple>(key)) {
+            auto tup = nb::cast<nb::tuple>(key);
+            Tensor target = tensor_;
+
+            for (size_t i = 0; i < tup.size(); ++i) {
+                int current_dim = static_cast<int>(i);
+                nb::object item = tup[i];
+
+                if (nb::isinstance<nb::int_>(item)) {
+                    int64_t idx = nb::cast<int64_t>(item);
+                    if (idx < 0) {
+                        idx += static_cast<int64_t>(target.shape()[current_dim]);
+                    }
+                    target = target.slice(current_dim, static_cast<size_t>(idx), static_cast<size_t>(idx + 1));
+                } else if (nb::isinstance<nb::slice>(item)) {
+                    auto sl = nb::cast<nb::slice>(item);
+                    SliceInfo info = parse_slice(sl, target.shape()[current_dim]);
+
+                    if (info.step != 1) {
+                        throw std::runtime_error("Step != 1 not yet supported");
+                    }
+
+                    target = target.slice(current_dim, static_cast<size_t>(info.start), static_cast<size_t>(info.stop));
+                }
+            }
+
+            assign_to_target(target);
             return;
         }
 
@@ -808,6 +872,16 @@ namespace lfs::python {
 
     PyTensor& PyTensor::idiv_scalar(float scalar) {
         tensor_.div_(scalar);
+        return *this;
+    }
+
+    PyTensor& PyTensor::fill_(float value) {
+        tensor_.fill_(value);
+        return *this;
+    }
+
+    PyTensor& PyTensor::zero_() {
+        tensor_.fill_(0.0f);
         return *this;
     }
 
@@ -1296,23 +1370,38 @@ namespace lfs::python {
         if (device != "cuda") {
             t = t.to(parse_device(device));
         }
+        if (dtype != "float32") {
+            t = t.to(parse_dtype(dtype));
+        }
         return PyTensor(std::move(t));
     }
 
     PyTensor PyTensor::linspace(float start, float end, int64_t steps,
                                 const std::string& device,
                                 const std::string& dtype) {
-        return PyTensor(Tensor::linspace(start, end, static_cast<size_t>(steps), parse_device(device)));
+        auto t = Tensor::linspace(start, end, static_cast<size_t>(steps), parse_device(device));
+        if (dtype != "float32") {
+            t = t.to(parse_dtype(dtype));
+        }
+        return PyTensor(std::move(t));
     }
 
     PyTensor PyTensor::eye(int64_t n, const std::string& device,
                            const std::string& dtype) {
-        return PyTensor(Tensor::eye(static_cast<size_t>(n), parse_device(device)));
+        auto t = Tensor::eye(static_cast<size_t>(n), parse_device(device));
+        if (dtype != "float32") {
+            t = t.to(parse_dtype(dtype));
+        }
+        return PyTensor(std::move(t));
     }
 
     PyTensor PyTensor::eye(int64_t m, int64_t n, const std::string& device,
                            const std::string& dtype) {
-        return PyTensor(Tensor::eye(static_cast<size_t>(m), static_cast<size_t>(n), parse_device(device)));
+        auto t = Tensor::eye(static_cast<size_t>(m), static_cast<size_t>(n), parse_device(device));
+        if (dtype != "float32") {
+            t = t.to(parse_dtype(dtype));
+        }
+        return PyTensor(std::move(t));
     }
 
     // Random tensor creation
@@ -1514,6 +1603,9 @@ namespace lfs::python {
                     return self.idiv_scalar(scalar);
                 },
                 nb::rv_policy::reference, "In-place divide scalar")
+
+            .def("fill_", &PyTensor::fill_, nb::rv_policy::reference, "Fill tensor with value in-place")
+            .def("zero_", &PyTensor::zero_, nb::rv_policy::reference, "Zero tensor in-place")
 
             .def("__neg__", &PyTensor::neg, "Negate")
             .def("__abs__", &PyTensor::abs, "Absolute value")

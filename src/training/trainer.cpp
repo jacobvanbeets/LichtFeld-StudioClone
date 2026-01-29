@@ -429,12 +429,11 @@ namespace lfs::training {
 
         cudaStreamCreateWithFlags(&callback_stream_, cudaStreamNonBlocking);
 
-        // Datasets will be created in initialize() from Scene cameras
-        if (!scene.getTrainCameras()) {
-            throw std::runtime_error("Scene has no train cameras");
+        if (!scene.hasTrainingData()) {
+            throw std::runtime_error("Scene has no cameras");
         }
 
-        LOG_DEBUG("Trainer constructed from Scene with {} cameras", scene.getTrainCameras()->get_cameras().size());
+        LOG_DEBUG("Trainer constructed from Scene with {} cameras", scene.getAllCameras().size());
     }
 
     std::expected<void, std::string> Trainer::initialize(const lfs::core::param::TrainingParameters& params) {
@@ -459,17 +458,14 @@ namespace lfs::training {
             dataset_config.max_width = params.dataset.max_width;
             dataset_config.test_every = params.dataset.test_every;
 
-            // Get source cameras - from Scene (new mode) or base_dataset_ (legacy mode)
+            // Get source cameras from Scene nodes or base_dataset_
             std::vector<std::shared_ptr<lfs::core::Camera>> source_cameras;
             if (scene_) {
-                // Scene mode: get cameras from Scene
-                auto scene_dataset = scene_->getTrainCameras();
-                if (!scene_dataset) {
-                    return std::unexpected("Scene has no train cameras");
+                source_cameras = scene_->getAllCameras();
+                if (source_cameras.empty()) {
+                    return std::unexpected("Scene has no cameras");
                 }
-                source_cameras = scene_dataset->get_cameras();
             } else if (base_dataset_) {
-                // Legacy mode: use base_dataset_
                 source_cameras = base_dataset_->get_cameras();
             } else {
                 return std::unexpected("No camera source available");
@@ -753,7 +749,7 @@ namespace lfs::training {
 
         // Release GPU memory pools back to system
         lfs::core::CudaMemoryPool::instance().trim_cached_memory();
-        lfs::core::GlobalArenaManager::instance().get_arena().emergency_cleanup();
+        lfs::core::GlobalArenaManager::instance().get_arena().full_reset();
         cudaDeviceSynchronize();
         LOG_DEBUG("GPU memory released");
 
@@ -1709,43 +1705,16 @@ namespace lfs::training {
                 if (!step_result) {
                     // Check if this is an OOM_RETRY signal
                     if (step_result.error() == "OOM_RETRY") {
-                        // Aggressive memory cleanup before retry
-                        LOG_INFO("Performing aggressive memory cleanup before retry...");
-
-                        // 0. CRITICAL: Synchronize and clear any pending CUDA errors
-                        cudaError_t sync_err = cudaDeviceSynchronize();
-                        if (sync_err != cudaSuccess) {
-                            LOG_WARN("cudaDeviceSynchronize before cleanup returned: {}", cudaGetErrorString(sync_err));
-                            // Clear the error so we can continue
-                            cudaGetLastError();
-                        }
-
-                        // 1. Emergency cleanup of arena (resets offsets, clears inactive frames)
-                        lfs::core::GlobalArenaManager::instance().get_arena().emergency_cleanup();
-
-                        // 2. Trim cached memory pool
-                        lfs::core::CudaMemoryPool::instance().trim_cached_memory();
-
-                        // 3. Synchronize again after cleanup
                         cudaDeviceSynchronize();
-
-                        // 4. Clear any error state from the OOM
                         cudaGetLastError();
 
-                        // 5. Log memory status
-                        size_t free_mem = 0, total_mem = 0;
-                        cudaError_t err = cudaMemGetInfo(&free_mem, &total_mem);
-                        if (err == cudaSuccess) {
-                            LOG_INFO("CUDA memory after aggressive cleanup: {:.2f} GB free / {:.2f} GB total",
-                                     free_mem / (1024.0 * 1024.0 * 1024.0),
-                                     total_mem / (1024.0 * 1024.0 * 1024.0));
-                        } else {
-                            LOG_WARN("cudaMemGetInfo failed: {}", cudaGetErrorString(err));
-                            cudaGetLastError(); // Clear this error too
-                        }
+                        lfs::core::GlobalArenaManager::instance().get_arena().full_reset();
+                        lfs::core::CudaMemoryPool::instance().trim_cached_memory();
 
-                        // Retry the same step with upgraded tile mode
-                        LOG_INFO("Retrying iteration {} with upgraded tile mode", iter);
+                        cudaDeviceSynchronize();
+                        cudaGetLastError();
+
+                        LOG_INFO("OOM recovery: retrying iteration {}", iter);
                         step_result = train_step(iter, cam, gt_image, render_mode, stop_token);
                         if (!step_result) {
                             // If retry also failed, propagate the error

@@ -3,7 +3,10 @@
 
 #pragma once
 
+#include "animation_clip.hpp"
 #include "keyframe.hpp"
+
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -15,6 +18,7 @@ namespace lfs::sequencer {
 
     class Timeline {
     public:
+        // ========== Legacy Camera Keyframes ==========
         void addKeyframe(const Keyframe& keyframe);
         void removeKeyframe(size_t index);
         void setKeyframeTime(size_t index, float new_time, bool sort = true);
@@ -39,8 +43,21 @@ namespace lfs::sequencer {
         [[nodiscard]] bool saveToJson(const std::string& path) const;
         [[nodiscard]] bool loadFromJson(const std::string& path);
 
+        // ========== Multi-Track Animation Clip ==========
+        void setAnimationClip(std::unique_ptr<AnimationClip> clip);
+        [[nodiscard]] AnimationClip* animationClip() { return clip_.get(); }
+        [[nodiscard]] const AnimationClip* animationClip() const { return clip_.get(); }
+        [[nodiscard]] bool hasAnimationClip() const { return clip_ != nullptr; }
+
+        AnimationClip& ensureAnimationClip();
+
+        [[nodiscard]] std::unordered_map<std::string, AnimationValue> evaluateClip(float time) const;
+
+        [[nodiscard]] float totalDuration() const;
+
     private:
         std::vector<Keyframe> keyframes_;
+        std::unique_ptr<AnimationClip> clip_;
     };
 
 } // namespace lfs::sequencer

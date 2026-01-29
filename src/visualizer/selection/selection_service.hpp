@@ -14,10 +14,6 @@ namespace lfs::vis {
     class SceneManager;
     class RenderingManager;
 
-    namespace command {
-        class CommandHistory;
-    }
-
     enum class SelectionMode { Replace,
                                Add,
                                Remove };
@@ -30,8 +26,7 @@ namespace lfs::vis {
 
     class SelectionService {
     public:
-        SelectionService(SceneManager* scene_manager, RenderingManager* rendering_manager,
-                         command::CommandHistory* command_history);
+        SelectionService(SceneManager* scene_manager, RenderingManager* rendering_manager);
         ~SelectionService();
 
         SelectionService(const SelectionService&) = delete;
@@ -59,11 +54,9 @@ namespace lfs::vis {
         static constexpr size_t LOCKED_GROUPS_SIZE = 8;
 
         [[nodiscard]] core::Tensor applyModeLogic(const core::Tensor& stroke, SelectionMode mode) const;
-        void createUndoCommand(std::shared_ptr<core::Tensor> old_mask, std::shared_ptr<core::Tensor> new_mask);
 
         SceneManager* scene_manager_;
         RenderingManager* rendering_manager_;
-        command::CommandHistory* command_history_;
 
         bool stroke_active_ = false;
         core::Tensor stroke_selection_;

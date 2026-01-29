@@ -312,7 +312,11 @@ point_cloud = node.point_cloud()    # PyPointCloud or None
 cropbox = node.cropbox()            # PyCropBox or None
 
 # Camera nodes only
-node.camera_index, node.camera_uid, node.image_path, node.mask_path
+node.camera_uid, node.image_path, node.mask_path
+node.has_camera                   # True if camera data available
+node.camera_R, node.camera_T      # Rotation [3,3], Translation [3,1]
+node.camera_focal_x, node.camera_focal_y  # Focal lengths in pixels
+node.camera_width, node.camera_height     # Image dimensions
 ```
 
 ### Node Types

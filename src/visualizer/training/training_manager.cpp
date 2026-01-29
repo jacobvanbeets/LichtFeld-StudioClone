@@ -7,6 +7,7 @@
 #include "core/logger.hpp"
 #include "core/parameter_manager.hpp"
 #include "core/services.hpp"
+#include "python/python_runtime.hpp"
 #include "scene/scene.hpp"
 #include "training/training_setup.hpp"
 #include <cstring>
@@ -102,7 +103,6 @@ namespace lfs::vis {
             }
 
             internal::TrainerReady{}.emit();
-            LOG_DEBUG("Trainer ready");
         }
     }
 
@@ -162,6 +162,7 @@ namespace lfs::vis {
             LOG_WARN("Failed to transition to Idle");
         }
 
+        python::update_trainer_loaded(false, 0);
         LOG_INFO("Trainer cleared");
     }
 
@@ -618,8 +619,7 @@ namespace lfs::vis {
         return nullptr;
     }
 
-    std::vector<std::shared_ptr<const lfs::core::Camera>> TrainerManager::getCamList() const {
-        // Get cameras from Scene (Scene owns all training data)
+    std::vector<std::shared_ptr<lfs::core::Camera>> TrainerManager::getCamList() const {
         if (scene_) {
             return scene_->getAllCameras();
         }

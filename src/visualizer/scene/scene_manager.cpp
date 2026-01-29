@@ -3,10 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "scene/scene_manager.hpp"
-#include "command/command_history.hpp"
-#include "command/commands/composite_command.hpp"
-#include "command/commands/crop_command.hpp"
-#include "command/commands/mirror_command.hpp"
 #include "core/logger.hpp"
 #include "core/parameter_manager.hpp"
 #include "core/path_utils.hpp"
@@ -15,8 +11,10 @@
 #include "core/splat_data_transform.hpp"
 #include "geometry/bounding_box.hpp"
 #include "geometry/euclidean_transform.hpp"
-#include "gui/panels/gizmo_toolbar.hpp"
+#include "io/formats/colmap.hpp"
 #include "io/loader.hpp"
+#include "operation/undo_entry.hpp"
+#include "operation/undo_history.hpp"
 #include "python/python_runtime.hpp"
 #include "rendering/rendering_manager.hpp"
 #include "training/checkpoint.hpp"
@@ -70,6 +68,10 @@ namespace lfs::vis {
 
         cmd::SwitchToEditMode::when([this](const auto&) {
             switchToEditMode();
+        });
+
+        cmd::ImportColmapCameras::when([this](const auto& cmd) {
+            loadColmapCamerasOnly(cmd.sparse_path);
         });
 
         // Handle PLY cycling with proper event emission for UI updates
@@ -162,7 +164,7 @@ namespace lfs::vis {
             }
 
             if (event.type == "PLY" || event.type == "Group" || event.type == "Dataset" ||
-                event.type == "PointCloud" || event.type == "CameraGroup") {
+                event.type == "PointCloud" || event.type == "CameraGroup" || event.type == "Camera") {
                 // Skip if this is a multi-select event (already handled by selectNodes)
                 auto it = event.metadata.find("multi_select");
                 if (it != event.metadata.end() && it->second != "1") {
@@ -532,6 +534,7 @@ namespace lfs::vis {
             }
 
             syncCropToolRenderSettings(node);
+            python::invalidate_poll_caches(1);
 
             ui::NodeSelected{
                 .path = name,
@@ -554,6 +557,7 @@ namespace lfs::vis {
                 }
             }
         }
+        python::invalidate_poll_caches(1);
         if (services().renderingOrNull())
             services().renderingOrNull()->triggerSelectionFlash();
     }
@@ -565,6 +569,7 @@ namespace lfs::vis {
             std::lock_guard<std::mutex> lock(state_mutex_);
             selected_nodes_.insert(name);
         }
+        python::invalidate_poll_caches(1);
         if (services().renderingOrNull())
             services().renderingOrNull()->triggerSelectionFlash();
     }
@@ -572,6 +577,7 @@ namespace lfs::vis {
     void SceneManager::clearSelection() {
         std::lock_guard<std::mutex> lock(state_mutex_);
         selected_nodes_.clear();
+        python::invalidate_poll_caches(1);
         LOG_TRACE("Cleared node selection");
     }
 
@@ -619,6 +625,17 @@ namespace lfs::vis {
     std::vector<bool> SceneManager::getSelectedNodeMask() const {
         std::lock_guard<std::mutex> lock(state_mutex_);
         return scene_.getSelectedNodeMask(std::vector<std::string>(selected_nodes_.begin(), selected_nodes_.end()));
+    }
+
+    int SceneManager::getSelectedCameraUid() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        if (selected_nodes_.size() != 1)
+            return -1;
+        const auto* node = scene_.getNode(*selected_nodes_.begin());
+        if (node && node->type == NodeType::CAMERA) {
+            return node->camera_uid;
+        }
+        return -1;
     }
 
     std::string SceneManager::pickNodeAtWorldPosition(const glm::vec3& world_pos) const {
@@ -1391,7 +1408,7 @@ namespace lfs::vis {
             const size_t num_gaussians = training_model ? training_model->size() : 0;
             const auto* point_cloud = scene_.getVisiblePointCloud();
             const size_t num_points = point_cloud ? point_cloud->size() : 0;
-            const size_t num_cameras = scene_.getTrainCameras() ? scene_.getTrainCameras()->size() : 0;
+            const size_t num_cameras = scene_.getAllCameras().size();
 
             LOG_INFO("Dataset loaded successfully - {} images, {} initial points/gaussians",
                      num_cameras, num_gaussians > 0 ? num_gaussians : num_points);
@@ -1431,6 +1448,56 @@ namespace lfs::vis {
                 .error = e.what(),
                 .num_images = 0,
                 .num_points = 0}
+                .emit();
+        }
+    }
+
+    void SceneManager::loadColmapCamerasOnly(const std::filesystem::path& sparse_path) {
+        LOG_TIMER("SceneManager::loadColmapCamerasOnly");
+
+        try {
+            auto result = lfs::io::read_colmap_cameras_only(sparse_path);
+            if (!result) {
+                LOG_ERROR("Failed to load COLMAP cameras: {}", result.error().format());
+                state::FileDropFailed{
+                    .files = {lfs::core::path_to_utf8(sparse_path)},
+                    .error = result.error().format()}
+                    .emit();
+                return;
+            }
+
+            auto [cameras, scene_center] = std::move(*result);
+
+            if (cameras.empty()) {
+                LOG_WARN("No cameras found in COLMAP sparse folder");
+                return;
+            }
+
+            const NodeId group_id = scene_.addCameraGroup("Imported Cameras", NULL_NODE, cameras.size());
+            for (const auto& cam : cameras) {
+                scene_.addCamera(cam->image_name(), group_id, cam);
+            }
+
+            scene_.setSceneCenter(std::move(scene_center));
+
+            state::SceneLoaded{
+                .scene = nullptr,
+                .path = sparse_path,
+                .type = state::SceneLoaded::Type::Dataset,
+                .num_gaussians = 0}
+                .emit();
+
+            python::set_application_scene(&scene_);
+
+            emitSceneChanged();
+
+            LOG_INFO("Imported {} cameras from COLMAP (no images required)", cameras.size());
+
+        } catch (const std::exception& e) {
+            LOG_ERROR("Failed to import COLMAP cameras: {}", e.what());
+            state::FileDropFailed{
+                .files = {lfs::core::path_to_utf8(sparse_path)},
+                .error = e.what()}
                 .emit();
         }
     }
@@ -1672,16 +1739,16 @@ namespace lfs::vis {
 
         SceneRenderState state;
 
-        // Get combined model or point cloud (before training starts)
+        // Get combined model or point cloud
         if (content_type_ == ContentType::SplatFiles) {
             state.combined_model = scene_.getCombinedModel();
         } else if (content_type_ == ContentType::Dataset) {
-            // For dataset mode, first try training model (SplatData)
             state.combined_model = scene_.getTrainingModel();
-            // If no SplatData yet, try PointCloud (pre-training mode)
-            if (!state.combined_model) {
-                state.point_cloud = scene_.getVisiblePointCloud();
-            }
+        }
+
+        // Always try to get point cloud if no model (supports plugin-added point clouds)
+        if (!state.combined_model) {
+            state.point_cloud = scene_.getVisiblePointCloud();
         }
 
         // Get transforms and indices
@@ -1919,13 +1986,7 @@ namespace lfs::vis {
             }
 
             try {
-                const size_t original_count = node->model->size();
                 const size_t original_visible = node->model->visible_count();
-
-                // Capture old deletion mask for undo
-                lfs::core::Tensor old_deleted_mask = node->model->has_deleted_mask()
-                                                         ? node->model->deleted().clone()
-                                                         : lfs::core::Tensor::zeros({original_count}, lfs::core::Device::CUDA, lfs::core::DataType::Bool);
 
                 // Transform crop box to node's local space if node has a transform
                 lfs::geometry::BoundingBox local_crop_box = crop_box;
@@ -1956,13 +2017,6 @@ namespace lfs::vis {
                 }
 
                 LOG_INFO("Cropped '{}': {} -> {} visible", node_name, original_visible, new_visible);
-
-                if (services().commandsOrNull()) {
-                    lfs::core::Tensor new_deleted_mask = node->model->deleted().clone();
-                    auto cmd = std::make_unique<command::CropCommand>(
-                        node_name, std::move(old_deleted_mask), std::move(new_deleted_mask));
-                    services().commandsOrNull()->execute(std::move(cmd));
-                }
 
                 state::PLYAdded{
                     .name = node_name,
@@ -2087,10 +2141,6 @@ namespace lfs::vis {
             try {
                 const size_t original_visible = node->model->visible_count();
 
-                lfs::core::Tensor old_deleted_mask = node->model->has_deleted_mask()
-                                                         ? node->model->deleted().clone()
-                                                         : lfs::core::Tensor::zeros({node->model->size()}, lfs::core::Device::CUDA, lfs::core::DataType::Bool);
-
                 // Transform means to ellipsoid local space and apply mask
                 const glm::mat4 node_world_transform = scene_.getWorldTransform(node->id);
                 const glm::mat4 combined_transform = inv_world * node_world_transform;
@@ -2104,13 +2154,6 @@ namespace lfs::vis {
                     continue;
 
                 LOG_INFO("Ellipsoid cropped '{}': {} -> {} visible", node_name, original_visible, new_visible);
-
-                if (services().commandsOrNull()) {
-                    lfs::core::Tensor new_deleted_mask = node->model->deleted().clone();
-                    auto cmd = std::make_unique<command::CropCommand>(
-                        node_name, std::move(old_deleted_mask), std::move(new_deleted_mask));
-                    services().commandsOrNull()->execute(std::move(cmd));
-                }
 
             } catch (const std::exception& e) {
                 LOG_ERROR("Failed to ellipsoid crop '{}': {}", node_name, e.what());
@@ -2882,7 +2925,6 @@ namespace lfs::vis {
         const bool use_selection = selection_count > 0 && nodes.size() == 1 &&
                                    static_cast<size_t>(scene_mask->size(0)) == nodes[0]->model->size();
 
-        auto composite_cmd = std::make_unique<command::CompositeCommand>();
         size_t total_count = 0;
 
         for (auto* node : nodes) {
@@ -2896,22 +2938,7 @@ namespace lfs::vis {
                                   {model.size()}, model.means().device(), lfs::core::DataType::UInt8));
 
             const auto center = lfs::core::compute_selection_center(model, *mask);
-
-            // Snapshot for undo (sh0 excluded - DC component is isotropic)
-            auto old_means = std::make_shared<lfs::core::Tensor>(model.means_raw().clone());
-            auto old_rotation = std::make_shared<lfs::core::Tensor>(model.rotation_raw().clone());
-            auto old_shN =
-                model.shN_raw().is_valid() ? std::make_shared<lfs::core::Tensor>(model.shN_raw().clone()) : nullptr;
-
             lfs::core::mirror_gaussians(model, *mask, axis, center);
-
-            composite_cmd->add(std::make_unique<command::MirrorCommand>(
-                this, node->name, axis, center, std::make_shared<lfs::core::Tensor>(mask->clone()),
-                std::move(old_means), std::move(old_rotation), std::move(old_shN)));
-        }
-
-        if (auto* history = getCommandHistory(); !composite_cmd->empty()) {
-            history->execute(std::move(composite_cmd));
         }
 
         scene_.invalidateCache();

@@ -30,15 +30,8 @@ add_library(lfs_visualizer STATIC
         gui/html_viewer_export.cpp
         gui/ui_widgets.cpp
         gui/localization_manager.cpp
-        gui/panels/main_panel.cpp
-        gui/panels/training_panel.cpp
-        gui/panels/crop_box_panel.cpp
-        gui/panels/ellipsoid_panel.cpp
-        gui/panels/transform_panel.cpp
-        gui/panels/gizmo_toolbar.cpp
-        gui/panels/scene_panel.cpp
+        gui/panels/windows_console_utils.cpp
         gui/panels/tools_panel.cpp
-        gui/panels/sequencer_settings_panel.cpp
         gui/panels/python_console_panel.cpp
         gui/panels/python_scripts_panel.cpp
         gui/editor/python_language_def.cpp
@@ -53,12 +46,6 @@ add_library(lfs_visualizer STATIC
         gui/terminal/pty_process.cpp
         gui/terminal/terminal_widget.cpp
         gui/windows/file_browser.cpp
-        gui/windows/image_preview.cpp
-        gui/windows/export_dialog.cpp
-        gui/windows/notification_popup.cpp
-        gui/windows/save_directory_popup.cpp
-        gui/windows/resume_checkpoint_popup.cpp
-        gui/windows/exit_confirmation_popup.cpp
         gui/windows/disk_space_error_dialog.cpp
         gui/windows/video_extractor_dialog.cpp
 
@@ -75,9 +62,14 @@ add_library(lfs_visualizer STATIC
         training/training_manager.cpp
 
         # Tools
+        tools/selection_tool.cpp
         tools/brush_tool.cpp
         tools/align_tool.cpp
-        tools/selection_tool.cpp
+        tools/unified_tool_registry.cpp
+        tools/builtin_tools.cpp
+
+        # Icon cache
+        gui/icon_cache.cpp
 
         # Selection system
         selection/selection_service.cpp
@@ -86,16 +78,25 @@ add_library(lfs_visualizer STATIC
         sequencer/sequencer_controller.cpp
         sequencer/sequencer_panel.cpp
 
-        # Command system (undo/redo)
-        command/command_history.cpp
-        command/commands/cropbox_command.cpp
-        command/commands/ellipsoid_command.cpp
-        command/commands/crop_command.cpp
-        command/commands/selection_command.cpp
-        command/commands/saturation_command.cpp
-        command/commands/sequencer_command.cpp
-        command/commands/mirror_command.cpp
-        command/commands/transform_command.cpp
+        # Operator system (Blender-style)
+        operator/operator_context.cpp
+        operator/operator_id.cpp
+        operator/operator_registry.cpp
+        operator/property_schema.cpp
+        operator/ops/align_ops.cpp
+        operator/ops/brush_ops.cpp
+        operator/ops/edit_ops.cpp
+        operator/ops/selection_ops.cpp
+        operator/ops/transform_ops.cpp
+
+        # Compositional operations system
+        operation/undo_entry.cpp
+        operation/undo_history.cpp
+        operation/operation.cpp
+        operation/pipeline.cpp
+        operation/ops/select_ops.cpp
+        operation/ops/edit_ops.cpp
+        operation/ops/transform_ops.cpp
 
         # IPC for MCP integration
         ipc/selection_server.cpp

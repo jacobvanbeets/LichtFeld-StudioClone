@@ -4,7 +4,9 @@
 
 #pragma once
 
+#include "core/camera.hpp"
 #include "core/events.hpp"
+#include "py_prop.hpp"
 #include "py_splat_data.hpp"
 #include "py_tensor.hpp"
 #include "visualizer/scene/scene.hpp"
@@ -32,45 +34,82 @@ namespace lfs::python {
         bool locked;
     };
 
-    // CropBox wrapper
     class PyCropBox {
     public:
-        explicit PyCropBox(vis::CropBoxData* data) : data_(data) {
+        explicit PyCropBox(vis::CropBoxData* data) : data_(data),
+                                                     prop_(data, "crop_box") {
             assert(data_ != nullptr);
         }
 
-        std::tuple<float, float, float> min() const {
-            return {data_->min.x, data_->min.y, data_->min.z};
+        [[nodiscard]] const std::string& property_group() const { return prop_.group_id(); }
+        [[nodiscard]] nb::object get(const std::string& name) const { return prop_.getattr(name); }
+        void set(const std::string& name, nb::object value) { prop_.setattr(name, value); }
+        [[nodiscard]] nb::dict prop_info(const std::string& name) const {
+            return prop_.prop_info(name);
         }
-        void set_min(std::tuple<float, float, float> v) {
-            data_->min = {std::get<0>(v), std::get<1>(v), std::get<2>(v)};
+        [[nodiscard]] nb::object prop_getattr(const std::string& name) const {
+            return prop_.getattr(name);
         }
-
-        std::tuple<float, float, float> max() const {
-            return {data_->max.x, data_->max.y, data_->max.z};
+        void prop_setattr(const std::string& name, nb::object value) { set(name, value); }
+        [[nodiscard]] bool has_prop(const std::string& name) const {
+            return core::prop::PropertyRegistry::instance().get_property(prop_.group_id(), name).has_value();
         }
-        void set_max(std::tuple<float, float, float> v) {
-            data_->max = {std::get<0>(v), std::get<1>(v), std::get<2>(v)};
+        [[nodiscard]] nb::list python_dir() const {
+            nb::list result;
+            result.append("prop_info");
+            result.append("get");
+            result.append("set");
+            const nb::list props = prop_.dir();
+            for (size_t i = 0; i < nb::len(props); ++i) {
+                result.append(props[i]);
+            }
+            return result;
         }
-
-        bool inverse() const { return data_->inverse; }
-        void set_inverse(bool v) { data_->inverse = v; }
-
-        bool enabled() const { return data_->enabled; }
-        void set_enabled(bool v) { data_->enabled = v; }
-
-        std::tuple<float, float, float> color() const {
-            return {data_->color.x, data_->color.y, data_->color.z};
-        }
-        void set_color(std::tuple<float, float, float> c) {
-            data_->color = {std::get<0>(c), std::get<1>(c), std::get<2>(c)};
-        }
-
-        float line_width() const { return data_->line_width; }
-        void set_line_width(float w) { data_->line_width = w; }
+        [[nodiscard]] vis::CropBoxData* data() { return data_; }
+        [[nodiscard]] const vis::CropBoxData* data() const { return data_; }
 
     private:
         vis::CropBoxData* data_;
+        PyProp<vis::CropBoxData> prop_;
+    };
+
+    class PyEllipsoid {
+    public:
+        explicit PyEllipsoid(vis::EllipsoidData* data) : data_(data),
+                                                         prop_(data, "ellipsoid") {
+            assert(data_ != nullptr);
+        }
+
+        [[nodiscard]] const std::string& property_group() const { return prop_.group_id(); }
+        [[nodiscard]] nb::object get(const std::string& name) const { return prop_.getattr(name); }
+        void set(const std::string& name, nb::object value) { prop_.setattr(name, value); }
+        [[nodiscard]] nb::dict prop_info(const std::string& name) const {
+            return prop_.prop_info(name);
+        }
+        [[nodiscard]] nb::object prop_getattr(const std::string& name) const {
+            return prop_.getattr(name);
+        }
+        void prop_setattr(const std::string& name, nb::object value) { set(name, value); }
+        [[nodiscard]] bool has_prop(const std::string& name) const {
+            return core::prop::PropertyRegistry::instance().get_property(prop_.group_id(), name).has_value();
+        }
+        [[nodiscard]] nb::list python_dir() const {
+            nb::list result;
+            result.append("prop_info");
+            result.append("get");
+            result.append("set");
+            const nb::list props = prop_.dir();
+            for (size_t i = 0; i < nb::len(props); ++i) {
+                result.append(props[i]);
+            }
+            return result;
+        }
+        [[nodiscard]] vis::EllipsoidData* data() { return data_; }
+        [[nodiscard]] const vis::EllipsoidData* data() const { return data_; }
+
+    private:
+        vis::EllipsoidData* data_;
+        PyProp<vis::EllipsoidData> prop_;
     };
 
     // PointCloud wrapper
@@ -128,6 +167,9 @@ namespace lfs::python {
         // Filter points by index tensor - keeps points at specified indices
         int64_t filter_indices(const PyTensor& indices);
 
+        // Replace point cloud data (for live updates)
+        void set_data(const PyTensor& points, const PyTensor& colors);
+
         core::PointCloud* data() { return pc_; }
         const core::PointCloud* data() const { return pc_; }
 
@@ -141,32 +183,23 @@ namespace lfs::python {
     public:
         PySceneNode(vis::SceneNode* node, vis::Scene* scene)
             : node_(node),
-              scene_(scene) {
+              scene_(scene),
+              prop_(node, "scene_node") {
             assert(node_ != nullptr);
             assert(scene_ != nullptr);
         }
 
-        // Identity (read-only)
+        // Identity (read-only, not in prop system)
         int32_t id() const { return node_->id; }
         int32_t parent_id() const { return node_->parent_id; }
         std::vector<int32_t> children() const { return node_->children; }
         vis::NodeType type() const { return node_->type; }
-        std::string name() const { return node_->name; }
 
-        // Transform
-        nb::tuple local_transform() const;
+        // Transform (special matrix conversion)
         void set_local_transform(nb::ndarray<float, nb::shape<4, 4>> transform);
         nb::tuple world_transform() const;
 
-        // Visibility
-        bool visible() const { return node_->visible.get(); }
-        void set_visible(bool v) { node_->visible = v; }
-
-        // Locked
-        bool locked() const { return node_->locked.get(); }
-        void set_locked(bool l) { node_->locked = l; }
-
-        // Metadata
+        // Metadata (read-only)
         size_t gaussian_count() const { return node_->gaussian_count; }
         std::tuple<float, float, float> centroid() const {
             return {node_->centroid.x, node_->centroid.y, node_->centroid.z};
@@ -176,15 +209,139 @@ namespace lfs::python {
         std::optional<PySplatData> splat_data();
         std::optional<PyPointCloud> point_cloud();
         std::optional<PyCropBox> cropbox();
+        std::optional<PyEllipsoid> ellipsoid();
 
         // Camera node specific
-        int camera_index() const { return node_->camera_index; }
         int camera_uid() const { return node_->camera_uid; }
         std::string image_path() const { return node_->image_path; }
         std::string mask_path() const { return node_->mask_path; }
+        bool has_camera() const { return node_->camera != nullptr; }
+        std::optional<PyTensor> camera_R() const {
+            if (!node_->camera)
+                return std::nullopt;
+            return PyTensor(node_->camera->R(), false);
+        }
+        std::optional<PyTensor> camera_T() const {
+            if (!node_->camera)
+                return std::nullopt;
+            return PyTensor(node_->camera->T(), false);
+        }
+        std::optional<float> camera_focal_x() const {
+            if (!node_->camera)
+                return std::nullopt;
+            return node_->camera->focal_x();
+        }
+        std::optional<float> camera_focal_y() const {
+            if (!node_->camera)
+                return std::nullopt;
+            return node_->camera->focal_y();
+        }
+        std::optional<int> camera_width() const {
+            if (!node_->camera)
+                return std::nullopt;
+            return node_->camera->camera_width();
+        }
+        std::optional<int> camera_height() const {
+            if (!node_->camera)
+                return std::nullopt;
+            return node_->camera->camera_height();
+        }
+
+        // Property group interface for generic prop()
+        const std::string& property_group() const { return prop_.group_id(); }
+        nb::object get(const std::string& name) const { return prop_.getattr(name); }
+        void set(const std::string& name, nb::object value) { prop_.setattr(name, value); }
+
+        // Property introspection
+        nb::dict prop_info(const std::string& name) const { return prop_.prop_info(name); }
+
+        // Descriptor protocol support
+        nb::object prop_getattr(const std::string& name) const { return prop_.getattr(name); }
+        void prop_setattr(const std::string& name, nb::object value) { set(name, value); }
+
+        bool has_prop(const std::string& name) const {
+            return core::prop::PropertyRegistry::instance().get_property(
+                                                               prop_.group_id(), name)
+                .has_value();
+        }
+
+        nb::list python_dir() const {
+            nb::list result;
+            for (const char* attr : {"id", "parent_id", "children", "type",
+                                     "world_transform", "set_local_transform",
+                                     "gaussian_count", "centroid",
+                                     "splat_data", "point_cloud", "cropbox", "ellipsoid",
+                                     "camera_uid", "image_path", "mask_path", "has_camera",
+                                     "camera_R", "camera_T", "camera_focal_x", "camera_focal_y",
+                                     "camera_width", "camera_height",
+                                     "prop_info"}) {
+                result.append(attr);
+            }
+            nb::list props = prop_.dir();
+            for (size_t i = 0; i < nb::len(props); ++i) {
+                result.append(props[i]);
+            }
+            return result;
+        }
 
     private:
         vis::SceneNode* node_;
+        vis::Scene* scene_;
+        PyProp<vis::SceneNode> prop_;
+    };
+
+    // Node collection for scene.nodes property
+    class PyNodeCollection {
+    public:
+        explicit PyNodeCollection(vis::Scene* scene) : scene_(scene) {
+            assert(scene_ != nullptr);
+        }
+
+        size_t size() const { return scene_->getNodeCount(); }
+
+        PySceneNode getitem(int64_t index) const {
+            auto nodes = scene_->getNodes();
+            if (index < 0) {
+                index += static_cast<int64_t>(nodes.size());
+            }
+            if (index < 0 || static_cast<size_t>(index) >= nodes.size()) {
+                throw nb::index_error("Node index out of range");
+            }
+            return PySceneNode(const_cast<vis::SceneNode*>(nodes[static_cast<size_t>(index)]),
+                               scene_);
+        }
+
+        std::vector<PySceneNode> items() const {
+            std::vector<PySceneNode> result;
+            for (const auto* node : scene_->getNodes()) {
+                result.emplace_back(const_cast<vis::SceneNode*>(node), scene_);
+            }
+            return result;
+        }
+
+        class Iterator {
+        public:
+            Iterator(vis::Scene* scene)
+                : scene_(scene),
+                  index_(0),
+                  nodes_(scene->getNodes()) {}
+
+            PySceneNode next() {
+                if (index_ >= nodes_.size()) {
+                    throw nb::stop_iteration();
+                }
+                return PySceneNode(const_cast<vis::SceneNode*>(nodes_[index_++]), scene_);
+            }
+
+        private:
+            vis::Scene* scene_;
+            size_t index_;
+            std::vector<const vis::SceneNode*> nodes_;
+        };
+
+        Iterator iter() const { return Iterator(scene_); }
+
+    private:
         vis::Scene* scene_;
     };
 
@@ -195,7 +352,7 @@ namespace lfs::python {
 
         // Thread-safe validity checking
         bool is_valid() const;
-        uint64_t generation() const { return generation_; }
+        uint64_t generation() const;
 
         // Node CRUD
         int32_t add_group(const std::string& name, int32_t parent = vis::NULL_NODE);
@@ -209,6 +366,21 @@ namespace lfs::python {
                           int sh_degree,
                           float scene_scale,
                           int32_t parent = vis::NULL_NODE);
+        int32_t add_point_cloud(const std::string& name,
+                                const PyTensor& points,
+                                const PyTensor& colors,
+                                int32_t parent = vis::NULL_NODE);
+        int32_t add_camera_group(const std::string& name, int32_t parent, size_t camera_count);
+        int32_t add_camera(const std::string& name,
+                           int32_t parent,
+                           const PyTensor& R,
+                           const PyTensor& T,
+                           float focal_x,
+                           float focal_y,
+                           int width,
+                           int height,
+                           const std::string& image_path = "",
+                           int uid = -1);
         void remove_node(const std::string& name, bool keep_children = false);
         bool rename_node(const std::string& old_name, const std::string& new_name);
         void clear() { scene_->clear(); }
@@ -325,6 +497,9 @@ namespace lfs::python {
         std::string merge_group(const std::string& group_name) {
             return scene_->mergeGroup(group_name);
         }
+
+        // Collection property for scene.nodes
+        PyNodeCollection nodes() { return PyNodeCollection(scene_); }
 
         // Access underlying scene (for internal use)
         vis::Scene* scene() { return scene_; }

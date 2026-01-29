@@ -28,9 +28,7 @@ namespace lfs::python {
 
     namespace {
         struct EnsureInitializedRegistrar {
-            EnsureInitializedRegistrar() {
-                set_ensure_initialized_callback(ensure_initialized);
-            }
+            EnsureInitializedRegistrar() { set_ensure_initialized_callback(ensure_initialized); }
         };
         static EnsureInitializedRegistrar g_registrar;
     } // namespace
@@ -46,10 +44,16 @@ namespace lfs::python {
         if (!PyArg_ParseTuple(args, "si", &text, &is_stderr)) {
             return nullptr;
         }
-        {
+        if (text && *text) {
             std::lock_guard lock(g_output_mutex);
-            if (g_output_callback && text) {
+            if (g_output_callback) {
                 g_output_callback(text, is_stderr != 0);
+            } else {
+                if (is_stderr) {
+                    LOG_WARN("[Python] {}", text);
+                } else {
+                    LOG_INFO("[Python] {}", text);
+                }
             }
         }
         Py_RETURN_NONE;
@@ -96,7 +100,7 @@ sys.stdout = OutputCapture(False)
 sys.stderr = OutputCapture(True)
 )";
         PyRun_SimpleString(redirect_code);
-        LOG_DEBUG("Python output capture installed");
+        LOG_DEBUG("Python output redirect installed");
     }
 #endif
 
@@ -192,6 +196,34 @@ _add_dll_dirs()
                 Py_DECREF(register_fn);
             }
             Py_DECREF(lfs_plugins);
+        }
+
+        // Initialize signal bridge after lfs_plugins.ui.state is available
+        // Note: signals is registered as lichtfeld.ui.signals
+        PyObject* ui_module = PyObject_GetAttrString(lf, "ui");
+        if (ui_module) {
+            PyObject* signals = PyObject_GetAttrString(ui_module, "signals");
+            if (signals) {
+                PyObject* init_fn = PyObject_GetAttrString(signals, "init");
+                if (init_fn) {
+                    PyObject* result = PyObject_CallNoArgs(init_fn);
+                    if (!result) {
+                        PyErr_Print();
+                        LOG_ERROR("Failed to initialize signal bridge");
+                    } else {
+                        Py_DECREF(result);
+                    }
+                    Py_DECREF(init_fn);
+                } else {
+                    LOG_ERROR("signals.init function not found");
+                }
+                Py_DECREF(signals);
+            } else {
+                LOG_ERROR("signals submodule not found in lichtfeld.ui");
+            }
+            Py_DECREF(ui_module);
+        } else {
+            LOG_ERROR("ui submodule not found in lichtfeld module");
         }
 
         PyObject* plugins = PyObject_GetAttrString(lf, "plugins");
@@ -332,24 +364,9 @@ _add_dll_dirs()
         // static destruction, after Python is gone
         invoke_python_cleanup();
 
-        // Run garbage collection to clean up cycles
         PyGC_Collect();
 
-        // NOTE: We intentionally do NOT call Py_FinalizeEx() here.
-        // nanobind stores type information in static storage that gets
-        // destroyed during C++ static destruction (after main returns).
-        // If we call Py_FinalizeEx(), Python type objects are destroyed,
-        // and then nanobind's static destructors crash trying to access them.
-        //
-        // By not calling Py_FinalizeEx():
-        // 1. All our callbacks and references are properly cleaned up above
-        // 2. Python interpreter stays alive until program exit
-        // 3. OS reclaims all memory when process exits (no actual leak)
-        // 4. No crashes during static destruction
-        //
-        // This is a known limitation of embedding Python with nanobind.
-        // The memory "leak" is only until process exit.
-        LOG_INFO("Python cleanup completed (interpreter left running for safe exit)");
+        // Skip Py_FinalizeEx() - nanobind static destructors need Python alive
 #endif
     }
 

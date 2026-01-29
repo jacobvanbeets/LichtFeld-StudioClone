@@ -2,35 +2,63 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include <glad/glad.h>
+
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include "notification_bridge.hpp"
+#include "py_animation.hpp"
 #include "py_cameras.hpp"
+#include "py_command.hpp"
+#include "py_gizmo.hpp"
 #include "py_io.hpp"
 #include "py_mcp.hpp"
+#include "py_operator.hpp"
 #include "py_packages.hpp"
 #include "py_params.hpp"
+#include "py_pipeline.hpp"
 #include "py_plugins.hpp"
 #include "py_rendering.hpp"
 #include "py_scene.hpp"
+#include "py_scripts.hpp"
+#include "py_selection.hpp"
+#include "py_signals.hpp"
 #include "py_splat_data.hpp"
 #include "py_tensor.hpp"
 #include "py_ui.hpp"
+#include "py_uilist.hpp"
+#include "py_viewport.hpp"
 
 #include "control/command_api.hpp"
 #include "control/control_boundary.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
 #include "core/event_bridge/scoped_handler.hpp"
 #include "core/events.hpp"
+#include "core/image_io.hpp"
 #include "core/logger.hpp"
+#include "core/parameters.hpp"
+#include "internal/resource_paths.hpp"
+#include "io/filesystem_utils.hpp"
 #include "python/python_runtime.hpp"
+
+#include "config.h"
 #include "python/runner.hpp"
+#include "rendering/rendering_manager.hpp"
+#include "training/checkpoint.hpp"
 #include "training/strategies/istrategy.hpp"
 #include "training/trainer.hpp"
+#include "visualizer/core/editor_context.hpp"
+#include "visualizer/core/parameter_manager.hpp"
+#include "visualizer/core/services.hpp"
+#include "visualizer/operator/operator_registry.hpp"
 #include "visualizer/scene/scene_manager.hpp"
+#include "visualizer/training/training_manager.hpp"
+#include "visualizer/window/window_manager.hpp"
 
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -40,7 +68,22 @@
 #include <unordered_map>
 #include <vector>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/euler_angles.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
+
 namespace nb = nanobind;
+
+enum class RenderMode { Splats,
+                        Points,
+                        Rings,
+                        Centers };
+enum class OperatorResult { Finished,
+                            Cancelled,
+                            Running };
 
 namespace {
 
@@ -54,8 +97,12 @@ namespace {
     using lfs::training::TrainingPhase;
     using lfs::training::TrainingSnapshot;
 
+    CommandCenter* get_command_center_opt() {
+        return lfs::event::command_center();
+    }
+
     CommandCenter& get_command_center() {
-        auto* cc = lfs::event::command_center();
+        auto* cc = get_command_center_opt();
         if (!cc) {
             throw std::runtime_error("Training system not initialized");
         }
@@ -150,9 +197,13 @@ namespace {
 
     class PyContextView {
     public:
-        PyContextView() : snapshot_(get_command_center().snapshot()) {
-            if (snapshot_.trainer) {
-                strategy_ = snapshot_.trainer->getParams().optimization.strategy;
+        PyContextView() {
+            auto* cc = get_command_center_opt();
+            if (cc) {
+                snapshot_ = cc->snapshot();
+                if (snapshot_.trainer) {
+                    strategy_ = snapshot_.trainer->getParams().optimization.strategy;
+                }
             }
         }
 
@@ -179,36 +230,48 @@ namespace {
         std::string strategy() const { return strategy_; }
 
         void refresh() {
-            snapshot_ = get_command_center().snapshot();
-            if (snapshot_.trainer) {
-                strategy_ = snapshot_.trainer->getParams().optimization.strategy;
-            } else {
-                strategy_ = "none";
+            auto* cc = get_command_center_opt();
+            if (cc) {
+                snapshot_ = cc->snapshot();
+                if (snapshot_.trainer) {
+                    strategy_ = snapshot_.trainer->getParams().optimization.strategy;
+                } else {
+                    strategy_ = "none";
+                }
             }
         }
 
     private:
-        TrainingSnapshot snapshot_;
+        TrainingSnapshot snapshot_{};
         std::string strategy_ = "none";
     };
 
     struct PyGaussiansView {
         std::size_t count() const {
-            const auto snap = get_command_center().snapshot();
+            auto* cc = get_command_center_opt();
+            if (!cc)
+                return 0;
+            const auto snap = cc->snapshot();
             if (!snap.trainer)
                 return 0;
             return snap.trainer->get_strategy_mutable().get_model().size();
         }
 
         int sh_degree() const {
-            const auto snap = get_command_center().snapshot();
+            auto* cc = get_command_center_opt();
+            if (!cc)
+                return 0;
+            const auto snap = cc->snapshot();
             if (!snap.trainer)
                 return 0;
             return snap.trainer->get_strategy_mutable().get_model().get_active_sh_degree();
         }
 
         int max_sh_degree() const {
-            const auto snap = get_command_center().snapshot();
+            auto* cc = get_command_center_opt();
+            if (!cc)
+                return 0;
+            const auto snap = cc->snapshot();
             if (!snap.trainer)
                 return 0;
             return snap.trainer->get_strategy_mutable().get_model().get_max_sh_degree();
@@ -376,13 +439,25 @@ namespace {
             return g_current_trainer->getScene();
         }
         // Priority 3: Operation context (short-lived, for capability invocations)
-        return static_cast<lfs::vis::Scene*>(lfs::python::get_scene_for_python());
+        return lfs::python::get_scene_for_python();
     }
 
 } // namespace
 
 NB_MODULE(lichtfeld, m) {
     m.doc() = "LichtFeld Python control module for Gaussian splatting";
+
+    // Enums (Phase 4: typed APIs instead of magic strings)
+    nb::enum_<RenderMode>(m, "RenderMode")
+        .value("SPLATS", RenderMode::Splats)
+        .value("POINTS", RenderMode::Points)
+        .value("RINGS", RenderMode::Rings)
+        .value("CENTERS", RenderMode::Centers);
+
+    nb::enum_<OperatorResult>(m, "OperatorResult")
+        .value("FINISHED", OperatorResult::Finished)
+        .value("CANCELLED", OperatorResult::Cancelled)
+        .value("RUNNING", OperatorResult::Running);
 
     // Add user site-packages to sys.path on module import
     {
@@ -487,6 +562,524 @@ NB_MODULE(lichtfeld, m) {
     m.def(
         "session", []() { return PySession{}; }, "Get training session");
 
+    m.def(
+        "trainer_state",
+        []() -> const char* {
+            const auto* const tm = lfs::python::get_trainer_manager();
+            if (!tm)
+                return "idle";
+            switch (tm->getState()) {
+            case lfs::vis::TrainingState::Idle: return "idle";
+            case lfs::vis::TrainingState::Ready: return "ready";
+            case lfs::vis::TrainingState::Running: return "running";
+            case lfs::vis::TrainingState::Paused: return "paused";
+            case lfs::vis::TrainingState::Stopping: return "stopping";
+            case lfs::vis::TrainingState::Finished: return "finished";
+            }
+            return "idle";
+        },
+        "Get trainer state");
+
+    m.def(
+        "finish_reason",
+        []() -> std::optional<std::string> {
+            const auto* const tm = lfs::python::get_trainer_manager();
+            if (!tm || !tm->isFinished())
+                return std::nullopt;
+            switch (tm->getStateMachine().getFinishReason()) {
+            case lfs::vis::FinishReason::Completed: return "completed";
+            case lfs::vis::FinishReason::UserStopped: return "stopped";
+            case lfs::vis::FinishReason::Error: return "error";
+            default: return std::nullopt;
+            }
+        },
+        "Get finish reason if training finished");
+
+    m.def(
+        "trainer_error",
+        []() -> std::optional<std::string> {
+            const auto* const tm = lfs::python::get_trainer_manager();
+            if (!tm)
+                return std::nullopt;
+            const auto& error = tm->getLastError();
+            return error.empty() ? std::nullopt : std::make_optional(error);
+        },
+        "Get trainer error message");
+
+    m.def("start_training", []() { lfs::core::events::cmd::StartTraining{}.emit(); });
+    m.def("pause_training", []() { lfs::core::events::cmd::PauseTraining{}.emit(); });
+    m.def("resume_training", []() { lfs::core::events::cmd::ResumeTraining{}.emit(); });
+    m.def("stop_training", []() { lfs::core::events::cmd::StopTraining{}.emit(); });
+    m.def("reset_training", []() { lfs::core::events::cmd::ResetTraining{}.emit(); });
+    m.def("save_checkpoint", []() { lfs::core::events::cmd::SaveCheckpoint{}.emit(); });
+    m.def("clear_scene", []() { lfs::core::events::cmd::ClearScene{}.emit(); });
+    m.def("switch_to_edit_mode", []() { lfs::core::events::cmd::SwitchToEditMode{}.emit(); });
+
+    m.def(
+        "load_file",
+        [](const std::string& path, bool is_dataset) {
+            lfs::core::events::cmd::LoadFile{.path = path, .is_dataset = is_dataset}.emit();
+        },
+        nb::arg("path"), nb::arg("is_dataset") = false,
+        "Load a file (PLY, checkpoint) or dataset into the scene.");
+
+    m.def(
+        "load_config_file",
+        [](const std::string& path) { lfs::core::events::cmd::LoadConfigFile{.path = path}.emit(); },
+        nb::arg("path"), "Load a JSON configuration file.");
+
+    m.def(
+        "load_checkpoint_for_training",
+        [](const std::string& checkpoint_path, const std::string& dataset_path, const std::string& output_path) {
+            lfs::core::events::cmd::LoadCheckpointForTraining{
+                .checkpoint_path = checkpoint_path,
+                .dataset_path = dataset_path,
+                .output_path = output_path,
+            }
+                .emit();
+        },
+        nb::arg("checkpoint_path"), nb::arg("dataset_path"), nb::arg("output_path"),
+        "Load a checkpoint for training with specified dataset and output paths.");
+
+    m.def(
+        "request_exit", []() { lfs::core::events::cmd::RequestExit{}.emit(); },
+        "Request application exit (shows confirmation if needed).");
+
+    m.def(
+        "force_exit", []() { lfs::core::events::cmd::ForceExit{}.emit(); },
+        "Force immediate application exit (bypasses confirmation).");
+
+    m.def(
+        "export_scene",
+        [](int format, const std::string& path, const std::vector<std::string>& node_names, int sh_degree) {
+            lfs::python::invoke_export(format, path, node_names, sh_degree);
+        },
+        nb::arg("format"), nb::arg("path"), nb::arg("node_names"), nb::arg("sh_degree"),
+        "Export scene nodes to file. Format: 0=PLY, 1=SOG, 2=SPZ, 3=HTML.");
+
+    m.def(
+        "save_config_file",
+        [](const std::string& path) {
+            const auto* const param_manager = lfs::vis::services().paramsOrNull();
+            if (!param_manager) {
+                throw std::runtime_error("No parameter manager available");
+            }
+            lfs::core::param::TrainingParameters params;
+            params.dataset = param_manager->getDatasetConfig();
+            params.optimization = param_manager->getActiveParams();
+            if (const auto result = lfs::core::param::save_training_parameters_to_json(params, path); !result) {
+                throw std::runtime_error("Failed to save config: " + result.error());
+            }
+        },
+        nb::arg("path"), "Save current training configuration to a JSON file.");
+
+    m.def("has_trainer", []() {
+        const auto* const tm = lfs::python::get_trainer_manager();
+        return tm && tm->hasTrainer();
+    });
+
+    m.def("loss_buffer", []() -> std::vector<float> {
+        const auto* const tm = lfs::python::get_trainer_manager();
+        if (!tm)
+            return {};
+        auto loss_deque = tm->getLossBuffer();
+        return std::vector<float>(loss_deque.begin(), loss_deque.end());
+    });
+
+    // Trainer status bar bindings
+    m.def(
+        "trainer_elapsed_seconds", []() -> float {
+            const auto* tm = lfs::python::get_trainer_manager();
+            return tm ? tm->getElapsedSeconds() : 0.0f;
+        },
+        "Get elapsed training time in seconds");
+
+    m.def(
+        "trainer_eta_seconds", []() -> float {
+            const auto* tm = lfs::python::get_trainer_manager();
+            return tm ? tm->getEstimatedRemainingSeconds() : -1.0f;
+        },
+        "Get estimated remaining time in seconds (-1 if unavailable)");
+
+    m.def(
+        "trainer_strategy_type", []() -> const char* {
+            const auto* tm = lfs::python::get_trainer_manager();
+            return (tm && tm->hasTrainer()) ? tm->getStrategyType() : "unknown";
+        },
+        "Get training strategy type (mcmc, default, etc.)");
+
+    m.def(
+        "trainer_is_gut_enabled", []() -> bool {
+            const auto* tm = lfs::python::get_trainer_manager();
+            return tm && tm->hasTrainer() && tm->isGutEnabled();
+        },
+        "Check if GUT is enabled");
+
+    m.def(
+        "trainer_max_gaussians", []() -> int {
+            const auto* tm = lfs::python::get_trainer_manager();
+            return tm ? tm->getMaxGaussians() : 0;
+        },
+        "Get maximum number of gaussians");
+
+    m.def(
+        "trainer_num_splats", []() -> int {
+            const auto* tm = lfs::python::get_trainer_manager();
+            return tm ? tm->getNumSplats() : 0;
+        },
+        "Get current number of splats");
+
+    m.def(
+        "trainer_current_iteration", []() -> int {
+            const auto* tm = lfs::python::get_trainer_manager();
+            return tm ? tm->getCurrentIteration() : 0;
+        },
+        "Get current iteration");
+
+    m.def(
+        "trainer_total_iterations", []() -> int {
+            const auto* tm = lfs::python::get_trainer_manager();
+            return tm ? tm->getTotalIterations() : 0;
+        },
+        "Get total iterations");
+
+    m.def(
+        "trainer_current_loss", []() -> float {
+            const auto* tm = lfs::python::get_trainer_manager();
+            return tm ? tm->getCurrentLoss() : 0.0f;
+        },
+        "Get current loss");
+
+    // Scene manipulation
+    m.def(
+        "set_node_visibility", [](const std::string& name, bool visible) {
+            lfs::core::events::cmd::SetPLYVisibility{.name = name, .visible = visible}.emit();
+        },
+        nb::arg("name"), nb::arg("visible"));
+
+    m.def(
+        "remove_node", [](const std::string& name, bool keep_children) {
+            lfs::core::events::cmd::RemovePLY{.name = name, .keep_children = keep_children}.emit();
+        },
+        nb::arg("name"), nb::arg("keep_children") = false);
+
+    m.def(
+        "select_node", [](const std::string& name) {
+            lfs::core::events::ui::NodeSelected{
+                .path = name,
+                .type = "PLY",
+                .metadata = {{"name", name}}}
+                .emit();
+        },
+        nb::arg("name"));
+
+    m.def("deselect_all", []() {
+        lfs::core::events::ui::NodeDeselected{}.emit();
+    });
+
+    m.def(
+        "reparent_node", [](const std::string& name, const std::string& new_parent) {
+            lfs::core::events::cmd::ReparentNode{.node_name = name, .new_parent_name = new_parent}.emit();
+        },
+        nb::arg("name"), nb::arg("new_parent"));
+
+    m.def(
+        "rename_node", [](const std::string& old_name, const std::string& new_name) {
+            lfs::core::events::cmd::RenamePLY{.old_name = old_name, .new_name = new_name}.emit();
+        },
+        nb::arg("old_name"), nb::arg("new_name"));
+
+    m.def(
+        "add_group", [](const std::string& name, const std::string& parent) {
+            lfs::core::events::cmd::AddGroup{.name = name, .parent_name = parent}.emit();
+        },
+        nb::arg("name"), nb::arg("parent") = "");
+
+    // Transform APIs for operator system
+    m.def(
+        "get_selected_node_transform", []() -> std::optional<std::vector<float>> {
+            auto* sm = lfs::python::get_scene_manager();
+            if (!sm || !sm->hasSelectedNode())
+                return std::nullopt;
+            const auto m = sm->getSelectedNodeTransform();
+            return std::vector<float>(&m[0][0], &m[0][0] + 16);
+        },
+        "Get transform matrix (16 floats, column-major) of selected node");
+
+    m.def(
+        "set_selected_node_transform", [](const std::vector<float>& mat) {
+            auto* sm = lfs::python::get_scene_manager();
+            if (!sm || !sm->hasSelectedNode() || mat.size() != 16)
+                return;
+            glm::mat4 m;
+            std::memcpy(&m[0][0], mat.data(), 16 * sizeof(float));
+            sm->setSelectedNodeTransform(m);
+        },
+        nb::arg("matrix"), "Set transform matrix (16 floats, column-major) of selected node");
+
+    m.def(
+        "get_selection_center", []() -> std::optional<std::vector<float>> {
+            auto* sm = lfs::python::get_scene_manager();
+            if (!sm || !sm->hasSelectedNode())
+                return std::nullopt;
+            const auto c = sm->getSelectionCenter();
+            return std::vector<float>{c.x, c.y, c.z};
+        },
+        "Get center of current selection (local space)");
+
+    m.def(
+        "get_selection_world_center", []() -> std::optional<std::vector<float>> {
+            auto* sm = lfs::python::get_scene_manager();
+            if (!sm || !sm->hasSelectedNode())
+                return std::nullopt;
+            const auto c = sm->getSelectionWorldCenter();
+            return std::vector<float>{c.x, c.y, c.z};
+        },
+        "Get center of current selection (world space)");
+
+    m.def(
+        "has_scene", []() -> bool {
+            auto* sm = lfs::python::get_scene_manager();
+            return sm && sm->getScene().getNodeCount() > 0;
+        },
+        "Check if a scene is loaded");
+
+    m.def(
+        "has_selection", []() -> bool {
+            auto* sm = lfs::python::get_scene_manager();
+            return sm && sm->hasSelectedNode();
+        },
+        "Check if a node is selected");
+
+    m.def(
+        "get_selected_node_names", []() -> std::vector<std::string> {
+            auto* sm = lfs::python::get_scene_manager();
+            if (!sm)
+                return {};
+            return sm->getSelectedNodeNames();
+        },
+        "Get names of all selected nodes");
+
+    m.def(
+        "get_selected_node_name", []() -> std::string {
+            auto* sm = lfs::python::get_scene_manager();
+            if (!sm || !sm->hasSelectedNode())
+                return "";
+            return sm->getSelectedNodeName();
+        },
+        "Get name of primary selected node");
+
+    m.def(
+        "can_transform_selection", []() -> bool {
+            auto* ec = lfs::python::get_editor_context();
+            return ec && ec->canTransformSelectedNode();
+        },
+        "Check if selected node can be transformed");
+
+    m.def(
+        "get_num_gaussians", []() -> size_t {
+            auto* sm = lfs::python::get_scene_manager();
+            if (!sm)
+                return 0;
+            const auto* model = sm->getScene().getCombinedModel();
+            return model ? model->size() : 0;
+        },
+        "Get total number of gaussians in scene");
+
+    m.def(
+        "get_node_transform", [](const std::string& name) -> std::optional<std::vector<float>> {
+            const auto* sm = lfs::python::get_scene_manager();
+            if (!sm)
+                return std::nullopt;
+            const auto& mat = sm->getNodeTransform(name);
+            return std::vector<float>(&mat[0][0], &mat[0][0] + 16);
+        },
+        nb::arg("name"), "Get node transform matrix (16 floats, column-major)");
+
+    m.def(
+        "set_node_transform", [](const std::string& name, const std::vector<float>& mat) {
+            auto* sm = lfs::python::get_scene_manager();
+            if (!sm || mat.size() != 16)
+                return;
+            glm::mat4 transform;
+            std::memcpy(&transform[0][0], mat.data(), 16 * sizeof(float));
+            sm->setNodeTransform(name, transform);
+        },
+        nb::arg("name"), nb::arg("matrix"), "Set node transform matrix (16 floats, column-major)");
+
+    m.def(
+        "capture_selection_transforms", []() -> nb::dict {
+            const auto* sm = lfs::python::get_scene_manager();
+            nb::dict result;
+            if (!sm)
+                return result;
+
+            const auto& names = sm->getSelectedNodeNames();
+            std::vector<std::vector<float>> transforms;
+            std::vector<std::vector<float>> world_positions;
+            transforms.reserve(names.size());
+            world_positions.reserve(names.size());
+
+            for (const auto& name : names) {
+                const auto& mat = sm->getNodeTransform(name);
+                transforms.emplace_back(&mat[0][0], &mat[0][0] + 16);
+                world_positions.push_back({mat[3][0], mat[3][1], mat[3][2]});
+            }
+
+            result["names"] = names;
+            result["transforms"] = transforms;
+            result["world_positions"] = world_positions;
+            return result;
+        },
+        "Capture transforms of all selected nodes");
+
+    m.def(
+        "decompose_transform", [](const std::vector<float>& mat) -> nb::dict {
+            nb::dict result;
+            if (mat.size() != 16)
+                return result;
+
+            glm::mat4 m;
+            std::memcpy(&m[0][0], mat.data(), 16 * sizeof(float));
+
+            const glm::vec3 translation(m[3]);
+
+            glm::vec3 col0(m[0]), col1(m[1]), col2(m[2]);
+            const glm::vec3 scale(glm::length(col0), glm::length(col1), glm::length(col2));
+
+            if (scale.x > 0.0f)
+                col0 /= scale.x;
+            if (scale.y > 0.0f)
+                col1 /= scale.y;
+            if (scale.z > 0.0f)
+                col2 /= scale.z;
+
+            const glm::mat3 rot_mat(col0, col1, col2);
+            const glm::quat quat = glm::quat_cast(rot_mat);
+
+            glm::vec3 euler_rad;
+            glm::extractEulerAngleXYZ(glm::mat4(rot_mat), euler_rad.x, euler_rad.y, euler_rad.z);
+            const glm::vec3 euler_deg = glm::degrees(euler_rad);
+
+            result["translation"] = std::vector<float>{translation.x, translation.y, translation.z};
+            result["rotation_quat"] = std::vector<float>{quat.x, quat.y, quat.z, quat.w};
+            result["rotation_euler"] = std::vector<float>{euler_rad.x, euler_rad.y, euler_rad.z};
+            result["rotation_euler_deg"] = std::vector<float>{euler_deg.x, euler_deg.y, euler_deg.z};
+            result["scale"] = std::vector<float>{scale.x, scale.y, scale.z};
+            return result;
+        },
+        nb::arg("matrix"), "Decompose transform into translation, rotation, scale");
+
+    m.def(
+        "compose_transform", [](const std::vector<float>& translation, const std::vector<float>& euler_deg, const std::vector<float>& scale) -> std::vector<float> {
+            if (translation.size() != 3 || euler_deg.size() != 3 || scale.size() != 3)
+                return std::vector<float>(16, 0.0f);
+
+            const glm::vec3 trans(translation[0], translation[1], translation[2]);
+            const glm::vec3 euler_rad = glm::radians(glm::vec3(euler_deg[0], euler_deg[1], euler_deg[2]));
+            const glm::vec3 s(scale[0], scale[1], scale[2]);
+
+            const glm::mat4 t = glm::translate(glm::mat4(1.0f), trans);
+            const glm::mat4 r = glm::eulerAngleXYZ(euler_rad.x, euler_rad.y, euler_rad.z);
+            const glm::mat4 sc = glm::scale(glm::mat4(1.0f), s);
+            const glm::mat4 m = t * r * sc;
+
+            return std::vector<float>(&m[0][0], &m[0][0] + 16);
+        },
+        nb::arg("translation"), nb::arg("euler_deg"), nb::arg("scale"), "Compose transform matrix from translation, euler angles (degrees), and scale");
+
+    // Icon loading for Python UI
+    m.def(
+        "load_icon", [](const std::string& name) -> uint64_t {
+            try {
+                const auto path = lfs::vis::getAssetPath("icon/" + name + ".png");
+                const auto [data, width, height, channels] = lfs::core::load_image_with_alpha(path);
+
+                unsigned int tex_id = 0;
+                glGenTextures(1, &tex_id);
+                glBindTexture(GL_TEXTURE_2D, tex_id);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+                const GLenum format = (channels == 4) ? GL_RGBA : GL_RGB;
+                glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(format), width, height, 0, format, GL_UNSIGNED_BYTE, data);
+
+                lfs::core::free_image(data);
+                glBindTexture(GL_TEXTURE_2D, 0);
+
+                return static_cast<uint64_t>(tex_id);
+            } catch (const std::exception& e) {
+                LOG_WARN("Failed to load icon {}: {}", name, e.what());
+                return 0;
+            }
+        },
+        nb::arg("name"), "Load an icon texture from assets/icon/{name}.png, returns OpenGL texture ID");
+
+    m.def(
+        "free_icon", [](uint64_t texture_id) {
+            if (texture_id > 0) {
+                auto tex = static_cast<unsigned int>(texture_id);
+                glDeleteTextures(1, &tex);
+            }
+        },
+        nb::arg("texture_id"), "Free an icon texture");
+
+    // Camera commands
+    m.def("reset_camera", []() { lfs::core::events::cmd::ResetCamera{}.emit(); });
+    m.def("toggle_fullscreen", []() { lfs::core::events::ui::ToggleFullscreen{}.emit(); });
+    m.def("is_fullscreen", []() -> bool {
+        auto* wm = lfs::vis::services().windowOrNull();
+        return wm ? wm->isFullscreen() : false;
+    });
+    m.def("toggle_ui", []() { lfs::core::events::ui::ToggleUI{}.emit(); });
+
+    m.def("get_render_mode", []() -> RenderMode {
+        const auto* rm = lfs::python::get_rendering_manager();
+        if (!rm)
+            return RenderMode::Splats;
+        const auto& settings = rm->getSettings();
+        if (settings.point_cloud_mode)
+            return RenderMode::Points;
+        if (settings.show_rings)
+            return RenderMode::Rings;
+        if (settings.show_center_markers)
+            return RenderMode::Centers;
+        return RenderMode::Splats;
+    });
+
+    m.def(
+        "set_render_mode", [](RenderMode mode) {
+            auto* rm = lfs::python::get_rendering_manager();
+            if (!rm)
+                return;
+            auto settings = rm->getSettings();
+            settings.point_cloud_mode = (mode == RenderMode::Points);
+            settings.show_rings = (mode == RenderMode::Rings);
+            settings.show_center_markers = (mode == RenderMode::Centers);
+            rm->updateSettings(settings);
+        },
+        nb::arg("mode"));
+
+    m.def("is_orthographic", []() -> bool {
+        const auto* rm = lfs::python::get_rendering_manager();
+        return rm ? rm->getSettings().orthographic : false;
+    });
+
+    m.def(
+        "set_orthographic", [](bool ortho) {
+            auto* rm = lfs::python::get_rendering_manager();
+            if (!rm)
+                return;
+            // setOrthographic requires viewport_height and distance_to_pivot
+            // For simple toggle, use the settings directly
+            auto settings = rm->getSettings();
+            settings.orthographic = ortho;
+            rm->updateSettings(settings);
+        },
+        nb::arg("ortho"));
+
     // Hook registration functions (decorator-style)
     m.def(
         "on_training_start", [](nb::callable cb) {
@@ -535,6 +1128,9 @@ NB_MODULE(lichtfeld, m) {
     // Rendering functions (render_view, compute_screen_positions, etc.)
     lfs::python::register_rendering(m);
 
+    // Selection primitives for Python operators
+    lfs::python::register_selection(m);
+
     // I/O submodule
     auto io_module = m.def_submodule("io", "File I/O operations");
     lfs::python::register_io(io_module);
@@ -546,14 +1142,68 @@ NB_MODULE(lichtfeld, m) {
     auto ui_module = m.def_submodule("ui", "User interface API");
     lfs::python::register_ui(ui_module);
 
+    // Signal bridge for reactive UI updates
+    lfs::python::register_signals(ui_module);
+
+    // Initialize panel registry subscriptions for property-based UI invalidation
+    lfs::python::PyPanelRegistry::instance().init();
+
+    // Set up notification handlers (C++ events -> PyModalRegistry)
+    lfs::python::setup_notification_handlers();
+
+    // Keymap submodule (at root level for lf.keymap access)
+    lfs::python::register_keymap(m);
+
+    // Unified class registration API on root module
+    lfs::python::register_class_api(m);
+
+    // Build info submodule
+    auto build_info = m.def_submodule("build_info", "Build configuration and version information");
+    build_info.attr("version") = GIT_TAGGED_VERSION;
+    build_info.attr("commit") = GIT_COMMIT_HASH_SHORT;
+#ifdef DEBUG_BUILD
+    build_info.attr("build_type") = "Debug";
+#else
+    build_info.attr("build_type") = "Release";
+#endif
+#ifdef PLATFORM_WINDOWS
+    build_info.attr("platform") = "Windows";
+#elif defined(PLATFORM_LINUX)
+    build_info.attr("platform") = "Linux";
+#else
+    build_info.attr("platform") = "Unknown";
+#endif
+#ifdef CUDA_GL_INTEROP_ENABLED
+    build_info.attr("cuda_gl_interop") = true;
+#else
+    build_info.attr("cuda_gl_interop") = false;
+#endif
+    build_info.attr("repo_url") = "https://github.com/MrNeRF/LichtFeld-Studio";
+    build_info.attr("website_url") = "https://lichtfeld.io";
+
+    lfs::python::register_commands(m);
+    lfs::python::register_gizmos(m);
+    lfs::python::register_operator_return_value(m);
+    lfs::python::register_operators(m);
+    lfs::python::register_pipeline(m);
+    lfs::python::register_uilist(m);
+    lfs::python::register_viewport(m);
+
     // Parameters (OptimizationParameters with RNA-style property access)
     lfs::python::register_params(m);
 
     // Plugin system (pure Python implementation, C++ bindings for convenience)
     lfs::python::register_plugins(m);
 
+    // Script management (for Python scripts panel)
+    lfs::python::register_scripts(m);
+
     // MCP (Model Context Protocol) tool registration
     lfs::python::register_mcp(m);
+
+    // Animation submodule (multi-track property animation)
+    auto anim_module = m.def_submodule("animation", "Animation system API");
+    lfs::python::register_animation(anim_module);
 
     // Logging submodule
     auto log_module = m.def_submodule("log", "Logging utilities");
@@ -605,35 +1255,6 @@ NB_MODULE(lichtfeld, m) {
             return lfs::python::get_scene_generation();
         },
         "Get current scene generation counter (for validity checking)");
-
-    // Get train/val cameras from scene
-    m.def(
-        "train_cameras", []() -> std::optional<lfs::python::PyCameraDataset> {
-            auto* scene = get_scene_internal();
-            if (!scene) {
-                return std::nullopt;
-            }
-            auto dataset = scene->getTrainCameras();
-            if (!dataset) {
-                return std::nullopt;
-            }
-            return lfs::python::PyCameraDataset(dataset);
-        },
-        "Get training cameras (None if not available)");
-
-    m.def(
-        "val_cameras", []() -> std::optional<lfs::python::PyCameraDataset> {
-            auto* scene = get_scene_internal();
-            if (!scene) {
-                return std::nullopt;
-            }
-            auto dataset = scene->getValCameras();
-            if (!dataset) {
-                return std::nullopt;
-            }
-            return lfs::python::PyCameraDataset(dataset);
-        },
-        "Get validation cameras (None if not available)");
 
     // Run a Python script file
     m.def(
@@ -704,6 +1325,7 @@ NB_MODULE(lichtfeld, m) {
                     case lfs::vis::NodeType::POINTCLOUD: type_name = "POINTCLOUD"; break;
                     case lfs::vis::NodeType::GROUP: type_name = "GROUP"; break;
                     case lfs::vis::NodeType::CROPBOX: type_name = "CROPBOX"; break;
+                    case lfs::vis::NodeType::ELLIPSOID: type_name = "ELLIPSOID"; break;
                     case lfs::vis::NodeType::DATASET: type_name = "DATASET"; break;
                     case lfs::vis::NodeType::CAMERA_GROUP: type_name = "CAMERA_GROUP"; break;
                     case lfs::vis::NodeType::CAMERA: type_name = "CAMERA"; break;
@@ -791,8 +1413,7 @@ NB_MODULE(lichtfeld, m) {
 Scene:
   lf.get_scene()      - Get the scene object (None if unavailable)
   lf.list_scene()     - Print scene graph tree
-  lf.train_cameras()  - Get training camera dataset
-  lf.val_cameras()    - Get validation camera dataset
+  scene.add_camera()  - Add camera node with R, T, focal, dimensions
 
 Training:
   lf.context()        - Get training context (iteration, loss, etc.)
@@ -835,12 +1456,79 @@ Example:
         "_clear_scene_context", []() { lfs::python::set_scene_for_python(nullptr); },
         "Internal: Clear scene context after console execution");
 
+    nb::class_<lfs::io::DatasetInfo>(m, "DatasetInfo", "Information about a dataset directory")
+        .def_prop_ro("base_path", [](const lfs::io::DatasetInfo& i) { return i.base_path.string(); })
+        .def_prop_ro("images_path", [](const lfs::io::DatasetInfo& i) { return i.images_path.string(); })
+        .def_prop_ro("sparse_path", [](const lfs::io::DatasetInfo& i) { return i.sparse_path.string(); })
+        .def_prop_ro("masks_path", [](const lfs::io::DatasetInfo& i) { return i.masks_path.string(); })
+        .def_prop_ro("has_masks", [](const lfs::io::DatasetInfo& i) { return i.has_masks; })
+        .def_prop_ro("image_count", [](const lfs::io::DatasetInfo& i) { return i.image_count; })
+        .def_prop_ro("mask_count", [](const lfs::io::DatasetInfo& i) { return i.mask_count; })
+        .def("__repr__", [](const lfs::io::DatasetInfo& i) {
+            return std::format("DatasetInfo(base_path='{}', images={}, masks={})",
+                               i.base_path.string(), i.image_count, i.mask_count);
+        });
+
+    m.def(
+        "detect_dataset_info",
+        [](const std::string& path) { return lfs::io::detect_dataset_info(path); },
+        nb::arg("path"), "Detect dataset information from a directory path");
+
+    nb::class_<lfs::training::CheckpointHeader>(m, "CheckpointHeader", "Information from a checkpoint file header")
+        .def_ro("iteration", &lfs::training::CheckpointHeader::iteration)
+        .def_ro("num_gaussians", &lfs::training::CheckpointHeader::num_gaussians)
+        .def_ro("sh_degree", &lfs::training::CheckpointHeader::sh_degree)
+        .def("__repr__", [](const lfs::training::CheckpointHeader& h) {
+            return std::format("CheckpointHeader(iteration={}, num_gaussians={}, sh_degree={})",
+                               h.iteration, h.num_gaussians, h.sh_degree);
+        });
+
+    m.def(
+        "read_checkpoint_header",
+        [](const std::string& path) -> std::optional<lfs::training::CheckpointHeader> {
+            auto result = lfs::training::load_checkpoint_header(path);
+            if (!result) {
+                return std::nullopt;
+            }
+            return *result;
+        },
+        nb::arg("path"), "Read checkpoint header information (None if failed)");
+
+    nb::class_<lfs::core::param::DatasetConfig>(m, "CheckpointParams", "Training parameters from a checkpoint")
+        .def_prop_ro("dataset_path", [](const lfs::core::param::DatasetConfig& c) {
+            return c.data_path.string();
+        })
+        .def_prop_ro("output_path", [](const lfs::core::param::DatasetConfig& c) {
+            return c.output_path.string();
+        })
+        .def("__repr__", [](const lfs::core::param::DatasetConfig& c) {
+            return std::format("CheckpointParams(dataset_path='{}', output_path='{}')",
+                               c.data_path.string(), c.output_path.string());
+        });
+
+    m.def(
+        "read_checkpoint_params",
+        [](const std::string& path) -> std::optional<lfs::core::param::DatasetConfig> {
+            auto result = lfs::training::load_checkpoint_params(path);
+            if (!result) {
+                return std::nullopt;
+            }
+            return result->dataset;
+        },
+        nb::arg("path"), "Read training parameters from a checkpoint (None if failed)");
+
+    // Register poll cache invalidation callback - invalidates both OperatorRegistry and PyPanelRegistry
+    lfs::python::set_invalidate_poll_cache_callback([](uint8_t dependency) {
+        lfs::vis::op::OperatorRegistry::instance().invalidatePollCache(
+            static_cast<lfs::vis::op::PollDependency>(dependency));
+        lfs::python::PyPanelRegistry::instance().invalidate_poll_cache();
+    });
+
     // Module metadata
     m.attr("__version__") = "0.1.0";
     m.attr("__all__") = nb::make_tuple(
         // Core access
         "context", "gaussians", "session", "get_scene",
-        "train_cameras", "val_cameras",
         // Types
         "Tensor", "Hook", "ScopedHandler",
         // Hook decorators

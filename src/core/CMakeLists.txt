@@ -18,6 +18,7 @@ add_subdirectory(event_bridge)
 # Core module - fundamental data structures and utilities
 # Note: lfs_tensor library is now in src/core/tensor
 set(CORE_SOURCES
+        animatable_property.cpp
         argument_parser.cpp
         camera.cpp
         converter.cpp

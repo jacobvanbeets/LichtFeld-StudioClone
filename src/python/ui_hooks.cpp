@@ -4,6 +4,7 @@
 
 #include "ui_hooks.hpp"
 #include "core/logger.hpp"
+#include "python_runtime.hpp"
 
 #include <algorithm>
 #include <mutex>
@@ -164,6 +165,7 @@ namespace lfs::python {
 
     namespace {
         PythonHookInvoker g_python_hook_invoker;
+        PythonHookChecker g_python_hook_checker;
         std::mutex g_invoker_mutex;
     } // namespace
 
@@ -173,9 +175,15 @@ namespace lfs::python {
         LOG_INFO("Python hook invoker registered");
     }
 
+    void set_python_hook_checker(PythonHookChecker checker) {
+        std::lock_guard lock(g_invoker_mutex);
+        g_python_hook_checker = std::move(checker);
+    }
+
     void clear_python_hook_invoker() {
         std::lock_guard lock(g_invoker_mutex);
         g_python_hook_invoker = nullptr;
+        g_python_hook_checker = nullptr;
     }
 
     void invoke_python_hooks(const std::string& panel, const std::string& section, bool prepend) {
@@ -185,6 +193,8 @@ namespace lfs::python {
             invoker = g_python_hook_invoker;
         }
         if (invoker) {
+            if (bridge().prepare_ui)
+                bridge().prepare_ui();
             invoker(panel.c_str(), section.c_str(), prepend);
         } else {
             static bool warned_scene = false;
@@ -195,6 +205,14 @@ namespace lfs::python {
                 *warned = true;
             }
         }
+    }
+
+    bool has_python_hooks(const std::string& panel, const std::string& section) {
+        const PythonHookChecker checker = [&] {
+            std::lock_guard lock(g_invoker_mutex);
+            return g_python_hook_checker;
+        }();
+        return checker ? checker(panel.c_str(), section.c_str()) : false;
     }
 
 } // namespace lfs::python

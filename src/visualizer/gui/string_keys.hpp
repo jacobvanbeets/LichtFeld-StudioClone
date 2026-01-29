@@ -781,6 +781,9 @@ namespace lichtfeld::Strings {
     } // namespace TrainingParams
 
     namespace ImagePreview {
+        inline constexpr const char* IMAGE_SECTION = "image_preview.image_section";
+        inline constexpr const char* FILE_SECTION = "image_preview.file_section";
+        inline constexpr const char* VIEW_SECTION = "image_preview.view_section";
         inline constexpr const char* VIEW = "image_preview.view";
         inline constexpr const char* NAVIGATE = "image_preview.navigate";
         inline constexpr const char* FIT_TO_WINDOW = "image_preview.fit_to_window";

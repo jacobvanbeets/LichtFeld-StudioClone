@@ -84,6 +84,16 @@ namespace lfs::io {
         static bool isDatasetPath(const std::filesystem::path& path);
 
         /**
+         * @brief Check if path is a COLMAP sparse reconstruction folder
+         * @param path Directory to check
+         * @return true if directory contains cameras.bin/txt and images.bin/txt
+         *
+         * This can detect sparse COLMAP folders for camera-only imports
+         * (where images folder may not exist).
+         */
+        static bool isColmapSparsePath(const std::filesystem::path& path);
+
+        /**
          * @brief Determine the type of dataset at the given path
          * @param path Directory or file to check
          * @return DatasetType enum value

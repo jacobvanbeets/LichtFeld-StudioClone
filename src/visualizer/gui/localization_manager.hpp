@@ -23,6 +23,12 @@ namespace lichtfeld {
         std::string getCurrentLanguageName() const;
         bool reload();
 
+        // Runtime override API (for Python)
+        void setOverride(const std::string& key, const std::string& value);
+        void clearOverride(const std::string& key);
+        void clearAllOverrides();
+        bool hasOverride(const std::string& key) const;
+
     private:
         LocalizationManager() = default;
         ~LocalizationManager() = default;
@@ -38,6 +44,7 @@ namespace lichtfeld {
         std::unordered_map<std::string, std::string> current_strings_;
         std::vector<std::string> available_languages_;
         std::unordered_map<std::string, std::string> language_names_;
+        mutable std::unordered_map<std::string, std::string> overrides_;
     };
 
 #define LOC(key) lichtfeld::LocalizationManager::getInstance().get(key)

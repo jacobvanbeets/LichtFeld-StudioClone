@@ -202,12 +202,11 @@ namespace lfs::mcp {
             return std::unexpected("No model to render");
         }
 
-        auto train_cameras = scene_->getTrainCameras();
-        if (!train_cameras || train_cameras->size() == 0) {
+        auto cameras = scene_->getAllCameras();
+        if (cameras.empty()) {
             return std::unexpected("No cameras available");
         }
 
-        const auto& cameras = train_cameras->get_cameras();
         if (camera_index < 0 || camera_index >= static_cast<int>(cameras.size())) {
             camera_index = 0;
         }
@@ -262,12 +261,11 @@ namespace lfs::mcp {
             return std::unexpected("No model loaded");
         }
 
-        auto train_cameras = scene_->getTrainCameras();
-        if (!train_cameras || train_cameras->size() == 0) {
+        auto cameras = scene_->getAllCameras();
+        if (cameras.empty()) {
             return std::unexpected("No cameras available");
         }
 
-        const auto& cameras = train_cameras->get_cameras();
         if (camera_index < 0 || camera_index >= static_cast<int>(cameras.size())) {
             camera_index = 0;
         }

@@ -18,6 +18,21 @@ namespace lfs::core::prop {
         groups_[group.id] = std::move(group);
     }
 
+    void PropertyRegistry::unregister_group(const std::string& group_id) {
+        std::lock_guard lock(mutex_);
+
+        auto it = groups_.find(group_id);
+        if (it == groups_.end()) {
+            return;
+        }
+
+        for (const auto& prop : it->second.properties) {
+            prop_subscribers_.erase({group_id, prop.id});
+        }
+
+        groups_.erase(it);
+    }
+
     const PropertyGroup* PropertyRegistry::get_group(const std::string& group_id) const {
         std::lock_guard lock(mutex_);
 
@@ -28,16 +43,21 @@ namespace lfs::core::prop {
         return nullptr;
     }
 
-    const PropertyMeta* PropertyRegistry::get_property(const std::string& group_id,
-                                                       const std::string& prop_id) const {
+    std::optional<PropertyMeta> PropertyRegistry::get_property(const std::string& group_id,
+                                                               const std::string& prop_id) const {
         std::lock_guard lock(mutex_);
 
         auto git = groups_.find(group_id);
         if (git == groups_.end()) {
-            return nullptr;
+            return std::nullopt;
         }
 
-        return git->second.find(prop_id);
+        const auto* meta = git->second.find(prop_id);
+        if (!meta) {
+            return std::nullopt;
+        }
+
+        return *meta;
     }
 
     std::vector<std::string> PropertyRegistry::get_group_ids() const {
@@ -65,8 +85,7 @@ namespace lfs::core::prop {
         std::lock_guard lock(mutex_);
 
         size_t id = next_id_++;
-        std::string key = group_id + "." + prop_id;
-        prop_subscribers_[key][id] = std::move(callback);
+        prop_subscribers_[{group_id, prop_id}][id] = std::move(callback);
         return id;
     }
 
@@ -92,8 +111,7 @@ namespace lfs::core::prop {
                 callbacks.push_back(cb);
             }
 
-            std::string key = group_id + "." + prop_id;
-            auto it = prop_subscribers_.find(key);
+            auto it = prop_subscribers_.find({group_id, prop_id});
             if (it != prop_subscribers_.end()) {
                 for (const auto& [_, cb] : it->second) {
                     callbacks.push_back(cb);

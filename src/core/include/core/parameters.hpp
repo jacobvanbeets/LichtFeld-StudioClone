@@ -168,6 +168,9 @@ namespace lfs::core {
             // Viewer mode: splat files to load (.ply, .sog, .resume)
             std::vector<std::filesystem::path> view_paths;
 
+            // COLMAP sparse folder for camera-only import (no images required)
+            std::optional<std::filesystem::path> import_cameras_path = std::nullopt;
+
             // Optional splat file for initialization (.ply, .sog, .spz, .resume)
             std::optional<std::string> init_path = std::nullopt;
 

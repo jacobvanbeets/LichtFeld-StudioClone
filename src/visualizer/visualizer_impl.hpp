@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "command/command_history.hpp"
 #include "core/editor_context.hpp"
 #include "core/main_loop.hpp"
 #include "core/parameter_manager.hpp"
@@ -121,7 +120,6 @@ namespace lfs::vis {
         const EditorContext& getEditorContext() const { return editor_context_; }
 
         // Undo/Redo
-        command::CommandHistory& getCommandHistory() { return command_history_; }
         void undo();
         void redo();
 
@@ -183,9 +181,6 @@ namespace lfs::vis {
         std::shared_ptr<tools::AlignTool> align_tool_;
         std::shared_ptr<tools::SelectionTool> selection_tool_;
         std::unique_ptr<ToolContext> tool_context_;
-
-        // Undo/Redo history
-        command::CommandHistory command_history_;
 
         // Centralized editor state
         EditorContext editor_context_;

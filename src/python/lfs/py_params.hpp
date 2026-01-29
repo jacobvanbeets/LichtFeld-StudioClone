@@ -15,24 +15,42 @@ namespace lfs::python {
 
     class PyOptimizationParams {
     public:
-        PyOptimizationParams();
+        PyOptimizationParams() = default;
 
         [[nodiscard]] nb::object get(const std::string& prop_id) const;
         void set(const std::string& prop_id, nb::object value);
         [[nodiscard]] nb::dict prop_info(const std::string& prop_id) const;
         void reset(const std::string& prop_id);
         [[nodiscard]] nb::list properties() const;
+        [[nodiscard]] nb::dict get_all_properties() const;
 
+        // Returns reference to ParamManager's active params (or throws if unavailable)
         core::param::OptimizationParameters& params();
         [[nodiscard]] const core::param::OptimizationParameters& params() const;
-        void refresh();
 
-    private:
-        core::param::OptimizationParameters params_;
-        bool has_active_trainer_ = false;
+        // Check if params are available
+        [[nodiscard]] bool has_params() const;
+    };
+
+    class PyDatasetConfig {
+    public:
+        PyDatasetConfig() = default;
+
+        [[nodiscard]] nb::object get(const std::string& prop_id) const;
+        void set(const std::string& prop_id, nb::object value);
+        [[nodiscard]] nb::dict prop_info(const std::string& prop_id) const;
+        [[nodiscard]] nb::list properties() const;
+        [[nodiscard]] nb::dict get_all_properties() const;
+
+        core::param::DatasetConfig& params();
+        [[nodiscard]] const core::param::DatasetConfig& params() const;
+
+        [[nodiscard]] bool has_params() const;
+        [[nodiscard]] bool can_edit() const;
     };
 
     void register_optimization_properties();
+    void register_dataset_properties();
     void register_params(nb::module_& m);
 
 } // namespace lfs::python

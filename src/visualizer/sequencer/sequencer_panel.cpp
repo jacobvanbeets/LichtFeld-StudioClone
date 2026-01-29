@@ -2,8 +2,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "sequencer_panel.hpp"
-#include "command/command_history.hpp"
-#include "command/commands/sequencer_command.hpp"
 #include "core/events.hpp"
 #include "core/services.hpp"
 #include "theme/theme.hpp"
@@ -406,14 +404,6 @@ namespace lfs::vis {
                 }
                 controller_.timeline().setKeyframeTime(dragged_keyframe_index_, new_time, false);
             } else {
-                // Drag ended - create undo command and sort
-                const float new_time = controller_.timeline().keyframes()[dragged_keyframe_index_].time;
-                if (std::abs(new_time - drag_start_time_) > 0.001f) {
-                    if (auto* cmd_history = services().commandsOrNull()) {
-                        cmd_history->execute(std::make_unique<command::MoveKeyframeCommand>(
-                            dragged_keyframe_index_, drag_start_time_, new_time));
-                    }
-                }
                 controller_.timeline().sortKeyframes();
                 dragging_keyframe_ = false;
             }
@@ -435,15 +425,8 @@ namespace lfs::vis {
 
             for (const size_t idx : to_delete) {
                 if (idx == 0)
-                    continue; // Don't delete first keyframe
-                if (const auto* kf = timeline.getKeyframe(idx)) {
-                    // Store command for undo/redo first (before idx becomes invalid)
-                    if (auto* cmd_history = services().commandsOrNull()) {
-                        cmd_history->execute(std::make_unique<command::RemoveKeyframeCommand>(idx, *kf));
-                    }
-                    // Apply the change directly
-                    controller_.timeline().removeKeyframe(idx);
-                }
+                    continue;
+                controller_.timeline().removeKeyframe(idx);
             }
             selected_keyframes_.clear();
             controller_.deselectKeyframe();
@@ -486,13 +469,7 @@ namespace lfs::vis {
                         const auto easing = static_cast<sequencer::EasingType>(e);
                         if (ImGui::MenuItem(EASING_NAMES[e], nullptr, current_easing == easing)) {
                             if (current_easing != easing) {
-                                // Apply the change directly
                                 controller_.timeline().setKeyframeEasing(idx, easing);
-                                // Store command for undo/redo
-                                if (auto* cmd_history = services().commandsOrNull()) {
-                                    cmd_history->execute(std::make_unique<command::SetKeyframeEasingCommand>(
-                                        idx, current_easing, easing));
-                                }
                             }
                         }
                     }
@@ -504,14 +481,7 @@ namespace lfs::vis {
 
                 ImGui::Separator();
                 if (ImGui::MenuItem("Delete Keyframe", "Del", false, !is_first)) {
-                    if (const auto* kf = timeline.getKeyframe(idx)) {
-                        // Store command for undo/redo
-                        if (auto* cmd_history = services().commandsOrNull()) {
-                            cmd_history->execute(std::make_unique<command::RemoveKeyframeCommand>(idx, *kf));
-                        }
-                        // Apply the change directly
-                        controller_.timeline().removeKeyframe(idx);
-                    }
+                    controller_.timeline().removeKeyframe(idx);
                 }
             } else {
                 if (ImGui::MenuItem("Add Keyframe Here", "K")) {
@@ -542,22 +512,12 @@ namespace lfs::vis {
             ImGui::Text("Edit Keyframe Time");
             ImGui::Separator();
 
-            // Helper lambda to apply time change
             auto applyTimeChange = [this]() {
                 const float new_time = std::strtof(time_edit_buffer_, nullptr);
                 if (new_time >= 0.0f) {
                     const auto& kfs = controller_.timeline().keyframes();
                     if (editing_keyframe_index_ < kfs.size()) {
-                        const float old_time = kfs[editing_keyframe_index_].time;
-                        if (std::abs(new_time - old_time) > 0.001f) {
-                            // Store command for undo/redo
-                            if (auto* cmd_history = services().commandsOrNull()) {
-                                cmd_history->execute(std::make_unique<command::MoveKeyframeCommand>(
-                                    editing_keyframe_index_, old_time, new_time));
-                            }
-                            // Apply the change directly
-                            controller_.timeline().setKeyframeTime(editing_keyframe_index_, new_time);
-                        }
+                        controller_.timeline().setKeyframeTime(editing_keyframe_index_, new_time);
                     }
                 }
             };

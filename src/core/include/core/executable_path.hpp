@@ -106,6 +106,7 @@ namespace lfs::core {
             for (const auto& name : {
                 "lichtfeld.abi3.so",
                 "lichtfeld.so",
+                "lichtfeld.cpython-312-x86_64-linux-gnu.so",
                 "lichtfeld.pyd",
                 "lichtfeld.abi3.pyd",
                 "lichtfeld.cp312-win_amd64.pyd",

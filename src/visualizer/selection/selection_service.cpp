@@ -2,8 +2,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "selection_service.hpp"
-#include "command/command_history.hpp"
-#include "command/commands/selection_command.hpp"
 #include "rendering/rasterizer/rasterization/include/rasterization_api_tensor.h"
 #include "rendering/rendering_manager.hpp"
 #include "scene/scene_manager.hpp"
@@ -12,11 +10,9 @@
 
 namespace lfs::vis {
 
-    SelectionService::SelectionService(SceneManager* scene_manager, RenderingManager* rendering_manager,
-                                       command::CommandHistory* command_history)
+    SelectionService::SelectionService(SceneManager* scene_manager, RenderingManager* rendering_manager)
         : scene_manager_(scene_manager),
-          rendering_manager_(rendering_manager),
-          command_history_(command_history) {
+          rendering_manager_(rendering_manager) {
         assert(scene_manager);
         assert(rendering_manager);
     }
@@ -44,7 +40,6 @@ namespace lfs::vis {
         auto new_mask = std::make_shared<core::Tensor>(applyModeLogic(selection, mode));
         scene.setSelectionMask(new_mask);
 
-        createUndoCommand(old_mask ? std::make_shared<core::Tensor>(old_mask->clone()) : nullptr, new_mask);
         rendering_manager_->markDirty();
 
         return {true, static_cast<size_t>(new_mask->to(core::DataType::Float32).sum_scalar()), ""};
@@ -72,7 +67,6 @@ namespace lfs::vis {
         auto new_mask = std::make_shared<core::Tensor>(applyModeLogic(selection, mode));
         scene.setSelectionMask(new_mask);
 
-        createUndoCommand(old_mask ? std::make_shared<core::Tensor>(old_mask->clone()) : nullptr, new_mask);
         rendering_manager_->markDirty();
 
         return {true, static_cast<size_t>(new_mask->to(core::DataType::Float32).sum_scalar()), ""};
@@ -103,7 +97,6 @@ namespace lfs::vis {
         auto new_mask = std::make_shared<core::Tensor>(applyModeLogic(mask, mode));
         scene.setSelectionMask(new_mask);
 
-        createUndoCommand(old_mask ? std::make_shared<core::Tensor>(old_mask->clone()) : nullptr, new_mask);
         rendering_manager_->markDirty();
 
         return {true, static_cast<size_t>(new_mask->to(core::DataType::Float32).sum_scalar()), ""};
@@ -167,11 +160,6 @@ namespace lfs::vis {
         auto new_selection = std::make_shared<core::Tensor>(std::move(output_mask));
         scene.setSelectionMask(new_selection);
 
-        if (command_history_) {
-            command_history_->execute(
-                std::make_unique<command::SelectionCommand>(scene_manager_, selection_before_stroke_, new_selection));
-        }
-
         selection_before_stroke_.reset();
         stroke_selection_ = core::Tensor();
         stroke_active_ = false;
@@ -223,13 +211,6 @@ namespace lfs::vis {
             return (*old_mask) * (ones - stroke);
         }
         return stroke;
-    }
-
-    void SelectionService::createUndoCommand(std::shared_ptr<core::Tensor> old_mask, std::shared_ptr<core::Tensor> new_mask) {
-        if (command_history_ && scene_manager_) {
-            command_history_->execute(
-                std::make_unique<command::SelectionCommand>(scene_manager_, std::move(old_mask), std::move(new_mask)));
-        }
     }
 
 } // namespace lfs::vis

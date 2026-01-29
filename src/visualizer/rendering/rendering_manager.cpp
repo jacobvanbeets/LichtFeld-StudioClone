@@ -1698,101 +1698,68 @@ namespace lfs::vis {
             }
         }
 
-        // Camera frustums - requires both master toggle AND scene graph visibility
+        // Camera frustums - read directly from scene nodes (no trainer dependency)
         if (settings_.show_camera_frustums && engine_ && context.scene_manager) {
-            // Check which cameras are visible in the scene graph
-            auto visible_indices = context.scene_manager->getScene().getVisibleCameraIndices();
+            auto cameras = context.scene_manager->getScene().getVisibleCameras();
 
-            // Only render frustums if there are visible camera nodes
-            if (!visible_indices.empty()) {
-                // Get cameras from scene manager's trainer
-                auto* trainer_manager = context.scene_manager->getTrainerManager();
-                if (!trainer_manager || !trainer_manager->hasTrainer()) {
-                    // No trainer, can't get camera data
-                    return;
-                }
-
-                auto all_cameras = trainer_manager->getCamList();
-                LOG_TRACE("Retrieved {} cameras from trainer manager", all_cameras.size());
-
-                // Filter to only visible cameras
-                std::vector<std::shared_ptr<const lfs::core::Camera>> cameras;
-                cameras.reserve(visible_indices.size());
-                for (size_t i = 0; i < all_cameras.size(); ++i) {
-                    if (visible_indices.contains(static_cast<int>(i))) {
-                        cameras.push_back(all_cameras[i]);
-                    }
-                }
-                LOG_TRACE("Filtered to {} visible cameras", cameras.size());
-
-                if (!cameras.empty()) {
-                    // Find the actual index for the hovered camera ID
-                    int highlight_index = -1;
-                    if (hovered_camera_id_ >= 0) {
-                        for (size_t i = 0; i < cameras.size(); ++i) {
-                            if (cameras[i]->uid() == hovered_camera_id_) {
-                                highlight_index = static_cast<int>(i);
-                                break;
-                            }
+            if (!cameras.empty()) {
+                int highlight_index = -1;
+                if (hovered_camera_id_ >= 0) {
+                    for (size_t i = 0; i < cameras.size(); ++i) {
+                        if (cameras[i]->uid() == hovered_camera_id_) {
+                            highlight_index = static_cast<int>(i);
+                            break;
                         }
                     }
+                }
 
-                    // Get scene transform from visible nodes (applies alignment transform)
-                    glm::mat4 scene_transform(1.0f);
-                    auto visible_transforms = context.scene_manager->getScene().getVisibleNodeTransforms();
-                    if (!visible_transforms.empty()) {
-                        scene_transform = visible_transforms[0];
-                    }
+                glm::mat4 scene_transform(1.0f);
+                auto visible_transforms = context.scene_manager->getScene().getVisibleNodeTransforms();
+                if (!visible_transforms.empty()) {
+                    scene_transform = visible_transforms[0];
+                }
 
-                    // Render frustums with scene transform
-                    LOG_TRACE("Rendering {} camera frustums with scale {}, highlighted index: {} (ID: {})",
-                              cameras.size(), settings_.camera_frustum_scale, highlight_index, hovered_camera_id_);
+                LOG_TRACE("Rendering {} camera frustums with scale {}, highlighted index: {} (ID: {})",
+                          cameras.size(), settings_.camera_frustum_scale, highlight_index, hovered_camera_id_);
 
-                    auto frustum_result = engine_->renderCameraFrustumsWithHighlight(
-                        cameras, viewport,
+                auto frustum_result = engine_->renderCameraFrustumsWithHighlight(
+                    cameras, viewport,
+                    settings_.camera_frustum_scale,
+                    settings_.train_camera_color,
+                    settings_.eval_camera_color,
+                    highlight_index,
+                    scene_transform,
+                    settings_.equirectangular);
+
+                if (!frustum_result) {
+                    LOG_ERROR("Failed to render camera frustums: {}", frustum_result.error());
+                }
+
+                if (pick_requested_ && context.viewport_region) {
+                    pick_requested_ = false;
+
+                    auto pick_result = engine_->pickCameraFrustum(
+                        cameras,
+                        pending_pick_pos_,
+                        glm::vec2(context.viewport_region->x, context.viewport_region->y),
+                        glm::vec2(context.viewport_region->width, context.viewport_region->height),
+                        viewport,
                         settings_.camera_frustum_scale,
-                        settings_.train_camera_color,
-                        settings_.eval_camera_color,
-                        highlight_index,
-                        scene_transform,
-                        settings_.equirectangular);
+                        scene_transform);
 
-                    if (!frustum_result) {
-                        LOG_ERROR("Failed to render camera frustums: {}", frustum_result.error());
-                    }
-
-                    // Perform picking if requested
-                    if (pick_requested_ && context.viewport_region) {
-                        pick_requested_ = false;
-
-                        auto pick_result = engine_->pickCameraFrustum(
-                            cameras,
-                            pending_pick_pos_,
-                            glm::vec2(context.viewport_region->x, context.viewport_region->y),
-                            glm::vec2(context.viewport_region->width, context.viewport_region->height),
-                            viewport,
-                            settings_.camera_frustum_scale,
-                            scene_transform);
-
-                        if (pick_result) {
-                            int cam_id = *pick_result;
-
-                            // Only process if camera ID actually changed
-                            if (cam_id != hovered_camera_id_) {
-                                int old_hover = hovered_camera_id_;
-                                hovered_camera_id_ = cam_id;
-
-                                // Only mark dirty on actual change
-                                markDirty();
-                                LOG_DEBUG("Camera hover changed: {} -> {}", old_hover, cam_id);
-                            }
-                        } else if (hovered_camera_id_ != -1) {
-                            // Lost hover - only update if we had a hover before
+                    if (pick_result) {
+                        int cam_id = *pick_result;
+                        if (cam_id != hovered_camera_id_) {
                             int old_hover = hovered_camera_id_;
-                            hovered_camera_id_ = -1;
+                            hovered_camera_id_ = cam_id;
                             markDirty();
-                            LOG_DEBUG("Camera hover lost (was ID: {})", old_hover);
+                            LOG_DEBUG("Camera hover changed: {} -> {}", old_hover, cam_id);
                         }
+                    } else if (hovered_camera_id_ != -1) {
+                        int old_hover = hovered_camera_id_;
+                        hovered_camera_id_ = -1;
+                        markDirty();
+                        LOG_DEBUG("Camera hover lost (was ID: {})", old_hover);
                     }
                 }
             }
@@ -1963,6 +1930,43 @@ namespace lfs::vis {
         hovered_gaussian_id_ = -1;
         preview_selection_ = nullptr;
         markDirty();
+    }
+
+    void RenderingManager::setRectPreview(float x0, float y0, float x1, float y1, bool add_mode) {
+        rect_preview_active_ = true;
+        rect_x0_ = x0;
+        rect_y0_ = y0;
+        rect_x1_ = x1;
+        rect_y1_ = y1;
+        rect_add_mode_ = add_mode;
+    }
+
+    void RenderingManager::clearRectPreview() {
+        rect_preview_active_ = false;
+    }
+
+    void RenderingManager::setPolygonPreview(const std::vector<std::pair<float, float>>& points, bool closed, bool add_mode) {
+        polygon_preview_active_ = true;
+        polygon_points_ = points;
+        polygon_closed_ = closed;
+        polygon_add_mode_ = add_mode;
+    }
+
+    void RenderingManager::clearPolygonPreview() {
+        polygon_preview_active_ = false;
+        polygon_points_.clear();
+        polygon_closed_ = false;
+    }
+
+    void RenderingManager::setLassoPreview(const std::vector<std::pair<float, float>>& points, bool add_mode) {
+        lasso_preview_active_ = true;
+        lasso_points_ = points;
+        lasso_add_mode_ = add_mode;
+    }
+
+    void RenderingManager::clearLassoPreview() {
+        lasso_preview_active_ = false;
+        lasso_points_.clear();
     }
 
     void RenderingManager::adjustSaturation(const float mouse_x, const float mouse_y, const float radius,

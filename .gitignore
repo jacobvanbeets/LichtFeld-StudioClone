@@ -13,7 +13,7 @@ imgui.ini
 data
 *.pt
 *.py
-!src/python/lfs_plugins/*.py
+!src/python/lfs_plugins/**/*.py
 .venv/
 *.png
 !src/**/assets/**/*.png

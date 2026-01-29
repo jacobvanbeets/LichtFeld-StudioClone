@@ -3,11 +3,67 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "py_scene.hpp"
+#include "core/camera.hpp"
 #include "core/events.hpp"
+#include "core/path_utils.hpp"
+#include "core/property_registry.hpp"
 #include "python/python_runtime.hpp"
 #include <nanobind/ndarray.h>
 
 namespace lfs::python {
+
+    namespace {
+        void register_scene_node_properties() {
+            using namespace lfs::core::prop;
+            PropertyGroupBuilder<vis::SceneNode>("scene_node", "Scene Node")
+                .string_prop(&vis::SceneNode::name, "name", "Name", "", "Node name")
+                .animatable_prop(&vis::SceneNode::local_transform, "local_transform", "Transform",
+                                 glm::mat4(1.0f), "Local transform matrix")
+                .animatable_prop(&vis::SceneNode::visible, "visible", "Visible", true,
+                                 "Node visibility")
+                .animatable_prop(&vis::SceneNode::locked, "locked", "Locked", false,
+                                 "Lock node from editing")
+                .build();
+        }
+
+        void register_cropbox_properties() {
+            using namespace lfs::core::prop;
+            PropertyGroupBuilder<vis::CropBoxData>("crop_box", "Crop Box")
+                .vec3_prop(&vis::CropBoxData::min, "min", "Min", glm::vec3(-1.0f),
+                           "Minimum corner of crop box")
+                .vec3_prop(&vis::CropBoxData::max, "max", "Max", glm::vec3(1.0f),
+                           "Maximum corner of crop box")
+                .bool_prop(&vis::CropBoxData::inverse, "inverse", "Invert", false,
+                           "Invert crop logic")
+                .bool_prop(&vis::CropBoxData::enabled, "enabled", "Enabled", false,
+                           "Enable crop filtering")
+                .color3_prop(&vis::CropBoxData::color, "color", "Color", glm::vec3(1.0f, 1.0f, 0.0f),
+                             "Visualization color")
+                .float_prop(&vis::CropBoxData::line_width, "line_width", "Line Width", 2.0f, 0.1f,
+                            10.0f, "Border line width")
+                .float_prop(&vis::CropBoxData::flash_intensity, "flash_intensity", "Flash", 0.0f,
+                            0.0f, 1.0f, "Flash effect intensity")
+                .build();
+        }
+
+        void register_ellipsoid_properties() {
+            using namespace lfs::core::prop;
+            PropertyGroupBuilder<vis::EllipsoidData>("ellipsoid", "Ellipsoid")
+                .vec3_prop(&vis::EllipsoidData::radii, "radii", "Radii", glm::vec3(1.0f),
+                           "Ellipsoid radii")
+                .bool_prop(&vis::EllipsoidData::inverse, "inverse", "Invert", false,
+                           "Invert selection logic")
+                .bool_prop(&vis::EllipsoidData::enabled, "enabled", "Enabled", false,
+                           "Enable selection filtering")
+                .color3_prop(&vis::EllipsoidData::color, "color", "Color", glm::vec3(1.0f, 1.0f, 0.0f),
+                             "Visualization color")
+                .float_prop(&vis::EllipsoidData::line_width, "line_width", "Line Width", 2.0f, 0.1f,
+                            10.0f, "Border line width")
+                .float_prop(&vis::EllipsoidData::flash_intensity, "flash_intensity", "Flash", 0.0f,
+                            0.0f, 1.0f, "Flash effect intensity")
+                .build();
+        }
+    } // namespace
 
     // Helper to convert glm::mat4 to nb::tuple (row-major for NumPy compatibility)
     static nb::tuple mat4_to_tuple(const glm::mat4& m) {
@@ -35,10 +91,6 @@ namespace lfs::python {
     }
 
     // PySceneNode implementation
-    nb::tuple PySceneNode::local_transform() const {
-        return mat4_to_tuple(node_->local_transform.get());
-    }
-
     void PySceneNode::set_local_transform(nb::ndarray<float, nb::shape<4, 4>> transform) {
         node_->local_transform = ndarray_to_mat4(transform);
     }
@@ -105,6 +157,17 @@ namespace lfs::python {
         return old_size - pc_->size();
     }
 
+    void PyPointCloud::set_data(const PyTensor& points, const PyTensor& colors) {
+        const auto& pts = points.tensor();
+        const auto& cols = colors.tensor();
+        assert(pts.shape().rank() == 2 && pts.shape()[1] == 3);
+        assert(cols.shape().rank() == 2 && cols.shape()[1] == 3);
+        assert(pts.shape()[0] == cols.shape()[0]);
+
+        pc_->means = pts.clone();
+        pc_->colors = cols.clone();
+    }
+
     std::optional<PyCropBox> PySceneNode::cropbox() {
         if (node_->type != vis::NodeType::CROPBOX || !node_->cropbox) {
             return std::nullopt;
@@ -112,16 +175,26 @@ namespace lfs::python {
         return PyCropBox(node_->cropbox.get());
     }
 
+    std::optional<PyEllipsoid> PySceneNode::ellipsoid() {
+        if (node_->type != vis::NodeType::ELLIPSOID || !node_->ellipsoid) {
+            return std::nullopt;
+        }
+        return PyEllipsoid(node_->ellipsoid.get());
+    }
+
     // PyScene implementation
     PyScene::PyScene(vis::Scene* scene)
-        : scene_(scene)
-        , generation_(get_scene_generation()) {
+        : scene_(scene),
+          generation_(get_scene_generation()) {
         assert(scene_ != nullptr);
     }
 
     bool PyScene::is_valid() const {
-        auto* current = get_application_scene();
-        return scene_ == current && generation_ == get_scene_generation();
+        return scene_ == get_application_scene() && generation_ == get_scene_generation();
+    }
+
+    uint64_t PyScene::generation() const {
+        return generation_;
     }
 
     int32_t PyScene::add_group(const std::string& name, int32_t parent) {
@@ -162,6 +235,56 @@ namespace lfs::python {
             .emit();
 
         return node_id;
+    }
+
+    int32_t PyScene::add_point_cloud(const std::string& name,
+                                     const PyTensor& points,
+                                     const PyTensor& colors,
+                                     const int32_t parent) {
+        const auto& pts = points.tensor();
+        const auto& cols = colors.tensor();
+        assert(pts.shape().rank() == 2 && pts.shape()[1] == 3);
+        assert(cols.shape().rank() == 2 && cols.shape()[1] == 3);
+        assert(pts.shape()[0] == cols.shape()[0]);
+
+        auto pc = std::make_shared<core::PointCloud>(pts.clone(), cols.clone());
+        return scene_->addPointCloud(name, std::move(pc), parent);
+    }
+
+    int32_t PyScene::add_camera_group(const std::string& name, const int32_t parent, const size_t camera_count) {
+        return scene_->addCameraGroup(name, parent, camera_count);
+    }
+
+    int32_t PyScene::add_camera(const std::string& name,
+                                const int32_t parent,
+                                const PyTensor& R,
+                                const PyTensor& T,
+                                float focal_x,
+                                float focal_y,
+                                int width,
+                                int height,
+                                const std::string& image_path,
+                                int uid) {
+        const auto& R_tensor = R.tensor();
+        const auto& T_tensor = T.tensor();
+        assert(R_tensor.ndim() == 2 && R_tensor.size(0) == 3 && R_tensor.size(1) == 3);
+        assert(T_tensor.ndim() == 2 && T_tensor.size(0) == 3 && T_tensor.size(1) == 1);
+
+        auto camera = std::make_shared<lfs::core::Camera>(
+            R_tensor.clone(),
+            T_tensor.clone(),
+            focal_x, focal_y,
+            static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f,
+            lfs::core::Tensor{},
+            lfs::core::Tensor{},
+            lfs::core::CameraModelType::PINHOLE,
+            name,
+            lfs::core::utf8_to_path(image_path),
+            std::filesystem::path{},
+            width, height,
+            uid);
+
+        return scene_->addCamera(name, parent, std::move(camera));
     }
 
     void PyScene::remove_node(const std::string& name, bool keep_children) {
@@ -266,19 +389,10 @@ namespace lfs::python {
         return PyCropBox(data);
     }
 
-    void PyScene::set_cropbox_data(int32_t cropbox_id, const PyCropBox& data) {
-        // Copy the data from Python wrapper to scene
+    void PyScene::set_cropbox_data(const int32_t cropbox_id, const PyCropBox& data) {
         auto* scene_data = scene_->getCropBoxData(cropbox_id);
         if (scene_data) {
-            auto [min_x, min_y, min_z] = data.min();
-            auto [max_x, max_y, max_z] = data.max();
-            auto [r, g, b] = data.color();
-            scene_data->min = {min_x, min_y, min_z};
-            scene_data->max = {max_x, max_y, max_z};
-            scene_data->inverse = data.inverse();
-            scene_data->enabled = data.enabled();
-            scene_data->color = {r, g, b};
-            scene_data->line_width = data.line_width();
+            *scene_data = *data.data();
         }
     }
 
@@ -314,12 +428,17 @@ namespace lfs::python {
     }
 
     void register_scene(nb::module_& m) {
+        register_scene_node_properties();
+        register_cropbox_properties();
+        register_ellipsoid_properties();
+
         // NodeType enum
         nb::enum_<vis::NodeType>(m, "NodeType")
             .value("SPLAT", vis::NodeType::SPLAT)
             .value("POINTCLOUD", vis::NodeType::POINTCLOUD)
             .value("GROUP", vis::NodeType::GROUP)
             .value("CROPBOX", vis::NodeType::CROPBOX)
+            .value("ELLIPSOID", vis::NodeType::ELLIPSOID)
             .value("DATASET", vis::NodeType::DATASET)
             .value("CAMERA_GROUP", vis::NodeType::CAMERA_GROUP)
             .value("CAMERA", vis::NodeType::CAMERA)
@@ -334,14 +453,51 @@ namespace lfs::python {
             .def_ro("count", &PySelectionGroup::count)
             .def_ro("locked", &PySelectionGroup::locked);
 
-        // CropBox class
         nb::class_<PyCropBox>(m, "CropBox")
-            .def_prop_rw("min", &PyCropBox::min, &PyCropBox::set_min)
-            .def_prop_rw("max", &PyCropBox::max, &PyCropBox::set_max)
-            .def_prop_rw("inverse", &PyCropBox::inverse, &PyCropBox::set_inverse)
-            .def_prop_rw("enabled", &PyCropBox::enabled, &PyCropBox::set_enabled)
-            .def_prop_rw("color", &PyCropBox::color, &PyCropBox::set_color)
-            .def_prop_rw("line_width", &PyCropBox::line_width, &PyCropBox::set_line_width);
+            .def_prop_ro("__property_group__", &PyCropBox::property_group)
+            .def("get", &PyCropBox::get, nb::arg("name"), "Get property value by name")
+            .def("set", &PyCropBox::set, nb::arg("name"), nb::arg("value"), "Set property value by name")
+            .def("prop_info", &PyCropBox::prop_info, nb::arg("name"))
+            .def(
+                "__getattr__",
+                [](PyCropBox& self, const std::string& name) -> nb::object {
+                    if (!self.has_prop(name)) {
+                        throw nb::attribute_error(("CropBox has no attribute '" + name + "'").c_str());
+                    }
+                    return self.prop_getattr(name);
+                })
+            .def(
+                "__setattr__",
+                [](PyCropBox& self, const std::string& name, nb::object value) {
+                    if (!self.has_prop(name)) {
+                        throw nb::attribute_error(("Cannot set attribute '" + name + "'").c_str());
+                    }
+                    self.prop_setattr(name, value);
+                })
+            .def("__dir__", &PyCropBox::python_dir);
+
+        nb::class_<PyEllipsoid>(m, "Ellipsoid")
+            .def_prop_ro("__property_group__", &PyEllipsoid::property_group)
+            .def("get", &PyEllipsoid::get, nb::arg("name"), "Get property value by name")
+            .def("set", &PyEllipsoid::set, nb::arg("name"), nb::arg("value"), "Set property value by name")
+            .def("prop_info", &PyEllipsoid::prop_info, nb::arg("name"))
+            .def(
+                "__getattr__",
+                [](PyEllipsoid& self, const std::string& name) -> nb::object {
+                    if (!self.has_prop(name)) {
+                        throw nb::attribute_error(("Ellipsoid has no attribute '" + name + "'").c_str());
+                    }
+                    return self.prop_getattr(name);
+                })
+            .def(
+                "__setattr__",
+                [](PyEllipsoid& self, const std::string& name, nb::object value) {
+                    if (!self.has_prop(name)) {
+                        throw nb::attribute_error(("Cannot set attribute '" + name + "'").c_str());
+                    }
+                    self.prop_setattr(name, value);
+                })
+            .def("__dir__", &PyEllipsoid::python_dir);
 
         // PointCloud class
         nb::class_<PyPointCloud>(m, "PointCloud")
@@ -360,35 +516,72 @@ namespace lfs::python {
             .def("filter", &PyPointCloud::filter, nb::arg("keep_mask"),
                  "Filter points by boolean mask, returns number of points removed")
             .def("filter_indices", &PyPointCloud::filter_indices, nb::arg("indices"),
-                 "Keep only points at specified indices, returns number of points removed");
+                 "Keep only points at specified indices, returns number of points removed")
+            .def("set_data", &PyPointCloud::set_data, nb::arg("points"), nb::arg("colors"),
+                 "Replace point cloud data with new points and colors tensors");
 
         // SceneNode class
         nb::class_<PySceneNode>(m, "SceneNode")
-            // Identity
+            // Property group interface for generic prop()
+            .def_prop_ro("__property_group__", &PySceneNode::property_group)
+            .def("get", &PySceneNode::get, nb::arg("name"), "Get property value by name")
+            .def("set", &PySceneNode::set, nb::arg("name"), nb::arg("value"), "Set property value by name")
+            // Identity (read-only)
             .def_prop_ro("id", &PySceneNode::id)
             .def_prop_ro("parent_id", &PySceneNode::parent_id)
             .def_prop_ro("children", &PySceneNode::children)
             .def_prop_ro("type", &PySceneNode::type)
-            .def_prop_ro("name", &PySceneNode::name)
-            // Transform
-            .def_prop_ro("local_transform", &PySceneNode::local_transform)
-            .def("set_local_transform", &PySceneNode::set_local_transform)
+            // Transform (special conversion to tuple/ndarray)
             .def_prop_ro("world_transform", &PySceneNode::world_transform)
-            // Visibility
-            .def_prop_rw("visible", &PySceneNode::visible, &PySceneNode::set_visible)
-            .def_prop_rw("locked", &PySceneNode::locked, &PySceneNode::set_locked)
-            // Metadata
+            .def("set_local_transform", &PySceneNode::set_local_transform)
+            // Metadata (read-only)
             .def_prop_ro("gaussian_count", &PySceneNode::gaussian_count)
             .def_prop_ro("centroid", &PySceneNode::centroid)
             // Data accessors
             .def("splat_data", &PySceneNode::splat_data)
             .def("point_cloud", &PySceneNode::point_cloud)
             .def("cropbox", &PySceneNode::cropbox)
-            // Camera specific
-            .def_prop_ro("camera_index", &PySceneNode::camera_index)
+            .def("ellipsoid", &PySceneNode::ellipsoid)
+            // Camera specific (read-only)
             .def_prop_ro("camera_uid", &PySceneNode::camera_uid)
             .def_prop_ro("image_path", &PySceneNode::image_path)
-            .def_prop_ro("mask_path", &PySceneNode::mask_path);
+            .def_prop_ro("mask_path", &PySceneNode::mask_path)
+            .def_prop_ro("has_camera", &PySceneNode::has_camera)
+            .def_prop_ro("camera_R", &PySceneNode::camera_R)
+            .def_prop_ro("camera_T", &PySceneNode::camera_T)
+            .def_prop_ro("camera_focal_x", &PySceneNode::camera_focal_x)
+            .def_prop_ro("camera_focal_y", &PySceneNode::camera_focal_y)
+            .def_prop_ro("camera_width", &PySceneNode::camera_width)
+            .def_prop_ro("camera_height", &PySceneNode::camera_height)
+            // Property introspection
+            .def("prop_info", &PySceneNode::prop_info, nb::arg("name"),
+                 "Get metadata for a property")
+            // Descriptor protocol: node.visible, node.name, node.locked, node.local_transform
+            .def("__getattr__", [](PySceneNode& self, const std::string& name) -> nb::object {
+                if (!self.has_prop(name)) {
+                    throw nb::attribute_error(
+                        ("SceneNode has no attribute '" + name + "'").c_str());
+                }
+                return self.prop_getattr(name);
+            })
+            .def("__setattr__", [](PySceneNode& self, const std::string& name, nb::object value) {
+                if (!self.has_prop(name)) {
+                    throw nb::attribute_error(
+                        ("Cannot set attribute '" + name + "'").c_str());
+                }
+                self.prop_setattr(name, value);
+            })
+            .def("__dir__", &PySceneNode::python_dir);
+
+        // NodeCollection iterator
+        nb::class_<PyNodeCollection::Iterator>(m, "NodeCollectionIterator")
+            .def("__next__", &PyNodeCollection::Iterator::next);
+
+        // NodeCollection for scene.nodes
+        nb::class_<PyNodeCollection>(m, "NodeCollection")
+            .def("__len__", &PyNodeCollection::size)
+            .def("__getitem__", &PyNodeCollection::getitem, nb::arg("index"))
+            .def("__iter__", &PyNodeCollection::iter);
 
         // Scene class
         nb::class_<PyScene>(m, "Scene")
@@ -396,7 +589,7 @@ namespace lfs::python {
             .def("is_valid", &PyScene::is_valid,
                  "Check if scene reference is still valid (thread-safe)")
             .def_prop_ro("generation", &PyScene::generation,
-                 "Generation counter when scene was acquired")
+                         "Generation counter when scene was acquired")
             // Node CRUD
             .def("add_group", &PyScene::add_group,
                  nb::arg("name"), nb::arg("parent") = vis::NULL_NODE)
@@ -427,6 +620,45 @@ Args:
 
 Returns:
     Node ID of created splat
+)doc")
+            .def("add_point_cloud", &PyScene::add_point_cloud,
+                 nb::arg("name"),
+                 nb::arg("points"),
+                 nb::arg("colors"),
+                 nb::arg("parent") = vis::NULL_NODE,
+                 "Add a point cloud node from tensor data [N,3] positions and colors")
+            .def("add_camera_group", &PyScene::add_camera_group,
+                 nb::arg("name"),
+                 nb::arg("parent"),
+                 nb::arg("camera_count"),
+                 "Add a camera group node")
+            .def("add_camera", &PyScene::add_camera,
+                 nb::arg("name"),
+                 nb::arg("parent"),
+                 nb::arg("R"),
+                 nb::arg("T"),
+                 nb::arg("focal_x"),
+                 nb::arg("focal_y"),
+                 nb::arg("width"),
+                 nb::arg("height"),
+                 nb::arg("image_path") = "",
+                 nb::arg("uid") = -1,
+                 R"doc(Add a camera node with intrinsic and extrinsic parameters.
+
+Args:
+    name: Camera node name
+    parent: Parent node ID (typically a camera group)
+    R: Rotation matrix [3,3] (world-to-camera)
+    T: Translation vector [3,1]
+    focal_x: Focal length in pixels (x)
+    focal_y: Focal length in pixels (y)
+    width: Image width in pixels
+    height: Image height in pixels
+    image_path: Optional path to camera image
+    uid: Optional unique identifier (-1 for auto-assigned)
+
+Returns:
+    Node ID of created camera
 )doc")
             .def("remove_node", &PyScene::remove_node,
                  nb::arg("name"), nb::arg("keep_children") = false)
@@ -499,7 +731,8 @@ Returns:
             .def("apply_deleted", &PyScene::apply_deleted)
             .def("invalidate_cache", &PyScene::invalidate_cache)
             .def("duplicate_node", &PyScene::duplicate_node, nb::arg("name"))
-            .def("merge_group", &PyScene::merge_group, nb::arg("group_name"));
+            .def("merge_group", &PyScene::merge_group, nb::arg("group_name"))
+            .def_prop_ro("nodes", &PyScene::nodes);
     }
 
 } // namespace lfs::python

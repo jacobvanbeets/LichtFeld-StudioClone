@@ -267,7 +267,6 @@ namespace lfs::vis::gui::panels {
         const unsigned long tid = script_thread_id_.load();
         if (tid != 0 && script_running_.load()) {
             const PyGILState_STATE gil = PyGILState_Ensure();
-            // Raise KeyboardInterrupt in the script thread
             PyThreadState_SetAsyncExc(tid, PyExc_KeyboardInterrupt);
             PyGILState_Release(gil);
         }
@@ -283,6 +282,8 @@ namespace lfs::vis::gui::panels {
             script_thread_.join();
         }
 
+        setup_console_output_capture();
+
         addToHistory(code);
         clear();
         setActiveTab(0);
@@ -292,13 +293,10 @@ namespace lfs::vis::gui::panels {
         script_thread_ = std::thread([this, code]() {
             const PyGILState_STATE gil = PyGILState_Ensure();
 
-            // Install output redirect (for capturing print statements)
             lfs::python::install_output_redirect();
 
-            // Store thread ID for interrupt support
             script_thread_id_ = PyThreadState_Get()->thread_id;
 
-            // Set scene context for Python code
             lfs::vis::Scene* scene = nullptr;
             if (auto* sm = lfs::vis::services().sceneOrNull()) {
                 scene = &sm->getScene();

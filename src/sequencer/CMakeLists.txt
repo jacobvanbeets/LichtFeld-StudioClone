@@ -3,6 +3,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 add_library(lfs_sequencer STATIC
+        animation_clip.cpp
+        animation_track.cpp
+        animation_value.cpp
         interpolation.cpp
         timeline.cpp
 )

@@ -103,6 +103,9 @@ namespace {
             ::args::ValueFlag<std::string> config_file(paths_group, "config_file", "LichtFeldStudio config file (json)", {"config"});
             ::args::ValueFlag<std::string> init_path(paths_group, "path", "Initialize from splat file (.ply, .sog, .spz, .resume)", {"init"});
 
+            // Import COLMAP cameras without images
+            ::args::ValueFlag<std::string> import_cameras(parser, "path", "Import COLMAP cameras from sparse folder (no images required)", {"import-cameras"});
+
             // =============================================================================
             // TRAINING PARAMETERS
             // =============================================================================
@@ -315,6 +318,22 @@ namespace {
 
                 if (gut) {
                     params.optimization.gut = true;
+                }
+                return std::make_tuple(ParseResult::Success, std::function<void()>{});
+            }
+
+            // Import COLMAP cameras only (no images required)
+            if (import_cameras) {
+                const auto& import_path_str = ::args::get(import_cameras);
+                if (!import_path_str.empty()) {
+                    const std::filesystem::path import_path = lfs::core::utf8_to_path(import_path_str);
+                    if (!std::filesystem::exists(import_path)) {
+                        return std::unexpected(std::format("Path does not exist: {}", lfs::core::path_to_utf8(import_path)));
+                    }
+                    if (!std::filesystem::is_directory(import_path)) {
+                        return std::unexpected(std::format("Expected directory for --import-cameras: {}", lfs::core::path_to_utf8(import_path)));
+                    }
+                    params.import_cameras_path = import_path;
                 }
                 return std::make_tuple(ParseResult::Success, std::function<void()>{});
             }

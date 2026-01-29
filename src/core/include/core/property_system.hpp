@@ -5,6 +5,7 @@
 #pragma once
 
 #include <any>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -14,12 +15,38 @@
 
 namespace lfs::core::prop {
 
-    enum class PropType { Bool,
-                          Int,
-                          Float,
-                          String,
-                          Enum,
-                          SizeT };
+    enum class PropSource : uint8_t { CPP,
+                                      PYTHON };
+
+    struct PropertyObjectRef {
+        void* ptr = nullptr;
+        PropSource source = PropSource::CPP;
+
+        static PropertyObjectRef cpp(void* p) { return {p, PropSource::CPP}; }
+        static PropertyObjectRef python(void* p) { return {p, PropSource::PYTHON}; }
+
+        [[nodiscard]] bool is_cpp() const { return source == PropSource::CPP; }
+        [[nodiscard]] bool is_python() const { return source == PropSource::PYTHON; }
+    };
+
+    enum class PropType {
+        Bool,
+        Int,
+        Float,
+        String,
+        Enum,
+        SizeT,
+        // Geometric types for animation
+        Vec2,
+        Vec3,
+        Vec4,
+        Quat,
+        Mat4,
+        Color3,
+        Color4,
+        // GPU tensor type
+        Tensor
+    };
 
     enum class PropUIHint { Default,
                             Slider,
@@ -59,6 +86,7 @@ namespace lfs::core::prop {
         PropType type = PropType::Float;
         PropUIHint ui_hint = PropUIHint::Default;
         uint32_t flags = PROP_NONE;
+        PropSource source = PropSource::CPP;
 
         double min_value = 0.0;
         double max_value = 1.0;
@@ -70,13 +98,38 @@ namespace lfs::core::prop {
         std::vector<EnumItem> enum_items;
         int default_enum = 0;
 
-        std::function<std::any(const void*)> getter;
-        std::function<void(void*, const std::any&)> setter;
+        // Geometric type defaults
+        std::array<double, 2> default_vec2{};
+        std::array<double, 3> default_vec3{};
+        std::array<double, 4> default_vec4{};
+        std::array<double, 4> default_quat{1.0, 0.0, 0.0, 0.0};                              // w, x, y, z
+        std::array<double, 16> default_mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}; // identity
+
+        std::function<std::any(const PropertyObjectRef&)> getter;
+        std::function<void(PropertyObjectRef&, const std::any&)> setter;
+
+        // AnimatableProperty bridge for Python descriptor support
+        std::function<void*(const PropertyObjectRef&)> get_animatable_ptr;
+        bool supports_descriptor = false;
+
+        bool is_collection = false;
+        std::string collection_item_type;
+        std::function<size_t(const PropertyObjectRef&)> collection_size;
+        std::function<PropertyObjectRef(const PropertyObjectRef&, size_t)> collection_get;
+
+        std::function<void(const PropertyObjectRef&, const std::any&, const std::any&)> on_update;
 
         [[nodiscard]] bool has_flag(PropFlags f) const { return (flags & f) != PROP_NONE; }
         [[nodiscard]] bool is_readonly() const { return has_flag(PROP_READONLY); }
         [[nodiscard]] bool is_live_update() const { return has_flag(PROP_LIVE_UPDATE); }
         [[nodiscard]] bool needs_restart() const { return has_flag(PROP_NEEDS_RESTART); }
+        [[nodiscard]] bool is_animatable() const { return has_flag(PROP_ANIMATABLE); }
+
+        [[nodiscard]] bool is_geometric_type() const {
+            return type == PropType::Vec2 || type == PropType::Vec3 || type == PropType::Vec4 ||
+                   type == PropType::Quat || type == PropType::Mat4 ||
+                   type == PropType::Color3 || type == PropType::Color4;
+        }
     };
 
     struct PropertyGroup {

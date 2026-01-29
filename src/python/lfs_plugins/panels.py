@@ -2,18 +2,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Built-in plugin system panels."""
 
-from typing import Optional, List
+from typing import List
 import threading
+
+from .types import Panel
 
 MAX_OUTPUT_LINES = 100
 
 
-class PluginManagerPanel:
+class PluginManagerPanel(Panel):
     """GUI panel for managing plugins."""
 
-    panel_label = "Plugin Manager"
-    panel_space = "SIDE_PANEL"
-    panel_order = 99
+    label = "Plugin Manager"
+    space = "MAIN_PANEL_TAB"
+    order = 90
 
     def __init__(self):
         self.github_url = ""
@@ -215,10 +217,80 @@ class PluginManagerPanel:
 
 
 def register_builtin_panels():
-    """Register built-in plugin system panels."""
+    """Initialize built-in plugin system panels."""
     try:
         import lichtfeld as lf
 
-        lf.ui.register_panel(PluginManagerPanel)
-    except ImportError:
-        pass  # lichtfeld module not available (e.g., testing)
+        # Main panel tabs (Rendering must be first)
+        from .rendering_panel import RenderingPanel
+        lf.register_class(RenderingPanel)
+
+        from .training_panel import TrainingPanel
+        lf.register_class(TrainingPanel)
+
+        lf.register_class(PluginManagerPanel)
+
+        from .scene_panel import ScenePanel
+        lf.register_class(ScenePanel)
+
+        from .toolbar import GizmoToolbar, UtilityToolbar
+        lf.register_class(UtilityToolbar)
+        lf.register_class(GizmoToolbar)
+
+        from . import selection_groups
+        selection_groups.register()
+
+        from . import transform_controls
+        transform_controls.register()
+
+        from . import operators
+        operators.register()
+
+        from . import sequencer_ops
+        sequencer_ops.register()
+
+        from . import tools
+        tools.register()
+
+        from . import file_menu, edit_menu, view_menu, help_menu
+        file_menu.register()
+        edit_menu.register()
+        view_menu.register()
+        help_menu.register()
+
+        # Floating panels
+        from .export_panel import ExportPanel
+        lf.register_class(ExportPanel)
+        lf.ui.set_panel_enabled("Export", False)
+
+        from .about_panel import AboutPanel
+        lf.register_class(AboutPanel)
+        lf.ui.set_panel_enabled("About", False)
+
+        from .getting_started_panel import GettingStartedPanel
+        lf.register_class(GettingStartedPanel)
+        lf.ui.set_panel_enabled("Getting Started", False)
+
+        from .image_preview_panel import ImagePreviewPanel
+        lf.register_class(ImagePreviewPanel)
+        lf.ui.set_panel_enabled("Image Preview", False)
+
+        from .scripts_panel import ScriptsPanel
+        lf.register_class(ScriptsPanel)
+        lf.ui.set_panel_enabled("Python Scripts", False)
+
+        from .input_settings_panel import InputSettingsPanel
+        lf.register_class(InputSettingsPanel)
+        lf.ui.set_panel_enabled("Input Settings", False)
+
+        # Status bar (must be registered last, always visible)
+        from .status_bar_panel import StatusBarPanel
+        lf.register_class(StatusBarPanel)
+
+        # Viewport overlays
+        from .overlays import register as register_overlays
+        register_overlays()
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] register_builtin_panels failed: {e}")
+        traceback.print_exc()

@@ -3,19 +3,30 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "visualizer_impl.hpp"
-#include "command/commands/crop_command.hpp"
-#include "command/commands/selection_command.hpp"
+#include "core/animatable_property.hpp"
 #include "core/data_loading_service.hpp"
 #include "core/event_bus.hpp"
 #include "core/logger.hpp"
 #include "core/path_utils.hpp"
 #include "core/services.hpp"
+#include "gui/panels/tools_panel.hpp"
+#include "gui/panels/windows_console_utils.hpp"
+#include "operation/undo_entry.hpp"
+#include "operation/undo_history.hpp"
+#include "operator/operator_registry.hpp"
+#include "operator/ops/align_ops.hpp"
+#include "operator/ops/brush_ops.hpp"
+#include "operator/ops/edit_ops.hpp"
+#include "operator/ops/selection_ops.hpp"
+#include "operator/ops/transform_ops.hpp"
 #include "python/python_runtime.hpp"
 #include "python/runner.hpp"
 #include "scene/scene_manager.hpp"
 #include "tools/align_tool.hpp"
 #include "tools/brush_tool.hpp"
+#include "tools/builtin_tools.hpp"
 #include "tools/selection_tool.hpp"
+#include <iostream>
 #include <stdexcept>
 #ifdef WIN32
 #include <windows.h>
@@ -67,9 +78,238 @@ namespace lfs::vis {
         services().set(trainer_manager_.get());
         services().set(rendering_manager_.get());
         services().set(window_manager_.get());
-        services().set(&command_history_);
         services().set(gui_manager_.get());
         services().set(parameter_manager_.get());
+        services().set(&editor_context_);
+
+        registerBuiltinTools();
+
+        // Initialize operator system
+        op::operators().setSceneManager(scene_manager_.get());
+        op::registerTransformOperators();
+        op::registerAlignOperators();
+        op::registerSelectionOperators();
+        op::registerBrushOperators();
+        op::registerEditOperators();
+
+        python::set_trainer_manager(trainer_manager_.get());
+        python::set_parameter_manager(parameter_manager_.get());
+        python::set_rendering_manager(rendering_manager_.get());
+        python::set_editor_context(&editor_context_);
+        python::set_operator_callbacks(&editor_context_); // Also set as IOperatorCallbacks for callback dispatch
+        python::set_gui_manager(gui_manager_.get());
+        python::set_selected_camera_callback([]() -> int {
+            const auto* gm = python::get_gui_manager();
+            return gm ? gm->getHighlightedCameraUid() : -1;
+        });
+        python::set_invert_masks_callback([]() -> bool {
+            auto* pm = python::get_parameter_manager();
+            return pm && pm->getActiveParams().invert_masks;
+        });
+        python::set_sequencer_callbacks(
+            []() {
+                const auto* gm = python::get_gui_manager();
+                return gm ? gm->isSequencerVisible() : false;
+            },
+            [](bool visible) {
+                if (auto* gm = python::get_gui_manager())
+                    gm->setSequencerVisible(visible);
+            });
+
+        // Overlay state callbacks (for Python overlay panels)
+        python::set_overlay_callbacks(
+            []() {
+                const auto* gm = python::get_gui_manager();
+                return gm ? gm->isDragHovering() : false;
+            },
+            []() {
+                const auto* gm = python::get_gui_manager();
+                return gm ? gm->isStartupVisible() : false;
+            },
+            []() -> python::OverlayExportState {
+                const auto* gm = python::get_gui_manager();
+                if (!gm)
+                    return {};
+                python::OverlayExportState state;
+                state.active = gm->isExporting();
+                state.progress = gm->getExportProgress();
+                state.stage = gm->getExportStage();
+                const auto fmt = gm->getExportFormat();
+                state.format = fmt == core::ExportFormat::PLY   ? "PLY"
+                               : fmt == core::ExportFormat::SOG ? "SOG"
+                                                                : "file";
+                return state;
+            },
+            []() {
+                if (auto* gm = python::get_gui_manager())
+                    gm->cancelExport();
+            },
+            []() -> python::OverlayImportState {
+                const auto* gm = python::get_gui_manager();
+                if (!gm)
+                    return {};
+                python::OverlayImportState state;
+                state.active = gm->isImporting();
+                state.show_completion = gm->isImportCompletionShowing();
+                state.progress = gm->getImportProgress();
+                state.stage = gm->getImportStage();
+                state.dataset_type = gm->getImportDatasetType();
+                state.path = gm->getImportPath();
+                state.success = gm->getImportSuccess();
+                state.error = gm->getImportError();
+                state.num_images = gm->getImportNumImages();
+                state.num_points = gm->getImportNumPoints();
+                state.seconds_since_completion = gm->getImportSecondsSinceCompletion();
+                return state;
+            },
+            []() {
+                if (auto* gm = python::get_gui_manager())
+                    gm->dismissImport();
+            },
+            []() -> python::OverlayVideoExportState {
+                const auto* gm = python::get_gui_manager();
+                if (!gm)
+                    return {};
+                python::OverlayVideoExportState state;
+                state.active = gm->isExportingVideo();
+                state.progress = gm->getVideoExportProgress();
+                state.current_frame = gm->getVideoExportCurrentFrame();
+                state.total_frames = gm->getVideoExportTotalFrames();
+                state.stage = gm->getVideoExportStage();
+                return state;
+            },
+            []() {
+                if (auto* gm = python::get_gui_manager())
+                    gm->cancelVideoExport();
+            });
+
+        // Section drawing callbacks (for Python-first UI)
+        python::set_section_draw_callbacks({
+            .draw_tools_section = []() {
+                auto* gm = python::get_gui_manager();
+                if (!gm)
+                    return;
+                auto* viewer = gm->getViewer();
+                if (!viewer)
+                    return;
+                gui::UIContext ctx{
+                    .viewer = viewer,
+                    .file_browser = nullptr,
+                    .window_states = nullptr,
+                    .editor = python::get_editor_context(),
+                    .sequencer_controller = nullptr,
+                    .fonts = {}};
+                gui::panels::DrawToolsPanel(ctx); },
+            .draw_console_button = []() {
+                auto* gm = python::get_gui_manager();
+                if (!gm)
+                    return;
+                auto* viewer = gm->getViewer();
+                if (!viewer)
+                    return;
+                gui::UIContext ctx{
+                    .viewer = viewer,
+                    .file_browser = nullptr,
+                    .window_states = gm->getWindowStates(),
+                    .editor = python::get_editor_context(),
+                    .sequencer_controller = nullptr,
+                    .fonts = {}};
+                gui::panels::DrawSystemConsoleButton(ctx); },
+        });
+
+        // Sequencer timeline callbacks
+        python::set_sequencer_timeline_callbacks(
+            []() -> bool {
+                auto* gm = python::get_gui_manager();
+                return gm ? !gm->sequencer().timeline().empty() : false;
+            },
+            [](const std::string& path) -> bool {
+                auto* gm = python::get_gui_manager();
+                return gm ? gm->sequencer().timeline().saveToJson(path) : false;
+            },
+            [](const std::string& path) -> bool {
+                auto* gm = python::get_gui_manager();
+                return gm ? gm->sequencer().timeline().loadFromJson(path) : false;
+            },
+            []() {
+                if (auto* gm = python::get_gui_manager())
+                    gm->sequencer().timeline().clear();
+            },
+            [](float speed) {
+                if (auto* gm = python::get_gui_manager())
+                    gm->sequencer().setPlaybackSpeed(speed);
+            });
+
+        // Sequencer UI state callback - provides read access to C++ state
+        // Returns a copy of the current C++ state for Python to read
+        // Note: Python modifications require calling set_sequencer_state() to persist
+        python::set_sequencer_ui_state_callback([]() -> python::SequencerUIStateData* {
+            auto* gm = python::get_gui_manager();
+            if (!gm)
+                return nullptr;
+
+            // Return address of the actual C++ state (first 6 fields match layout)
+            // This works because SequencerUIStateData has compatible layout for the exposed fields
+            auto& state = gm->getSequencerUIState();
+            static python::SequencerUIStateData s_state;
+            s_state.show_camera_path = state.show_camera_path;
+            s_state.snap_to_grid = state.snap_to_grid;
+            s_state.snap_interval = state.snap_interval;
+            s_state.playback_speed = state.playback_speed;
+            s_state.follow_playback = state.follow_playback;
+            s_state.pip_preview_scale = state.pip_preview_scale;
+            return &s_state;
+        });
+
+        python::set_pivot_mode_callbacks(
+            []() -> int {
+                const auto* gm = python::get_gui_manager();
+                return gm ? static_cast<int>(gm->getPivotMode()) : 0;
+            },
+            [](int mode) {
+                if (auto* gm = python::get_gui_manager())
+                    gm->setPivotMode(static_cast<PivotMode>(mode));
+            });
+        python::set_transform_space_callbacks(
+            []() -> int {
+                const auto* gm = python::get_gui_manager();
+                return gm ? static_cast<int>(gm->getTransformSpace()) : 0;
+            },
+            [](int space) {
+                if (auto* gm = python::get_gui_manager())
+                    gm->setTransformSpace(static_cast<TransformSpace>(space));
+            });
+        python::set_thumbnail_callbacks(
+            [](const char* video_id) {
+                if (auto* gm = python::get_gui_manager())
+                    gm->requestThumbnail(video_id);
+            },
+            []() {
+                if (auto* gm = python::get_gui_manager())
+                    gm->processThumbnails();
+            },
+            [](const char* video_id) -> bool {
+                const auto* gm = python::get_gui_manager();
+                return gm ? gm->isThumbnailReady(video_id) : false;
+            },
+            [](const char* video_id) -> uint64_t {
+                const auto* gm = python::get_gui_manager();
+                return gm ? gm->getThumbnailTexture(video_id) : 0;
+            });
+        python::set_scene_manager(scene_manager_.get());
+
+        python::set_export_callback([](int format, const char* path, const char** node_names,
+                                       int node_count, int sh_degree) {
+            if (auto* gm = python::get_gui_manager()) {
+                std::vector<std::string> names;
+                names.reserve(node_count);
+                for (int i = 0; i < node_count; ++i) {
+                    names.emplace_back(node_names[i]);
+                }
+                gm->performExport(static_cast<lfs::core::ExportFormat>(format),
+                                  std::filesystem::path(path), names, sh_degree);
+            }
+        });
 
         // Setup connections
         setupEventHandlers();
@@ -81,6 +321,23 @@ namespace lfs::vis {
         lfs::core::event::bus().clear_all();
         services().clear();
 
+        // Clear operator system
+        op::unregisterEditOperators();
+        op::unregisterBrushOperators();
+        op::unregisterSelectionOperators();
+        op::unregisterAlignOperators();
+        op::unregisterTransformOperators();
+        op::operators().clear();
+
+        python::set_sequencer_callbacks(nullptr, nullptr);
+        python::set_overlay_callbacks(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+        python::set_section_draw_callbacks({});
+        python::set_sequencer_ui_state_callback(nullptr);
+        python::set_pivot_mode_callbacks(nullptr, nullptr);
+        python::set_transform_space_callbacks(nullptr, nullptr);
+        python::set_selected_camera_callback(nullptr);
+        python::set_invert_masks_callback(nullptr);
+        python::set_gui_manager(nullptr);
         trainer_manager_.reset();
         brush_tool_.reset();
         tool_context_.reset();
@@ -100,8 +357,7 @@ namespace lfs::vis {
             rendering_manager_.get(),
             scene_manager_.get(),
             &viewport_,
-            window_manager_->getWindow(),
-            &command_history_);
+            window_manager_->getWindow());
 
         // Connect tool context to input controller
         if (input_controller_) {
@@ -130,7 +386,6 @@ namespace lfs::vis {
             selection_tool_.reset();
         } else if (input_controller_) {
             input_controller_->setSelectionTool(selection_tool_);
-            // Connect input bindings to selection tool for customizable scroll actions
             selection_tool_->setInputBindings(&input_controller_->getBindings());
         }
 
@@ -272,8 +527,66 @@ namespace lfs::vis {
             handleLoadConfigFile(cmd.path);
         });
 
+        // RequestExit handled by Python file_menu.py
+
+        cmd::ForceExit::when([this](const auto&) {
+            if (gui_manager_) {
+                gui_manager_->setForceExit(true);
+            }
+            if (window_manager_ && window_manager_->getWindow()) {
+                glfwSetWindowShouldClose(window_manager_->getWindow(), GLFW_TRUE);
+            }
+        });
+
         cmd::SwitchToLatestCheckpoint::when([this](const auto&) {
             handleSwitchToLatestCheckpoint();
+        });
+
+        // Signal bridge event handlers
+        state::TrainingProgress::when([](const auto& event) {
+            python::update_training_progress(event.iteration, event.loss, event.num_gaussians);
+        });
+
+        state::TrainingStarted::when([this](const auto& event) {
+            python::update_trainer_loaded(true, event.total_iterations);
+            python::update_training_state(true, "running");
+        });
+
+        state::TrainingPaused::when([](const auto&) {
+            python::update_training_state(false, "paused");
+        });
+
+        state::TrainingResumed::when([](const auto&) {
+            python::update_training_state(true, "running");
+        });
+
+        state::TrainingCompleted::when([](const auto&) {
+            python::update_training_state(false, "completed");
+        });
+
+        state::TrainingStopped::when([](const auto&) {
+            python::update_training_state(false, "stopped");
+        });
+
+        internal::TrainerReady::when([this](const auto&) {
+            python::update_trainer_loaded(true, trainer_manager_->getTotalIterations());
+            python::update_training_state(false, "ready");
+        });
+
+        state::EvaluationCompleted::when([](const auto& event) {
+            python::update_psnr(event.psnr);
+        });
+
+        state::SceneLoaded::when([](const auto& event) {
+            python::update_scene(true, event.path.string().c_str());
+        });
+
+        state::SceneCleared::when([](const auto&) {
+            python::update_scene(false, "");
+        });
+
+        state::SelectionChanged::when([](const auto& event) {
+            python::update_selection(event.has_selection, event.count);
         });
     }
 
@@ -284,6 +597,9 @@ namespace lfs::vis {
             LOG_TRACE("Already fully initialized");
             return true;
         }
+
+        // Initialize Python early so signal bridge is ready before trainer creation
+        python::ensure_initialized();
 
         // Initialize window first and ensure it has proper size
         if (!window_initialized_) {
@@ -324,6 +640,7 @@ namespace lfs::vis {
             input_controller_ = std::make_unique<InputController>(
                 window_manager_->getWindow(), viewport_);
             input_controller_->initialize();
+            python::set_keymap_bindings(&input_controller_->getBindings());
         }
 
         // Initialize rendering with proper viewport dimensions
@@ -378,6 +695,99 @@ namespace lfs::vis {
                 return vis::ViewportRender{result.image, result.screen_positions};
             });
 
+            vis::set_render_settings_callbacks(
+                [this]() -> std::optional<vis::RenderSettingsProxy> {
+                    if (!rendering_manager_)
+                        return std::nullopt;
+
+                    const auto& s = rendering_manager_->getSettings();
+                    vis::RenderSettingsProxy proxy;
+                    proxy.focal_length_mm = s.focal_length_mm;
+                    proxy.scaling_modifier = s.scaling_modifier;
+                    proxy.antialiasing = s.antialiasing;
+                    proxy.mip_filter = s.mip_filter;
+                    proxy.sh_degree = s.sh_degree;
+                    proxy.render_scale = s.render_scale;
+                    proxy.show_crop_box = s.show_crop_box;
+                    proxy.use_crop_box = s.use_crop_box;
+                    proxy.desaturate_unselected = s.desaturate_unselected;
+                    proxy.background_color = {s.background_color.r, s.background_color.g, s.background_color.b};
+                    proxy.show_coord_axes = s.show_coord_axes;
+                    proxy.axes_size = s.axes_size;
+                    proxy.show_grid = s.show_grid;
+                    proxy.grid_plane = s.grid_plane;
+                    proxy.grid_opacity = s.grid_opacity;
+                    proxy.point_cloud_mode = s.point_cloud_mode;
+                    proxy.voxel_size = s.voxel_size;
+                    proxy.show_rings = s.show_rings;
+                    proxy.ring_width = s.ring_width;
+                    proxy.show_center_markers = s.show_center_markers;
+                    proxy.show_camera_frustums = s.show_camera_frustums;
+                    proxy.camera_frustum_scale = s.camera_frustum_scale;
+                    proxy.train_camera_color = {s.train_camera_color.r, s.train_camera_color.g, s.train_camera_color.b};
+                    proxy.eval_camera_color = {s.eval_camera_color.r, s.eval_camera_color.g, s.eval_camera_color.b};
+                    proxy.show_pivot = s.show_pivot;
+                    proxy.split_position = s.split_position;
+                    proxy.gut = s.gut;
+                    proxy.equirectangular = s.equirectangular;
+                    proxy.orthographic = s.orthographic;
+                    proxy.ortho_scale = s.ortho_scale;
+                    proxy.selection_color_committed = {s.selection_color_committed.r, s.selection_color_committed.g, s.selection_color_committed.b};
+                    proxy.selection_color_preview = {s.selection_color_preview.r, s.selection_color_preview.g, s.selection_color_preview.b};
+                    proxy.selection_color_center_marker = {s.selection_color_center_marker.r, s.selection_color_center_marker.g, s.selection_color_center_marker.b};
+                    proxy.depth_clip_enabled = s.depth_clip_enabled;
+                    proxy.depth_clip_far = s.depth_clip_far;
+                    proxy.apply_appearance_correction = s.apply_appearance_correction;
+                    proxy.ppisp_mode = static_cast<int>(s.ppisp_mode);
+                    proxy.ppisp = s.ppisp_overrides;
+                    return proxy;
+                },
+                [this](const vis::RenderSettingsProxy& proxy) {
+                    if (!rendering_manager_)
+                        return;
+
+                    auto s = rendering_manager_->getSettings();
+                    s.focal_length_mm = proxy.focal_length_mm;
+                    s.scaling_modifier = proxy.scaling_modifier;
+                    s.antialiasing = proxy.antialiasing;
+                    s.mip_filter = proxy.mip_filter;
+                    s.sh_degree = proxy.sh_degree;
+                    s.render_scale = proxy.render_scale;
+                    s.show_crop_box = proxy.show_crop_box;
+                    s.use_crop_box = proxy.use_crop_box;
+                    s.desaturate_unselected = proxy.desaturate_unselected;
+                    s.background_color = glm::vec3(proxy.background_color[0], proxy.background_color[1], proxy.background_color[2]);
+                    s.show_coord_axes = proxy.show_coord_axes;
+                    s.axes_size = proxy.axes_size;
+                    s.show_grid = proxy.show_grid;
+                    s.grid_plane = proxy.grid_plane;
+                    s.grid_opacity = proxy.grid_opacity;
+                    s.point_cloud_mode = proxy.point_cloud_mode;
+                    s.voxel_size = proxy.voxel_size;
+                    s.show_rings = proxy.show_rings;
+                    s.ring_width = proxy.ring_width;
+                    s.show_center_markers = proxy.show_center_markers;
+                    s.show_camera_frustums = proxy.show_camera_frustums;
+                    s.camera_frustum_scale = proxy.camera_frustum_scale;
+                    s.train_camera_color = glm::vec3(proxy.train_camera_color[0], proxy.train_camera_color[1], proxy.train_camera_color[2]);
+                    s.eval_camera_color = glm::vec3(proxy.eval_camera_color[0], proxy.eval_camera_color[1], proxy.eval_camera_color[2]);
+                    s.show_pivot = proxy.show_pivot;
+                    s.split_position = proxy.split_position;
+                    s.gut = proxy.gut;
+                    s.equirectangular = proxy.equirectangular;
+                    s.orthographic = proxy.orthographic;
+                    s.ortho_scale = proxy.ortho_scale;
+                    s.selection_color_committed = glm::vec3(proxy.selection_color_committed[0], proxy.selection_color_committed[1], proxy.selection_color_committed[2]);
+                    s.selection_color_preview = glm::vec3(proxy.selection_color_preview[0], proxy.selection_color_preview[1], proxy.selection_color_preview[2]);
+                    s.selection_color_center_marker = glm::vec3(proxy.selection_color_center_marker[0], proxy.selection_color_center_marker[1], proxy.selection_color_center_marker[2]);
+                    s.depth_clip_enabled = proxy.depth_clip_enabled;
+                    s.depth_clip_far = proxy.depth_clip_far;
+                    s.apply_appearance_correction = proxy.apply_appearance_correction;
+                    s.ppisp_mode = static_cast<vis::RenderSettings::PPISPMode>(proxy.ppisp_mode);
+                    s.ppisp_overrides = proxy.ppisp;
+                    rendering_manager_->updateSettings(s);
+                });
+
             // Set up generic capability invocation callback (runs on IPC thread, waits for main thread)
             selection_server_->setInvokeCapabilityCallback(
                 [this](const std::string& name, const std::string& args) -> CapabilityInvokeResult {
@@ -402,8 +812,8 @@ namespace lfs::vis {
 
         // Create selection service
         if (!selection_service_) {
-            selection_service_ = std::make_unique<SelectionService>(scene_manager_.get(), rendering_manager_.get(),
-                                                                    &command_history_);
+            selection_service_ = std::make_unique<SelectionService>(scene_manager_.get(), rendering_manager_.get());
+            python::set_selection_service(selection_service_.get());
         }
 
         fully_initialized = true;
@@ -442,6 +852,9 @@ namespace lfs::vis {
             viewport_.windowSize = window_manager_->getWindowSize();
         }
         viewport_.frameBufferSize = window_manager_->getFramebufferSize();
+
+        // Update editor context state from scene/trainer
+        editor_context_.update(scene_manager_.get(), trainer_manager_.get());
 
         if (brush_tool_ && brush_tool_->isEnabled() && tool_context_) {
             brush_tool_->update(*tool_context_);
@@ -526,10 +939,10 @@ namespace lfs::vis {
         }
 
         rendering_manager_->renderFrame(context, scene_manager_.get());
-
         gui_manager_->render();
-
         window_manager_->swapBuffers();
+
+        python::flush_signals();
 
         // Render-on-demand: VSync handles frame pacing, waitEvents saves CPU when idle
         const bool is_training = trainer_manager_ && trainer_manager_->isRunning();
@@ -560,10 +973,8 @@ namespace lfs::vis {
             return true;
         }
 
-        // User confirmed exit
         if (gui_manager_->isForceExit()) {
 #ifdef WIN32
-            // Restore console visibility on Windows
             const HWND hwnd = GetConsoleWindow();
             Sleep(1);
             const HWND owner = GetWindow(hwnd, GW_OWNER);
@@ -576,7 +987,6 @@ namespace lfs::vis {
             return true;
         }
 
-        // Show confirmation or wait for pending dialog
         if (!gui_manager_->isExitConfirmationPending()) {
             gui_manager_->requestExitConfirmation();
         }
@@ -599,28 +1009,24 @@ namespace lfs::vis {
             brush_tool_->shutdown();
             brush_tool_.reset();
         }
-        if (selection_tool_) {
-            selection_tool_->shutdown();
-            selection_tool_.reset();
-        }
 
         // Clean up tool context
         tool_context_.reset();
 
-        command_history_.clear();
+        op::undoHistory().clear();
 
         tools_initialized_ = false;
     }
 
     void VisualizerImpl::undo() {
-        command_history_.undo();
+        op::undoHistory().undo();
         if (rendering_manager_) {
             rendering_manager_->markDirty();
         }
     }
 
     void VisualizerImpl::redo() {
-        command_history_.redo();
+        op::undoHistory().redo();
         if (rendering_manager_) {
             rendering_manager_->markDirty();
         }
@@ -638,10 +1044,13 @@ namespace lfs::vis {
             return;
         }
 
-        // Get all visible nodes and apply deletion
         auto nodes = scene.getVisibleNodes();
         if (nodes.empty())
             return;
+
+        auto entry = std::make_unique<op::SceneSnapshot>(*scene_manager_, "edit.delete");
+        entry->captureTopology();
+        entry->captureSelection();
 
         size_t offset = 0;
         bool any_deleted = false;
@@ -654,27 +1063,9 @@ namespace lfs::vis {
             if (node_size == 0)
                 continue;
 
-            // Extract selection for this node
             auto node_selection = selection->slice(0, offset, offset + node_size);
-
-            // Convert selection (uint8) to bool tensor for soft_delete
             auto bool_mask = node_selection.to(lfs::core::DataType::Bool);
-
-            // Get old state for undo (clone before modifying)
-            auto old_deleted = node->model->has_deleted_mask()
-                                   ? node->model->deleted().clone()
-                                   : lfs::core::Tensor::zeros({node_size}, lfs::core::Device::CUDA, lfs::core::DataType::Bool);
-
-            // Apply soft delete (OR with existing deleted mask)
             node->model->soft_delete(bool_mask);
-
-            // Get new state for redo
-            auto new_deleted = node->model->deleted().clone();
-
-            // Create undo command (uses services() internally)
-            auto cmd = std::make_unique<command::CropCommand>(
-                node->name, std::move(old_deleted), std::move(new_deleted));
-            command_history_.execute(std::move(cmd));
 
             any_deleted = true;
             offset += node_size;
@@ -682,10 +1073,12 @@ namespace lfs::vis {
 
         if (any_deleted) {
             LOG_INFO("Deleted selected Gaussians");
-            // Mark scene as dirty to rebuild combined model with updated deletion masks
             scene.markDirty();
-            // Clear selection after deletion
             scene.clearSelection();
+
+            entry->captureAfter();
+            op::undoHistory().push(std::move(entry));
+
             if (rendering_manager_) {
                 rendering_manager_->markDirty();
             }
@@ -700,36 +1093,38 @@ namespace lfs::vis {
         if (total == 0)
             return;
 
+        auto entry = std::make_unique<op::SceneSnapshot>(*scene_manager_, "select.invert");
+        entry->captureSelection();
+
         const auto old_mask = scene.getSelectionMask();
         const auto ones = lfs::core::Tensor::ones({total}, lfs::core::Device::CUDA, lfs::core::DataType::UInt8);
         auto new_mask = std::make_shared<lfs::core::Tensor>(
             (old_mask && old_mask->is_valid()) ? ones - *old_mask : ones);
 
         scene.setSelectionMask(new_mask);
-        command_history_.execute(std::make_unique<command::SelectionCommand>(
-            scene_manager_.get(),
-            old_mask ? std::make_shared<lfs::core::Tensor>(old_mask->clone()) : nullptr,
-            new_mask));
+
+        entry->captureAfter();
+        op::undoHistory().push(std::move(entry));
+
         if (rendering_manager_)
             rendering_manager_->markDirty();
     }
 
     void VisualizerImpl::deselectAll() {
-        if (selection_tool_)
-            selection_tool_->clearPolygon();
-
         if (!scene_manager_)
             return;
         auto& scene = scene_manager_->getScene();
         if (!scene.hasSelection())
             return;
 
-        const auto old_mask = scene.getSelectionMask();
+        auto entry = std::make_unique<op::SceneSnapshot>(*scene_manager_, "select.none");
+        entry->captureSelection();
+
         scene.clearSelection();
-        command_history_.execute(std::make_unique<command::SelectionCommand>(
-            scene_manager_.get(),
-            old_mask ? std::make_shared<lfs::core::Tensor>(old_mask->clone()) : nullptr,
-            nullptr));
+
+        entry->captureAfter();
+        op::undoHistory().push(std::move(entry));
+
         if (rendering_manager_)
             rendering_manager_->markDirty();
     }
@@ -742,7 +1137,6 @@ namespace lfs::vis {
         const bool is_selection_tool = (tool == ToolType::Selection || tool == ToolType::Brush);
 
         if (is_selection_tool) {
-            // Select all gaussians for the active node
             auto& scene = scene_manager_->getScene();
             const size_t total = scene.getTotalGaussianCount();
             if (total == 0)
@@ -760,15 +1154,15 @@ namespace lfs::vis {
             if (!transform_indices || transform_indices->numel() != total)
                 return;
 
-            const auto old_mask = scene.getSelectionMask();
+            auto entry = std::make_unique<op::SceneSnapshot>(*scene_manager_, "select.all");
+            entry->captureSelection();
+
             auto new_mask = std::make_shared<lfs::core::Tensor>(transform_indices->eq(node_index));
             scene.setSelectionMask(new_mask);
-            command_history_.execute(std::make_unique<command::SelectionCommand>(
-                scene_manager_.get(),
-                old_mask ? std::make_shared<lfs::core::Tensor>(old_mask->clone()) : nullptr,
-                new_mask));
+
+            entry->captureAfter();
+            op::undoHistory().push(std::move(entry));
         } else {
-            // Select all SPLAT nodes
             const auto& scene = scene_manager_->getScene();
             const auto nodes = scene.getNodes();
             std::vector<std::string> splat_names;
@@ -811,10 +1205,7 @@ namespace lfs::vis {
         if (pasted.empty())
             return;
 
-        if (selection_tool_) {
-            selection_tool_->clearPolygon();
-            selection_tool_->setEnabled(false);
-        }
+        // Selection tool state is managed by Python operator
         scene_manager_->getScene().resetSelectionState();
 
         scene_manager_->clearSelection();

@@ -124,6 +124,8 @@ namespace lfs::python {
         PyTensor& imul_scalar(float scalar);
         PyTensor& idiv(const PyTensor& other);
         PyTensor& idiv_scalar(float scalar);
+        PyTensor& fill_(float value);
+        PyTensor& zero_();
 
         // Comparison operators (return Bool tensor)
         PyTensor eq(const PyTensor& other) const;
@@ -259,9 +261,16 @@ namespace lfs::python {
         const core::Tensor& tensor() const { return tensor_; }
         core::Tensor& tensor() { return tensor_; }
 
+        // Factory for non-owning view with generation tracking
+        static PyTensor view_of(core::Tensor& t, uint64_t generation);
+
+        // Validate tensor is still valid (for non-owning views)
+        void validate() const;
+
     private:
         core::Tensor tensor_;
         bool owns_data_ = true;
+        uint64_t source_gen_ = 0; // 0 = owning, no check needed
 
         // DLPack: shared ownership of managed tensor - deleter called when last copy destroyed
         std::shared_ptr<DLManagedTensor> dlpack_managed_;

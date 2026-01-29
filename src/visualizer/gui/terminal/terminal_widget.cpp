@@ -590,7 +590,6 @@ namespace lfs::vis::terminal {
         std::lock_guard lock(mutex_);
 
         if (read_only_) {
-            // Translate \n to \r\n for read-only terminals
             const char* p = data;
             const char* const end = data + len;
             while (p < end) {

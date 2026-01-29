@@ -46,3 +46,4 @@ class PluginInstance:
     error_traceback: Optional[str] = None
     venv_path: Optional[Path] = None
     file_mtimes: dict = field(default_factory=dict)
+    sys_paths: List[str] = field(default_factory=list)

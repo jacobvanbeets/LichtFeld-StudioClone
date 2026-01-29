@@ -53,11 +53,14 @@ namespace lfs::core {
             EVENT(SaveCheckpoint, std::optional<int> iteration;);
             EVENT(LoadFile, std::filesystem::path path; bool is_dataset;);
             EVENT(LoadCheckpointForTraining, std::filesystem::path checkpoint_path; std::filesystem::path dataset_path; std::filesystem::path output_path;);
+            EVENT(ImportColmapCameras, std::filesystem::path sparse_path;);
             EVENT(LoadConfigFile, std::filesystem::path path;);
             EVENT(ShowDatasetLoadPopup, std::filesystem::path dataset_path;);
             EVENT(ShowResumeCheckpointPopup, std::filesystem::path checkpoint_path;);
             EVENT(ClearScene, );
-            EVENT(SwitchToEditMode, ); // Keep trained model, discard dataset
+            EVENT(RequestExit, );
+            EVENT(ForceExit, );
+            EVENT(SwitchToEditMode, );
             EVENT(ResetCamera, );
             EVENT(ShowWindow, std::string window_name; bool show;);
             EVENT(ExecuteConsole, std::string command;);
@@ -116,7 +119,10 @@ namespace lfs::core {
             EVENT(AxesSettingsChanged, bool show_axes;);
             EVENT(TranslationGizmoSettingsChanged, bool enabled; float scale;);
             EVENT(SetToolbarTool, int tool_mode;);
-        } // namespace tools
+            EVENT(SetSelectionSubMode, int selection_mode;);
+            EVENT(ExecuteMirror, int axis;); // 0=X, 1=Y, 2=Z
+            EVENT(CancelActiveOperator, );   // Cancel and revert current operator
+        }                                    // namespace tools
 
         // ============================================================================
         // State - Notifications about what has happened (broadcasts)
@@ -140,6 +146,7 @@ namespace lfs::core {
             EVENT(SceneCleared, );
             EVENT(ModelUpdated, int iteration; size_t num_gaussians;);
             EVENT(SceneChanged, );
+            EVENT(SelectionChanged, bool has_selection; int count;);
             // node_type: 0=SPLAT, 1=GROUP, 2=CROPBOX
             EVENT(PLYAdded, std::string name; size_t node_gaussians; size_t total_gaussians; bool is_visible; std::string parent_name; bool is_group; int node_type;);
             EVENT(PLYRemoved, std::string name; bool children_kept = false; std::string parent_of_removed;);

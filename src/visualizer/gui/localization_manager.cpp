@@ -64,12 +64,35 @@ namespace lichtfeld {
 
     const char* LocalizationManager::get(std::string_view key) const {
         const std::string key_str(key);
+
+        // Check overrides first
+        const auto override_it = overrides_.find(key_str);
+        if (override_it != overrides_.end()) {
+            return override_it->second.c_str();
+        }
+
         const auto it = current_strings_.find(key_str);
         if (it != current_strings_.end()) {
             return it->second.c_str();
         }
         LOG_WARN("Missing localization key: {}", key_str);
         return key.data();
+    }
+
+    void LocalizationManager::setOverride(const std::string& key, const std::string& value) {
+        overrides_[key] = value;
+    }
+
+    void LocalizationManager::clearOverride(const std::string& key) {
+        overrides_.erase(key);
+    }
+
+    void LocalizationManager::clearAllOverrides() {
+        overrides_.clear();
+    }
+
+    bool LocalizationManager::hasOverride(const std::string& key) const {
+        return overrides_.find(key) != overrides_.end();
     }
 
     std::vector<std::string> LocalizationManager::getAvailableLanguages() const {

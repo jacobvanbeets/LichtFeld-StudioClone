@@ -166,18 +166,6 @@ namespace lfs::python {
             },
             "List all registered capabilities");
 
-        // ===== Panel API =====
-
-        plugins.def(
-            "register_panel",
-            [](nb::object panel_class) { PyPanelRegistry::instance().register_panel(panel_class); },
-            nb::arg("panel_class"), "Register a UI panel class");
-
-        plugins.def(
-            "unregister_panel",
-            [](nb::object panel_class) { PyPanelRegistry::instance().unregister_panel(panel_class); },
-            nb::arg("panel_class"), "Unregister a UI panel class");
-
         // ===== Settings API =====
 
         plugins.def(

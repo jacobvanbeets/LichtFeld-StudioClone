@@ -22,6 +22,7 @@ target_include_directories(lfs_python_runtime
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/core/include
 )
 
 target_link_libraries(lfs_python_runtime
@@ -91,17 +92,37 @@ nanobind_add_module(
     lfs_py
     NB_STATIC
     lfs/module.cpp
+    lfs/py_animation.cpp
+    lfs/py_command.cpp
+    lfs/py_gizmo.cpp
+    lfs/py_keymap.cpp
     lfs/py_tensor.cpp
     lfs/py_splat_data.cpp
     lfs/py_scene.cpp
+    lfs/py_scripts.cpp
     lfs/py_cameras.cpp
     lfs/py_io.cpp
     lfs/py_packages.cpp
     lfs/py_params.cpp
     lfs/py_plugins.cpp
     lfs/py_ui.cpp
+    lfs/py_ui_context.cpp
+    lfs/py_ui_theme.cpp
+    lfs/py_ui_operators.cpp
+    lfs/py_ui_modals.cpp
+    lfs/notification_bridge.cpp
+    lfs/py_ui_hooks.cpp
+    lfs/py_ui_menus.cpp
+    lfs/py_ui_panels.cpp
+    lfs/py_uilist.cpp
+    lfs/py_viewport.cpp
     lfs/py_mcp.cpp
     lfs/py_rendering.cpp
+    lfs/py_selection.cpp
+    lfs/py_operator.cpp
+    lfs/py_pipeline.cpp
+    lfs/py_prop_registry.cpp
+    lfs/py_signals.cpp
 )
 
 set_target_properties(lfs_py PROPERTIES
@@ -128,6 +149,7 @@ target_link_libraries(lfs_py PRIVATE
     lfs_io
     lfs_visualizer
     lfs_rendering       # For render_view, compute_screen_positions
+    lfs_sequencer       # For animation API
     lfs_mcp
     lfs_python_runtime
     OpenImageIO::OpenImageIO
@@ -268,11 +290,9 @@ runpy.run_path(r'${NB_STUBGEN}', run_name='__main__')
     endif()
 endif()
 
-# Copy lfs_plugins Python module to build directory
-file(GLOB LFS_PLUGINS_FILES "${CMAKE_CURRENT_SOURCE_DIR}/lfs_plugins/*.py")
+# Copy lfs_plugins Python module to build directory (recursively to include subdirectories)
 add_custom_target(lfs_plugins_copy ALL
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/lfs_plugins
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LFS_PLUGINS_FILES} ${CMAKE_CURRENT_BINARY_DIR}/lfs_plugins/
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/lfs_plugins ${CMAKE_CURRENT_BINARY_DIR}/lfs_plugins
     COMMENT "Copying lfs_plugins Python module"
 )
 add_dependencies(lfs_py lfs_plugins_copy)

@@ -27,47 +27,42 @@ INIT_PY = '''"""
 """
 
 import lichtfeld as lf
+from .panels.main_panel import MainPanel
 
-_panel = None
+_classes = [MainPanel]
 
 
 def on_load():
     """Called when plugin is loaded."""
-    global _panel
-    from .panels.main_panel import MainPanel
-
-    _panel = MainPanel
-    lf.plugins.register_panel(MainPanel)
+    for cls in _classes:
+        lf.register_class(cls)
     lf.log.info("{name} plugin loaded")
 
 
 def on_unload():
     """Called when plugin is unloaded."""
-    global _panel
-    if _panel:
-        lf.plugins.unregister_panel(_panel)
-        _panel = None
+    for cls in reversed(_classes):
+        lf.unregister_class(cls)
     lf.log.info("{name} plugin unloaded")
 '''
 
 MAIN_PANEL_PY = '''"""Main panel for {name} plugin."""
 
 import lichtfeld as lf
+from lfs_plugins.types import Panel
 
 
-class MainPanel(lf.ui.Panel):
+class MainPanel(Panel):
     """Example plugin panel."""
 
     label = "{title}"
-    category = "Plugins"
+    space = "SIDE_PANEL"
+    order = 100
 
-    def __init__(self):
-        super().__init__()
+    def draw(self, layout):
+        layout.label("Hello from {name}!")
 
-    def draw(self):
-        lf.ui.text("Hello from {name}!")
-
-        if lf.ui.button("Click Me"):
+        if layout.button("Click Me"):
             lf.log.info("{name}: Button clicked!")
 '''
 

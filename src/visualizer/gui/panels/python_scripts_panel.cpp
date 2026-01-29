@@ -3,13 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gui/panels/python_scripts_panel.hpp"
-#include "gui/ui_widgets.hpp"
-
-#include <imgui.h>
-
-#ifdef LFS_BUILD_PYTHON_BINDINGS
-#include "python/runner.hpp"
-#endif
 
 namespace lfs::vis::gui::panels {
 
@@ -73,118 +66,6 @@ namespace lfs::vis::gui::panels {
             }
         }
         return result;
-    }
-
-    void DrawPythonScriptsPanel(const UIContext& ctx, bool* open) {
-        (void)ctx;
-        if (!open || !*open)
-            return;
-
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("Python Scripts", open)) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f),
-                               "Python bindings not available. Rebuild with -DBUILD_PYTHON_BINDINGS=ON");
-        }
-        ImGui::End();
-        return;
-#else
-        auto& state = PythonScriptManagerState::getInstance();
-
-        ImGui::SetNextWindowSize(ImVec2(450, 300), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin("Python Scripts", open, ImGuiWindowFlags_MenuBar)) {
-            ImGui::End();
-            return;
-        }
-
-        // Menu bar
-        if (ImGui::BeginMenuBar()) {
-            if (ImGui::BeginMenu("Actions")) {
-                if (ImGui::MenuItem("Reload All", nullptr, false, !state.scripts().empty())) {
-                    state.clearErrors();
-                    auto scripts = state.enabledScripts();
-                    if (!scripts.empty()) {
-                        auto result = lfs::python::run_scripts(scripts);
-                        if (!result) {
-                            // Mark all as error if general failure
-                            for (size_t i = 0; i < state.scripts().size(); ++i) {
-                                if (state.scripts()[i].enabled) {
-                                    state.setScriptError(i, result.error());
-                                }
-                            }
-                        }
-                    }
-                }
-                ImGui::Separator();
-                if (ImGui::MenuItem("Clear All")) {
-                    state.clear();
-                }
-                ImGui::EndMenu();
-            }
-            ImGui::EndMenuBar();
-        }
-
-        // Script list
-        if (state.scripts().empty()) {
-            ImGui::TextDisabled("No Python scripts loaded.");
-            ImGui::TextDisabled("Use --python-script <path> to load scripts.");
-        } else {
-            ImGui::Text("Loaded Scripts:");
-            ImGui::Separator();
-
-            for (size_t i = 0; i < state.scripts().size(); ++i) {
-                const auto& script = state.scripts()[i];
-                ImGui::PushID(static_cast<int>(i));
-
-                // Checkbox for enable/disable
-                bool enabled = script.enabled;
-                if (ImGui::Checkbox("##enabled", &enabled)) {
-                    state.setScriptEnabled(i, enabled);
-                }
-                ImGui::SameLine();
-
-                // Script name with color based on state
-                if (script.has_error) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
-                } else if (!script.enabled) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
-                } else {
-                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 1.0f, 0.5f, 1.0f));
-                }
-
-                std::string filename = script.path.filename().string();
-                ImGui::Text("%s", filename.c_str());
-                ImGui::PopStyleColor();
-
-                // Tooltip with full path and error
-                if (ImGui::IsItemHovered()) {
-                    ImGui::BeginTooltip();
-                    ImGui::Text("Path: %s", script.path.string().c_str());
-                    if (script.has_error) {
-                        ImGui::Separator();
-                        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Error: %s", script.error_message.c_str());
-                    }
-                    ImGui::EndTooltip();
-                }
-
-                // Reload single script button
-                ImGui::SameLine(ImGui::GetWindowWidth() - 80);
-                if (ImGui::SmallButton("Reload")) {
-                    state.setScriptError(i, "");
-                    if (script.enabled) {
-                        auto result = lfs::python::run_scripts({script.path});
-                        if (!result) {
-                            state.setScriptError(i, result.error());
-                        }
-                    }
-                }
-
-                ImGui::PopID();
-            }
-        }
-
-        ImGui::End();
-#endif // LFS_BUILD_PYTHON_BINDINGS
     }
 
 } // namespace lfs::vis::gui::panels

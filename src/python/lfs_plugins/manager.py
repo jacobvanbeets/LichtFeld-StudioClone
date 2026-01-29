@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Plugin manager for discovery, loading, and lifecycle."""
 
+import importlib.machinery
 import importlib.util
 import logging
 import sys
@@ -9,8 +10,8 @@ import tarfile
 import tempfile
 import threading
 import traceback
+import types
 import urllib.request
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
@@ -37,17 +38,6 @@ LICHTFELD_VERSION = "1.0.0"
 MODULE_PREFIX = "lfs_plugins"
 
 
-@contextmanager
-def _isolated_import_path(paths: List[Path]):
-    """Temporarily prepend paths to sys.path."""
-    original = sys.path.copy()
-    try:
-        sys.path = [str(p) for p in paths] + original
-        yield
-    finally:
-        sys.path = original
-
-
 class PluginManager:
     """Singleton managing plugin discovery, loading, and lifecycle."""
 
@@ -56,6 +46,7 @@ class PluginManager:
 
     def __init__(self):
         self._plugins: Dict[str, PluginInstance] = {}
+        self._plugins_lock = threading.RLock()
         self._plugins_dir = Path.home() / ".lichtfeld" / "plugins"
         self._watcher: Optional[PluginWatcher] = None
         self._on_plugin_loaded: List[Callable] = []
@@ -80,6 +71,12 @@ class PluginManager:
         if self._registry is None:
             self._registry = RegistryClient()
         return self._registry
+
+    def get_active_plugins_snapshot(self) -> List[tuple]:
+        """Return thread-safe snapshot of active plugins."""
+        with self._plugins_lock:
+            return [(name, plugin) for name, plugin in self._plugins.items()
+                    if plugin.state == PluginState.ACTIVE]
 
     def discover(self) -> List[PluginInfo]:
         """Scan plugins directory for valid plugins."""
@@ -120,13 +117,14 @@ class PluginManager:
 
     def load(self, name: str, on_progress: Optional[Callable] = None) -> bool:
         """Load a plugin by name."""
-        plugin = self._plugins.get(name)
-        if not plugin:
-            for info in self.discover():
-                if info.name == name:
-                    plugin = PluginInstance(info=info)
-                    self._plugins[name] = plugin
-                    break
+        with self._plugins_lock:
+            plugin = self._plugins.get(name)
+            if not plugin:
+                for info in self.discover():
+                    if info.name == name:
+                        plugin = PluginInstance(info=info)
+                        self._plugins[name] = plugin
+                        break
 
         if not plugin:
             raise PluginError(f"Plugin '{name}' not found")
@@ -149,7 +147,10 @@ class PluginManager:
             self._update_file_mtimes(plugin)
 
             for cb in self._on_plugin_loaded:
-                cb(plugin.info)
+                try:
+                    cb(plugin.info)
+                except Exception as cb_err:
+                    _log.warning("on_plugin_loaded callback failed: %s", cb_err)
 
             return True
 
@@ -170,23 +171,45 @@ class PluginManager:
             raise PluginVersionError(f"Plugin '{name}' requires LichtFeld >= {required}, but you have {current}")
 
     def _load_module(self, plugin: PluginInstance):
-        """Import plugin module with path isolation."""
-        paths = []
+        """Import plugin module with persistent venv path."""
+        paths_to_add = []
         venv_site = self._get_venv_site_packages(plugin)
         if venv_site and venv_site.exists():
-            paths.append(venv_site)
-        paths.append(plugin.info.path)
+            paths_to_add.append(str(venv_site))
+        paths_to_add.append(str(plugin.info.path))
+
+        # Persistently add paths so lazy imports work later
+        plugin.sys_paths = []
+        for p in paths_to_add:
+            if p not in sys.path:
+                sys.path.insert(0, p)
+                plugin.sys_paths.append(p)
 
         module_name = f"{MODULE_PREFIX}.{plugin.info.name}"
+        importlib.invalidate_caches()
 
-        with _isolated_import_path(paths):
-            entry_file = plugin.info.path / f"{plugin.info.entry_point}.py"
-            spec = importlib.util.spec_from_file_location(module_name, entry_file)
-            assert spec is not None and spec.loader is not None
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
-            plugin.module = module
+        entry_file = plugin.info.path / f"{plugin.info.entry_point}.py"
+        source_code = entry_file.read_text(encoding="utf-8")
+        code = compile(source_code, str(entry_file), "exec")
+
+        module = types.ModuleType(module_name)
+        module.__file__ = str(entry_file)
+        module.__loader__ = importlib.machinery.SourceFileLoader(module_name, str(entry_file))
+        module.__package__ = MODULE_PREFIX
+        module.__spec__ = importlib.util.spec_from_file_location(module_name, entry_file, loader=module.__loader__)
+
+        sys.modules[module_name] = module
+        try:
+            exec(code, module.__dict__)
+        except Exception:
+            sys.modules.pop(module_name, None)
+            # Clean up paths on failure
+            for p in plugin.sys_paths:
+                if p in sys.path:
+                    sys.path.remove(p)
+            plugin.sys_paths = []
+            raise
+        plugin.module = module
 
     def _get_venv_site_packages(self, plugin: PluginInstance) -> Optional[Path]:
         """Get site-packages path for plugin venv."""
@@ -209,9 +232,10 @@ class PluginManager:
 
     def unload(self, name: str) -> bool:
         """Unload a plugin."""
-        plugin = self._plugins.get(name)
-        if not plugin or plugin.state != PluginState.ACTIVE:
-            return False
+        with self._plugins_lock:
+            plugin = self._plugins.get(name)
+            if not plugin or plugin.state != PluginState.ACTIVE:
+                return False
 
         try:
             if plugin.module and hasattr(plugin.module, "on_unload"):
@@ -219,23 +243,48 @@ class PluginManager:
 
             CapabilityRegistry.instance().unregister_all_for_plugin(name)
 
-            # Remove main module and all submodules from cache
+            try:
+                import lichtfeld as lf
+                lf.ui.free_plugin_icons(name)
+            except Exception:
+                pass
+
+            try:
+                from .ui.subscription_registry import SubscriptionRegistry
+                SubscriptionRegistry.instance().unsubscribe_all(name)
+            except Exception:
+                _log.exception("Failed to cleanup signal subscriptions for '%s'", name)
+
             module_prefix = f"{MODULE_PREFIX}.{plugin.info.name}"
             to_remove = [m for m in sys.modules if m == module_prefix or m.startswith(f"{module_prefix}.")]
             for m in to_remove:
                 sys.modules.pop(m, None)
 
+            # Clean up sys.path entries added during load
+            for p in plugin.sys_paths:
+                if p in sys.path:
+                    sys.path.remove(p)
+            plugin.sys_paths = []
+
             plugin.module = None
-            plugin.state = PluginState.UNLOADED
+            with self._plugins_lock:
+                plugin.state = PluginState.UNLOADED
+
+            if self._watcher:
+                self._watcher.clear_plugin_hashes(name)
 
             for cb in self._on_plugin_unloaded:
-                cb(plugin.info)
+                try:
+                    cb(plugin.info)
+                except Exception as cb_err:
+                    _log.warning("on_plugin_unloaded callback failed: %s", cb_err)
 
             return True
 
         except Exception as e:
             plugin.error = str(e)
-            plugin.state = PluginState.UNLOADED
+            with self._plugins_lock:
+                plugin.state = PluginState.UNLOADED
             return False
 
     def reload(self, name: str) -> bool:
@@ -254,38 +303,35 @@ class PluginManager:
         mem_before = get_gpu_memory()
 
         try:
-            # Call on_unload first
             if plugin.module and hasattr(plugin.module, "on_unload"):
                 plugin.module.on_unload()
 
             CapabilityRegistry.instance().unregister_all_for_plugin(name)
 
-            # Reload all submodules first (in reverse order), then main module
+            try:
+                from .ui.subscription_registry import SubscriptionRegistry
+                SubscriptionRegistry.instance().unsubscribe_all(name)
+            except Exception:
+                _log.exception("Failed to cleanup signal subscriptions for '%s'", name)
+
             module_prefix = f"{MODULE_PREFIX}.{plugin.info.name}"
-            submodules = [m for m in sys.modules if m.startswith(f"{module_prefix}.")]
-            submodules.sort(reverse=True)  # Deepest first
+            to_remove = [m for m in sys.modules if m == module_prefix or m.startswith(f"{module_prefix}.")]
+            for m in to_remove:
+                sys.modules.pop(m, None)
 
-            for submod in submodules:
-                try:
-                    importlib.reload(sys.modules[submod])
-                except Exception as e:
-                    _log.warning(f"Failed to reload submodule {submod}: {e}")
+            self._load_module(plugin)
 
-            # Reload main module
-            if module_prefix in sys.modules:
-                importlib.reload(sys.modules[module_prefix])
-                plugin.module = sys.modules[module_prefix]
-
-            # Call on_load
             if hasattr(plugin.module, "on_load"):
                 plugin.module.on_load()
 
             self._update_file_mtimes(plugin)
 
             for cb in self._on_plugin_loaded:
-                cb(plugin.info)
+                try:
+                    cb(plugin.info)
+                except Exception as cb_err:
+                    _log.warning("on_plugin_loaded callback failed: %s", cb_err)
 
-            # Warn about memory leak
             mem_after = get_gpu_memory()
             growth_mb = (mem_after - mem_before) / (1024 * 1024)
             if growth_mb > 10:
@@ -390,14 +436,15 @@ class PluginManager:
 
     def uninstall(self, name: str) -> bool:
         """Uninstall a plugin by removing its directory."""
-        plugin = self._plugins.get(name)
-        if plugin:
-            if plugin.state == PluginState.ACTIVE:
-                self.unload(name)
-            plugin_dir = plugin.info.path
-            del self._plugins[name]
-        else:
-            plugin_dir = self._find_plugin_dir(name)
+        with self._plugins_lock:
+            plugin = self._plugins.get(name)
+            if plugin:
+                if plugin.state == PluginState.ACTIVE:
+                    self.unload(name)
+                plugin_dir = plugin.info.path
+                del self._plugins[name]
+            else:
+                plugin_dir = self._find_plugin_dir(name)
 
         return uninstall_plugin(plugin_dir)
 

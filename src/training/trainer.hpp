@@ -77,13 +77,11 @@ namespace lfs::training {
                 std::optional<std::tuple<std::vector<std::string>, std::vector<std::string>>> provided_splits);
 
         /**
-         * @brief New constructor - takes Scene reference (Scene owns all data)
+         * @brief Constructor - takes Scene reference (Scene owns all data)
          *
          * Scene provides:
          * - Training model via getTrainingModel() (SplatData)
-         * - Train/val cameras via getTrainCameras()/getValCameras()
-         *
-         * Strategy type ("mcmc" or "default") is determined by params during initialize()
+         * - Cameras via getAllCameras() (from CAMERA nodes)
          */
         Trainer(lfs::vis::Scene& scene);
 

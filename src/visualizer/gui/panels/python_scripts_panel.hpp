@@ -9,10 +9,6 @@
 #include <string>
 #include <vector>
 
-namespace lfs::vis::gui {
-    struct UIContext;
-}
-
 namespace lfs::vis::gui::panels {
 
     struct ScriptInfo {
@@ -46,8 +42,5 @@ namespace lfs::vis::gui::panels {
         bool needs_reload_ = false;
         mutable std::mutex mutex_;
     };
-
-    // Draw the Python scripts panel
-    void DrawPythonScriptsPanel(const UIContext& ctx, bool* open);
 
 } // namespace lfs::vis::gui::panels
