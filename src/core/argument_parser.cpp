@@ -175,6 +175,7 @@ namespace {
             ::args::Group rendering_group(parser, "RENDERING OPTIONS:");
             ::args::Flag enable_mip(rendering_group, "enable_mip", "Enable mip filter (anti-aliasing)", {"enable-mip"});
             ::args::Flag use_bilateral_grid(rendering_group, "bilateral_grid", "Enable bilateral grid filtering", {"bilateral-grid"});
+            ::args::Flag use_ppisp(rendering_group, "ppisp", "Enable PPISP for per-camera appearance modeling", {"ppisp"});
             ::args::Flag ppisp_controller(rendering_group, "ppisp_controller", "Enable PPISP controller for novel views", {"ppisp-controller"});
             ::args::Flag bg_modulation(rendering_group, "bg_modulation", "Enable sinusoidal background modulation", {"bg-modulation"});
             ::args::Flag gut(rendering_group, "gut", "Enable GUT mode", {"gut"});
@@ -514,6 +515,7 @@ namespace {
                                         // Capture flag states
                                         enable_mip_flag = bool(enable_mip),
                                         use_bilateral_grid_flag = bool(use_bilateral_grid),
+                                        use_ppisp_flag = bool(use_ppisp),
                                         ppisp_controller_flag = bool(ppisp_controller),
                                         enable_eval_flag = bool(enable_eval),
                                         headless_flag = bool(headless),
@@ -571,7 +573,10 @@ namespace {
 
                 setFlag(enable_mip_flag, opt.mip_filter);
                 setFlag(use_bilateral_grid_flag, opt.use_bilateral_grid);
+                setFlag(use_ppisp_flag, opt.use_ppisp);
                 setFlag(ppisp_controller_flag, opt.ppisp_use_controller);
+                if (opt.ppisp_use_controller)
+                    opt.use_ppisp = true;
                 setFlag(enable_eval_flag, opt.enable_eval);
                 setFlag(headless_flag, opt.headless);
                 setFlag(auto_train_flag, opt.auto_train);

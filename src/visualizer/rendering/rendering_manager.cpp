@@ -167,7 +167,7 @@ namespace lfs::vis {
         }
 
         const auto oldest = std::min_element(texture_cache_.begin(), texture_cache_.end(),
-            [](const auto& a, const auto& b) { return a.second.last_access < b.second.last_access; });
+                                             [](const auto& a, const auto& b) { return a.second.last_access < b.second.last_access; });
 
         if (oldest->second.interop_texture) {
             glFinish();
