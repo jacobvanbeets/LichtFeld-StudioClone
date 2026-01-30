@@ -15,6 +15,7 @@ data
 *.py
 !src/python/lfs_plugins/**/*.py
 !tests/python/**/*.py
+!docs/plugins/examples/**/*.py
 .venv/
 *.png
 !src/**/assets/**/*.png
