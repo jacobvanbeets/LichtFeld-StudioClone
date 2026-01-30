@@ -358,6 +358,9 @@ namespace lfs::vis {
             ImFont* font_small_ = nullptr;
             ImFont* font_section_ = nullptr;
             ImFont* font_monospace_ = nullptr;
+            ImFont* mono_fonts_[FontSet::MONO_SIZE_COUNT] = {};
+            float mono_font_scales_[FontSet::MONO_SIZE_COUNT] = {};
+            FontSet buildFontSet() const;
 
             // Viewport gizmo drag-to-orbit state
             bool viewport_gizmo_dragging_ = false;

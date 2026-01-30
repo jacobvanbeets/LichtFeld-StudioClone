@@ -32,14 +32,6 @@ namespace {
     std::once_flag g_console_init_once;
     std::once_flag g_syspath_init_once;
 
-    const char* getPythonExecutable() {
-#ifdef LFS_PYTHON_EXECUTABLE
-        return LFS_PYTHON_EXECUTABLE;
-#else
-        return "python3";
-#endif
-    }
-
     void setup_sys_path() {
         std::call_once(g_syspath_init_once, [] {
             const PyGILState_STATE gil = PyGILState_Ensure();
@@ -317,6 +309,24 @@ namespace lfs::vis::gui::panels {
     void PythonConsoleState::interruptScript() {}
     void PythonConsoleState::runScriptAsync(const std::string&) {}
 #endif
+
+    void PythonConsoleState::increaseFontScale() {
+        for (int i = 0; i < FONT_STEP_COUNT; ++i) {
+            if (FONT_STEPS[i] > font_scale_ + 0.01f) {
+                font_scale_ = FONT_STEPS[i];
+                return;
+            }
+        }
+    }
+
+    void PythonConsoleState::decreaseFontScale() {
+        for (int i = FONT_STEP_COUNT - 1; i >= 0; --i) {
+            if (FONT_STEPS[i] < font_scale_ - 0.01f) {
+                font_scale_ = FONT_STEPS[i];
+                return;
+            }
+        }
+    }
 
     void PythonConsoleState::addToHistory(const std::string& cmd) {
         std::lock_guard lock(mutex_);
@@ -638,13 +648,16 @@ namespace lfs::vis::gui::panels {
         // Bottom pane with tabs
         ImGui::BeginChild("##bottom_pane", ImVec2(content_avail.x, bottom_height), false);
         {
+            const bool terminal_has_focus = state.getTerminal() && state.getTerminal()->isFocused();
+            const ImGuiTabItemFlags terminal_tab_flags =
+                terminal_has_focus ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+
             if (ImGui::BeginTabBar("##console_tabs")) {
                 // Output tab (read-only terminal for script output)
                 if (ImGui::BeginTabItem("Output")) {
                     state.setActiveTab(0);
 
                     if (auto* output = state.getOutputTerminal()) {
-                        // Don't auto-spawn - spawned on demand when running code
                         output->setReadOnly(true);
                         output->render(ctx.fonts.monospace);
                     }
@@ -653,13 +666,14 @@ namespace lfs::vis::gui::panels {
                 }
 
                 // Terminal tab (interactive Python REPL)
-                if (ImGui::BeginTabItem("Terminal")) {
+                if (ImGui::BeginTabItem("Terminal", nullptr, terminal_tab_flags)) {
                     state.setActiveTab(1);
 
                     if (auto* terminal = state.getTerminal()) {
-                        // Auto-spawn Python on first use
                         if (!terminal->is_running()) {
-                            terminal->spawn(getPythonExecutable());
+                            const auto fds = terminal->spawnEmbedded();
+                            if (fds.valid())
+                                lfs::python::start_embedded_repl(fds.read_fd, fds.write_fd);
                         }
                         terminal->render(ctx.fonts.monospace);
                     }
@@ -970,14 +984,13 @@ namespace lfs::vis::gui::panels {
         ImGui::BeginChild("##docked_script_editor_pane", ImVec2(content_avail.x, top_height), false,
                           ImGuiWindowFlags_HorizontalScrollbar);
         {
-            ImGui::SetWindowFontScale(state.getFontScale());
+            ImFont* const scaled_mono = ctx.fonts.monoForScale(state.getFontScale());
+            if (scaled_mono) {
+                ImGui::PushFont(scaled_mono);
+            }
 
             const ImVec2 editor_size(ImGui::GetContentRegionAvail().x,
                                      ImGui::GetContentRegionAvail().y);
-
-            if (ctx.fonts.monospace) {
-                ImGui::PushFont(ctx.fonts.monospace);
-            }
 
             // Block editor input when terminal has focus or other widget wants text input
             bool block_editor_input = ImGui::GetIO().WantTextInput;
@@ -993,11 +1006,9 @@ namespace lfs::vis::gui::panels {
                 }
             }
 
-            if (ctx.fonts.monospace) {
+            if (scaled_mono) {
                 ImGui::PopFont();
             }
-
-            ImGui::SetWindowFontScale(1.0f);
         }
         ImGui::EndChild();
 
@@ -1028,7 +1039,10 @@ namespace lfs::vis::gui::panels {
         // Bottom pane with tabs
         ImGui::BeginChild("##docked_bottom_pane", ImVec2(content_avail.x, bottom_height), false);
         {
-            ImGui::SetWindowFontScale(state.getFontScale());
+            ImFont* const scaled_mono_bottom = ctx.fonts.monoForScale(state.getFontScale());
+            const bool terminal_has_focus = state.getTerminal() && state.getTerminal()->isFocused();
+            const ImGuiTabItemFlags terminal_tab_flags =
+                terminal_has_focus ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
 
             if (ImGui::BeginTabBar("##docked_console_tabs")) {
                 // Output tab (read-only terminal for script output)
@@ -1036,24 +1050,24 @@ namespace lfs::vis::gui::panels {
                     state.setActiveTab(0);
 
                     if (auto* output = state.getOutputTerminal()) {
-                        // Don't auto-spawn - spawned on demand when running code
                         output->setReadOnly(true);
-                        output->render(ctx.fonts.monospace);
+                        output->render(scaled_mono_bottom);
                     }
 
                     ImGui::EndTabItem();
                 }
 
                 // Terminal tab (interactive Python REPL)
-                if (ImGui::BeginTabItem("Terminal")) {
+                if (ImGui::BeginTabItem("Terminal", nullptr, terminal_tab_flags)) {
                     state.setActiveTab(1);
 
                     if (auto* terminal = state.getTerminal()) {
-                        // Auto-spawn Python on first use
                         if (!terminal->is_running()) {
-                            terminal->spawn(getPythonExecutable());
+                            const auto fds = terminal->spawnEmbedded();
+                            if (fds.valid())
+                                lfs::python::start_embedded_repl(fds.read_fd, fds.write_fd);
                         }
-                        terminal->render(ctx.fonts.monospace);
+                        terminal->render(scaled_mono_bottom);
                     }
 
                     ImGui::EndTabItem();
@@ -1123,8 +1137,6 @@ namespace lfs::vis::gui::panels {
 
                 ImGui::EndTabBar();
             }
-
-            ImGui::SetWindowFontScale(1.0f);
         }
         ImGui::EndChild();
 

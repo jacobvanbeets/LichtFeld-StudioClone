@@ -223,6 +223,15 @@ namespace lfs::vis::gui {
         });
     }
 
+    FontSet GuiManager::buildFontSet() const {
+        FontSet fs{font_regular_, font_bold_, font_heading_, font_small_, font_section_, font_monospace_};
+        for (int i = 0; i < FontSet::MONO_SIZE_COUNT; ++i) {
+            fs.monospace_sized[i] = mono_fonts_[i];
+            fs.monospace_sizes[i] = mono_font_scales_[i];
+        }
+        return fs;
+    }
+
     void GuiManager::init() {
         // ImGui initialization
         IMGUI_CHECKVERSION();
@@ -337,7 +346,7 @@ namespace lfs::vis::gui {
             font_small_ = load_font_with_cjk(regular_path, t.fonts.small_size * xscale);
             font_section_ = load_font_with_cjk(bold_path, t.fonts.section_size * xscale);
 
-            // Load monospace font for code editor
+            // Monospace font at multiple sizes for crisp scaling
             const auto monospace_path = lfs::vis::getAssetPath("fonts/JetBrainsMono-Regular.ttf");
             if (is_font_valid(monospace_path)) {
                 const std::string mono_path_utf8 = lfs::core::path_to_utf8(monospace_path);
@@ -356,11 +365,19 @@ namespace lfs::vis::gui {
                     0,
                 };
 
-                ImFontConfig config;
-                config.GlyphRanges = GLYPH_RANGES;
-                font_monospace_ = io.Fonts->AddFontFromFileTTF(mono_path_utf8.c_str(), t.fonts.base_size * xscale, &config);
+                static constexpr float MONO_SCALES[] = {0.7f, 1.0f, 1.3f, 1.7f, 2.2f};
+                static_assert(std::size(MONO_SCALES) == FontSet::MONO_SIZE_COUNT);
+
+                for (int i = 0; i < FontSet::MONO_SIZE_COUNT; ++i) {
+                    ImFontConfig config;
+                    config.GlyphRanges = GLYPH_RANGES;
+                    const float size = t.fonts.base_size * xscale * MONO_SCALES[i];
+                    mono_fonts_[i] = io.Fonts->AddFontFromFileTTF(mono_path_utf8.c_str(), size, &config);
+                    mono_font_scales_[i] = MONO_SCALES[i];
+                }
+                font_monospace_ = mono_fonts_[1];
                 if (font_monospace_) {
-                    LOG_INFO("Loaded monospace font: JetBrainsMono-Regular.ttf");
+                    LOG_INFO("Loaded monospace font: JetBrainsMono-Regular.ttf ({} sizes)", FontSet::MONO_SIZE_COUNT);
                 }
             }
             if (!font_monospace_) {
@@ -407,7 +424,7 @@ namespace lfs::vis::gui {
         });
 
         initMenuBar();
-        menu_bar_->setFonts({font_regular_, font_bold_, font_heading_, font_small_, font_section_, font_monospace_});
+        menu_bar_->setFonts(buildFontSet());
 
         // Load startup overlay textures
         const auto loadOverlayTexture = [](const std::filesystem::path& path, unsigned int& tex, int& w, int& h) {
@@ -601,7 +618,7 @@ namespace lfs::vis::gui {
             .window_states = &window_states_,
             .editor = &editor_ctx,
             .sequencer_controller = &sequencer_controller_,
-            .fonts = {font_regular_, font_bold_, font_heading_, font_small_, font_section_, font_monospace_}};
+            .fonts = buildFontSet()};
 
         // Right panel and docked Python console
         if (show_main_panel_ && !ui_hidden_) {

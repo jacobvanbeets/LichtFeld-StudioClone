@@ -24,6 +24,9 @@ namespace lfs::vis::terminal {
         // Spawn shell. Empty = default shell, "python3" for Python REPL
         void spawn(const std::string& shell = "");
 
+        // Create PTY pair without forking. Returns fds for the Python-side I/O.
+        EmbeddedFds spawnEmbedded();
+
         // Render terminal in available space. Returns true if content changed.
         bool render(ImFont* mono_font = nullptr);
 

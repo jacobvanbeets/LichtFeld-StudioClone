@@ -59,11 +59,11 @@ namespace lfs::vis::gui::panels {
         void setModified(bool modified) { is_modified_ = modified; }
         bool isModified() const { return is_modified_; }
 
-        // Font scaling
+        // Font scaling (steps match loaded monospace font sizes)
         float getFontScale() const { return font_scale_; }
-        void setFontScale(float scale) { font_scale_ = std::clamp(scale, 0.5f, 3.0f); }
-        void increaseFontScale() { setFontScale(font_scale_ + 0.1f); }
-        void decreaseFontScale() { setFontScale(font_scale_ - 0.1f); }
+        void setFontScale(float scale) { font_scale_ = std::clamp(scale, FONT_STEPS[0], FONT_STEPS[FONT_STEP_COUNT - 1]); }
+        void increaseFontScale();
+        void decreaseFontScale();
         void resetFontScale() { font_scale_ = 1.0f; }
 
         // Script execution
@@ -90,7 +90,9 @@ namespace lfs::vis::gui::panels {
         std::filesystem::path script_path_;
         bool is_modified_ = false;
 
-        // Font scaling
+        // Font scaling steps must match gui_manager MONO_SCALES
+        static constexpr int FONT_STEP_COUNT = 5;
+        static constexpr float FONT_STEPS[FONT_STEP_COUNT] = {0.7f, 1.0f, 1.3f, 1.7f, 2.2f};
         float font_scale_ = 1.0f;
 
         // Script execution

@@ -22,7 +22,6 @@ Usage:
 
 from .definition import ToolDef, SubmodeDef, PivotModeDef
 from .builtin import BUILTIN_TOOLS, get_tool_by_id
-from .registry import ToolManager
 
 __all__ = [
     "ToolDef",
@@ -30,5 +29,4 @@ __all__ = [
     "PivotModeDef",
     "BUILTIN_TOOLS",
     "get_tool_by_id",
-    "ToolManager",
 ]

@@ -11,24 +11,41 @@ from .tool_defs.definition import ToolDef
 
 
 class ToolRegistry:
-    """Manages tool activation state."""
+    """Manages tool definitions (builtin + custom) and activation state."""
 
     _active_tool_id: str = ""
+    _custom_tools: dict[str, ToolDef] = {}
+
+    @classmethod
+    def register_tool(cls, tool: ToolDef) -> None:
+        cls._custom_tools[tool.id] = tool
+
+    @classmethod
+    def unregister_tool(cls, tool_id: str) -> None:
+        cls._custom_tools.pop(tool_id, None)
+        if cls._active_tool_id == tool_id:
+            cls.set_active("builtin.select")
 
     @classmethod
     def get(cls, tool_id: str) -> Optional[ToolDef]:
-        """Get tool definition by ID."""
-        return get_tool_by_id(tool_id)
+        """Get tool definition by ID (builtins first, then custom)."""
+        tool = get_tool_by_id(tool_id)
+        if tool:
+            return tool
+        return cls._custom_tools.get(tool_id)
 
     @classmethod
     def get_all(cls) -> list[ToolDef]:
-        """Get all tool definitions."""
-        return list(BUILTIN_TOOLS)
+        """Get all tool definitions. Builtins keep declaration order; customs appended sorted."""
+        if not cls._custom_tools:
+            return list(BUILTIN_TOOLS)
+        custom = sorted(cls._custom_tools.values(), key=lambda t: (t.group, t.order))
+        return list(BUILTIN_TOOLS) + custom
 
     @classmethod
     def set_active(cls, tool_id: str) -> bool:
         """Set the active tool by ID."""
-        tool = get_tool_by_id(tool_id)
+        tool = cls.get(tool_id)
         if not tool:
             return False
 
@@ -59,7 +76,7 @@ class ToolRegistry:
     @classmethod
     def get_active(cls) -> Optional[ToolDef]:
         """Get the active tool definition."""
-        return get_tool_by_id(cls._active_tool_id)
+        return cls.get(cls._active_tool_id)
 
     @classmethod
     def get_active_id(cls) -> str:
@@ -68,8 +85,9 @@ class ToolRegistry:
 
     @classmethod
     def clear(cls):
-        """Clear active tool state."""
+        """Clear active tool state and custom tools."""
         cls._active_tool_id = ""
+        cls._custom_tools.clear()
 
 
 def register():

@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "pty_process.hpp"
+#include <cassert>
 #include <core/executable_path.hpp>
 #include <core/logger.hpp>
 #include <filesystem>
@@ -59,18 +60,22 @@ namespace lfs::vis::terminal {
           pipe_in_(other.pipe_in_),
           pipe_out_(other.pipe_out_),
           process_(other.process_),
-          thread_(other.thread_) {
+          thread_(other.thread_),
+          pipe_only_(other.pipe_only_) {
         other.hpc_ = nullptr;
         other.pipe_in_ = INVALID_HANDLE_VALUE;
         other.pipe_out_ = INVALID_HANDLE_VALUE;
         other.process_ = INVALID_HANDLE_VALUE;
         other.thread_ = INVALID_HANDLE_VALUE;
+        other.pipe_only_ = false;
     }
 #else
         : master_fd_(other.master_fd_),
-          child_pid_(other.child_pid_) {
+          child_pid_(other.child_pid_),
+          attached_(other.attached_) {
         other.master_fd_ = -1;
         other.child_pid_ = -1;
+        other.attached_ = false;
     }
 #endif
 
@@ -83,16 +88,20 @@ namespace lfs::vis::terminal {
             pipe_out_ = other.pipe_out_;
             process_ = other.process_;
             thread_ = other.thread_;
+            pipe_only_ = other.pipe_only_;
             other.hpc_ = nullptr;
             other.pipe_in_ = INVALID_HANDLE_VALUE;
             other.pipe_out_ = INVALID_HANDLE_VALUE;
             other.process_ = INVALID_HANDLE_VALUE;
             other.thread_ = INVALID_HANDLE_VALUE;
+            other.pipe_only_ = false;
 #else
             master_fd_ = other.master_fd_;
             child_pid_ = other.child_pid_;
+            attached_ = other.attached_;
             other.master_fd_ = -1;
             other.child_pid_ = -1;
+            other.attached_ = false;
 #endif
         }
         return *this;
@@ -175,17 +184,31 @@ namespace lfs::vis::terminal {
         return true;
     }
 
+    bool PtyProcess::attachPipes(HANDLE read_handle, HANDLE write_handle) {
+        close();
+        assert(read_handle != INVALID_HANDLE_VALUE);
+        assert(write_handle != INVALID_HANDLE_VALUE);
+        pipe_out_ = read_handle;
+        pipe_in_ = write_handle;
+        pipe_only_ = true;
+        LOG_INFO("PTY attached to pipe handles");
+        return true;
+    }
+
     void PtyProcess::close() {
-        if (process_ != INVALID_HANDLE_VALUE) {
-            TerminateProcess(process_, 0);
-            CloseHandle(process_);
-            process_ = INVALID_HANDLE_VALUE;
-        }
-        if (thread_ != INVALID_HANDLE_VALUE) {
-            CloseHandle(thread_);
-            thread_ = INVALID_HANDLE_VALUE;
+        if (!pipe_only_) {
+            if (process_ != INVALID_HANDLE_VALUE) {
+                TerminateProcess(process_, 0);
+                CloseHandle(process_);
+                process_ = INVALID_HANDLE_VALUE;
+            }
+            if (thread_ != INVALID_HANDLE_VALUE) {
+                CloseHandle(thread_);
+                thread_ = INVALID_HANDLE_VALUE;
+            }
         }
         cleanup();
+        pipe_only_ = false;
     }
 
     void PtyProcess::cleanup() {
@@ -204,6 +227,8 @@ namespace lfs::vis::terminal {
     }
 
     bool PtyProcess::is_running() const {
+        if (pipe_only_)
+            return pipe_in_ != INVALID_HANDLE_VALUE && pipe_out_ != INVALID_HANDLE_VALUE;
         if (process_ == INVALID_HANDLE_VALUE)
             return false;
         DWORD exit_code = 0;
@@ -319,22 +344,39 @@ namespace lfs::vis::terminal {
         return true;
     }
 
+    bool PtyProcess::attach(int fd) {
+        close();
+        assert(fd >= 0);
+        master_fd_ = fd;
+        attached_ = true;
+        child_pid_ = -1;
+
+        const int flags = fcntl(master_fd_, F_GETFL, 0);
+        fcntl(master_fd_, F_SETFL, flags | O_NONBLOCK);
+
+        LOG_INFO("PTY attached to fd {}", fd);
+        return true;
+    }
+
     void PtyProcess::close() {
         if (master_fd_ >= 0) {
             ::close(master_fd_);
             master_fd_ = -1;
         }
-        if (child_pid_ > 0) {
+        if (!attached_ && child_pid_ > 0) {
             kill(child_pid_, SIGTERM);
             int status;
             waitpid(child_pid_, &status, WNOHANG);
             child_pid_ = -1;
         }
+        attached_ = false;
     }
 
     void PtyProcess::cleanup() {}
 
     bool PtyProcess::is_running() const {
+        if (attached_)
+            return master_fd_ >= 0;
         if (child_pid_ <= 0)
             return false;
         int status;
@@ -369,9 +411,14 @@ namespace lfs::vis::terminal {
 
     void PtyProcess::interrupt() {
         if (master_fd_ >= 0) {
-            const pid_t fg_pgid = tcgetpgrp(master_fd_);
-            if (fg_pgid > 0) {
-                kill(-fg_pgid, SIGINT);
+            if (attached_) {
+                constexpr char CTRL_C = '\x03';
+                ::write(master_fd_, &CTRL_C, 1);
+            } else {
+                const pid_t fg_pgid = tcgetpgrp(master_fd_);
+                if (fg_pgid > 0) {
+                    kill(-fg_pgid, SIGINT);
+                }
             }
         }
     }

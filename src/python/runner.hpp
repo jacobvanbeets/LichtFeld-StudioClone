@@ -37,6 +37,16 @@ namespace lfs::python {
      */
     void ensure_initialized();
 
+    /**
+     * @brief Start an embedded Python REPL on a background thread.
+     * @param read_fd File descriptor for stdin. Ownership transferred.
+     * @param write_fd File descriptor for stdout/stderr. Ownership transferred.
+     */
+    void start_embedded_repl(int read_fd, int write_fd);
+
+    /// @brief Stop the embedded REPL thread if running.
+    void stop_embedded_repl();
+
     bool start_debugpy(int port = 5678);
 
     /**

@@ -28,6 +28,8 @@ def _tool_to_dict(tool: ToolDef) -> dict:
         "icon": tool.icon,
         "group": tool.group,
         "shortcut": tool.shortcut,
+        "plugin_name": tool.plugin_name,
+        "plugin_path": tool.plugin_path,
         "submodes": [
             {"id": s.id, "label": s.label, "icon": s.icon}
             for s in tool.submodes

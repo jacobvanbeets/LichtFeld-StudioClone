@@ -162,6 +162,49 @@ namespace lfs::python {
             g_python_operator_instances.erase(id);
         }
 
+        unsigned int load_icon_from_path(const std::string& path, const std::string& cache_key) {
+            const auto [data, width, height, channels] = lfs::core::load_image_with_alpha(path);
+
+            unsigned int texture_id;
+            glGenTextures(1, &texture_id);
+            glBindTexture(GL_TEXTURE_2D, texture_id);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            const GLenum format = (channels == 4) ? GL_RGBA : GL_RGB;
+            glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+
+            lfs::core::free_image(data);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            {
+                std::lock_guard lock(g_icon_cache_mutex);
+                g_icon_cache[cache_key] = texture_id;
+            }
+
+            return texture_id;
+        }
+
+        constexpr const char* DEFAULT_ICON = "default.png";
+
+        unsigned int load_default_icon() {
+            {
+                std::lock_guard lock(g_icon_cache_mutex);
+                auto it = g_icon_cache.find(DEFAULT_ICON);
+                if (it != g_icon_cache.end()) {
+                    return it->second;
+                }
+            }
+            try {
+                return load_icon_from_path(lfs::vis::getAssetPath("icon/" + std::string(DEFAULT_ICON)), DEFAULT_ICON);
+            } catch (const std::exception& e) {
+                LOG_WARN("Failed to load default icon: {}", e.what());
+                return 0;
+            }
+        }
+
         unsigned int load_icon_texture(const std::string& icon_name) {
             {
                 std::lock_guard lock(g_icon_cache_mutex);
@@ -172,79 +215,35 @@ namespace lfs::python {
             }
 
             try {
-                const auto path = lfs::vis::getAssetPath("icon/" + icon_name);
-                const auto [data, width, height, channels] = lfs::core::load_image_with_alpha(path);
-
-                unsigned int texture_id;
-                glGenTextures(1, &texture_id);
-                glBindTexture(GL_TEXTURE_2D, texture_id);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-                const GLenum format = (channels == 4) ? GL_RGBA : GL_RGB;
-                glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-
-                lfs::core::free_image(data);
-                glBindTexture(GL_TEXTURE_2D, 0);
-
-                {
-                    std::lock_guard lock(g_icon_cache_mutex);
-                    g_icon_cache[icon_name] = texture_id;
-                }
-
-                return texture_id;
+                return load_icon_from_path(lfs::vis::getAssetPath("icon/" + icon_name), icon_name);
             } catch (const std::exception& e) {
                 LOG_WARN("Failed to load icon {}: {}", icon_name, e.what());
-                return 0;
+                return load_default_icon();
             }
         }
 
         unsigned int load_scene_icon(const std::string& icon_name) {
-            const std::string full_name = "scene/" + icon_name + ".png";
+            const std::string cache_key = "scene/" + icon_name + ".png";
             {
                 std::lock_guard lock(g_icon_cache_mutex);
-                auto it = g_icon_cache.find(full_name);
+                auto it = g_icon_cache.find(cache_key);
                 if (it != g_icon_cache.end()) {
                     return it->second;
                 }
             }
 
             try {
-                const auto path = lfs::vis::getAssetPath("icon/scene/" + icon_name + ".png");
-                const auto [data, width, height, channels] = lfs::core::load_image_with_alpha(path);
-
-                unsigned int texture_id;
-                glGenTextures(1, &texture_id);
-                glBindTexture(GL_TEXTURE_2D, texture_id);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-                const GLenum format = (channels == 4) ? GL_RGBA : GL_RGB;
-                glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-
-                lfs::core::free_image(data);
-                glBindTexture(GL_TEXTURE_2D, 0);
-
-                {
-                    std::lock_guard lock(g_icon_cache_mutex);
-                    g_icon_cache[full_name] = texture_id;
-                }
-
-                return texture_id;
+                return load_icon_from_path(lfs::vis::getAssetPath("icon/scene/" + icon_name + ".png"), cache_key);
             } catch (const std::exception& e) {
                 LOG_WARN("Failed to load scene icon {}: {}", icon_name, e.what());
-                return 0;
+                return load_default_icon();
             }
         }
 
         unsigned int load_plugin_icon(const std::string& icon_name,
                                       const std::string& plugin_path,
                                       const std::string& plugin_name) {
-            std::string cache_key = "plugin:" + plugin_name + ":" + icon_name;
+            const std::string cache_key = "plugin:" + plugin_name + ":" + icon_name;
 
             {
                 std::lock_guard lock(g_icon_cache_mutex);
@@ -261,36 +260,17 @@ namespace lfs::python {
             }
 
             try {
-                const auto [data, width, height, channels] = lfs::core::load_image_with_alpha(icon_path.string());
-
-                unsigned int texture_id;
-                glGenTextures(1, &texture_id);
-                glBindTexture(GL_TEXTURE_2D, texture_id);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-                const GLenum format = (channels == 4) ? GL_RGBA : GL_RGB;
-                glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-
-                lfs::core::free_image(data);
-                glBindTexture(GL_TEXTURE_2D, 0);
+                const auto tex = load_icon_from_path(icon_path.string(), cache_key);
 
                 {
                     std::lock_guard lock(g_plugin_icons_mutex);
                     g_plugin_icons[plugin_name].push_back(cache_key);
                 }
 
-                {
-                    std::lock_guard lock(g_icon_cache_mutex);
-                    g_icon_cache[cache_key] = texture_id;
-                }
-
-                return texture_id;
+                return tex;
             } catch (const std::exception& e) {
                 LOG_WARN("Failed to load plugin icon {}: {}", icon_name, e.what());
-                return 0;
+                return load_default_icon();
             }
         }
 
@@ -1803,7 +1783,7 @@ namespace lfs::python {
         }
 
         const bool clicked = lfs::vis::gui::widgets::IconButton(
-            id.c_str(), static_cast<unsigned int>(texture_id), btn_size, selected, nullptr);
+            id.c_str(), static_cast<unsigned int>(texture_id), btn_size, selected, id.c_str());
 
         if (disabled) {
             ImGui::EndDisabled();

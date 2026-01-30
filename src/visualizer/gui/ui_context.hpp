@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -27,6 +28,27 @@ namespace lfs::vis {
             ImFont* small_font = nullptr; // Avoid Windows macro collision
             ImFont* section = nullptr;
             ImFont* monospace = nullptr; // For code editor
+
+            static constexpr int MONO_SIZE_COUNT = 5;
+            ImFont* monospace_sized[MONO_SIZE_COUNT] = {};
+            float monospace_sizes[MONO_SIZE_COUNT] = {};
+
+            ImFont* monoForScale(float scale) const {
+                if (MONO_SIZE_COUNT == 0 || !monospace_sized[0])
+                    return monospace;
+                int best = 0;
+                float best_diff = std::numeric_limits<float>::max();
+                for (int i = 0; i < MONO_SIZE_COUNT; ++i) {
+                    if (!monospace_sized[i]) break;
+                    const float diff = monospace_sizes[i] - scale;
+                    const float dist = diff * diff;
+                    if (dist < best_diff) {
+                        best_diff = dist;
+                        best = i;
+                    }
+                }
+                return monospace_sized[best];
+            }
         };
 
         struct UIContext {

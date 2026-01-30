@@ -16,6 +16,12 @@ using ssize_t = SSIZE_T;
 
 namespace lfs::vis::terminal {
 
+    struct EmbeddedFds {
+        int read_fd = -1;
+        int write_fd = -1;
+        bool valid() const { return read_fd >= 0 && write_fd >= 0; }
+    };
+
     class PtyProcess {
     public:
         static constexpr int DEFAULT_COLS = 80;
@@ -30,6 +36,7 @@ namespace lfs::vis::terminal {
         PtyProcess& operator=(PtyProcess&& other) noexcept;
 
         bool spawn(const std::string& shell = "", int cols = DEFAULT_COLS, int rows = DEFAULT_ROWS);
+        bool attach(int fd);
         void close();
         [[nodiscard]] bool is_running() const;
 
@@ -45,14 +52,18 @@ namespace lfs::vis::terminal {
         void cleanup();
 
 #ifdef _WIN32
+        bool attachPipes(HANDLE read_handle, HANDLE write_handle);
+
         HPCON hpc_ = nullptr;
         HANDLE pipe_in_ = INVALID_HANDLE_VALUE;
         HANDLE pipe_out_ = INVALID_HANDLE_VALUE;
         HANDLE process_ = INVALID_HANDLE_VALUE;
         HANDLE thread_ = INVALID_HANDLE_VALUE;
+        bool pipe_only_ = false;
 #else
         int master_fd_ = -1;
         pid_t child_pid_ = -1;
+        bool attached_ = false;
 #endif
     };
 

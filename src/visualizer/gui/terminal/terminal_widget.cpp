@@ -6,6 +6,14 @@
 #include <core/logger.hpp>
 #include <cstring>
 
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#else
+#include <pty.h>
+#include <unistd.h>
+#endif
+
 namespace lfs::vis::terminal {
 
     namespace {
@@ -149,6 +157,76 @@ namespace lfs::vis::terminal {
         }
     }
 
+    EmbeddedFds TerminalWidget::spawnEmbedded() {
+        pty_.close();
+        destroyVterm();
+        initVterm();
+        scrollback_.clear();
+        scroll_offset_ = 0;
+        needs_redraw_ = true;
+
+#ifdef _WIN32
+        // stdin pair: Python reads from stdin_read, terminal writes to stdin_write
+        HANDLE stdin_read = INVALID_HANDLE_VALUE;
+        HANDLE stdin_write = INVALID_HANDLE_VALUE;
+        if (!CreatePipe(&stdin_read, &stdin_write, nullptr, 0)) {
+            LOG_ERROR("CreatePipe for stdin failed");
+            return {};
+        }
+
+        // stdout pair: Python writes to stdout_write, terminal reads from stdout_read
+        HANDLE stdout_read = INVALID_HANDLE_VALUE;
+        HANDLE stdout_write = INVALID_HANDLE_VALUE;
+        if (!CreatePipe(&stdout_read, &stdout_write, nullptr, 0)) {
+            LOG_ERROR("CreatePipe for stdout failed");
+            CloseHandle(stdin_read);
+            CloseHandle(stdin_write);
+            return {};
+        }
+
+        // Terminal side: reads from stdout_read, writes to stdin_write
+        if (!pty_.attachPipes(stdout_read, stdin_write)) {
+            CloseHandle(stdin_read);
+            CloseHandle(stdin_write);
+            CloseHandle(stdout_read);
+            CloseHandle(stdout_write);
+            return {};
+        }
+
+        // Python side: convert HANDLEs to C file descriptors
+        const int py_read_fd = _open_osfhandle(reinterpret_cast<intptr_t>(stdin_read), _O_RDONLY);
+        const int py_write_fd = _open_osfhandle(reinterpret_cast<intptr_t>(stdout_write), _O_WRONLY);
+
+        if (py_read_fd < 0 || py_write_fd < 0) {
+            LOG_ERROR("_open_osfhandle failed");
+            pty_.close();
+            if (py_read_fd < 0) CloseHandle(stdin_read);
+            if (py_write_fd < 0) CloseHandle(stdout_write);
+            return {};
+        }
+
+        return {py_read_fd, py_write_fd};
+#else
+        int master = -1, slave = -1;
+        struct winsize ws = {};
+        ws.ws_col = static_cast<unsigned short>(cols_);
+        ws.ws_row = static_cast<unsigned short>(rows_);
+
+        if (openpty(&master, &slave, nullptr, nullptr, &ws) < 0) {
+            LOG_ERROR("openpty failed");
+            return {};
+        }
+
+        if (!pty_.attach(master)) {
+            ::close(master);
+            ::close(slave);
+            return {};
+        }
+
+        return {slave, slave};
+#endif
+    }
+
     void TerminalWidget::pump() {
         if (!pty_.is_running())
             return;
@@ -191,6 +269,7 @@ namespace lfs::vis::terminal {
             is_focused_ = false;
 
         if (is_focused_ && !read_only_) {
+            ImGui::GetIO().WantCaptureKeyboard = true;
             processInput();
             ImGui::GetIO().InputQueueCharacters.resize(0);
         }

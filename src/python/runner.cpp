@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <format>
 #include <string>
+#include <thread>
 
 #include <core/executable_path.hpp>
 #include <core/logger.hpp>
@@ -18,7 +19,11 @@
 #include "python_runtime.hpp"
 #include "training/control/control_boundary.hpp"
 #include <Python.h>
+#include <atomic>
 #include <mutex>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #endif
 
 namespace lfs::python {
@@ -418,6 +423,161 @@ _add_dll_dirs()
             redirect_output();
             PyGILState_Release(gil);
         });
+#endif
+    }
+
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+    static std::thread g_repl_thread;
+    static std::atomic<bool> g_repl_running{false};
+    static std::atomic<int> g_repl_read_fd{-1};
+    static std::atomic<int> g_repl_write_fd{-1};
+
+    static void close_fd(int fd) {
+        if (fd < 0) return;
+#ifdef _WIN32
+        _close(fd);
+#else
+        ::close(fd);
+#endif
+    }
+#endif
+
+    void start_embedded_repl(int read_fd, int write_fd) {
+#ifndef LFS_BUILD_PYTHON_BINDINGS
+        (void)read_fd;
+        (void)write_fd;
+#else
+        stop_embedded_repl();
+        ensure_initialized();
+
+        auto& pm = PackageManager::instance();
+        if (!pm.is_installed("ptpython")) {
+            LOG_INFO("Installing ptpython...");
+            const auto result = pm.install("ptpython");
+            if (!result.success) {
+                LOG_WARN("Failed to install ptpython: {} (falling back to code.interact)", result.error);
+            } else {
+                update_python_path();
+            }
+        }
+
+        g_repl_read_fd = read_fd;
+        g_repl_write_fd = write_fd;
+        g_repl_running = true;
+
+        g_repl_thread = std::thread([read_fd, write_fd]() {
+            const PyGILState_STATE gil = PyGILState_Ensure();
+            install_output_redirect();
+
+            SceneContextGuard ctx(get_application_scene());
+
+            const std::string setup = std::format(R"(
+import sys, os, atexit
+
+_repl_read_fd = {}
+_repl_write_fd = {}
+_repl_in  = os.fdopen(os.dup(_repl_read_fd), 'r', buffering=1)
+_repl_out = os.fdopen(os.dup(_repl_write_fd), 'w', buffering=1)
+
+_saved_stdin  = sys.stdin
+_saved_stdout = sys.stdout
+_saved_stderr = sys.stderr
+sys.stdin  = _repl_in
+sys.stdout = _repl_out
+sys.stderr = _repl_out
+
+import lichtfeld as lf
+_repl_locals = {{"lf": lf, "__name__": "__console__", "__doc__": None}}
+
+_histfile = os.path.join(os.path.expanduser("~"), ".lichtfeld", "repl_history")
+os.makedirs(os.path.dirname(_histfile), exist_ok=True)
+
+_used_ptpython = False
+try:
+    from ptpython.repl import embed as _pt_embed
+    from prompt_toolkit.output.vt100 import Vt100_Output
+    from prompt_toolkit.data_structures import Size
+    from prompt_toolkit.application import create_app_session
+
+    _pt_output = Vt100_Output(_repl_out, get_size=lambda: Size(rows=24, columns=80), enable_cpr=False)
+    _pt_input = None
+    if not _repl_in.isatty():
+        from prompt_toolkit.input.vt100 import Vt100Input
+        _pt_input = Vt100Input(_repl_in)
+
+    _used_ptpython = True
+    with create_app_session(input=_pt_input, output=_pt_output):
+        _pt_embed(
+            globals=_repl_locals,
+            locals=_repl_locals,
+            history_filename=_histfile,
+            title="LichtFeld Python Console",
+        )
+except ImportError:
+    pass
+except SystemExit:
+    pass
+
+if not _used_ptpython:
+    try:
+        import readline
+    except ImportError:
+        readline = None
+    if readline is not None:
+        import rlcompleter
+        readline.set_completer(rlcompleter.Completer(_repl_locals).complete)
+        readline.parse_and_bind("tab: complete")
+        readline.set_history_length(1000)
+        try:
+            readline.read_history_file(_histfile)
+        except FileNotFoundError:
+            pass
+        atexit.register(readline.write_history_file, _histfile)
+    try:
+        import code
+        code.interact(banner="LichtFeld Python Console", local=_repl_locals, exitmsg="")
+    except SystemExit:
+        pass
+
+sys.stdin  = _saved_stdin
+sys.stdout = _saved_stdout
+sys.stderr = _saved_stderr
+_repl_in.close()
+_repl_out.close()
+)",
+                                                  read_fd, write_fd);
+
+            PyRun_SimpleString(setup.c_str());
+
+            PyGILState_Release(gil);
+
+            close_fd(read_fd);
+            close_fd(write_fd);
+            g_repl_read_fd = -1;
+            g_repl_write_fd = -1;
+            g_repl_running = false;
+            LOG_INFO("Embedded REPL thread exited");
+        });
+#endif
+    }
+
+    void stop_embedded_repl() {
+#ifdef LFS_BUILD_PYTHON_BINDINGS
+        if (g_repl_running.load()) {
+            const int rfd = g_repl_read_fd.load();
+            const int wfd = g_repl_write_fd.load();
+            if (rfd >= 0) {
+                close_fd(rfd);
+                g_repl_read_fd = -1;
+            }
+            if (wfd >= 0 && wfd != rfd) {
+                close_fd(wfd);
+                g_repl_write_fd = -1;
+            }
+        }
+        if (g_repl_thread.joinable()) {
+            g_repl_thread.join();
+        }
 #endif
     }
 

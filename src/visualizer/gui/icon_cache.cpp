@@ -13,6 +13,7 @@ namespace lfs::vis::gui {
     namespace {
         constexpr const char* ICON_PREFIX = "icon/";
         constexpr const char* ICON_SUFFIX = ".png";
+        constexpr const char* DEFAULT_ICON = "default";
     } // namespace
 
     IconCache& IconCache::instance() {
@@ -35,7 +36,10 @@ namespace lfs::vis::gui {
             }
         }
 
-        const unsigned int texture_id = loadTexture(name);
+        unsigned int texture_id = loadTexture(name);
+        if (texture_id == 0 && name != DEFAULT_ICON) {
+            texture_id = loadTexture(DEFAULT_ICON);
+        }
 
         {
             std::lock_guard lock(mutex_);
