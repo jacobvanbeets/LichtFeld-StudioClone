@@ -5,12 +5,17 @@
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Optional, Callable, Tuple
 from urllib.parse import urlparse
 
 from .plugin import PluginInstance
 from .errors import PluginDependencyError, PluginError
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 
 
 class PluginInstaller:
@@ -63,8 +68,10 @@ class PluginInstaller:
         self, on_progress: Optional[Callable[[str], None]] = None
     ) -> bool:
         """Install all dependencies declared in plugin.toml."""
-        deps = self.plugin.info.dependencies
-        if not deps:
+        deps = list(self.plugin.info.dependencies)
+        plugin_path = self.plugin.info.path
+        use_sync = (plugin_path / "uv.lock").exists()
+        if not deps and not use_sync:
             return True
 
         uv = self._find_uv()
@@ -73,30 +80,54 @@ class PluginInstaller:
 
         venv_python = self._get_venv_python()
 
-        for i, pkg in enumerate(deps):
-            if on_progress:
-                on_progress(f"[{i+1}/{len(deps)}] Installing {pkg}...")
+        if use_sync:
+            cmd = [
+                str(uv),
+                "sync",
+                "--project",
+                str(plugin_path),
+                "--python",
+                str(venv_python),
+            ]
+            action = "Syncing dependencies with uv..."
+            error_label = "uv sync"
+        else:
+            cmd = [
+                str(uv),
+                "pip",
+                "install",
+                "--project",
+                str(plugin_path),
+                "--python",
+                str(venv_python),
+                *deps,
+            ]
+            action = f"Installing {len(deps)} dependencies with uv..."
+            error_label = "uv pip install"
 
-            proc = subprocess.Popen(
-                [str(uv), "pip", "install", pkg, "--python", str(venv_python)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
+        if on_progress:
+            on_progress(action)
 
-            output_lines = []
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
+        output_lines = []
+        if proc.stdout is not None:
             for line in iter(proc.stdout.readline, ""):
                 line = line.rstrip()
                 if line and on_progress:
                     on_progress(line)
                 output_lines.append(line)
 
-            proc.wait()
-            if proc.returncode != 0:
-                raise PluginDependencyError(
-                    f"Failed to install {pkg}:\n" + "\n".join(output_lines[-10:])
-                )
+        proc.wait()
+        if proc.returncode != 0:
+            tail = "\n".join(output_lines[-10:])
+            raise PluginDependencyError(f"{error_label} failed:\n{tail}")
 
         return True
 
@@ -226,10 +257,9 @@ def clone_from_url(
         plugin_name = repo[10:-7]  # Remove "LichtFeld-" and "-Plugin"
     else:
         plugin_name = repo
-    target_dir = plugins_dir / plugin_name
 
-    if target_dir.exists():
-        raise PluginError(f"Plugin directory already exists: {target_dir}")
+    plugins_dir.mkdir(parents=True, exist_ok=True)
+    temp_dir = Path(tempfile.mkdtemp(prefix=f".{repo}-", dir=plugins_dir))
 
     if on_progress:
         on_progress(f"Cloning {owner}/{repo}...")
@@ -243,20 +273,35 @@ def clone_from_url(
     cmd = [git, "clone", "--depth", "1"]
     if branch:
         cmd.extend(["--branch", branch])
-    cmd.extend([clone_url, str(target_dir)])
+    cmd.extend([clone_url, str(temp_dir)])
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
+        shutil.rmtree(temp_dir, ignore_errors=True)
         raise PluginError(f"Failed to clone repository: {result.stderr}")
 
     # Verify it's a valid plugin
-    if not (target_dir / "plugin.toml").exists():
-        shutil.rmtree(target_dir)
+    manifest_path = temp_dir / "plugin.toml"
+    if not manifest_path.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
         raise PluginError(f"Repository is not a valid plugin (missing plugin.toml)")
 
+    with open(manifest_path, "rb") as f:
+        data = tomllib.load(f)
+    manifest_name = str(data.get("plugin", {}).get("name", "")).strip()
+    final_name = manifest_name or plugin_name
+    target_dir = plugins_dir / final_name
+
+    if target_dir.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise PluginError(f"Plugin directory already exists: {target_dir}")
+
+    if temp_dir != target_dir:
+        temp_dir.replace(target_dir)
+
     if on_progress:
-        on_progress(f"Cloned {plugin_name}")
+        on_progress(f"Cloned {final_name}")
 
     return target_dir
 

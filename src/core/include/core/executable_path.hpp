@@ -6,6 +6,8 @@
 
 #include <filesystem>
 #include <stdexcept>
+#include <string>
+#include <system_error>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -102,19 +104,40 @@ namespace lfs::core {
         const auto exe_dir = getExecutableDir();
 
         auto module_exists = [](const std::filesystem::path& dir) {
-            // Check various naming patterns nanobind might produce
+            std::error_code ec;
+            if (!std::filesystem::exists(dir, ec)) {
+                return false;
+            }
+
+            // Check various naming patterns nanobind might produce.
             for (const auto& name : {
-                     "lichtfeld.abi3.so",
-                     "lichtfeld.so",
-                     "lichtfeld.cpython-312-x86_64-linux-gnu.so",
-                     "lichtfeld.pyd",
-                     "lichtfeld.abi3.pyd",
-                     "lichtfeld.cp312-win_amd64.pyd",
-                     "lichtfeld.cp311-win_amd64.pyd"}) {
-                if (std::filesystem::exists(dir / name)) {
+                "lichtfeld.abi3.so",
+                "lichtfeld.so",
+                "lichtfeld.pyd",
+                "lichtfeld.abi3.pyd",
+                "lichtfeld.cp312-win_amd64.pyd",
+                "lichtfeld.cp311-win_amd64.pyd"
+            }) {
+                if (std::filesystem::exists(dir / name, ec)) {
                     return true;
                 }
             }
+
+            // Match platform-specific CPython suffixes (e.g., lichtfeld.cpython-312-x86_64-linux-gnu.so).
+            for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+                if (ec) {
+                    break;
+                }
+                if (!entry.is_regular_file(ec)) {
+                    continue;
+                }
+                const auto filename = entry.path().filename().string();
+                const auto ext = entry.path().extension().string();
+                if ((ext == ".so" || ext == ".pyd") && filename.rfind("lichtfeld", 0) == 0) {
+                    return true;
+                }
+            }
+
             return false;
         };
 
