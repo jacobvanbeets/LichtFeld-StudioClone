@@ -116,17 +116,17 @@ namespace lfs::python {
         nb::class_<KeyTrigger>(keymap, "KeyTrigger")
             .def(nb::init<int, int, bool>(),
                  nb::arg("key"), nb::arg("modifiers") = MODIFIER_NONE, nb::arg("on_repeat") = false)
-            .def_rw("key", &KeyTrigger::key)
-            .def_rw("modifiers", &KeyTrigger::modifiers)
-            .def_rw("on_repeat", &KeyTrigger::on_repeat);
+            .def_rw("key", &KeyTrigger::key, "Key code")
+            .def_rw("modifiers", &KeyTrigger::modifiers, "Modifier key bitmask")
+            .def_rw("on_repeat", &KeyTrigger::on_repeat, "Whether to trigger on key repeat");
 
         // MouseButtonTrigger class
         nb::class_<MouseButtonTrigger>(keymap, "MouseButtonTrigger")
             .def(nb::init<MouseButton, int, bool>(),
                  nb::arg("button"), nb::arg("modifiers") = MODIFIER_NONE, nb::arg("double_click") = false)
-            .def_rw("button", &MouseButtonTrigger::button)
-            .def_rw("modifiers", &MouseButtonTrigger::modifiers)
-            .def_rw("double_click", &MouseButtonTrigger::double_click);
+            .def_rw("button", &MouseButtonTrigger::button, "Mouse button")
+            .def_rw("modifiers", &MouseButtonTrigger::modifiers, "Modifier key bitmask")
+            .def_rw("double_click", &MouseButtonTrigger::double_click, "Whether to require double-click");
 
         // Binding operations
         keymap.def(
@@ -136,7 +136,8 @@ namespace lfs::python {
                     return Action::NONE;
                 return get_keymap_bindings()->getActionForKey(mode, key, modifiers);
             },
-            nb::arg("mode"), nb::arg("key"), nb::arg("modifiers") = 0);
+            nb::arg("mode"), nb::arg("key"), nb::arg("modifiers") = 0,
+            "Get action bound to a key in given mode");
 
         keymap.def(
             "get_key_for_action",
@@ -145,7 +146,8 @@ namespace lfs::python {
                     return -1;
                 return get_keymap_bindings()->getKeyForAction(action, mode);
             },
-            nb::arg("action"), nb::arg("mode") = ToolMode::GLOBAL);
+            nb::arg("action"), nb::arg("mode") = ToolMode::GLOBAL,
+            "Get key code bound to an action");
 
         keymap.def(
             "get_trigger_description",
@@ -154,7 +156,8 @@ namespace lfs::python {
                     return std::string();
                 return get_keymap_bindings()->getTriggerDescription(action, mode);
             },
-            nb::arg("action"), nb::arg("mode") = ToolMode::GLOBAL);
+            nb::arg("action"), nb::arg("mode") = ToolMode::GLOBAL,
+            "Get human-readable description of action's trigger");
 
         keymap.def(
             "set_binding",
@@ -164,7 +167,8 @@ namespace lfs::python {
                 KeyTrigger trigger{key, modifiers, false};
                 get_keymap_bindings()->setBinding(mode, action, trigger);
             },
-            nb::arg("mode"), nb::arg("action"), nb::arg("key"), nb::arg("modifiers") = 0);
+            nb::arg("mode"), nb::arg("action"), nb::arg("key"), nb::arg("modifiers") = 0,
+            "Bind a key to an action in given mode");
 
         keymap.def(
             "clear_binding",
@@ -173,22 +177,26 @@ namespace lfs::python {
                     return;
                 get_keymap_bindings()->clearBinding(mode, action);
             },
-            nb::arg("mode"), nb::arg("action"));
+            nb::arg("mode"), nb::arg("action"),
+            "Remove binding for an action in given mode");
 
         keymap.def(
             "get_action_name",
             [](Action action) { return getActionName(action); },
-            nb::arg("action"));
+            nb::arg("action"),
+            "Get display name for an action");
 
         keymap.def(
             "get_key_name",
             [](int key) { return getKeyName(key); },
-            nb::arg("key"));
+            nb::arg("key"),
+            "Get display name for a key code");
 
         keymap.def(
             "get_modifier_string",
             [](int modifiers) { return getModifierString(modifiers); },
-            nb::arg("modifiers"));
+            nb::arg("modifiers"),
+            "Get display string for modifier bitmask");
 
         keymap.def(
             "get_available_profiles",
@@ -196,7 +204,8 @@ namespace lfs::python {
                 if (!get_keymap_bindings())
                     return std::vector<std::string>();
                 return get_keymap_bindings()->getAvailableProfiles();
-            });
+            },
+            "Get list of available keymap profile names");
 
         keymap.def(
             "get_current_profile",
@@ -204,7 +213,8 @@ namespace lfs::python {
                 if (!get_keymap_bindings())
                     return std::string();
                 return get_keymap_bindings()->getCurrentProfileName();
-            });
+            },
+            "Get name of active keymap profile");
 
         keymap.def(
             "load_profile",
@@ -213,7 +223,8 @@ namespace lfs::python {
                     return;
                 get_keymap_bindings()->loadProfile(name);
             },
-            nb::arg("name"));
+            nb::arg("name"),
+            "Load a keymap profile by name");
 
         keymap.def(
             "save_profile",
@@ -222,7 +233,8 @@ namespace lfs::python {
                     return;
                 get_keymap_bindings()->saveProfile(name);
             },
-            nb::arg("name"));
+            nb::arg("name"),
+            "Save current bindings as a named profile");
 
         keymap.def(
             "export_profile",

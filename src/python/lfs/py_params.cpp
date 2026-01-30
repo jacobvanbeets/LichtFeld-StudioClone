@@ -921,10 +921,11 @@ namespace lfs::python {
 
         nb::class_<PyOptimizationParams>(m, "OptimizationParams")
             .def(nb::init<>())
-            .def_prop_ro("__property_group__", [](PyOptimizationParams&) { return "optimization"; })
+            .def_prop_ro(
+                "__property_group__", [](PyOptimizationParams&) { return "optimization"; }, "Property group identifier")
             .def("get", &PyOptimizationParams::get, nb::arg("name"), "Get property value by name")
             .def("set", &PyOptimizationParams::set, nb::arg("name"), nb::arg("value"), "Set property value by name")
-            .def("__getattr__", &PyOptimizationParams::get, nb::arg("name"))
+            .def("__getattr__", &PyOptimizationParams::get, nb::arg("name"), "Get property value by attribute name")
             .def("prop_info", &PyOptimizationParams::prop_info, nb::arg("prop_id"),
                  "Get metadata for a property")
             .def("reset", &PyOptimizationParams::reset, nb::arg("prop_id"),
@@ -938,40 +939,51 @@ namespace lfs::python {
             .def_prop_rw(
                 "iterations",
                 [](PyOptimizationParams& self) { return self.params().iterations; },
-                [](PyOptimizationParams& self, size_t v) { self.params().iterations = v; })
+                [](PyOptimizationParams& self, size_t v) { self.params().iterations = v; },
+                "Maximum training iterations")
             .def_prop_rw(
                 "means_lr",
                 [](PyOptimizationParams& self) { return self.params().means_lr; },
-                [](PyOptimizationParams& self, float v) { self.params().means_lr = v; })
+                [](PyOptimizationParams& self, float v) { self.params().means_lr = v; },
+                "Learning rate for gaussian positions")
             .def_prop_rw(
                 "shs_lr",
                 [](PyOptimizationParams& self) { return self.params().shs_lr; },
-                [](PyOptimizationParams& self, float v) { self.params().shs_lr = v; })
+                [](PyOptimizationParams& self, float v) { self.params().shs_lr = v; },
+                "Learning rate for spherical harmonics")
             .def_prop_rw(
                 "opacity_lr",
                 [](PyOptimizationParams& self) { return self.params().opacity_lr; },
-                [](PyOptimizationParams& self, float v) { self.params().opacity_lr = v; })
+                [](PyOptimizationParams& self, float v) { self.params().opacity_lr = v; },
+                "Learning rate for opacity")
             .def_prop_rw(
                 "scaling_lr",
                 [](PyOptimizationParams& self) { return self.params().scaling_lr; },
-                [](PyOptimizationParams& self, float v) { self.params().scaling_lr = v; })
+                [](PyOptimizationParams& self, float v) { self.params().scaling_lr = v; },
+                "Learning rate for gaussian scales")
             .def_prop_rw(
                 "rotation_lr",
                 [](PyOptimizationParams& self) { return self.params().rotation_lr; },
-                [](PyOptimizationParams& self, float v) { self.params().rotation_lr = v; })
+                [](PyOptimizationParams& self, float v) { self.params().rotation_lr = v; },
+                "Learning rate for rotations")
             .def_prop_rw(
                 "lambda_dssim",
                 [](PyOptimizationParams& self) { return self.params().lambda_dssim; },
-                [](PyOptimizationParams& self, float v) { self.params().lambda_dssim = v; })
+                [](PyOptimizationParams& self, float v) { self.params().lambda_dssim = v; },
+                "Weight for structural similarity loss")
             .def_prop_rw(
                 "sh_degree",
                 [](PyOptimizationParams& self) { return self.params().sh_degree; },
-                [](PyOptimizationParams& self, int v) { self.params().sh_degree = v; })
+                [](PyOptimizationParams& self, int v) { self.params().sh_degree = v; },
+                "Spherical harmonics degree (0-3)")
             .def_prop_rw(
                 "max_cap",
                 [](PyOptimizationParams& self) { return self.params().max_cap; },
-                [](PyOptimizationParams& self, int v) { self.params().max_cap = v; })
-            .def_prop_ro("strategy", [](PyOptimizationParams& self) { return self.params().strategy; })
+                [](PyOptimizationParams& self, int v) { self.params().max_cap = v; },
+                "Maximum number of gaussians")
+            .def_prop_ro(
+                "strategy", [](PyOptimizationParams& self) { return self.params().strategy; },
+                "Active optimization strategy name")
             .def(
                 "set_strategy",
                 [](PyOptimizationParams& /*self*/, const std::string& strategy) {
@@ -985,39 +997,49 @@ namespace lfs::python {
                 },
                 nb::arg("strategy"),
                 "Set active strategy ('mcmc' or 'adc')")
-            .def_prop_ro("headless", [](PyOptimizationParams& self) { return self.params().headless; })
+            .def_prop_ro(
+                "headless", [](PyOptimizationParams& self) { return self.params().headless; },
+                "Whether running without visualization")
             .def_prop_rw(
                 "tile_mode",
                 [](PyOptimizationParams& self) { return self.params().tile_mode; },
-                [](PyOptimizationParams& self, int v) { self.params().tile_mode = v; })
+                [](PyOptimizationParams& self, int v) { self.params().tile_mode = v; },
+                "Tile mode (1, 2, or 4)")
             .def_prop_rw(
                 "steps_scaler",
                 [](PyOptimizationParams& self) { return self.params().steps_scaler; },
-                [](PyOptimizationParams& self, float v) { self.params().steps_scaler = v; })
+                [](PyOptimizationParams& self, float v) { self.params().steps_scaler = v; },
+                "Scale factor for training step counts")
             .def_prop_rw(
                 "gut",
                 [](PyOptimizationParams& self) { return self.params().gut; },
-                [](PyOptimizationParams& self, bool v) { self.params().gut = v; })
+                [](PyOptimizationParams& self, bool v) { self.params().gut = v; },
+                "Enable Gaussian Unscented Transform")
             .def_prop_rw(
                 "use_bilateral_grid",
                 [](PyOptimizationParams& self) { return self.params().use_bilateral_grid; },
-                [](PyOptimizationParams& self, bool v) { self.params().use_bilateral_grid = v; })
+                [](PyOptimizationParams& self, bool v) { self.params().use_bilateral_grid = v; },
+                "Enable bilateral grid color correction")
             .def_prop_rw(
                 "enable_sparsity",
                 [](PyOptimizationParams& self) { return self.params().enable_sparsity; },
-                [](PyOptimizationParams& self, bool v) { self.params().enable_sparsity = v; })
+                [](PyOptimizationParams& self, bool v) { self.params().enable_sparsity = v; },
+                "Enable sparsity optimization")
             .def_prop_rw(
                 "mip_filter",
                 [](PyOptimizationParams& self) { return self.params().mip_filter; },
-                [](PyOptimizationParams& self, bool v) { self.params().mip_filter = v; })
+                [](PyOptimizationParams& self, bool v) { self.params().mip_filter = v; },
+                "Enable mip filtering (anti-aliasing)")
             .def_prop_rw(
                 "ppisp",
                 [](PyOptimizationParams& self) { return self.params().use_ppisp; },
-                [](PyOptimizationParams& self, bool v) { self.params().use_ppisp = v; })
+                [](PyOptimizationParams& self, bool v) { self.params().use_ppisp = v; },
+                "Enable per-pixel image signal processing")
             .def_prop_rw(
                 "bg_mode",
                 [](PyOptimizationParams& self) { return self.params().bg_mode; },
-                [](PyOptimizationParams& self, BackgroundMode v) { self.params().bg_mode = v; })
+                [](PyOptimizationParams& self, BackgroundMode v) { self.params().bg_mode = v; },
+                "Background rendering mode")
             .def_prop_rw(
                 "bg_color",
                 [](PyOptimizationParams& self) {
@@ -1026,23 +1048,28 @@ namespace lfs::python {
                 },
                 [](PyOptimizationParams& self, std::tuple<float, float, float> v) {
                     self.params().bg_color = {std::get<0>(v), std::get<1>(v), std::get<2>(v)};
-                })
+                },
+                "Background color as (r, g, b) tuple")
             .def_prop_rw(
                 "bg_image_path",
                 [](PyOptimizationParams& self) { return self.params().bg_image_path.string(); },
-                [](PyOptimizationParams& self, const std::string& v) { self.params().bg_image_path = v; })
+                [](PyOptimizationParams& self, const std::string& v) { self.params().bg_image_path = v; },
+                "Path to background image")
             .def_prop_rw(
                 "random",
                 [](PyOptimizationParams& self) { return self.params().random; },
-                [](PyOptimizationParams& self, bool v) { self.params().random = v; })
+                [](PyOptimizationParams& self, bool v) { self.params().random = v; },
+                "Use random initialization instead of SfM")
             .def_prop_rw(
                 "mask_mode",
                 [](PyOptimizationParams& self) { return self.params().mask_mode; },
-                [](PyOptimizationParams& self, MaskMode v) { self.params().mask_mode = v; })
+                [](PyOptimizationParams& self, MaskMode v) { self.params().mask_mode = v; },
+                "Attention mask behavior during training")
             .def_prop_rw(
                 "invert_masks",
                 [](PyOptimizationParams& self) { return self.params().invert_masks; },
-                [](PyOptimizationParams& self, bool v) { self.params().invert_masks = v; })
+                [](PyOptimizationParams& self, bool v) { self.params().invert_masks = v; },
+                "Swap object and background in masks")
             .def_prop_ro(
                 "save_steps",
                 [](PyOptimizationParams& self) -> std::vector<size_t> {
@@ -1075,23 +1102,36 @@ namespace lfs::python {
                 },
                 "Clear all save steps");
 
-        m.def("optimization_params", []() { return PyOptimizationParams{}; });
+        m.def(
+            "optimization_params", []() { return PyOptimizationParams{}; },
+            "Get the optimization parameters object");
 
         nb::class_<PyDatasetConfig>(m, "DatasetParams")
             .def(nb::init<>())
-            .def_prop_ro("__property_group__", [](PyDatasetConfig&) { return "dataset"; })
+            .def_prop_ro(
+                "__property_group__", [](PyDatasetConfig&) { return "dataset"; }, "Property group identifier")
             .def("get", &PyDatasetConfig::get, nb::arg("name"), "Get property value by name")
             .def("set", &PyDatasetConfig::set, nb::arg("name"), nb::arg("value"), "Set property value by name")
             .def("prop_info", &PyDatasetConfig::prop_info, nb::arg("prop_id"), "Get metadata for a property")
             .def("properties", &PyDatasetConfig::properties, "List all properties with their current values")
             .def("get_all_properties", &PyDatasetConfig::get_all_properties,
                  "Get all property descriptors as Python Property objects")
-            .def("has_params", &PyDatasetConfig::has_params)
-            .def("can_edit", &PyDatasetConfig::can_edit)
-            .def_prop_ro("data_path", [](const PyDatasetConfig& self) { return self.params().data_path.string(); })
-            .def_prop_ro("output_path", [](const PyDatasetConfig& self) { return self.params().output_path.string(); })
-            .def_prop_ro("images", [](const PyDatasetConfig& self) { return self.params().images; })
-            .def_prop_ro("test_every", [](const PyDatasetConfig& self) { return self.params().test_every; })
+            .def("has_params", &PyDatasetConfig::has_params,
+                 "Check if TrainerManager is available")
+            .def("can_edit", &PyDatasetConfig::can_edit,
+                 "Check if dataset params can be edited (before training starts)")
+            .def_prop_ro(
+                "data_path", [](const PyDatasetConfig& self) { return self.params().data_path.string(); },
+                "Path to training data directory")
+            .def_prop_ro(
+                "output_path", [](const PyDatasetConfig& self) { return self.params().output_path.string(); },
+                "Path for output files")
+            .def_prop_ro(
+                "images", [](const PyDatasetConfig& self) { return self.params().images; },
+                "Subfolder name containing images")
+            .def_prop_ro(
+                "test_every", [](const PyDatasetConfig& self) { return self.params().test_every; },
+                "Use every Nth image for testing")
             .def_prop_rw(
                 "resize_factor",
                 [](const PyDatasetConfig& self) { return self.params().resize_factor; },
@@ -1099,7 +1139,8 @@ namespace lfs::python {
                     if (!self.can_edit())
                         throw std::runtime_error("Cannot edit dataset params during training");
                     self.params().resize_factor = v;
-                })
+                },
+                "Image resize factor (-1 = auto)")
             .def_prop_rw(
                 "max_width",
                 [](const PyDatasetConfig& self) { return self.params().max_width; },
@@ -1109,7 +1150,8 @@ namespace lfs::python {
                     if (v <= 0 || v > 4096)
                         throw std::invalid_argument("max_width must be between 1 and 4096");
                     self.params().max_width = v;
-                })
+                },
+                "Maximum image width in pixels")
             .def_prop_rw(
                 "use_cpu_cache",
                 [](const PyDatasetConfig& self) { return self.params().loading_params.use_cpu_memory; },
@@ -1117,7 +1159,8 @@ namespace lfs::python {
                     if (!self.can_edit())
                         throw std::runtime_error("Cannot edit dataset params during training");
                     self.params().loading_params.use_cpu_memory = v;
-                })
+                },
+                "Cache images in CPU memory")
             .def_prop_rw(
                 "use_fs_cache",
                 [](const PyDatasetConfig& self) { return self.params().loading_params.use_fs_cache; },
@@ -1125,9 +1168,12 @@ namespace lfs::python {
                     if (!self.can_edit())
                         throw std::runtime_error("Cannot edit dataset params during training");
                     self.params().loading_params.use_fs_cache = v;
-                });
+                },
+                "Use filesystem cache for images");
 
-        m.def("dataset_params", []() { return PyDatasetConfig{}; });
+        m.def(
+            "dataset_params", []() { return PyDatasetConfig{}; },
+            "Get the dataset parameters object");
 
         // Property change callback
         m.def(

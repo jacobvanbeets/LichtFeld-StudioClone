@@ -291,35 +291,43 @@ namespace lfs::python {
 
         nb::class_<PyGizmoContext>(m, "GizmoContext")
             .def(nb::init<>())
-            .def_prop_ro("has_selection", &PyGizmoContext::has_selection)
-            .def_prop_ro("selection_center", &PyGizmoContext::selection_center)
-            .def_prop_ro("selection_center_screen", &PyGizmoContext::selection_center_screen)
-            .def_prop_ro("camera_position", &PyGizmoContext::camera_position)
-            .def_prop_ro("camera_forward", &PyGizmoContext::camera_forward)
-            .def("world_to_screen", &PyGizmoContext::world_to_screen, nb::arg("pos"))
-            .def("screen_to_world_ray", &PyGizmoContext::screen_to_world_ray, nb::arg("pos"))
+            .def_prop_ro("has_selection", &PyGizmoContext::has_selection, "Whether any gaussians are selected")
+            .def_prop_ro("selection_center", &PyGizmoContext::selection_center, "Selection center in world space (x, y, z)")
+            .def_prop_ro("selection_center_screen", &PyGizmoContext::selection_center_screen, "Selection center in screen space (x, y)")
+            .def_prop_ro("camera_position", &PyGizmoContext::camera_position, "Camera position in world space (x, y, z)")
+            .def_prop_ro("camera_forward", &PyGizmoContext::camera_forward, "Camera forward direction (x, y, z)")
+            .def("world_to_screen", &PyGizmoContext::world_to_screen, nb::arg("pos"), "Project world position to screen coordinates")
+            .def("screen_to_world_ray", &PyGizmoContext::screen_to_world_ray, nb::arg("pos"), "Get world-space ray direction from screen point")
             .def("draw_line", &PyGizmoContext::draw_line_2d, nb::arg("start"), nb::arg("end"),
-                 nb::arg("color"), nb::arg("thickness") = 1.0f)
+                 nb::arg("color"), nb::arg("thickness") = 1.0f, "Draw a 2D line")
             .def("draw_circle", &PyGizmoContext::draw_circle_2d, nb::arg("center"), nb::arg("radius"),
-                 nb::arg("color"), nb::arg("thickness") = 1.0f)
+                 nb::arg("color"), nb::arg("thickness") = 1.0f, "Draw a 2D circle outline")
             .def("draw_rect", &PyGizmoContext::draw_rect_2d, nb::arg("min"), nb::arg("max"),
-                 nb::arg("color"), nb::arg("thickness") = 1.0f)
+                 nb::arg("color"), nb::arg("thickness") = 1.0f, "Draw a 2D rectangle outline")
             .def("draw_filled_rect", &PyGizmoContext::draw_filled_rect_2d, nb::arg("min"), nb::arg("max"),
-                 nb::arg("color"))
+                 nb::arg("color"), "Draw a filled 2D rectangle")
             .def("draw_filled_circle", &PyGizmoContext::draw_filled_circle_2d, nb::arg("center"),
-                 nb::arg("radius"), nb::arg("color"))
+                 nb::arg("radius"), nb::arg("color"), "Draw a filled 2D circle")
             .def("draw_line_3d", &PyGizmoContext::draw_line_3d, nb::arg("start"), nb::arg("end"),
-                 nb::arg("color"), nb::arg("thickness") = 1.0f);
+                 nb::arg("color"), nb::arg("thickness") = 1.0f, "Draw a 3D line");
 
         m.def(
             "register_gizmo", [](nb::object cls) { PyGizmoRegistry::instance().register_gizmo(cls); },
-            nb::arg("gizmo_class"));
+            nb::arg("gizmo_class"),
+            "Register a gizmo class for viewport overlay drawing");
         m.def(
             "unregister_gizmo", [](const std::string& id) { PyGizmoRegistry::instance().unregister_gizmo(id); },
-            nb::arg("id"));
-        m.def("unregister_all_gizmos", []() { PyGizmoRegistry::instance().unregister_all(); });
-        m.def("get_gizmo_ids", []() { return PyGizmoRegistry::instance().get_gizmo_ids(); });
-        m.def("has_gizmos", []() { return PyGizmoRegistry::instance().has_gizmos(); });
+            nb::arg("id"),
+            "Unregister a gizmo by ID");
+        m.def(
+            "unregister_all_gizmos", []() { PyGizmoRegistry::instance().unregister_all(); },
+            "Unregister all gizmos");
+        m.def(
+            "get_gizmo_ids", []() { return PyGizmoRegistry::instance().get_gizmo_ids(); },
+            "Get all registered gizmo IDs");
+        m.def(
+            "has_gizmos", []() { return PyGizmoRegistry::instance().has_gizmos(); },
+            "Check if any gizmos are registered");
     }
 
 } // namespace lfs::python

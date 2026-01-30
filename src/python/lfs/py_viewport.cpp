@@ -253,27 +253,40 @@ namespace lfs::python {
 
         nb::class_<PyViewportDrawContext>(m, "ViewportDrawContext")
             .def(nb::init<>())
-            .def("world_to_screen", &PyViewportDrawContext::world_to_screen, nb::arg("pos"))
-            .def("screen_to_world_ray", &PyViewportDrawContext::screen_to_world_ray, nb::arg("screen_pos"))
-            .def_prop_ro("camera_position", &PyViewportDrawContext::camera_position)
-            .def_prop_ro("camera_forward", &PyViewportDrawContext::camera_forward)
-            .def_prop_ro("viewport_size", &PyViewportDrawContext::viewport_size)
+            .def("world_to_screen", &PyViewportDrawContext::world_to_screen, nb::arg("pos"),
+                 "Project a (x, y, z) world position to (sx, sy) screen coordinates")
+            .def("screen_to_world_ray", &PyViewportDrawContext::screen_to_world_ray, nb::arg("screen_pos"),
+                 "Convert (sx, sy) screen position to a normalized world-space ray direction")
+            .def_prop_ro("camera_position", &PyViewportDrawContext::camera_position,
+                         "Camera position as (x, y, z)")
+            .def_prop_ro("camera_forward", &PyViewportDrawContext::camera_forward,
+                         "Camera forward direction as (x, y, z)")
+            .def_prop_ro("viewport_size", &PyViewportDrawContext::viewport_size,
+                         "Viewport dimensions as (width, height)")
             .def("draw_line_2d", &PyViewportDrawContext::draw_line_2d, nb::arg("start"), nb::arg("end"),
-                 nb::arg("color"), nb::arg("thickness") = 1.0f)
+                 nb::arg("color"), nb::arg("thickness") = 1.0f,
+                 "Draw a 2D line from start to end in screen coordinates")
             .def("draw_circle_2d", &PyViewportDrawContext::draw_circle_2d, nb::arg("center"), nb::arg("radius"),
-                 nb::arg("color"), nb::arg("thickness") = 1.0f)
+                 nb::arg("color"), nb::arg("thickness") = 1.0f,
+                 "Draw a 2D circle outline in screen coordinates")
             .def("draw_rect_2d", &PyViewportDrawContext::draw_rect_2d, nb::arg("min"), nb::arg("max"),
-                 nb::arg("color"), nb::arg("thickness") = 1.0f)
+                 nb::arg("color"), nb::arg("thickness") = 1.0f,
+                 "Draw a 2D rectangle outline in screen coordinates")
             .def("draw_filled_rect_2d", &PyViewportDrawContext::draw_filled_rect_2d, nb::arg("min"), nb::arg("max"),
-                 nb::arg("color"))
+                 nb::arg("color"),
+                 "Draw a filled 2D rectangle in screen coordinates")
             .def("draw_filled_circle_2d", &PyViewportDrawContext::draw_filled_circle_2d, nb::arg("center"),
-                 nb::arg("radius"), nb::arg("color"))
+                 nb::arg("radius"), nb::arg("color"),
+                 "Draw a filled 2D circle in screen coordinates")
             .def("draw_text_2d", &PyViewportDrawContext::draw_text_2d, nb::arg("pos"), nb::arg("text"),
-                 nb::arg("color"))
+                 nb::arg("color"),
+                 "Draw text at a 2D screen position")
             .def("draw_line_3d", &PyViewportDrawContext::draw_line_3d, nb::arg("start"), nb::arg("end"),
-                 nb::arg("color"), nb::arg("thickness") = 1.0f)
+                 nb::arg("color"), nb::arg("thickness") = 1.0f,
+                 "Draw a 3D line between two world-space points")
             .def("draw_point_3d", &PyViewportDrawContext::draw_point_3d, nb::arg("pos"),
-                 nb::arg("color"), nb::arg("size") = 4.0f);
+                 nb::arg("color"), nb::arg("size") = 4.0f,
+                 "Draw a point at a 3D world-space position");
 
         m.def(
             "draw_handler",

@@ -31,24 +31,24 @@ namespace lfs::python {
 
     void register_operator_return_value(nb::module_& m) {
         nb::class_<PyOperatorReturnValue>(m, "OperatorReturnValue")
-            .def_ro("status", &PyOperatorReturnValue::status)
-            .def_prop_ro("_data", &PyOperatorReturnValue::get_all_data)
-            .def_prop_ro("finished", &PyOperatorReturnValue::finished)
-            .def_prop_ro("cancelled", &PyOperatorReturnValue::cancelled)
-            .def_prop_ro("running_modal", &PyOperatorReturnValue::running_modal)
-            .def_prop_ro("pass_through", &PyOperatorReturnValue::pass_through)
-            .def("__getattr__", &PyOperatorReturnValue::getattr)
-            .def("__bool__", &PyOperatorReturnValue::finished);
+            .def_ro("status", &PyOperatorReturnValue::status, "Result status string")
+            .def_prop_ro("_data", &PyOperatorReturnValue::get_all_data, "Raw return data dictionary")
+            .def_prop_ro("finished", &PyOperatorReturnValue::finished, "Whether operator completed successfully")
+            .def_prop_ro("cancelled", &PyOperatorReturnValue::cancelled, "Whether operator was cancelled")
+            .def_prop_ro("running_modal", &PyOperatorReturnValue::running_modal, "Whether operator is running as modal")
+            .def_prop_ro("pass_through", &PyOperatorReturnValue::pass_through, "Whether event should pass through")
+            .def("__getattr__", &PyOperatorReturnValue::getattr, "Access return data by attribute name")
+            .def("__bool__", &PyOperatorReturnValue::finished, "True if operator finished successfully");
     }
 
     void register_ui_operators(nb::module_& m) {
 
         nb::class_<PyOperatorProperties>(m, "OperatorProperties")
             .def(nb::init<const std::string&>(), nb::arg("operator_id"))
-            .def("__setattr__", &PyOperatorProperties::set_property)
-            .def("__getattr__", &PyOperatorProperties::get_property)
-            .def_prop_ro("properties", &PyOperatorProperties::get_properties)
-            .def_prop_ro("operator_id", &PyOperatorProperties::get_operator_id);
+            .def("__setattr__", &PyOperatorProperties::set_property, "Set an operator property value")
+            .def("__getattr__", &PyOperatorProperties::get_property, "Get an operator property value")
+            .def_prop_ro("properties", &PyOperatorProperties::get_properties, "All properties as a dictionary")
+            .def_prop_ro("operator_id", &PyOperatorProperties::get_operator_id, "Operator identifier string");
 
         m.def(
             "unregister_operator", [](const std::string& id) {

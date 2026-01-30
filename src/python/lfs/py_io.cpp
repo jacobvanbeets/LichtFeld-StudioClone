@@ -92,14 +92,18 @@ namespace lfs::python {
 
     void register_io(nb::module_& m) {
         nb::class_<PyLoadResult>(m, "LoadResult")
-            .def_prop_ro("splat_data", &PyLoadResult::get_splat_data)
-            .def_prop_ro("scene_center", [](const PyLoadResult& r) { return r.scene_center; })
-            .def_prop_ro("loader_used", [](const PyLoadResult& r) { return r.loader_used; })
-            .def_prop_ro("load_time_ms", [](const PyLoadResult& r) { return r.load_time_ms; })
-            .def_prop_ro("warnings", [](const PyLoadResult& r) { return r.warnings; })
-            .def_prop_ro("cameras", &PyLoadResult::get_cameras)
-            .def_prop_ro("point_cloud", &PyLoadResult::get_point_cloud)
-            .def_prop_ro("is_dataset", &PyLoadResult::is_dataset);
+            .def_prop_ro("splat_data", &PyLoadResult::get_splat_data, "Loaded splat data, or None")
+            .def_prop_ro(
+                "scene_center", [](const PyLoadResult& r) { return r.scene_center; }, "Scene center [3] tensor")
+            .def_prop_ro(
+                "loader_used", [](const PyLoadResult& r) { return r.loader_used; }, "Name of loader that was used")
+            .def_prop_ro(
+                "load_time_ms", [](const PyLoadResult& r) { return r.load_time_ms; }, "Load time in milliseconds")
+            .def_prop_ro(
+                "warnings", [](const PyLoadResult& r) { return r.warnings; }, "List of warning messages from loading")
+            .def_prop_ro("cameras", &PyLoadResult::get_cameras, "Camera dataset, or None")
+            .def_prop_ro("point_cloud", &PyLoadResult::get_point_cloud, "Point cloud, or None")
+            .def_prop_ro("is_dataset", &PyLoadResult::is_dataset, "Whether loaded data is a dataset with cameras");
 
         m.def(
             "load",
@@ -146,7 +150,8 @@ namespace lfs::python {
             },
             nb::arg("path"), nb::arg("format") = nb::none(), nb::arg("resize_factor") = nb::none(),
             nb::arg("max_width") = nb::none(), nb::arg("images_folder") = nb::none(),
-            nb::arg("progress") = nb::none());
+            nb::arg("progress") = nb::none(),
+            "Load a scene or splat file from path");
 
         m.def(
             "save_ply",
@@ -166,7 +171,8 @@ namespace lfs::python {
                 if (!result)
                     throw std::runtime_error(std::format("Failed to save PLY: {}", result.error().format()));
             },
-            nb::arg("data"), nb::arg("path"), nb::arg("binary") = true, nb::arg("progress") = nb::none());
+            nb::arg("data"), nb::arg("path"), nb::arg("binary") = true, nb::arg("progress") = nb::none(),
+            "Save splat data as PLY file");
 
         m.def(
             "save_sog",
@@ -189,7 +195,8 @@ namespace lfs::python {
                     throw std::runtime_error(std::format("Failed to save SOG: {}", result.error().format()));
             },
             nb::arg("data"), nb::arg("path"), nb::arg("kmeans_iterations") = 10, nb::arg("use_gpu") = true,
-            nb::arg("progress") = nb::none());
+            nb::arg("progress") = nb::none(),
+            "Save splat data as SOG compressed file");
 
         m.def(
             "save_spz",
@@ -201,7 +208,8 @@ namespace lfs::python {
                 if (!result)
                     throw std::runtime_error(std::format("Failed to save SPZ: {}", result.error().format()));
             },
-            nb::arg("data"), nb::arg("path"));
+            nb::arg("data"), nb::arg("path"),
+            "Save splat data as SPZ compressed file");
 
         m.def(
             "export_html",
@@ -221,22 +229,28 @@ namespace lfs::python {
                 if (!result)
                     throw std::runtime_error(std::format("Failed to export HTML: {}", result.error().format()));
             },
-            nb::arg("data"), nb::arg("path"), nb::arg("kmeans_iterations") = 10, nb::arg("progress") = nb::none());
+            nb::arg("data"), nb::arg("path"), nb::arg("kmeans_iterations") = 10, nb::arg("progress") = nb::none(),
+            "Export splat data as self-contained HTML viewer");
 
         m.def(
             "is_dataset_path",
             [](const std::filesystem::path& path) { return io::Loader::isDatasetPath(path); },
-            nb::arg("path"));
+            nb::arg("path"),
+            "Check if path is a dataset directory");
 
-        m.def("get_supported_formats", []() {
-            auto loader = io::Loader::create();
-            return loader->getSupportedFormats();
-        });
+        m.def(
+            "get_supported_formats", []() {
+                auto loader = io::Loader::create();
+                return loader->getSupportedFormats();
+            },
+            "Get list of supported file format names");
 
-        m.def("get_supported_extensions", []() {
-            auto loader = io::Loader::create();
-            return loader->getSupportedExtensions();
-        });
+        m.def(
+            "get_supported_extensions", []() {
+                auto loader = io::Loader::create();
+                return loader->getSupportedExtensions();
+            },
+            "Get list of supported file extensions");
     }
 
 } // namespace lfs::python

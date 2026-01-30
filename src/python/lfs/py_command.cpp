@@ -165,18 +165,21 @@ namespace lfs::python {
 
         nb::class_<PyTransaction>(undo, "Transaction")
             .def(nb::init<const std::string&>(), nb::arg("name") = "Grouped Changes")
-            .def("__enter__", [](PyTransaction& self) { self.enter(); return &self; })
-            .def("__exit__", [](PyTransaction& self, nb::object, nb::object, nb::object) {
-                self.exit(true);
-                return false;
-            })
-            .def("add", &PyTransaction::add, nb::arg("undo"), nb::arg("redo"));
+            .def(
+                "__enter__", [](PyTransaction& self) { self.enter(); return &self; }, "Begin transaction context")
+            .def(
+                "__exit__", [](PyTransaction& self, nb::object, nb::object, nb::object) {
+                    self.exit(true);
+                    return false;
+                },
+                "Commit transaction on context exit")
+            .def("add", &PyTransaction::add, nb::arg("undo"), nb::arg("redo"), "Add an undo/redo pair to the transaction");
 
         undo.def(
             "transaction", [](const std::string& name) {
                 return PyTransaction(name);
             },
-            nb::arg("name") = "Grouped Changes");
+            nb::arg("name") = "Grouped Changes", "Create a transaction for grouping undo steps");
     }
 
 } // namespace lfs::python

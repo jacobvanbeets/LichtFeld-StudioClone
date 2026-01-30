@@ -512,23 +512,23 @@ NB_MODULE(lichtfeld, m) {
     // Context view class (caches snapshot on creation, call refresh() to update)
     nb::class_<PyContextView>(m, "Context")
         .def(nb::init<>())
-        .def_prop_ro("iteration", &PyContextView::iteration)
-        .def_prop_ro("max_iterations", &PyContextView::max_iterations)
-        .def_prop_ro("loss", &PyContextView::loss)
-        .def_prop_ro("num_gaussians", &PyContextView::num_gaussians)
-        .def_prop_ro("is_refining", &PyContextView::is_refining)
-        .def_prop_ro("is_training", &PyContextView::is_training)
-        .def_prop_ro("is_paused", &PyContextView::is_paused)
-        .def_prop_ro("phase", &PyContextView::phase)
-        .def_prop_ro("strategy", &PyContextView::strategy)
+        .def_prop_ro("iteration", &PyContextView::iteration, "Current iteration count")
+        .def_prop_ro("max_iterations", &PyContextView::max_iterations, "Maximum iteration count")
+        .def_prop_ro("loss", &PyContextView::loss, "Current training loss value")
+        .def_prop_ro("num_gaussians", &PyContextView::num_gaussians, "Number of Gaussians in the model")
+        .def_prop_ro("is_refining", &PyContextView::is_refining, "Whether training is in refinement phase")
+        .def_prop_ro("is_training", &PyContextView::is_training, "Whether training is currently running")
+        .def_prop_ro("is_paused", &PyContextView::is_paused, "Whether training is paused")
+        .def_prop_ro("phase", &PyContextView::phase, "Current training phase name")
+        .def_prop_ro("strategy", &PyContextView::strategy, "Active training strategy name")
         .def("refresh", &PyContextView::refresh, "Update cached snapshot from current state");
 
     // Gaussians view class
     nb::class_<PyGaussiansView>(m, "Gaussians")
         .def(nb::init<>())
-        .def_prop_ro("count", &PyGaussiansView::count)
-        .def_prop_ro("sh_degree", &PyGaussiansView::sh_degree)
-        .def_prop_ro("max_sh_degree", &PyGaussiansView::max_sh_degree);
+        .def_prop_ro("count", &PyGaussiansView::count, "Total number of Gaussians")
+        .def_prop_ro("sh_degree", &PyGaussiansView::sh_degree, "Current active SH degree")
+        .def_prop_ro("max_sh_degree", &PyGaussiansView::max_sh_degree, "Maximum SH degree");
 
     // Optimizer view class
     nb::class_<PyOptimizerView>(m, "Optimizer")
@@ -606,14 +606,30 @@ NB_MODULE(lichtfeld, m) {
         },
         "Get trainer error message");
 
-    m.def("start_training", []() { lfs::core::events::cmd::StartTraining{}.emit(); });
-    m.def("pause_training", []() { lfs::core::events::cmd::PauseTraining{}.emit(); });
-    m.def("resume_training", []() { lfs::core::events::cmd::ResumeTraining{}.emit(); });
-    m.def("stop_training", []() { lfs::core::events::cmd::StopTraining{}.emit(); });
-    m.def("reset_training", []() { lfs::core::events::cmd::ResetTraining{}.emit(); });
-    m.def("save_checkpoint", []() { lfs::core::events::cmd::SaveCheckpoint{}.emit(); });
-    m.def("clear_scene", []() { lfs::core::events::cmd::ClearScene{}.emit(); });
-    m.def("switch_to_edit_mode", []() { lfs::core::events::cmd::SwitchToEditMode{}.emit(); });
+    m.def(
+        "start_training", []() { lfs::core::events::cmd::StartTraining{}.emit(); },
+        "Start training with current parameters");
+    m.def(
+        "pause_training", []() { lfs::core::events::cmd::PauseTraining{}.emit(); },
+        "Pause the current training run");
+    m.def(
+        "resume_training", []() { lfs::core::events::cmd::ResumeTraining{}.emit(); },
+        "Resume a paused training run");
+    m.def(
+        "stop_training", []() { lfs::core::events::cmd::StopTraining{}.emit(); },
+        "Stop the current training run");
+    m.def(
+        "reset_training", []() { lfs::core::events::cmd::ResetTraining{}.emit(); },
+        "Reset training state to initial");
+    m.def(
+        "save_checkpoint", []() { lfs::core::events::cmd::SaveCheckpoint{}.emit(); },
+        "Save a training checkpoint to disk");
+    m.def(
+        "clear_scene", []() { lfs::core::events::cmd::ClearScene{}.emit(); },
+        "Remove all nodes from the scene");
+    m.def(
+        "switch_to_edit_mode", []() { lfs::core::events::cmd::SwitchToEditMode{}.emit(); },
+        "Switch from training to edit mode");
 
     m.def(
         "load_file",
@@ -673,18 +689,22 @@ NB_MODULE(lichtfeld, m) {
         },
         nb::arg("path"), "Save current training configuration to a JSON file.");
 
-    m.def("has_trainer", []() {
-        const auto* const tm = lfs::python::get_trainer_manager();
-        return tm && tm->hasTrainer();
-    });
+    m.def(
+        "has_trainer", []() {
+            const auto* const tm = lfs::python::get_trainer_manager();
+            return tm && tm->hasTrainer();
+        },
+        "Check if a trainer instance exists");
 
-    m.def("loss_buffer", []() -> std::vector<float> {
-        const auto* const tm = lfs::python::get_trainer_manager();
-        if (!tm)
-            return {};
-        auto loss_deque = tm->getLossBuffer();
-        return std::vector<float>(loss_deque.begin(), loss_deque.end());
-    });
+    m.def(
+        "loss_buffer", []() -> std::vector<float> {
+            const auto* const tm = lfs::python::get_trainer_manager();
+            if (!tm)
+                return {};
+            auto loss_deque = tm->getLossBuffer();
+            return std::vector<float>(loss_deque.begin(), loss_deque.end());
+        },
+        "Get the recent loss history as a list of floats");
 
     // Trainer status bar bindings
     m.def(
@@ -755,13 +775,13 @@ NB_MODULE(lichtfeld, m) {
         "set_node_visibility", [](const std::string& name, bool visible) {
             lfs::core::events::cmd::SetPLYVisibility{.name = name, .visible = visible}.emit();
         },
-        nb::arg("name"), nb::arg("visible"));
+        nb::arg("name"), nb::arg("visible"), "Set visibility of a scene node by name");
 
     m.def(
         "remove_node", [](const std::string& name, bool keep_children) {
             lfs::core::events::cmd::RemovePLY{.name = name, .keep_children = keep_children}.emit();
         },
-        nb::arg("name"), nb::arg("keep_children") = false);
+        nb::arg("name"), nb::arg("keep_children") = false, "Remove a scene node by name");
 
     m.def(
         "select_node", [](const std::string& name) {
@@ -771,29 +791,31 @@ NB_MODULE(lichtfeld, m) {
                 .metadata = {{"name", name}}}
                 .emit();
         },
-        nb::arg("name"));
+        nb::arg("name"), "Select a scene node by name");
 
-    m.def("deselect_all", []() {
-        lfs::core::events::ui::NodeDeselected{}.emit();
-    });
+    m.def(
+        "deselect_all", []() {
+            lfs::core::events::ui::NodeDeselected{}.emit();
+        },
+        "Deselect all scene nodes");
 
     m.def(
         "reparent_node", [](const std::string& name, const std::string& new_parent) {
             lfs::core::events::cmd::ReparentNode{.node_name = name, .new_parent_name = new_parent}.emit();
         },
-        nb::arg("name"), nb::arg("new_parent"));
+        nb::arg("name"), nb::arg("new_parent"), "Move a node under a new parent node");
 
     m.def(
         "rename_node", [](const std::string& old_name, const std::string& new_name) {
             lfs::core::events::cmd::RenamePLY{.old_name = old_name, .new_name = new_name}.emit();
         },
-        nb::arg("old_name"), nb::arg("new_name"));
+        nb::arg("old_name"), nb::arg("new_name"), "Rename a scene node");
 
     m.def(
         "add_group", [](const std::string& name, const std::string& parent) {
             lfs::core::events::cmd::AddGroup{.name = name, .parent_name = parent}.emit();
         },
-        nb::arg("name"), nb::arg("parent") = "");
+        nb::arg("name"), nb::arg("parent") = "", "Add a group node to the scene");
 
     // Transform APIs for operator system
     m.def(
@@ -1027,27 +1049,37 @@ NB_MODULE(lichtfeld, m) {
         nb::arg("texture_id"), "Free an icon texture");
 
     // Camera commands
-    m.def("reset_camera", []() { lfs::core::events::cmd::ResetCamera{}.emit(); });
-    m.def("toggle_fullscreen", []() { lfs::core::events::ui::ToggleFullscreen{}.emit(); });
-    m.def("is_fullscreen", []() -> bool {
-        auto* wm = lfs::vis::services().windowOrNull();
-        return wm ? wm->isFullscreen() : false;
-    });
-    m.def("toggle_ui", []() { lfs::core::events::ui::ToggleUI{}.emit(); });
+    m.def(
+        "reset_camera", []() { lfs::core::events::cmd::ResetCamera{}.emit(); },
+        "Reset camera to default position and orientation");
+    m.def(
+        "toggle_fullscreen", []() { lfs::core::events::ui::ToggleFullscreen{}.emit(); },
+        "Toggle fullscreen mode");
+    m.def(
+        "is_fullscreen", []() -> bool {
+            auto* wm = lfs::vis::services().windowOrNull();
+            return wm ? wm->isFullscreen() : false;
+        },
+        "Check if the window is in fullscreen mode");
+    m.def(
+        "toggle_ui", []() { lfs::core::events::ui::ToggleUI{}.emit(); },
+        "Toggle UI overlay visibility");
 
-    m.def("get_render_mode", []() -> RenderMode {
-        const auto* rm = lfs::python::get_rendering_manager();
-        if (!rm)
+    m.def(
+        "get_render_mode", []() -> RenderMode {
+            const auto* rm = lfs::python::get_rendering_manager();
+            if (!rm)
+                return RenderMode::Splats;
+            const auto& settings = rm->getSettings();
+            if (settings.point_cloud_mode)
+                return RenderMode::Points;
+            if (settings.show_rings)
+                return RenderMode::Rings;
+            if (settings.show_center_markers)
+                return RenderMode::Centers;
             return RenderMode::Splats;
-        const auto& settings = rm->getSettings();
-        if (settings.point_cloud_mode)
-            return RenderMode::Points;
-        if (settings.show_rings)
-            return RenderMode::Rings;
-        if (settings.show_center_markers)
-            return RenderMode::Centers;
-        return RenderMode::Splats;
-    });
+        },
+        "Get current render mode (Splats, Points, Rings, Centers)");
 
     m.def(
         "set_render_mode", [](RenderMode mode) {
@@ -1060,25 +1092,25 @@ NB_MODULE(lichtfeld, m) {
             settings.show_center_markers = (mode == RenderMode::Centers);
             rm->updateSettings(settings);
         },
-        nb::arg("mode"));
+        nb::arg("mode"), "Set the render mode (Splats, Points, Rings, Centers)");
 
-    m.def("is_orthographic", []() -> bool {
-        const auto* rm = lfs::python::get_rendering_manager();
-        return rm ? rm->getSettings().orthographic : false;
-    });
+    m.def(
+        "is_orthographic", []() -> bool {
+            const auto* rm = lfs::python::get_rendering_manager();
+            return rm ? rm->getSettings().orthographic : false;
+        },
+        "Check if orthographic projection is active");
 
     m.def(
         "set_orthographic", [](bool ortho) {
             auto* rm = lfs::python::get_rendering_manager();
             if (!rm)
                 return;
-            // setOrthographic requires viewport_height and distance_to_pivot
-            // For simple toggle, use the settings directly
             auto settings = rm->getSettings();
             settings.orthographic = ortho;
             rm->updateSettings(settings);
         },
-        nb::arg("ortho"));
+        nb::arg("ortho"), "Enable or disable orthographic projection");
 
     // Hook registration functions (decorator-style)
     m.def(
@@ -1457,13 +1489,27 @@ Example:
         "Internal: Clear scene context after console execution");
 
     nb::class_<lfs::io::DatasetInfo>(m, "DatasetInfo", "Information about a dataset directory")
-        .def_prop_ro("base_path", [](const lfs::io::DatasetInfo& i) { return i.base_path.string(); })
-        .def_prop_ro("images_path", [](const lfs::io::DatasetInfo& i) { return i.images_path.string(); })
-        .def_prop_ro("sparse_path", [](const lfs::io::DatasetInfo& i) { return i.sparse_path.string(); })
-        .def_prop_ro("masks_path", [](const lfs::io::DatasetInfo& i) { return i.masks_path.string(); })
-        .def_prop_ro("has_masks", [](const lfs::io::DatasetInfo& i) { return i.has_masks; })
-        .def_prop_ro("image_count", [](const lfs::io::DatasetInfo& i) { return i.image_count; })
-        .def_prop_ro("mask_count", [](const lfs::io::DatasetInfo& i) { return i.mask_count; })
+        .def_prop_ro(
+            "base_path", [](const lfs::io::DatasetInfo& i) { return i.base_path.string(); },
+            "Root directory of the dataset")
+        .def_prop_ro(
+            "images_path", [](const lfs::io::DatasetInfo& i) { return i.images_path.string(); },
+            "Path to the images directory")
+        .def_prop_ro(
+            "sparse_path", [](const lfs::io::DatasetInfo& i) { return i.sparse_path.string(); },
+            "Path to the COLMAP sparse reconstruction")
+        .def_prop_ro(
+            "masks_path", [](const lfs::io::DatasetInfo& i) { return i.masks_path.string(); },
+            "Path to the masks directory")
+        .def_prop_ro(
+            "has_masks", [](const lfs::io::DatasetInfo& i) { return i.has_masks; },
+            "Whether the dataset includes masks")
+        .def_prop_ro(
+            "image_count", [](const lfs::io::DatasetInfo& i) { return i.image_count; },
+            "Number of images in the dataset")
+        .def_prop_ro(
+            "mask_count", [](const lfs::io::DatasetInfo& i) { return i.mask_count; },
+            "Number of masks in the dataset")
         .def("__repr__", [](const lfs::io::DatasetInfo& i) {
             return std::format("DatasetInfo(base_path='{}', images={}, masks={})",
                                i.base_path.string(), i.image_count, i.mask_count);

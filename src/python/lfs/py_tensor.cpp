@@ -1539,9 +1539,9 @@ namespace lfs::python {
                         "Create m x n matrix with ones on diagonal")
 
             // DLPack protocol
-            .def("__dlpack__", &PyTensor::dlpack, nb::arg("stream") = nb::none())
-            .def("__dlpack_device__", &PyTensor::dlpack_device)
-            .def_static("from_dlpack", &PyTensor::from_dlpack, nb::arg("obj"))
+            .def("__dlpack__", &PyTensor::dlpack, nb::arg("stream") = nb::none(), "Export as DLPack capsule")
+            .def("__dlpack_device__", &PyTensor::dlpack_device, "Get DLPack device tuple")
+            .def_static("from_dlpack", &PyTensor::from_dlpack, nb::arg("obj"), "Create tensor from DLPack capsule or object")
 
             // Indexing
             .def("__getitem__", &PyTensor::getitem, "Get item/slice")
@@ -1663,6 +1663,7 @@ namespace lfs::python {
             .def("permute", &PyTensor::permute, nb::arg("dims"), "Permute dimensions")
             .def("flatten", &PyTensor::flatten, nb::arg("start_dim") = 0, nb::arg("end_dim") = -1, "Flatten dimensions")
             .def("expand", &PyTensor::expand, nb::arg("sizes"), "Expand tensor to larger size")
+            .def("repeat", &PyTensor::repeat, nb::arg("repeats"), "Repeat tensor along dimensions")
             .def("t", &PyTensor::t, "Transpose 2D tensor")
 
             // Extended unary operations
@@ -1744,7 +1745,7 @@ namespace lfs::python {
             .def_static("where", &PyTensor::where, nb::arg("condition"), nb::arg("x"), nb::arg("y"), "Conditional select")
 
             // String representation
-            .def("__repr__", &PyTensor::repr)
+            .def("__repr__", &PyTensor::repr, "String representation")
 
             // __array__ protocol for zero-copy NumPy interop (CPU only)
             // Allows: np.asarray(tensor) for zero-copy when tensor is CPU + contiguous

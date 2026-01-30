@@ -214,16 +214,20 @@ namespace lfs::python {
             "register_uilist", [](nb::object list_class) {
                 PyUIListRegistry::instance().register_uilist(list_class);
             },
-            nb::arg("list_class"));
+            nb::arg("list_class"), "Register a UIList class for custom list rendering");
 
         m.def(
             "unregister_uilist", [](const std::string& id) {
                 PyUIListRegistry::instance().unregister_uilist(id);
             },
-            nb::arg("id"));
+            nb::arg("id"), "Unregister a UIList by ID");
 
-        m.def("unregister_all_uilists", []() { PyUIListRegistry::instance().unregister_all(); });
-        m.def("get_uilist_ids", []() { return PyUIListRegistry::instance().get_uilist_ids(); });
+        m.def(
+            "unregister_all_uilists", []() { PyUIListRegistry::instance().unregister_all(); },
+            "Unregister all UIList classes");
+        m.def(
+            "get_uilist_ids", []() { return PyUIListRegistry::instance().get_uilist_ids(); },
+            "Get all registered UIList IDs");
     }
 
     void add_template_methods_to_uilayout(nb::class_<PyUILayout>& layout_class) {
@@ -236,20 +240,23 @@ namespace lfs::python {
                                                               data, propname, active_index, rows);
                 },
                 nb::arg("listtype_name"), nb::arg("list_id"), nb::arg("data"),
-                nb::arg("propname"), nb::arg("active_index"), nb::arg("rows") = 5)
+                nb::arg("propname"), nb::arg("active_index"), nb::arg("rows") = 5,
+                "Draw a selectable list widget, returns (changed, new_active_index)")
             .def(
                 "template_tree",
                 [](PyUILayout& self, const std::string& label, nb::object draw_callback, bool default_open) {
                     return PyUILayoutTemplates::template_tree(self, label, draw_callback, default_open);
                 },
-                nb::arg("label"), nb::arg("draw_callback"), nb::arg("default_open") = false)
+                nb::arg("label"), nb::arg("draw_callback"), nb::arg("default_open") = false,
+                "Draw a collapsible tree node with custom content")
             .def(
                 "template_id",
                 [](PyUILayout& self, const std::string& label, const std::vector<std::string>& items,
                    const std::string& current_id) {
                     return PyUILayoutTemplates::template_id(self, label, items, current_id);
                 },
-                nb::arg("label"), nb::arg("items"), nb::arg("current_id"));
+                nb::arg("label"), nb::arg("items"), nb::arg("current_id"),
+                "Draw a combo selector from string IDs, returns (changed, selected_id)");
     }
 
 } // namespace lfs::python

@@ -124,29 +124,36 @@ namespace lfs::python {
                 PyUIHookRegistry::instance().add_hook(panel, section, callback, parse_position(position));
             },
             nb::arg("panel"), nb::arg("section"), nb::arg("callback"),
-            nb::arg("position") = "append");
+            nb::arg("position") = "append",
+            "Add a UI hook callback to a panel section");
 
         m.def(
             "remove_hook",
             [](const std::string& panel, const std::string& section, nb::object callback) {
                 PyUIHookRegistry::instance().remove_hook(panel, section, callback);
             },
-            nb::arg("panel"), nb::arg("section"), nb::arg("callback"));
+            nb::arg("panel"), nb::arg("section"), nb::arg("callback"),
+            "Remove a specific UI hook callback");
 
         m.def(
             "clear_hooks",
             [](const std::string& panel, const std::string& section) {
                 PyUIHookRegistry::instance().clear_hooks(panel, section);
             },
-            nb::arg("panel"), nb::arg("section") = "");
+            nb::arg("panel"), nb::arg("section") = "",
+            "Clear all hooks for a panel or panel/section");
 
-        m.def("clear_all_hooks", []() {
-            PyUIHookRegistry::instance().clear_all();
-        });
+        m.def(
+            "clear_all_hooks", []() {
+                PyUIHookRegistry::instance().clear_all();
+            },
+            "Clear all registered UI hooks");
 
-        m.def("get_hook_points", []() {
-            return PyUIHookRegistry::instance().get_hook_points();
-        });
+        m.def(
+            "get_hook_points", []() {
+                return PyUIHookRegistry::instance().get_hook_points();
+            },
+            "Get all registered hook point identifiers");
 
         m.def(
             "invoke_hooks",
@@ -165,7 +172,8 @@ namespace lfs::python {
                     return func;
                 });
             },
-            nb::arg("panel"), nb::arg("section"), nb::arg("position") = "append");
+            nb::arg("panel"), nb::arg("section"), nb::arg("position") = "append",
+            "Decorator to register a UI hook for a panel section");
     }
 
 } // namespace lfs::python

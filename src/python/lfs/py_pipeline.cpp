@@ -118,51 +118,73 @@ namespace lfs::python {
         auto pipe = m.def_submodule("pipeline", "Compositional operations system");
 
         nb::class_<PyStage>(pipe, "Stage")
-            .def("__or__", [](const PyStage& a, const PyStage& b) {
-                PyPipeline p;
-                p.add(a);
-                p.add(b);
-                return p;
-            })
-            .def("execute", [](const PyStage& s) {
-                PyPipeline p;
-                p.add(s);
-                return p.execute();
-            });
+            .def(
+                "__or__", [](const PyStage& a, const PyStage& b) {
+                    PyPipeline p;
+                    p.add(a);
+                    p.add(b);
+                    return p;
+                },
+                "Chain two stages into a pipeline")
+            .def(
+                "execute", [](const PyStage& s) {
+                    PyPipeline p;
+                    p.add(s);
+                    return p.execute();
+                },
+                "Execute this stage immediately");
 
         nb::class_<PyPipeline>(pipe, "Pipeline")
             .def(nb::init<>())
-            .def(nb::init<std::string>(), nb::arg("name"))
-            .def("add", &PyPipeline::add, nb::rv_policy::reference)
-            .def("__or__", &PyPipeline::operator_or, nb::rv_policy::reference)
-            .def("execute", &PyPipeline::execute)
-            .def("poll", &PyPipeline::poll);
+            .def(nb::init<std::string>(), nb::arg("name"), "Create a named pipeline")
+            .def("add", &PyPipeline::add, nb::rv_policy::reference, "Append a stage to the pipeline")
+            .def("__or__", &PyPipeline::operator_or, nb::rv_policy::reference, "Append a stage via pipe operator")
+            .def("execute", &PyPipeline::execute, "Execute all stages and return result dict")
+            .def("poll", &PyPipeline::poll, "Check if all stages can execute");
 
         auto select = pipe.def_submodule("select", "Selection operations");
-        select.def("all", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectAll>(kwargs); });
-        select.def("none", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectNone>(kwargs); });
-        select.def("invert", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectInvert>(kwargs); });
-        select.def("grow", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectGrow>(kwargs); });
-        select.def("shrink", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectShrink>(kwargs); });
+        select.def(
+            "all", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectAll>(kwargs); }, "Create select-all stage");
+        select.def(
+            "none", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectNone>(kwargs); }, "Create deselect-all stage");
+        select.def(
+            "invert", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectInvert>(kwargs); }, "Create invert-selection stage");
+        select.def(
+            "grow", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectGrow>(kwargs); }, "Create grow-selection stage");
+        select.def(
+            "shrink", [](nb::kwargs kwargs) { return make_stage<vis::op::SelectShrink>(kwargs); }, "Create shrink-selection stage");
 
         auto edit = pipe.def_submodule("edit", "Edit operations");
-        edit.def("delete_", [](nb::kwargs kwargs) { return make_stage<vis::op::EditDelete>(kwargs); });
-        edit.def("duplicate", [](nb::kwargs kwargs) { return make_stage<vis::op::EditDuplicate>(kwargs); });
+        edit.def(
+            "delete_", [](nb::kwargs kwargs) { return make_stage<vis::op::EditDelete>(kwargs); }, "Create delete stage");
+        edit.def(
+            "duplicate", [](nb::kwargs kwargs) { return make_stage<vis::op::EditDuplicate>(kwargs); }, "Create duplicate stage");
 
         auto transform = pipe.def_submodule("transform", "Transform operations");
-        transform.def("translate", [](nb::kwargs kwargs) { return make_stage<vis::op::TransformTranslate>(kwargs); });
-        transform.def("rotate", [](nb::kwargs kwargs) { return make_stage<vis::op::TransformRotate>(kwargs); });
-        transform.def("scale", [](nb::kwargs kwargs) { return make_stage<vis::op::TransformScale>(kwargs); });
-        transform.def("set", [](nb::kwargs kwargs) { return make_stage<vis::op::TransformSet>(kwargs); });
+        transform.def(
+            "translate", [](nb::kwargs kwargs) { return make_stage<vis::op::TransformTranslate>(kwargs); }, "Create translation stage");
+        transform.def(
+            "rotate", [](nb::kwargs kwargs) { return make_stage<vis::op::TransformRotate>(kwargs); }, "Create rotation stage");
+        transform.def(
+            "scale", [](nb::kwargs kwargs) { return make_stage<vis::op::TransformScale>(kwargs); }, "Create scale stage");
+        transform.def(
+            "set", [](nb::kwargs kwargs) { return make_stage<vis::op::TransformSet>(kwargs); }, "Create set-transform stage");
 
         auto undo = pipe.def_submodule("undo", "Unified undo system");
-        undo.def("undo", [] { vis::op::undoHistory().undo(); });
-        undo.def("redo", [] { vis::op::undoHistory().redo(); });
-        undo.def("can_undo", [] { return vis::op::undoHistory().canUndo(); });
-        undo.def("can_redo", [] { return vis::op::undoHistory().canRedo(); });
-        undo.def("undo_name", [] { return vis::op::undoHistory().undoName(); });
-        undo.def("redo_name", [] { return vis::op::undoHistory().redoName(); });
-        undo.def("clear", [] { vis::op::undoHistory().clear(); });
+        undo.def(
+            "undo", [] { vis::op::undoHistory().undo(); }, "Undo last operation");
+        undo.def(
+            "redo", [] { vis::op::undoHistory().redo(); }, "Redo last undone operation");
+        undo.def(
+            "can_undo", [] { return vis::op::undoHistory().canUndo(); }, "Check if undo is available");
+        undo.def(
+            "can_redo", [] { return vis::op::undoHistory().canRedo(); }, "Check if redo is available");
+        undo.def(
+            "undo_name", [] { return vis::op::undoHistory().undoName(); }, "Get name of next undo operation");
+        undo.def(
+            "redo_name", [] { return vis::op::undoHistory().redoName(); }, "Get name of next redo operation");
+        undo.def(
+            "clear", [] { vis::op::undoHistory().clear(); }, "Clear undo history");
     }
 
 } // namespace lfs::python

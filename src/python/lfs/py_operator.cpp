@@ -61,12 +61,12 @@ namespace lfs::python {
 
         nb::class_<vis::op::OperatorDescriptor>(ops, "OperatorDescriptor")
             .def(nb::init<>())
-            .def_prop_ro("id", &vis::op::OperatorDescriptor::id)
-            .def_rw("label", &vis::op::OperatorDescriptor::label)
-            .def_rw("description", &vis::op::OperatorDescriptor::description)
-            .def_rw("icon", &vis::op::OperatorDescriptor::icon)
-            .def_rw("shortcut", &vis::op::OperatorDescriptor::shortcut)
-            .def_rw("flags", &vis::op::OperatorDescriptor::flags);
+            .def_prop_ro("id", &vis::op::OperatorDescriptor::id, "Unique operator identifier")
+            .def_rw("label", &vis::op::OperatorDescriptor::label, "Display label")
+            .def_rw("description", &vis::op::OperatorDescriptor::description, "Tooltip description")
+            .def_rw("icon", &vis::op::OperatorDescriptor::icon, "Icon name")
+            .def_rw("shortcut", &vis::op::OperatorDescriptor::shortcut, "Keyboard shortcut string")
+            .def_rw("flags", &vis::op::OperatorDescriptor::flags, "Operator behavior flags");
 
         ops.def(
             "invoke",
@@ -115,15 +115,18 @@ namespace lfs::python {
             "Invoke an operator by id with optional kwargs");
 
         ops.def(
-            "poll", [](const std::string& id) { return vis::op::operators().poll(id); }, nb::arg("id"));
+            "poll", [](const std::string& id) { return vis::op::operators().poll(id); }, nb::arg("id"),
+            "Check if an operator can run");
 
-        ops.def("get_all", []() {
-            std::vector<std::string> ids;
-            for (const auto* desc : vis::op::operators().getAllOperators()) {
-                ids.push_back(desc->id());
-            }
-            return ids;
-        });
+        ops.def(
+            "get_all", []() {
+                std::vector<std::string> ids;
+                for (const auto* desc : vis::op::operators().getAllOperators()) {
+                    ids.push_back(desc->id());
+                }
+                return ids;
+            },
+            "Get all registered operator IDs");
 
         ops.def(
             "get_descriptor",
@@ -131,14 +134,27 @@ namespace lfs::python {
                 const auto* desc = vis::op::operators().getDescriptor(id);
                 return desc ? std::optional(*desc) : std::nullopt;
             },
-            nb::arg("id"));
+            nb::arg("id"),
+            "Get operator descriptor by ID (None if not found)");
 
-        ops.def("undo", [] { vis::op::undoHistory().undo(); });
-        ops.def("redo", [] { vis::op::undoHistory().redo(); });
-        ops.def("can_undo", [] { return vis::op::undoHistory().canUndo(); });
-        ops.def("can_redo", [] { return vis::op::undoHistory().canRedo(); });
-        ops.def("has_modal", [] { return vis::op::operators().hasModalOperator(); });
-        ops.def("cancel_modal", [] { vis::op::operators().cancelModalOperator(); });
+        ops.def(
+            "undo", [] { vis::op::undoHistory().undo(); },
+            "Undo the last operation");
+        ops.def(
+            "redo", [] { vis::op::undoHistory().redo(); },
+            "Redo the last undone operation");
+        ops.def(
+            "can_undo", [] { return vis::op::undoHistory().canUndo(); },
+            "Check if undo is available");
+        ops.def(
+            "can_redo", [] { return vis::op::undoHistory().canRedo(); },
+            "Check if redo is available");
+        ops.def(
+            "has_modal", [] { return vis::op::operators().hasModalOperator(); },
+            "Check if a modal operator is running");
+        ops.def(
+            "cancel_modal", [] { vis::op::operators().cancelModalOperator(); },
+            "Cancel the active modal operator");
     }
 
 } // namespace lfs::python

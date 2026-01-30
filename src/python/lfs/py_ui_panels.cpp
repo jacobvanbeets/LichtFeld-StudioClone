@@ -523,16 +523,20 @@ namespace lfs::python {
         m.def(
             "register_panel",
             [](nb::object cls) { PyPanelRegistry::instance().register_panel(cls); },
-            nb::arg("cls"));
+            nb::arg("cls"),
+            "Register a panel class for rendering in the UI");
 
         m.def(
             "unregister_panel",
             [](nb::object cls) { PyPanelRegistry::instance().unregister_panel(cls); },
-            nb::arg("cls"));
+            nb::arg("cls"),
+            "Unregister a panel class");
 
-        m.def("unregister_all_panels", []() {
-            PyPanelRegistry::instance().unregister_all();
-        });
+        m.def(
+            "unregister_all_panels", []() {
+                PyPanelRegistry::instance().unregister_all();
+            },
+            "Unregister all Python panels");
 
         m.def(
             "get_panel_names", [](const std::string& space) {
@@ -550,19 +554,19 @@ namespace lfs::python {
                 }
                 return PyPanelRegistry::instance().get_panel_names(ps);
             },
-            nb::arg("space") = "FLOATING");
+            nb::arg("space") = "FLOATING", "Get registered panel names for a given space");
 
         m.def(
             "set_panel_enabled", [](const std::string& label, bool enabled) {
                 PyPanelRegistry::instance().set_panel_enabled(label, enabled);
             },
-            nb::arg("label"), nb::arg("enabled"));
+            nb::arg("label"), nb::arg("enabled"), "Enable or disable a panel by label");
 
         m.def(
             "is_panel_enabled", [](const std::string& label) {
                 return PyPanelRegistry::instance().is_panel_enabled(label);
             },
-            nb::arg("label"));
+            nb::arg("label"), "Check if a panel is enabled");
 
         m.def(
             "get_main_panel_tabs", []() {
@@ -577,7 +581,8 @@ namespace lfs::python {
                     result.append(info);
                 }
                 return result;
-            });
+            },
+            "Get all main panel tabs as list of dicts");
 
         m.def(
             "get_panel", [](const std::string& idname) -> nb::object {
@@ -593,19 +598,19 @@ namespace lfs::python {
                 info["space"] = static_cast<int>(panel->space);
                 return info;
             },
-            nb::arg("idname"));
+            nb::arg("idname"), "Get panel info by idname (None if not found)");
 
         m.def(
             "set_panel_label", [](const std::string& idname, const std::string& new_label) {
                 return PyPanelRegistry::instance().set_panel_label(idname, new_label);
             },
-            nb::arg("idname"), nb::arg("label"));
+            nb::arg("idname"), nb::arg("label"), "Set the display label for a panel");
 
         m.def(
             "set_panel_order", [](const std::string& idname, int new_order) {
                 return PyPanelRegistry::instance().set_panel_order(idname, new_order);
             },
-            nb::arg("idname"), nb::arg("order"));
+            nb::arg("idname"), nb::arg("order"), "Set the sort order for a panel");
 
         m.def(
             "set_panel_space", [](const std::string& idname, const std::string& space_str) {
@@ -625,11 +630,13 @@ namespace lfs::python {
                 }
                 return PyPanelRegistry::instance().set_panel_space(idname, space);
             },
-            nb::arg("idname"), nb::arg("space"));
+            nb::arg("idname"), nb::arg("space"), "Set the panel space (where it renders)");
 
-        m.def("has_main_panel_tabs", []() {
-            return PyPanelRegistry::instance().has_panels(PanelSpace::MainPanelTab);
-        });
+        m.def(
+            "has_main_panel_tabs", []() {
+                return PyPanelRegistry::instance().has_panels(PanelSpace::MainPanelTab);
+            },
+            "Check if any main panel tabs are registered");
     }
 
 } // namespace lfs::python

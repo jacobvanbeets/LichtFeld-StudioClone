@@ -2304,14 +2304,17 @@ namespace lfs::python {
         register_ui_modals(m);
 
         // Hot-reload redraw request functions
-        m.def("request_redraw", []() { g_redraw_requested = true; });
-        m.def("consume_redraw_request", []() {
-            bool val = g_redraw_requested.exchange(false);
-            return val;
-        });
+        m.def(
+            "request_redraw", []() { g_redraw_requested = true; }, "Request a UI redraw on next frame");
+        m.def(
+            "consume_redraw_request", []() {
+                bool val = g_redraw_requested.exchange(false);
+                return val;
+            },
+            "Consume and return pending redraw request flag");
 
         nb::class_<PyEvent>(m, "Event")
-            .def(nb::init<>())
+            .def(nb::init<>(), "Create a default Event")
             .def_rw("type", &PyEvent::type, "Event type ('MOUSEMOVE', 'LEFTMOUSE', 'KEY_A', etc.)")
             .def_rw("value", &PyEvent::value, "Event value ('PRESS', 'RELEASE', 'NOTHING')")
             .def_rw("mouse_x", &PyEvent::mouse_x, "Mouse X position")
@@ -2328,236 +2331,243 @@ namespace lfs::python {
             .def_rw("pressure", &PyEvent::pressure, "Tablet pressure (1.0 for mouse)")
             .def_rw("over_gui", &PyEvent::over_gui, "Mouse is over GUI element")
             .def_rw("key_code", &PyEvent::key_code, "Raw key code for KEY events")
-            .def("__repr__", [](const PyEvent& e) {
-                return "<Event type='" + e.type + "' value='" + e.value + "'>";
-            });
+            .def(
+                "__repr__", [](const PyEvent& e) {
+                    return "<Event type='" + e.type + "' value='" + e.value + "'>";
+                },
+                "Return string representation of the event");
 
         nb::class_<PyLayoutContextManager>(m, "LayoutContext")
-            .def("__enter__", [](PyLayoutContextManager& self) {
-                self.enter();
-                return &self;
-            })
-            .def("__exit__", [](PyLayoutContextManager& self, nb::object, nb::object, nb::object) {
-                self.exit();
-                return false;
-            });
+            .def(
+                "__enter__", [](PyLayoutContextManager& self) {
+                    self.enter();
+                    return &self;
+                },
+                "Enter layout context manager scope")
+            .def(
+                "__exit__", [](PyLayoutContextManager& self, nb::object, nb::object, nb::object) {
+                    self.exit();
+                    return false;
+                },
+                "Exit layout context manager scope");
 
         // PyUILayout - Window flags enum
         nb::class_<PyWindowFlags>(m, "WindowFlags")
-            .def_ro_static("None", &PyWindowFlags::None)
-            .def_ro_static("NoScrollbar", &PyWindowFlags::NoScrollbar)
-            .def_ro_static("NoScrollWithMouse", &PyWindowFlags::NoScrollWithMouse)
-            .def_ro_static("MenuBar", &PyWindowFlags::MenuBar)
-            .def_ro_static("NoResize", &PyWindowFlags::NoResize)
-            .def_ro_static("NoMove", &PyWindowFlags::NoMove)
-            .def_ro_static("NoCollapse", &PyWindowFlags::NoCollapse)
-            .def_ro_static("AlwaysAutoResize", &PyWindowFlags::AlwaysAutoResize)
-            .def_ro_static("NoTitleBar", &PyWindowFlags::NoTitleBar)
-            .def_ro_static("NoNavFocus", &PyWindowFlags::NoNavFocus)
-            .def_ro_static("NoInputs", &PyWindowFlags::NoInputs)
-            .def_ro_static("NoBackground", &PyWindowFlags::NoBackground)
-            .def_ro_static("NoFocusOnAppearing", &PyWindowFlags::NoFocusOnAppearing)
-            .def_ro_static("NoBringToFrontOnFocus", &PyWindowFlags::NoBringToFrontOnFocus);
+            .def_ro_static("None", &PyWindowFlags::None, "No flags set")
+            .def_ro_static("NoScrollbar", &PyWindowFlags::NoScrollbar, "Disable scrollbar")
+            .def_ro_static("NoScrollWithMouse", &PyWindowFlags::NoScrollWithMouse, "Disable mouse wheel scrolling")
+            .def_ro_static("MenuBar", &PyWindowFlags::MenuBar, "Enable menu bar")
+            .def_ro_static("NoResize", &PyWindowFlags::NoResize, "Disable window resizing")
+            .def_ro_static("NoMove", &PyWindowFlags::NoMove, "Disable window moving")
+            .def_ro_static("NoCollapse", &PyWindowFlags::NoCollapse, "Disable window collapsing")
+            .def_ro_static("AlwaysAutoResize", &PyWindowFlags::AlwaysAutoResize, "Auto-resize window to fit content")
+            .def_ro_static("NoTitleBar", &PyWindowFlags::NoTitleBar, "Hide window title bar")
+            .def_ro_static("NoNavFocus", &PyWindowFlags::NoNavFocus, "Disable navigation focus")
+            .def_ro_static("NoInputs", &PyWindowFlags::NoInputs, "Disable all input capture")
+            .def_ro_static("NoBackground", &PyWindowFlags::NoBackground, "Disable window background")
+            .def_ro_static("NoFocusOnAppearing", &PyWindowFlags::NoFocusOnAppearing, "Disable focus when window appears")
+            .def_ro_static("NoBringToFrontOnFocus", &PyWindowFlags::NoBringToFrontOnFocus, "Disable bringing window to front on focus");
 
         nb::class_<PyUILayout>(m, "UILayout")
-            .def(nb::init<>())
-            .def_prop_ro_static("WindowFlags", [](nb::handle) { return PyWindowFlags{}; })
+            .def(nb::init<>(), "Create a UILayout for drawing UI elements")
+            .def_prop_ro_static(
+                "WindowFlags", [](nb::handle) { return PyWindowFlags{}; }, "Window flags constants")
             // Text
-            .def("label", &PyUILayout::label, nb::arg("text"))
-            .def("label_centered", &PyUILayout::label_centered, nb::arg("text"))
-            .def("heading", &PyUILayout::heading, nb::arg("text"))
-            .def("text_colored", &PyUILayout::text_colored, nb::arg("text"), nb::arg("color"))
-            .def("text_colored_centered", &PyUILayout::text_colored_centered, nb::arg("text"), nb::arg("color"))
-            .def("text_selectable", &PyUILayout::text_selectable, nb::arg("text"), nb::arg("height") = 0.0f)
-            .def("text_wrapped", &PyUILayout::text_wrapped, nb::arg("text"))
-            .def("text_disabled", &PyUILayout::text_disabled, nb::arg("text"))
-            .def("bullet_text", &PyUILayout::bullet_text, nb::arg("text"))
+            .def("label", &PyUILayout::label, nb::arg("text"), "Draw a text label")
+            .def("label_centered", &PyUILayout::label_centered, nb::arg("text"), "Draw a horizontally centered text label")
+            .def("heading", &PyUILayout::heading, nb::arg("text"), "Draw a bold heading text")
+            .def("text_colored", &PyUILayout::text_colored, nb::arg("text"), nb::arg("color"), "Draw text with RGBA color tuple")
+            .def("text_colored_centered", &PyUILayout::text_colored_centered, nb::arg("text"), nb::arg("color"), "Draw centered text with RGBA color tuple")
+            .def("text_selectable", &PyUILayout::text_selectable, nb::arg("text"), nb::arg("height") = 0.0f, "Draw selectable read-only text area")
+            .def("text_wrapped", &PyUILayout::text_wrapped, nb::arg("text"), "Draw word-wrapped text")
+            .def("text_disabled", &PyUILayout::text_disabled, nb::arg("text"), "Draw greyed-out disabled text")
+            .def("bullet_text", &PyUILayout::bullet_text, nb::arg("text"), "Draw text with a bullet point prefix")
             // Buttons
-            .def("button", &PyUILayout::button, nb::arg("label"), nb::arg("size") = std::make_tuple(0.0f, 0.0f))
+            .def("button", &PyUILayout::button, nb::arg("label"), nb::arg("size") = std::make_tuple(0.0f, 0.0f), "Draw a button, returns True if clicked")
             .def("button_callback", &PyUILayout::button_callback, nb::arg("label"),
-                 nb::arg("callback") = nb::none(), nb::arg("size") = std::make_tuple(0.0f, 0.0f))
-            .def("small_button", &PyUILayout::small_button, nb::arg("label"))
-            .def("checkbox", &PyUILayout::checkbox, nb::arg("label"), nb::arg("value"))
-            .def("radio_button", &PyUILayout::radio_button, nb::arg("label"), nb::arg("current"), nb::arg("value"))
+                 nb::arg("callback") = nb::none(), nb::arg("size") = std::make_tuple(0.0f, 0.0f), "Draw a button that invokes callback on click")
+            .def("small_button", &PyUILayout::small_button, nb::arg("label"), "Draw a small inline button, returns True if clicked")
+            .def("checkbox", &PyUILayout::checkbox, nb::arg("label"), nb::arg("value"), "Draw a checkbox, returns (changed, value)")
+            .def("radio_button", &PyUILayout::radio_button, nb::arg("label"), nb::arg("current"), nb::arg("value"), "Draw a radio button, returns (clicked, selected_value)")
             // Sliders
-            .def("slider_float", &PyUILayout::slider_float, nb::arg("label"), nb::arg("value"), nb::arg("min"), nb::arg("max"))
-            .def("slider_int", &PyUILayout::slider_int, nb::arg("label"), nb::arg("value"), nb::arg("min"), nb::arg("max"))
-            .def("slider_float2", &PyUILayout::slider_float2, nb::arg("label"), nb::arg("value"), nb::arg("min"), nb::arg("max"))
-            .def("slider_float3", &PyUILayout::slider_float3, nb::arg("label"), nb::arg("value"), nb::arg("min"), nb::arg("max"))
+            .def("slider_float", &PyUILayout::slider_float, nb::arg("label"), nb::arg("value"), nb::arg("min"), nb::arg("max"), "Draw a float slider, returns (changed, value)")
+            .def("slider_int", &PyUILayout::slider_int, nb::arg("label"), nb::arg("value"), nb::arg("min"), nb::arg("max"), "Draw an int slider, returns (changed, value)")
+            .def("slider_float2", &PyUILayout::slider_float2, nb::arg("label"), nb::arg("value"), nb::arg("min"), nb::arg("max"), "Draw a 2-component float slider, returns (changed, value)")
+            .def("slider_float3", &PyUILayout::slider_float3, nb::arg("label"), nb::arg("value"), nb::arg("min"), nb::arg("max"), "Draw a 3-component float slider, returns (changed, value)")
             // Drags
             .def("drag_float", &PyUILayout::drag_float, nb::arg("label"), nb::arg("value"),
-                 nb::arg("speed") = 1.0f, nb::arg("min") = 0.0f, nb::arg("max") = 0.0f)
+                 nb::arg("speed") = 1.0f, nb::arg("min") = 0.0f, nb::arg("max") = 0.0f, "Draw a draggable float input, returns (changed, value)")
             .def("drag_int", &PyUILayout::drag_int, nb::arg("label"), nb::arg("value"),
-                 nb::arg("speed") = 1.0f, nb::arg("min") = 0, nb::arg("max") = 0)
+                 nb::arg("speed") = 1.0f, nb::arg("min") = 0, nb::arg("max") = 0, "Draw a draggable int input, returns (changed, value)")
             // Input
-            .def("input_text", &PyUILayout::input_text, nb::arg("label"), nb::arg("value"))
+            .def("input_text", &PyUILayout::input_text, nb::arg("label"), nb::arg("value"), "Draw a text input field, returns (changed, value)")
             .def("input_text_with_hint", &PyUILayout::input_text_with_hint,
-                 nb::arg("label"), nb::arg("hint"), nb::arg("value"))
+                 nb::arg("label"), nb::arg("hint"), nb::arg("value"), "Draw a text input with placeholder hint, returns (changed, value)")
             .def("input_float", &PyUILayout::input_float, nb::arg("label"), nb::arg("value"),
-                 nb::arg("step") = 0.0f, nb::arg("step_fast") = 0.0f, nb::arg("format") = "%.3f")
+                 nb::arg("step") = 0.0f, nb::arg("step_fast") = 0.0f, nb::arg("format") = "%.3f", "Draw a float input field with step buttons, returns (changed, value)")
             .def("input_int", &PyUILayout::input_int, nb::arg("label"), nb::arg("value"),
-                 nb::arg("step") = 1, nb::arg("step_fast") = 100)
+                 nb::arg("step") = 1, nb::arg("step_fast") = 100, "Draw an int input field with step buttons, returns (changed, value)")
             .def("input_int_formatted", &PyUILayout::input_int_formatted, nb::arg("label"), nb::arg("value"),
-                 nb::arg("step") = 0, nb::arg("step_fast") = 0)
+                 nb::arg("step") = 0, nb::arg("step_fast") = 0, "Draw a formatted int input field, returns (changed, value)")
             .def("path_input", &PyUILayout::path_input, nb::arg("label"), nb::arg("value"),
-                 nb::arg("folder_mode") = true, nb::arg("dialog_title") = "")
+                 nb::arg("folder_mode") = true, nb::arg("dialog_title") = "", "Draw a path input with browse button, returns (changed, path)")
             // Color
-            .def("color_edit3", &PyUILayout::color_edit3, nb::arg("label"), nb::arg("color"))
-            .def("color_edit4", &PyUILayout::color_edit4, nb::arg("label"), nb::arg("color"))
+            .def("color_edit3", &PyUILayout::color_edit3, nb::arg("label"), nb::arg("color"), "Draw an RGB color editor, returns (changed, color)")
+            .def("color_edit4", &PyUILayout::color_edit4, nb::arg("label"), nb::arg("color"), "Draw an RGBA color editor, returns (changed, color)")
             .def("color_button", &PyUILayout::color_button, nb::arg("label"), nb::arg("color"),
-                 nb::arg("size") = std::make_tuple(0.0f, 0.0f))
+                 nb::arg("size") = std::make_tuple(0.0f, 0.0f), "Draw a color swatch button, returns True if clicked")
             // Selection
-            .def("combo", &PyUILayout::combo, nb::arg("label"), nb::arg("current_idx"), nb::arg("items"))
+            .def("combo", &PyUILayout::combo, nb::arg("label"), nb::arg("current_idx"), nb::arg("items"), "Draw a combo dropdown, returns (changed, index)")
             .def("listbox", &PyUILayout::listbox, nb::arg("label"), nb::arg("current_idx"),
-                 nb::arg("items"), nb::arg("height_items") = -1)
+                 nb::arg("items"), nb::arg("height_items") = -1, "Draw a listbox, returns (changed, index)")
             // Layout
-            .def("separator", &PyUILayout::separator)
-            .def("spacing", &PyUILayout::spacing)
-            .def("same_line", &PyUILayout::same_line, nb::arg("offset") = 0.0f, nb::arg("spacing") = -1.0f)
-            .def("new_line", &PyUILayout::new_line)
-            .def("indent", &PyUILayout::indent, nb::arg("width") = 0.0f)
-            .def("unindent", &PyUILayout::unindent, nb::arg("width") = 0.0f)
-            .def("set_next_item_width", &PyUILayout::set_next_item_width, nb::arg("width"))
+            .def("separator", &PyUILayout::separator, "Draw a horizontal separator line")
+            .def("spacing", &PyUILayout::spacing, "Add vertical spacing")
+            .def("same_line", &PyUILayout::same_line, nb::arg("offset") = 0.0f, nb::arg("spacing") = -1.0f, "Place next element on the same line")
+            .def("new_line", &PyUILayout::new_line, "Move cursor to a new line")
+            .def("indent", &PyUILayout::indent, nb::arg("width") = 0.0f, "Increase indentation level")
+            .def("unindent", &PyUILayout::unindent, nb::arg("width") = 0.0f, "Decrease indentation level")
+            .def("set_next_item_width", &PyUILayout::set_next_item_width, nb::arg("width"), "Set width of the next UI element")
             // Grouping
-            .def("begin_group", &PyUILayout::begin_group)
-            .def("end_group", &PyUILayout::end_group)
-            .def("collapsing_header", &PyUILayout::collapsing_header, nb::arg("label"), nb::arg("default_open") = false)
-            .def("tree_node", &PyUILayout::tree_node, nb::arg("label"))
-            .def("tree_node_ex", &PyUILayout::tree_node_ex, nb::arg("label"), nb::arg("flags") = "")
-            .def("tree_pop", &PyUILayout::tree_pop)
+            .def("begin_group", &PyUILayout::begin_group, "Begin a layout group")
+            .def("end_group", &PyUILayout::end_group, "End a layout group")
+            .def("collapsing_header", &PyUILayout::collapsing_header, nb::arg("label"), nb::arg("default_open") = false, "Draw a collapsible header, returns True if open")
+            .def("tree_node", &PyUILayout::tree_node, nb::arg("label"), "Draw a tree node, returns True if open")
+            .def("tree_node_ex", &PyUILayout::tree_node_ex, nb::arg("label"), nb::arg("flags") = "", "Draw a tree node with flags string, returns True if open")
+            .def("tree_pop", &PyUILayout::tree_pop, "Pop a tree node level")
             // Tables
-            .def("begin_table", &PyUILayout::begin_table, nb::arg("id"), nb::arg("columns"))
-            .def("table_setup_column", &PyUILayout::table_setup_column, nb::arg("label"), nb::arg("width") = 0.0f)
-            .def("end_table", &PyUILayout::end_table)
-            .def("table_next_row", &PyUILayout::table_next_row)
-            .def("table_next_column", &PyUILayout::table_next_column)
-            .def("table_set_column_index", &PyUILayout::table_set_column_index, nb::arg("column"))
-            .def("table_headers_row", &PyUILayout::table_headers_row)
-            .def("table_set_bg_color", &PyUILayout::table_set_bg_color, nb::arg("target"), nb::arg("color"))
+            .def("begin_table", &PyUILayout::begin_table, nb::arg("id"), nb::arg("columns"), "Begin a table with given column count, returns True if visible")
+            .def("table_setup_column", &PyUILayout::table_setup_column, nb::arg("label"), nb::arg("width") = 0.0f, "Set up a table column with optional fixed width")
+            .def("end_table", &PyUILayout::end_table, "End the current table")
+            .def("table_next_row", &PyUILayout::table_next_row, "Advance to the next table row")
+            .def("table_next_column", &PyUILayout::table_next_column, "Advance to the next table column")
+            .def("table_set_column_index", &PyUILayout::table_set_column_index, nb::arg("column"), "Set active column by index, returns True if visible")
+            .def("table_headers_row", &PyUILayout::table_headers_row, "Draw the table header row")
+            .def("table_set_bg_color", &PyUILayout::table_set_bg_color, nb::arg("target"), nb::arg("color"), "Set table background color for target region")
             // Styled buttons
             .def("button_styled", &PyUILayout::button_styled, nb::arg("label"), nb::arg("style"),
-                 nb::arg("size") = std::make_tuple(0.0f, 0.0f))
+                 nb::arg("size") = std::make_tuple(0.0f, 0.0f), "Draw a themed button (primary, success, warning, error, secondary)")
             // Item width
-            .def("push_item_width", &PyUILayout::push_item_width, nb::arg("width"))
-            .def("pop_item_width", &PyUILayout::pop_item_width)
+            .def("push_item_width", &PyUILayout::push_item_width, nb::arg("width"), "Push item width onto the stack")
+            .def("pop_item_width", &PyUILayout::pop_item_width, "Pop item width from the stack")
             // Plots
             .def("plot_lines", &PyUILayout::plot_lines, nb::arg("label"), nb::arg("values"),
                  nb::arg("scale_min") = FLT_MAX, nb::arg("scale_max") = FLT_MAX,
-                 nb::arg("size") = std::make_tuple(0.0f, 0.0f))
+                 nb::arg("size") = std::make_tuple(0.0f, 0.0f), "Draw a line plot from float values")
             // Selectable
             .def("selectable", &PyUILayout::selectable, nb::arg("label"),
-                 nb::arg("selected") = false, nb::arg("height") = 0.0f)
+                 nb::arg("selected") = false, nb::arg("height") = 0.0f, "Draw a selectable item, returns True if clicked")
             // Context menus
-            .def("begin_popup_context_item", &PyUILayout::begin_popup_context_item, nb::arg("id") = "")
-            .def("begin_popup", &PyUILayout::begin_popup, nb::arg("id"))
-            .def("open_popup", &PyUILayout::open_popup, nb::arg("id"))
-            .def("end_popup", &PyUILayout::end_popup)
-            .def("menu_item", &PyUILayout::menu_item, nb::arg("label"), nb::arg("enabled") = true)
-            .def("begin_menu", &PyUILayout::begin_menu, nb::arg("label"))
-            .def("end_menu", &PyUILayout::end_menu)
+            .def("begin_popup_context_item", &PyUILayout::begin_popup_context_item, nb::arg("id") = "", "Begin a right-click context popup, returns True if open")
+            .def("begin_popup", &PyUILayout::begin_popup, nb::arg("id"), "Begin a popup by id, returns True if open")
+            .def("open_popup", &PyUILayout::open_popup, nb::arg("id"), "Open a popup by id")
+            .def("end_popup", &PyUILayout::end_popup, "End the current popup")
+            .def("menu_item", &PyUILayout::menu_item, nb::arg("label"), nb::arg("enabled") = true, "Draw a menu item, returns True if clicked")
+            .def("begin_menu", &PyUILayout::begin_menu, nb::arg("label"), "Begin a sub-menu, returns True if open")
+            .def("end_menu", &PyUILayout::end_menu, "End the current sub-menu")
             // Rename input with auto-select and enter-to-confirm
-            .def("input_text_enter", &PyUILayout::input_text_enter, nb::arg("label"), nb::arg("value"))
+            .def("input_text_enter", &PyUILayout::input_text_enter, nb::arg("label"), nb::arg("value"), "Draw a text input that confirms on Enter, returns (entered, value)")
             // Focus control
-            .def("set_keyboard_focus_here", &PyUILayout::set_keyboard_focus_here)
-            .def("is_window_focused", &PyUILayout::is_window_focused)
-            .def("is_window_hovered", &PyUILayout::is_window_hovered)
-            .def("capture_keyboard_from_app", &PyUILayout::capture_keyboard_from_app, nb::arg("capture") = true)
-            .def("capture_mouse_from_app", &PyUILayout::capture_mouse_from_app, nb::arg("capture") = true)
+            .def("set_keyboard_focus_here", &PyUILayout::set_keyboard_focus_here, "Set keyboard focus to the next widget")
+            .def("is_window_focused", &PyUILayout::is_window_focused, "Check if current window is focused")
+            .def("is_window_hovered", &PyUILayout::is_window_hovered, "Check if current window is hovered")
+            .def("capture_keyboard_from_app", &PyUILayout::capture_keyboard_from_app, nb::arg("capture") = true, "Set keyboard capture flag for the application")
+            .def("capture_mouse_from_app", &PyUILayout::capture_mouse_from_app, nb::arg("capture") = true, "Set mouse capture flag for the application")
             // Scrolling
-            .def("set_scroll_here_y", &PyUILayout::set_scroll_here_y, nb::arg("center_y_ratio") = 0.5f)
+            .def("set_scroll_here_y", &PyUILayout::set_scroll_here_y, nb::arg("center_y_ratio") = 0.5f, "Scroll to current cursor Y position")
             // ImDrawList for custom row backgrounds
-            .def("get_cursor_screen_pos", &PyUILayout::get_cursor_screen_pos)
-            .def("get_window_pos", &PyUILayout::get_window_pos)
-            .def("get_window_width", &PyUILayout::get_window_width)
-            .def("get_text_line_height", &PyUILayout::get_text_line_height)
+            .def("get_cursor_screen_pos", &PyUILayout::get_cursor_screen_pos, "Get cursor position in screen coordinates as (x, y)")
+            .def("get_window_pos", &PyUILayout::get_window_pos, "Get window position in screen coordinates as (x, y)")
+            .def("get_window_width", &PyUILayout::get_window_width, "Get current window width in pixels")
+            .def("get_text_line_height", &PyUILayout::get_text_line_height, "Get height of a single text line in pixels")
             // Modal popups
-            .def("begin_popup_modal", &PyUILayout::begin_popup_modal, nb::arg("title"))
-            .def("end_popup_modal", &PyUILayout::end_popup_modal)
-            .def("close_current_popup", &PyUILayout::close_current_popup)
-            .def("set_next_window_pos_center", &PyUILayout::set_next_window_pos_center)
-            .def("set_next_window_pos_viewport_center", &PyUILayout::set_next_window_pos_viewport_center)
-            .def("set_next_window_focus", &PyUILayout::set_next_window_focus)
-            .def("push_modal_style", &PyUILayout::push_modal_style)
-            .def("pop_modal_style", &PyUILayout::pop_modal_style)
+            .def("begin_popup_modal", &PyUILayout::begin_popup_modal, nb::arg("title"), "Begin a modal popup, returns True if visible")
+            .def("end_popup_modal", &PyUILayout::end_popup_modal, "End the current modal popup")
+            .def("close_current_popup", &PyUILayout::close_current_popup, "Close the currently open popup")
+            .def("set_next_window_pos_center", &PyUILayout::set_next_window_pos_center, "Center the next window on the main viewport")
+            .def("set_next_window_pos_viewport_center", &PyUILayout::set_next_window_pos_viewport_center, "Center the next window on the 3D viewport")
+            .def("set_next_window_focus", &PyUILayout::set_next_window_focus, "Set focus to the next window")
+            .def("push_modal_style", &PyUILayout::push_modal_style, "Push modal dialog style onto the style stack")
+            .def("pop_modal_style", &PyUILayout::pop_modal_style, "Pop modal dialog style from the style stack")
             // Cursor and content region
-            .def("get_content_region_avail", &PyUILayout::get_content_region_avail)
-            .def("get_cursor_pos", &PyUILayout::get_cursor_pos)
-            .def("set_cursor_pos_x", &PyUILayout::set_cursor_pos_x, nb::arg("x"))
-            .def("calc_text_size", &PyUILayout::calc_text_size, nb::arg("text"))
+            .def("get_content_region_avail", &PyUILayout::get_content_region_avail, "Get available content region as (width, height)")
+            .def("get_cursor_pos", &PyUILayout::get_cursor_pos, "Get cursor position within the window as (x, y)")
+            .def("set_cursor_pos_x", &PyUILayout::set_cursor_pos_x, nb::arg("x"), "Set horizontal cursor position within the window")
+            .def("calc_text_size", &PyUILayout::calc_text_size, nb::arg("text"), "Calculate text dimensions as (width, height)")
             // Disabled state
-            .def("begin_disabled", &PyUILayout::begin_disabled, nb::arg("disabled") = true)
-            .def("end_disabled", &PyUILayout::end_disabled)
+            .def("begin_disabled", &PyUILayout::begin_disabled, nb::arg("disabled") = true, "Begin a disabled UI region")
+            .def("end_disabled", &PyUILayout::end_disabled, "End a disabled UI region")
             // Images
             .def("image", &PyUILayout::image, nb::arg("texture_id"), nb::arg("size"),
-                 nb::arg("tint") = std::make_tuple(1.0f, 1.0f, 1.0f, 1.0f))
+                 nb::arg("tint") = std::make_tuple(1.0f, 1.0f, 1.0f, 1.0f), "Draw an image from a GL texture ID")
             .def("image_uv", &PyUILayout::image_uv, nb::arg("texture_id"), nb::arg("size"),
                  nb::arg("uv0"), nb::arg("uv1"),
-                 nb::arg("tint") = std::make_tuple(1.0f, 1.0f, 1.0f, 1.0f))
+                 nb::arg("tint") = std::make_tuple(1.0f, 1.0f, 1.0f, 1.0f), "Draw an image with custom UV coordinates")
             .def("image_button", &PyUILayout::image_button, nb::arg("id"), nb::arg("texture_id"),
-                 nb::arg("size"), nb::arg("tint") = std::make_tuple(1.0f, 1.0f, 1.0f, 1.0f))
+                 nb::arg("size"), nb::arg("tint") = std::make_tuple(1.0f, 1.0f, 1.0f, 1.0f), "Draw an image button, returns True if clicked")
             .def("toolbar_button", &PyUILayout::toolbar_button, nb::arg("id"), nb::arg("texture_id"),
                  nb::arg("size"), nb::arg("selected") = false, nb::arg("disabled") = false,
                  nb::arg("tooltip") = "", "Draw a toolbar-style icon button with selection state")
             // Drag-drop
-            .def("begin_drag_drop_source", &PyUILayout::begin_drag_drop_source)
-            .def("set_drag_drop_payload", &PyUILayout::set_drag_drop_payload, nb::arg("type"), nb::arg("data"))
-            .def("end_drag_drop_source", &PyUILayout::end_drag_drop_source)
-            .def("begin_drag_drop_target", &PyUILayout::begin_drag_drop_target)
-            .def("accept_drag_drop_payload", &PyUILayout::accept_drag_drop_payload, nb::arg("type"))
-            .def("end_drag_drop_target", &PyUILayout::end_drag_drop_target)
+            .def("begin_drag_drop_source", &PyUILayout::begin_drag_drop_source, "Begin a drag-drop source on the last item, returns True if dragging")
+            .def("set_drag_drop_payload", &PyUILayout::set_drag_drop_payload, nb::arg("type"), nb::arg("data"), "Set the drag-drop payload type and data string")
+            .def("end_drag_drop_source", &PyUILayout::end_drag_drop_source, "End the drag-drop source")
+            .def("begin_drag_drop_target", &PyUILayout::begin_drag_drop_target, "Begin a drag-drop target on the last item, returns True if active")
+            .def("accept_drag_drop_payload", &PyUILayout::accept_drag_drop_payload, nb::arg("type"), "Accept a drag-drop payload by type, returns data string or None")
+            .def("end_drag_drop_target", &PyUILayout::end_drag_drop_target, "End the drag-drop target")
             // Misc
-            .def("progress_bar", &PyUILayout::progress_bar, nb::arg("fraction"), nb::arg("overlay") = "", nb::arg("width") = 0.0f)
-            .def("set_tooltip", &PyUILayout::set_tooltip, nb::arg("text"))
-            .def("is_item_hovered", &PyUILayout::is_item_hovered)
-            .def("is_item_clicked", &PyUILayout::is_item_clicked, nb::arg("button") = 0)
-            .def("is_item_active", &PyUILayout::is_item_active)
-            .def("is_mouse_double_clicked", &PyUILayout::is_mouse_double_clicked, nb::arg("button") = 0)
-            .def("is_mouse_dragging", &PyUILayout::is_mouse_dragging, nb::arg("button") = 0)
-            .def("get_mouse_wheel", &PyUILayout::get_mouse_wheel)
-            .def("get_mouse_delta", &PyUILayout::get_mouse_delta)
-            .def("invisible_button", &PyUILayout::invisible_button, nb::arg("id"), nb::arg("size"))
-            .def("set_cursor_pos", &PyUILayout::set_cursor_pos, nb::arg("pos"))
+            .def("progress_bar", &PyUILayout::progress_bar, nb::arg("fraction"), nb::arg("overlay") = "", nb::arg("width") = 0.0f, "Draw a progress bar with fraction 0.0-1.0")
+            .def("set_tooltip", &PyUILayout::set_tooltip, nb::arg("text"), "Show tooltip on hover of the previous item")
+            .def("is_item_hovered", &PyUILayout::is_item_hovered, "Check if the previous item is hovered")
+            .def("is_item_clicked", &PyUILayout::is_item_clicked, nb::arg("button") = 0, "Check if the previous item was clicked")
+            .def("is_item_active", &PyUILayout::is_item_active, "Check if the previous item is active")
+            .def("is_mouse_double_clicked", &PyUILayout::is_mouse_double_clicked, nb::arg("button") = 0, "Check if mouse button was double-clicked this frame")
+            .def("is_mouse_dragging", &PyUILayout::is_mouse_dragging, nb::arg("button") = 0, "Check if mouse button is being dragged")
+            .def("get_mouse_wheel", &PyUILayout::get_mouse_wheel, "Get mouse wheel delta for this frame")
+            .def("get_mouse_delta", &PyUILayout::get_mouse_delta, "Get mouse movement delta as (dx, dy)")
+            .def("invisible_button", &PyUILayout::invisible_button, nb::arg("id"), nb::arg("size"), "Draw an invisible button region, returns True if clicked")
+            .def("set_cursor_pos", &PyUILayout::set_cursor_pos, nb::arg("pos"), "Set cursor position within the window as (x, y)")
             // Child windows
-            .def("begin_child", &PyUILayout::begin_child, nb::arg("id"), nb::arg("size"), nb::arg("border") = false)
-            .def("end_child", &PyUILayout::end_child)
+            .def("begin_child", &PyUILayout::begin_child, nb::arg("id"), nb::arg("size"), nb::arg("border") = false, "Begin a child window region, returns True if visible")
+            .def("end_child", &PyUILayout::end_child, "End the child window region")
             // Menu bar
-            .def("begin_menu_bar", &PyUILayout::begin_menu_bar)
-            .def("end_menu_bar", &PyUILayout::end_menu_bar)
-            .def("menu_item_toggle", &PyUILayout::menu_item_toggle, nb::arg("label"), nb::arg("shortcut"), nb::arg("selected"))
-            .def("menu_item_shortcut", &PyUILayout::menu_item_shortcut, nb::arg("label"), nb::arg("shortcut"), nb::arg("enabled") = true)
-            .def("push_id", &PyUILayout::push_id, nb::arg("id"))
-            .def("push_id_int", &PyUILayout::push_id_int, nb::arg("id"))
-            .def("pop_id", &PyUILayout::pop_id)
+            .def("begin_menu_bar", &PyUILayout::begin_menu_bar, "Begin the window menu bar, returns True if visible")
+            .def("end_menu_bar", &PyUILayout::end_menu_bar, "End the window menu bar")
+            .def("menu_item_toggle", &PyUILayout::menu_item_toggle, nb::arg("label"), nb::arg("shortcut"), nb::arg("selected"), "Draw a toggleable menu item with shortcut text")
+            .def("menu_item_shortcut", &PyUILayout::menu_item_shortcut, nb::arg("label"), nb::arg("shortcut"), nb::arg("enabled") = true, "Draw a menu item with shortcut text")
+            .def("push_id", &PyUILayout::push_id, nb::arg("id"), "Push a string ID onto the ID stack")
+            .def("push_id_int", &PyUILayout::push_id_int, nb::arg("id"), "Push an integer ID onto the ID stack")
+            .def("pop_id", &PyUILayout::pop_id, "Pop the last ID from the ID stack")
             // Window
-            .def("begin_window", &PyUILayout::begin_window, nb::arg("title"), nb::arg("flags") = 0)
-            .def("begin_window_closable", &PyUILayout::begin_window_closable, nb::arg("title"), nb::arg("flags") = 0)
-            .def("end_window", &PyUILayout::end_window)
-            .def("push_window_style", &PyUILayout::push_window_style)
-            .def("pop_window_style", &PyUILayout::pop_window_style)
+            .def("begin_window", &PyUILayout::begin_window, nb::arg("title"), nb::arg("flags") = 0, "Begin a window, returns True if not collapsed")
+            .def("begin_window_closable", &PyUILayout::begin_window_closable, nb::arg("title"), nb::arg("flags") = 0, "Begin a closable window, returns (visible, open)")
+            .def("end_window", &PyUILayout::end_window, "End the current window")
+            .def("push_window_style", &PyUILayout::push_window_style, "Push themed window rounding and padding styles")
+            .def("pop_window_style", &PyUILayout::pop_window_style, "Pop window styles pushed by push_window_style")
             // Window positioning
-            .def("set_next_window_pos", &PyUILayout::set_next_window_pos, nb::arg("pos"), nb::arg("first_use") = false)
-            .def("set_next_window_size", &PyUILayout::set_next_window_size, nb::arg("size"), nb::arg("first_use") = false)
-            .def("set_next_window_pos_centered", &PyUILayout::set_next_window_pos_centered, nb::arg("first_use") = false)
-            .def("set_next_window_bg_alpha", &PyUILayout::set_next_window_bg_alpha, nb::arg("alpha"))
-            .def("get_viewport_pos", &PyUILayout::get_viewport_pos)
-            .def("get_viewport_size", &PyUILayout::get_viewport_size)
-            .def("get_dpi_scale", &PyUILayout::get_dpi_scale)
-            .def("set_mouse_cursor_hand", &PyUILayout::set_mouse_cursor_hand)
+            .def("set_next_window_pos", &PyUILayout::set_next_window_pos, nb::arg("pos"), nb::arg("first_use") = false, "Set position of the next window as (x, y)")
+            .def("set_next_window_size", &PyUILayout::set_next_window_size, nb::arg("size"), nb::arg("first_use") = false, "Set size of the next window as (width, height)")
+            .def("set_next_window_pos_centered", &PyUILayout::set_next_window_pos_centered, nb::arg("first_use") = false, "Center the next window on the main viewport")
+            .def("set_next_window_bg_alpha", &PyUILayout::set_next_window_bg_alpha, nb::arg("alpha"), "Set background alpha of the next window")
+            .def("get_viewport_pos", &PyUILayout::get_viewport_pos, "Get 3D viewport position as (x, y)")
+            .def("get_viewport_size", &PyUILayout::get_viewport_size, "Get 3D viewport size as (width, height)")
+            .def("get_dpi_scale", &PyUILayout::get_dpi_scale, "Get current DPI scale factor")
+            .def("set_mouse_cursor_hand", &PyUILayout::set_mouse_cursor_hand, "Set mouse cursor to hand pointer")
             // Style control
-            .def("push_style_var", &PyUILayout::push_style_var_float, nb::arg("var"), nb::arg("value"))
-            .def("push_style_var_vec2", &PyUILayout::push_style_var_vec2, nb::arg("var"), nb::arg("value"))
-            .def("pop_style_var", &PyUILayout::pop_style_var, nb::arg("count") = 1)
-            .def("push_style_color", &PyUILayout::push_style_color, nb::arg("col"), nb::arg("color"))
-            .def("pop_style_color", &PyUILayout::pop_style_color, nb::arg("count") = 1)
+            .def("push_style_var", &PyUILayout::push_style_var_float, nb::arg("var"), nb::arg("value"), "Push a float style variable by name")
+            .def("push_style_var_vec2", &PyUILayout::push_style_var_vec2, nb::arg("var"), nb::arg("value"), "Push a vec2 style variable by name")
+            .def("pop_style_var", &PyUILayout::pop_style_var, nb::arg("count") = 1, "Pop style variables from the stack")
+            .def("push_style_color", &PyUILayout::push_style_color, nb::arg("col"), nb::arg("color"), "Push a style color override by name")
+            .def("pop_style_color", &PyUILayout::pop_style_color, nb::arg("count") = 1, "Pop style colors from the stack")
             // RNA-style property widget
             .def("prop", &PyUILayout::prop, nb::arg("data"), nb::arg("prop_id"),
                  nb::arg("text") = nb::none(),
                  "Draw a property widget based on metadata (auto-selects widget type)")
-            .def("row", &PyUILayout::row)
-            .def("column", &PyUILayout::column)
-            .def("split", &PyUILayout::split, nb::arg("factor") = 0.5f)
+            .def("row", &PyUILayout::row, "Create a horizontal row layout context manager")
+            .def("column", &PyUILayout::column, "Create a vertical column layout context manager")
+            .def("split", &PyUILayout::split, nb::arg("factor") = 0.5f, "Create a split layout context manager with given factor")
             .def("operator_", &PyUILayout::operator_, nb::arg("operator_id"),
-                 nb::arg("text") = "", nb::arg("icon") = "")
+                 nb::arg("text") = "", nb::arg("icon") = "", "Draw a button that invokes a registered operator")
             .def("prop_search", &PyUILayout::prop_search, nb::arg("data"), nb::arg("prop_id"),
                  nb::arg("search_data"), nb::arg("search_prop"), nb::arg("text") = "",
                  "Searchable dropdown for selecting from a collection")
@@ -2612,24 +2622,31 @@ namespace lfs::python {
                  "Draw text at (x, y) with given color")
             // Window-scoped drawing (respects z-order)
             .def("draw_window_rect_filled", &PyUILayout::draw_window_rect_filled,
-                 nb::arg("x0"), nb::arg("y0"), nb::arg("x1"), nb::arg("y1"), nb::arg("color"))
+                 nb::arg("x0"), nb::arg("y0"), nb::arg("x1"), nb::arg("y1"), nb::arg("color"),
+                 "Draw a filled rectangle on the window draw list")
             .def("draw_window_rect", &PyUILayout::draw_window_rect,
                  nb::arg("x0"), nb::arg("y0"), nb::arg("x1"), nb::arg("y1"), nb::arg("color"),
-                 nb::arg("thickness") = 1.0f)
+                 nb::arg("thickness") = 1.0f,
+                 "Draw a rectangle outline on the window draw list")
             .def("draw_window_rect_rounded", &PyUILayout::draw_window_rect_rounded,
                  nb::arg("x0"), nb::arg("y0"), nb::arg("x1"), nb::arg("y1"), nb::arg("color"),
-                 nb::arg("rounding"), nb::arg("thickness") = 1.0f)
+                 nb::arg("rounding"), nb::arg("thickness") = 1.0f,
+                 "Draw a rounded rectangle outline on the window draw list")
             .def("draw_window_rect_rounded_filled", &PyUILayout::draw_window_rect_rounded_filled,
                  nb::arg("x0"), nb::arg("y0"), nb::arg("x1"), nb::arg("y1"), nb::arg("color"),
-                 nb::arg("rounding"))
+                 nb::arg("rounding"),
+                 "Draw a filled rounded rectangle on the window draw list")
             .def("draw_window_line", &PyUILayout::draw_window_line,
                  nb::arg("x0"), nb::arg("y0"), nb::arg("x1"), nb::arg("y1"), nb::arg("color"),
-                 nb::arg("thickness") = 1.0f)
+                 nb::arg("thickness") = 1.0f,
+                 "Draw a line on the window draw list")
             .def("draw_window_text", &PyUILayout::draw_window_text,
-                 nb::arg("x"), nb::arg("y"), nb::arg("text"), nb::arg("color"))
+                 nb::arg("x"), nb::arg("y"), nb::arg("text"), nb::arg("color"),
+                 "Draw text on the window draw list")
             .def("draw_window_triangle_filled", &PyUILayout::draw_window_triangle_filled,
                  nb::arg("x0"), nb::arg("y0"), nb::arg("x1"), nb::arg("y1"), nb::arg("x2"), nb::arg("y2"),
-                 nb::arg("color"))
+                 nb::arg("color"),
+                 "Draw a filled triangle on the window draw list")
             .def("crf_curve_preview", &PyUILayout::crf_curve_preview,
                  nb::arg("label"), nb::arg("gamma"), nb::arg("toe"), nb::arg("shoulder"),
                  nb::arg("gamma_r") = 0.0f, nb::arg("gamma_g") = 0.0f, nb::arg("gamma_b") = 0.0f,
@@ -2877,7 +2894,7 @@ namespace lfs::python {
                     }
                 });
             },
-            nb::arg("callback"));
+            nb::arg("callback"), "Register a callback for drawing popup content");
 
         m.def(
             "unregister_popup_draw_callback",
@@ -2885,7 +2902,7 @@ namespace lfs::python {
                 g_popup_draw_callback = nb::none();
                 set_popup_draw_callback(nullptr);
             },
-            nb::arg("callback"));
+            nb::arg("callback"), "Unregister the popup draw callback");
 
         m.def(
             "on_show_dataset_load_popup",
@@ -3331,12 +3348,12 @@ namespace lfs::python {
 
         // Sequencer UI state for Python access (uses callback to avoid ImGuizmo dependency)
         nb::class_<SequencerUIStateData>(m, "SequencerUIState")
-            .def_rw("show_camera_path", &SequencerUIStateData::show_camera_path)
-            .def_rw("snap_to_grid", &SequencerUIStateData::snap_to_grid)
-            .def_rw("snap_interval", &SequencerUIStateData::snap_interval)
-            .def_rw("playback_speed", &SequencerUIStateData::playback_speed)
-            .def_rw("follow_playback", &SequencerUIStateData::follow_playback)
-            .def_rw("pip_preview_scale", &SequencerUIStateData::pip_preview_scale);
+            .def_rw("show_camera_path", &SequencerUIStateData::show_camera_path, "Whether camera path is displayed in viewport")
+            .def_rw("snap_to_grid", &SequencerUIStateData::snap_to_grid, "Whether keyframe snapping is enabled")
+            .def_rw("snap_interval", &SequencerUIStateData::snap_interval, "Snap grid interval in frames")
+            .def_rw("playback_speed", &SequencerUIStateData::playback_speed, "Playback speed multiplier")
+            .def_rw("follow_playback", &SequencerUIStateData::follow_playback, "Whether viewport follows playback position")
+            .def_rw("pip_preview_scale", &SequencerUIStateData::pip_preview_scale, "Picture-in-picture preview scale factor");
 
         m.def(
             "get_sequencer_state",
@@ -3621,9 +3638,9 @@ namespace lfs::python {
         m.def("get_selection_submode", &get_selection_submode, "Get current selection sub-mode (0=Brush, 1=Rectangle, 2=Polygon, 3=Lasso, 4=Rings)");
 
         // Keyboard capture for popup windows
-        m.def("request_keyboard_capture", &request_keyboard_capture, nb::arg("owner_id"));
-        m.def("release_keyboard_capture", &release_keyboard_capture, nb::arg("owner_id"));
-        m.def("has_keyboard_capture_request", &has_keyboard_capture_request);
+        m.def("request_keyboard_capture", &request_keyboard_capture, nb::arg("owner_id"), "Request exclusive keyboard capture for a named owner");
+        m.def("release_keyboard_capture", &release_keyboard_capture, nb::arg("owner_id"), "Release keyboard capture for a named owner");
+        m.def("has_keyboard_capture_request", &has_keyboard_capture_request, "Check if any keyboard capture is currently active");
 
         // Modal event routing - allows Python operators to receive input events
         nb::enum_<ModalEvent::Type>(m, "ModalEventType")
@@ -3633,18 +3650,18 @@ namespace lfs::python {
             .value("Key", ModalEvent::Type::Key);
 
         nb::class_<ModalEvent>(m, "ModalEvent")
-            .def_ro("type", &ModalEvent::type)
-            .def_ro("x", &ModalEvent::x)
-            .def_ro("y", &ModalEvent::y)
-            .def_ro("delta_x", &ModalEvent::delta_x)
-            .def_ro("delta_y", &ModalEvent::delta_y)
-            .def_ro("button", &ModalEvent::button)
-            .def_ro("action", &ModalEvent::action)
-            .def_ro("key", &ModalEvent::key)
-            .def_ro("mods", &ModalEvent::mods)
-            .def_ro("scroll_x", &ModalEvent::scroll_x)
-            .def_ro("scroll_y", &ModalEvent::scroll_y)
-            .def_ro("over_gui", &ModalEvent::over_gui);
+            .def_ro("type", &ModalEvent::type, "Event type (MouseButton, MouseMove, Scroll, Key)")
+            .def_ro("x", &ModalEvent::x, "Mouse X position")
+            .def_ro("y", &ModalEvent::y, "Mouse Y position")
+            .def_ro("delta_x", &ModalEvent::delta_x, "Mouse delta X")
+            .def_ro("delta_y", &ModalEvent::delta_y, "Mouse delta Y")
+            .def_ro("button", &ModalEvent::button, "Mouse button index")
+            .def_ro("action", &ModalEvent::action, "Action code (press, release, repeat)")
+            .def_ro("key", &ModalEvent::key, "Key code for keyboard events")
+            .def_ro("mods", &ModalEvent::mods, "Modifier key bitmask (shift, ctrl, alt)")
+            .def_ro("scroll_x", &ModalEvent::scroll_x, "Horizontal scroll offset")
+            .def_ro("scroll_y", &ModalEvent::scroll_y, "Vertical scroll offset")
+            .def_ro("over_gui", &ModalEvent::over_gui, "Whether mouse is over a GUI element");
 
         auto key = m.def_submodule("key", "Key codes");
         key.attr("SPACE") = GLFW_KEY_SPACE;
