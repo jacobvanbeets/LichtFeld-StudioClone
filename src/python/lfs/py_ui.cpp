@@ -2086,8 +2086,8 @@ namespace lfs::python {
 
         nb::object prop_desc = all_props[prop_key];
         nb::object current_value = data.attr(prop_id.c_str());
-        std::string prop_type = nb::cast<std::string>(
-            nb::str(nb::object(prop_desc.attr("__class__").attr("__name__"))));
+        const std::string prop_type = nb::cast<std::string>(
+            nb::object(prop_desc.attr("__class__").attr("__name__")));
 
         std::string prop_name_str;
         if (nb::hasattr(prop_desc, "name")) {

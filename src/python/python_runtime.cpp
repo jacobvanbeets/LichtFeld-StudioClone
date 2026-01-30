@@ -9,8 +9,6 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
-#include <cstdio>
-#include <iostream>
 #include <mutex>
 #include <unordered_set>
 
@@ -21,16 +19,6 @@
 namespace lfs::python {
 
     namespace {
-        RuntimeLogCallback g_log_callback = nullptr;
-
-        void rt_log(RuntimeLogLevel level, const char* msg) {
-            if (g_log_callback) {
-                g_log_callback(level, msg);
-            } else {
-                std::fprintf(stderr, "[python_runtime] %s\n", msg);
-            }
-        }
-
         PyBridge g_bridge{};
 
         ExportCallback g_export_callback = nullptr;
@@ -467,8 +455,6 @@ namespace lfs::python {
         g_ensure_initialized_callback = cb;
     }
 
-    void set_runtime_log_callback(RuntimeLogCallback cb) { g_log_callback = cb; }
-
 #ifdef LFS_BUILD_PYTHON_BINDINGS
     std::string extract_python_error() {
         PyObject *type, *value, *tb;
@@ -503,24 +489,14 @@ namespace lfs::python {
         }
     }
 
-    void draw_python_panels(PanelSpace space, lfs::vis::Scene* scene) {
-        if (!g_bridge.draw_panels) {
-            rt_log(RuntimeLogLevel::Warn, "draw_python_panels: g_bridge.draw_panels is null");
+    void draw_python_panels(const PanelSpace space, lfs::vis::Scene* scene) {
+        if (!g_bridge.draw_panels)
             return;
-        }
 
 #ifdef LFS_BUILD_PYTHON_BINDINGS
-#ifndef NDEBUG
-        assert(Py_IsInitialized() && "Python not initialized before draw_python_panels");
-#endif
-        if (!Py_IsInitialized()) {
-            rt_log(RuntimeLogLevel::Warn, "draw_python_panels: Python not initialized");
+        assert(Py_IsInitialized());
+        if (!Py_IsInitialized() || !is_gil_state_ready())
             return;
-        }
-        if (!is_gil_state_ready()) {
-            rt_log(RuntimeLogLevel::Warn, "draw_python_panels: GIL state not ready");
-            return;
-        }
 
         if (g_bridge.prepare_ui)
             g_bridge.prepare_ui();
@@ -816,22 +792,13 @@ namespace lfs::python {
     void set_popup_draw_callback(DrawPopupsCallback cb) { g_popup_draw_callback = cb; }
 
     void draw_python_popups(lfs::vis::Scene* scene) {
-        if (!g_popup_draw_callback) {
-            rt_log(RuntimeLogLevel::Warn, "draw_python_popups: g_popup_draw_callback is null");
+        if (!g_popup_draw_callback)
             return;
-        }
+
 #ifdef LFS_BUILD_PYTHON_BINDINGS
-#ifndef NDEBUG
-        assert(Py_IsInitialized() && "Python not initialized before draw_python_popups");
-#endif
-        if (!Py_IsInitialized()) {
-            rt_log(RuntimeLogLevel::Warn, "draw_python_popups: Python not initialized");
+        assert(Py_IsInitialized());
+        if (!Py_IsInitialized() || !is_gil_state_ready())
             return;
-        }
-        if (!is_gil_state_ready()) {
-            rt_log(RuntimeLogLevel::Warn, "draw_python_popups: GIL state not ready");
-            return;
-        }
 
         if (g_bridge.prepare_ui)
             g_bridge.prepare_ui();
@@ -907,43 +874,22 @@ namespace lfs::python {
     bool invoke_operator(const std::string& operator_id) {
         static std::atomic<bool> in_invoke{false};
 
-        rt_log(RuntimeLogLevel::Debug, ("invoke_operator('" + operator_id + "') called").c_str());
-
-        if (in_invoke.load()) {
-            rt_log(RuntimeLogLevel::Debug, "invoke_operator: re-entrant call blocked");
+        if (in_invoke.load())
             return false;
-        }
 
         auto* callbacks = g_operator_callbacks.load();
-        if (!callbacks) {
-            rt_log(RuntimeLogLevel::Debug, "invoke_operator: g_operator_callbacks is null");
+        if (!callbacks || !callbacks->hasInvokeOperatorCallback())
             return false;
-        }
-        if (!callbacks->hasInvokeOperatorCallback()) {
-            rt_log(RuntimeLogLevel::Debug, "invoke_operator: hasInvokeOperatorCallback() is false");
-            return false;
-        }
 
 #ifdef LFS_BUILD_PYTHON_BINDINGS
-        if (!Py_IsInitialized()) {
-            rt_log(RuntimeLogLevel::Debug, "invoke_operator: Python not initialized");
+        if (!Py_IsInitialized() || !is_gil_state_ready())
             return false;
-        }
-        if (!is_gil_state_ready()) {
-            rt_log(RuntimeLogLevel::Debug, "invoke_operator: GIL state not ready");
-            return false;
-        }
 
-        rt_log(RuntimeLogLevel::Debug, "invoke_operator: acquiring GIL");
         in_invoke.store(true);
         const PyGILState_STATE gil = PyGILState_Ensure();
-        rt_log(RuntimeLogLevel::Debug, "invoke_operator: GIL acquired, calling callback");
         const bool result = callbacks->invokeOperator(operator_id.c_str());
-        rt_log(RuntimeLogLevel::Debug, result ? "invoke_operator: callback returned true"
-                                              : "invoke_operator: callback returned false");
         PyGILState_Release(gil);
         in_invoke.store(false);
-        rt_log(RuntimeLogLevel::Debug, "invoke_operator: done");
         return result;
 #else
         in_invoke.store(true);

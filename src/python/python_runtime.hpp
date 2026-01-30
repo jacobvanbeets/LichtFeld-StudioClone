@@ -24,9 +24,6 @@ namespace lfs::core {
     class IOperatorCallbacks;
 } // namespace lfs::core
 
-// Log level values matching core::LogLevel for the runtime log callback
-enum class RuntimeLogLevel { Debug = 1, Warn = 4, Error = 5 };
-
 namespace lfs::vis {
     class Scene;
     class SceneManager;
@@ -102,10 +99,6 @@ namespace lfs::python {
 
     // Bootstrap callback - set at startup, triggers Python initialization
     LFS_PYTHON_RUNTIME_API void set_ensure_initialized_callback(EnsureInitializedCallback cb);
-
-    // Logging callback - decouples python_runtime from lfs_core Logger
-    using RuntimeLogCallback = void (*)(RuntimeLogLevel level, const char* msg);
-    LFS_PYTHON_RUNTIME_API void set_runtime_log_callback(RuntimeLogCallback cb);
 
     // Menu locations (mirrors py_ui.hpp MenuLocation)
     enum class MenuLocation {
