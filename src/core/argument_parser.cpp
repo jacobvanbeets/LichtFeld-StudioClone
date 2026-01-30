@@ -71,18 +71,22 @@ namespace {
         try {
             ::args::ArgumentParser parser(
                 "LichtFeld Studio: High-performance CUDA implementation of 3D Gaussian Splatting algorithm.\n",
-                "\nEXAMPLES:\n"
-                "  Train:   lichtfeld-studio -d ./data -o ./output\n"
-                "  Resume:  lichtfeld-studio --resume checkpoint.resume\n"
-                "  View:    lichtfeld-studio -v model.ply\n"
-                "  Convert: lichtfeld-studio convert in.ply out.spz\n"
+                "\nSUBCOMMANDS:\n"
+                "convert -- Convert between .ply, .sog, .spz, .html\n"
+                "plugin -- Manage plugins (create, check, list)\n"
+                "\n"
+                "Run '<subcommand> --help' for details.\n"
+                "\n"
+                "EXAMPLES:\n"
+                "lichtfeld-studio -d ./data -o ./output\n"
+                "lichtfeld-studio --resume checkpoint.resume\n"
+                "lichtfeld-studio -v model.ply\n"
+                "lichtfeld-studio convert in.ply out.spz\n"
+                "lichtfeld-studio plugin create my_plugin\n"
                 "\n"
                 "ENVIRONMENT:\n"
-                "  LOG_LEVEL - Set log level (trace/debug/info/warn/error)\n"
-                "\n"
-                "SUBCOMMANDS:\n"
-                "  convert - Convert between .ply, .sog, .spz, .html\n"
-                "            Run 'lichtfeld-studio convert --help' for details\n");
+                "LOG_LEVEL -- Set log level (trace/debug/info/perf/warn/error)\n");
+            parser.helpParams.width = 240;
 
             // =============================================================================
             // MODE SELECTION
@@ -97,18 +101,19 @@ namespace {
             // =============================================================================
             // TRAINING PATHS
             // =============================================================================
+            ::args::Group paths_sep(parser, " ");
             ::args::Group paths_group(parser, "TRAINING PATHS:");
             ::args::ValueFlag<std::string> data_path(paths_group, "data_path", "Path to training data", {'d', "data-path"});
             ::args::ValueFlag<std::string> output_path(paths_group, "output_path", "Path to output", {'o', "output-path"});
             ::args::ValueFlag<std::string> config_file(paths_group, "config_file", "LichtFeldStudio config file (json)", {"config"});
             ::args::ValueFlag<std::string> init_path(paths_group, "path", "Initialize from splat file (.ply, .sog, .spz, .resume)", {"init"});
 
-            // Import COLMAP cameras without images
-            ::args::ValueFlag<std::string> import_cameras(parser, "path", "Import COLMAP cameras from sparse folder (no images required)", {"import-cameras"});
+            ::args::ValueFlag<std::string> import_cameras(paths_group, "path", "Import COLMAP cameras from sparse folder (no images required)", {"import-cameras"});
 
             // =============================================================================
             // TRAINING PARAMETERS
             // =============================================================================
+            ::args::Group training_sep(parser, " ");
             ::args::Group training_group(parser, "TRAINING PARAMETERS:");
             ::args::ValueFlag<uint32_t> iterations(training_group, "iterations", "Number of iterations", {'i', "iter"});
             ::args::ValueFlag<std::string> strategy(training_group, "strategy", "Optimization strategy: mcmc, adc", {"strategy"});
@@ -122,6 +127,7 @@ namespace {
             // =============================================================================
             // INITIALIZATION
             // =============================================================================
+            ::args::Group init_sep(parser, " ");
             ::args::Group init_group(parser, "INITIALIZATION:");
             ::args::Flag random(init_group, "random", "Use random initialization instead of SfM", {"random"});
             ::args::ValueFlag<int> init_num_pts(init_group, "init_num_pts", "Number of random initialization points", {"init-num-pts"});
@@ -130,6 +136,7 @@ namespace {
             // =============================================================================
             // DATASET OPTIONS
             // =============================================================================
+            ::args::Group dataset_sep(parser, " ");
             ::args::Group dataset_group(parser, "DATASET OPTIONS:");
             ::args::ValueFlag<std::string> images_folder(dataset_group, "images", "Images folder name", {"images"});
             ::args::ValueFlag<int> test_every(dataset_group, "test_every", "Use every Nth image as test", {"test-every"});
@@ -149,6 +156,7 @@ namespace {
             // =============================================================================
             // MASK OPTIONS
             // =============================================================================
+            ::args::Group mask_sep(parser, " ");
             ::args::Group mask_group(parser, "MASK OPTIONS:");
             ::args::MapFlag<std::string, lfs::core::param::MaskMode> mask_mode(mask_group, "mask_mode",
                                                                                "Mask mode: none, segment, ignore, alpha_consistent (default: none)",
@@ -163,6 +171,7 @@ namespace {
             // =============================================================================
             // SPARSITY OPTIMIZATION
             // =============================================================================
+            ::args::Group sparsity_sep(parser, " ");
             ::args::Group sparsity_group(parser, "SPARSITY OPTIMIZATION:");
             ::args::Flag enable_sparsity(sparsity_group, "enable_sparsity", "Enable sparsity optimization", {"enable-sparsity"});
             ::args::ValueFlag<int> sparsify_steps(sparsity_group, "sparsify_steps", "Number of steps for sparsification (default: 15000)", {"sparsify-steps"});
@@ -172,6 +181,7 @@ namespace {
             // =============================================================================
             // RENDERING OPTIONS
             // =============================================================================
+            ::args::Group rendering_sep(parser, " ");
             ::args::Group rendering_group(parser, "RENDERING OPTIONS:");
             ::args::Flag enable_mip(rendering_group, "enable_mip", "Enable mip filter (anti-aliasing)", {"enable-mip"});
             ::args::Flag use_bilateral_grid(rendering_group, "bilateral_grid", "Enable bilateral grid filtering", {"bilateral-grid"});
@@ -183,6 +193,7 @@ namespace {
             // =============================================================================
             // OUTPUT OPTIONS
             // =============================================================================
+            ::args::Group output_sep(parser, " ");
             ::args::Group output_group(parser, "OUTPUT OPTIONS:");
             ::args::Flag enable_eval(output_group, "eval", "Enable evaluation during training", {"eval"});
             ::args::Flag enable_save_eval_images(output_group, "save_eval_images", "Save evaluation comparison images (GT vs rendered)", {"save-eval-images"});
@@ -193,6 +204,7 @@ namespace {
             // =============================================================================
             // UI OPTIONS
             // =============================================================================
+            ::args::Group ui_sep(parser, " ");
             ::args::Group ui_group(parser, "UI OPTIONS:");
             ::args::Flag headless(ui_group, "headless", "Disable visualization during training", {"headless"});
             ::args::Flag auto_train(ui_group, "train", "Start training immediately on startup", {"train"});
@@ -204,6 +216,7 @@ namespace {
             // =============================================================================
             // LOGGING
             // =============================================================================
+            ::args::Group logging_sep(parser, " ");
             ::args::Group logging_group(parser, "LOGGING:");
             ::args::ValueFlag<std::string> log_level(logging_group, "level", "Log level: trace, debug, info, perf, warn, error, critical, off (default: info)", {"log-level"});
             ::args::Flag verbose(logging_group, "verbose", "Verbose output (equivalent to --log-level debug)", {"verbose"});
@@ -214,6 +227,7 @@ namespace {
             // =============================================================================
             // EXTENSIONS
             // =============================================================================
+            ::args::Group extensions_sep(parser, " ");
             ::args::Group extensions_group(parser, "EXTENSIONS:");
             ::args::ValueFlagList<std::string> python_scripts(extensions_group, "path", "Python script(s) for custom training callbacks", {"python-script"});
 
