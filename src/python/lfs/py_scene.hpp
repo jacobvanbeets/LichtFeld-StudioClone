@@ -491,6 +491,10 @@ namespace lfs::python {
         // Operations
         size_t apply_deleted() { return scene_->applyDeleted(); }
         void invalidate_cache() { scene_->invalidateCache(); }
+        void notify_changed() {
+            scene_->invalidateCache();
+            core::events::state::SceneChanged{}.emit();
+        }
         std::string duplicate_node(const std::string& name) {
             return scene_->duplicateNode(name);
         }

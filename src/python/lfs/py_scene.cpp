@@ -730,6 +730,7 @@ Returns:
             // Operations
             .def("apply_deleted", &PyScene::apply_deleted)
             .def("invalidate_cache", &PyScene::invalidate_cache)
+            .def("notify_changed", &PyScene::notify_changed)
             .def("duplicate_node", &PyScene::duplicate_node, nb::arg("name"))
             .def("merge_group", &PyScene::merge_group, nb::arg("group_name"))
             .def_prop_ro("nodes", &PyScene::nodes);
