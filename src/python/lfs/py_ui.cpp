@@ -52,6 +52,10 @@
 #include <unordered_map>
 #include <imgui.h>
 
+#ifdef _WIN32
+#include <shellapi.h>
+#endif
+
 namespace lfs::python {
 
     using lfs::training::CommandCenter;
@@ -162,7 +166,7 @@ namespace lfs::python {
             g_python_operator_instances.erase(id);
         }
 
-        unsigned int load_icon_from_path(const std::string& path, const std::string& cache_key) {
+        unsigned int load_icon_from_path(const std::filesystem::path& path, const std::string& cache_key) {
             const auto [data, width, height, channels] = lfs::core::load_image_with_alpha(path);
 
             unsigned int texture_id;
@@ -260,7 +264,7 @@ namespace lfs::python {
             }
 
             try {
-                const auto tex = load_icon_from_path(icon_path.string(), cache_key);
+                const auto tex = load_icon_from_path(icon_path, cache_key);
 
                 {
                     std::lock_guard lock(g_plugin_icons_mutex);
@@ -2083,7 +2087,7 @@ namespace lfs::python {
         nb::object prop_desc = all_props[prop_key];
         nb::object current_value = data.attr(prop_id.c_str());
         std::string prop_type = nb::cast<std::string>(
-            nb::str(prop_desc.attr("__class__").attr("__name__")));
+            nb::str(nb::object(prop_desc.attr("__class__").attr("__name__"))));
 
         std::string prop_name_str;
         if (nb::hasattr(prop_desc, "name")) {
