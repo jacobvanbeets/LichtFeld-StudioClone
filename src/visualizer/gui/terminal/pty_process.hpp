@@ -48,12 +48,14 @@ namespace lfs::vis::terminal {
 
         [[nodiscard]] int fd() const;
 
+#ifdef _WIN32
+        bool attachPipes(HANDLE read_handle, HANDLE write_handle);
+#endif
+
     private:
         void cleanup();
 
 #ifdef _WIN32
-        bool attachPipes(HANDLE read_handle, HANDLE write_handle);
-
         HPCON hpc_ = nullptr;
         HANDLE pipe_in_ = INVALID_HANDLE_VALUE;
         HANDLE pipe_out_ = INVALID_HANDLE_VALUE;
