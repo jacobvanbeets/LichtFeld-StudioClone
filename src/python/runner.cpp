@@ -32,8 +32,19 @@ namespace lfs::python {
     static bool g_we_initialized_python = false;
 
     namespace {
+        void runtime_log_to_logger(RuntimeLogLevel level, const char* msg) {
+            switch (level) {
+            case RuntimeLogLevel::Debug: LOG_DEBUG("{}", msg); break;
+            case RuntimeLogLevel::Warn: LOG_WARN("{}", msg); break;
+            case RuntimeLogLevel::Error: LOG_ERROR("{}", msg); break;
+            }
+        }
+
         struct EnsureInitializedRegistrar {
-            EnsureInitializedRegistrar() { set_ensure_initialized_callback(ensure_initialized); }
+            EnsureInitializedRegistrar() {
+                set_ensure_initialized_callback(ensure_initialized);
+                set_runtime_log_callback(runtime_log_to_logger);
+            }
         };
         static EnsureInitializedRegistrar g_registrar;
     } // namespace
