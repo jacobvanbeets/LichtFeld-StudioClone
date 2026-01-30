@@ -91,18 +91,6 @@ class ViewMenu:
             _draw_plugins_submenu(layout)
             layout.end_menu()
 
-        layout.separator()
-
-        if layout.begin_menu("Window"):
-            panels = lf.ui.get_panel_names("FLOATING")
-            if panels:
-                for label in panels:
-                    enabled = lf.ui.is_panel_enabled(label)
-                    if layout.menu_item_toggle(label, "", enabled):
-                        lf.ui.set_panel_enabled(label, not enabled)
-            else:
-                layout.text_colored("No floating panels", (0.6, 0.6, 0.6, 1.0))
-            layout.end_menu()
 
 
 def register():

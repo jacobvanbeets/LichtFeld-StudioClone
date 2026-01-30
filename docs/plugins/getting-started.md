@@ -207,6 +207,59 @@ class StatsOverlay(Panel):
 
 ---
 
+## UI Hooks
+
+Hooks let you inject UI into existing panels without replacing them. A hook callback receives a `layout` object and draws into the host panel at a predefined hook point.
+
+### Hook pattern
+
+```python
+import lichtfeld as lf
+
+
+class MyHookPanel:
+    def draw(self, layout):
+        if not layout.collapsing_header("My Section", default_open=True):
+            return
+        layout.label("Injected into the rendering panel")
+
+
+_instance = None
+
+
+def _draw_hook(layout):
+    global _instance
+    if _instance is None:
+        _instance = MyHookPanel()
+    _instance.draw(layout)
+
+
+def register():
+    lf.ui.add_hook("rendering", "selection_groups", _draw_hook, "append")
+
+
+def unregister():
+    lf.ui.remove_hook("rendering", "selection_groups", _draw_hook)
+```
+
+The `position` argument controls whether the hook draws before (`"prepend"`) or after (`"append"`) the native content at that hook point.
+
+### Available hook points
+
+| Panel | Section | Description |
+|---|---|---|
+| `"rendering"` | `"selection_groups"` | Rendering panel, between settings and tools |
+
+### Decorator form
+
+```python
+@lf.ui.hook("rendering", "selection_groups", "append")
+def my_hook(layout):
+    layout.label("Hello from hook")
+```
+
+---
+
 ## Operators
 
 Operators are actions that can be invoked by buttons, menus, or keyboard shortcuts. They extend `PropertyGroup`, so they can have typed properties.

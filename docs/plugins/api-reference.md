@@ -960,6 +960,19 @@ import lichtfeld as lf
 | `get_selection_world_center()`        | `list[float]`    | World space center                |
 | `capture_selection_transforms()`      | `dict`           | Snapshot for undo                 |
 
+### Scene Shortcuts
+
+Module-level shortcuts for common scene operations (equivalent to `Scene` object methods):
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `set_node_visibility(name, visible)` | `None` | Toggle node visibility |
+| `remove_node(name, keep_children=False)` | `None` | Remove node |
+| `reparent_node(name, new_parent)` | `None` | Reparent node |
+| `rename_node(old_name, new_name)` | `None` | Rename node |
+| `add_group(name, parent="")` | `None` | Add group node |
+| `get_num_gaussians()` | `int` | Total gaussian count |
+
 ### Gaussian-Level Selection (on Scene object)
 
 | Method                          | Returns     | Description                  |
@@ -976,8 +989,18 @@ import lichtfeld as lf
 |---------------------------------------------|----------------|----------------------------------|
 | `get_node_transform(name)`                  | `list[float]`  | 16 floats, column-major          |
 | `set_node_transform(name, matrix)`          | `None`         | Set 4x4 transform                |
-| `decompose_transform(matrix)`               | `dict`         | {translation, euler, scale}      |
+| `decompose_transform(matrix)`               | `dict`         | See keys below                   |
 | `compose_transform(translation, euler, scale)` | `list[float]` | Build 4x4 from components      |
+
+`decompose_transform` returns a dict with these keys:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `translation` | `[x, y, z]` | Position |
+| `rotation_quat` | `[x, y, z, w]` | Quaternion |
+| `rotation_euler` | `[rx, ry, rz]` | Euler angles (radians) |
+| `rotation_euler_deg` | `[rx, ry, rz]` | Euler angles (degrees) |
+| `scale` | `[sx, sy, sz]` | Scale |
 
 ### Splat Data (combined_model() / node.splat_data())
 
@@ -1029,6 +1052,21 @@ Accessible via `scene.combined_model()` (all nodes merged) or `node.splat_data()
 | `optimization_params()`    | `OptimizationParams` | Training parameters      |
 | `dataset_params()`         | `DatasetParams`  | Dataset parameters            |
 | `loss_buffer()`            | `list[float]`    | Loss history                  |
+| `load_checkpoint_for_training(checkpoint_path, dataset_path, output_path)` | `None` | Load checkpoint for training |
+
+### Training Status
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `trainer_elapsed_seconds()` | `float` | Elapsed training time |
+| `trainer_eta_seconds()` | `float` | Estimated remaining time (-1 if unavailable) |
+| `trainer_strategy_type()` | `str` | Strategy type (mcmc, default, etc.) |
+| `trainer_is_gut_enabled()` | `bool` | GUT enabled |
+| `trainer_max_gaussians()` | `int` | Max gaussians |
+| `trainer_num_splats()` | `int` | Current splat count |
+| `trainer_current_iteration()` | `int` | Current iteration |
+| `trainer_total_iterations()` | `int` | Total iterations |
+| `trainer_current_loss()` | `float` | Current loss |
 
 ### Training Hooks
 
@@ -1110,6 +1148,9 @@ lf.undo.push(name: str, undo: Callable, redo: Callable)
 | `lf.ui.get_transform_space()`               | `str`            | "local" or "world"        |
 | `lf.ui.set_transform_space(space)`          | `None`           | Set transform space        |
 | `lf.ui.get_pivot_mode()` / `set_pivot_mode(mode)` | `str`     | Pivot mode                 |
+| `lf.ui.get_fps()`                          | `float`          | Current FPS                |
+| `lf.ui.get_gpu_memory()`                   | `(int, int)`     | (used, total) GPU memory in bytes |
+| `lf.ui.get_git_commit()`                   | `str`            | Git commit hash            |
 
 ### File Dialogs
 
@@ -1128,13 +1169,25 @@ lf.undo.push(name: str, undo: Callable, redo: Callable)
 | `lf.ui.save_spz_file_dialog()`              | `str or None`    |
 | `lf.ui.save_html_file_dialog()`             | `str or None`    |
 
-### Hooks
+### UI Hooks
 
-```python
-lf.ui.add_hook(location: str, name: str, callback: Callable)
-lf.ui.remove_hook(location: str, name: str)
-lf.ui.invoke_hooks(location: str, name: str, arg: Any)
-```
+Inject UI into existing panels at predefined hook points. Callbacks receive a `layout` object.
+
+| Function | Description |
+|---|---|
+| `lf.ui.add_hook(panel, section, callback, position="append")` | Register a hook. `position`: `"prepend"` or `"append"` |
+| `lf.ui.remove_hook(panel, section, callback)` | Remove a specific hook callback |
+| `lf.ui.clear_hooks(panel, section="")` | Clear hooks for panel/section (or all sections if empty) |
+| `lf.ui.clear_all_hooks()` | Clear all registered hooks |
+| `lf.ui.get_hook_points()` | List all registered hook point keys |
+| `lf.ui.invoke_hooks(panel, section, prepend=False)` | Invoke hooks (`prepend=True` for prepend, `False` for append) |
+| `@lf.ui.hook(panel, section, position="append")` | Decorator form of `add_hook` |
+
+**Available hook points:**
+
+| Panel | Section | Description |
+|---|---|---|
+| `"rendering"` | `"selection_groups"` | Rendering panel, between settings and tools |
 
 ### Tensor API
 
