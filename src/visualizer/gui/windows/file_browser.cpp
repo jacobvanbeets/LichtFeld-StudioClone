@@ -4,7 +4,7 @@
 
 #include "gui/windows/file_browser.hpp"
 #include "core/path_utils.hpp"
-#include "gui/dpi_scale.hpp"
+#include "python/python_runtime.hpp"
 #include "gui/localization_manager.hpp"
 #include "gui/string_keys.hpp"
 #include "io/loader.hpp"
@@ -21,7 +21,7 @@ namespace lfs::vis::gui {
     }
 
     void FileBrowser::render(bool* p_open) {
-        const float scale = getDpiScale();
+        const float scale = lfs::python::get_shared_dpi_scale();
         ImGui::SetNextWindowSize(ImVec2(700 * scale, 450 * scale), ImGuiCond_FirstUseEver);
 
         // Add NoDocking flag

@@ -10,7 +10,6 @@
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
 #include "core/property_registry.hpp"
-#include "gui/dpi_scale.hpp"
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "internal/resource_paths.hpp"
@@ -1982,7 +1981,7 @@ namespace lfs::python {
     }
 
     float PyUILayout::get_dpi_scale() {
-        return vis::gui::getDpiScale();
+        return python::get_shared_dpi_scale();
     }
 
     void PyUILayout::set_mouse_cursor_hand() {

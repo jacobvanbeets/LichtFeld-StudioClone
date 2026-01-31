@@ -8,7 +8,6 @@
 #include "core/logger.hpp"
 #include "core/tensor_trace.hpp"
 #include "core/training_snapshot.hpp"
-#include "gui/dpi_scale.hpp"
 #include "python/python_runtime.hpp"
 #ifdef WIN32
 #include <shellapi.h>
@@ -208,7 +207,7 @@ namespace lfs::vis::gui {
 
         lfs::python::ensure_initialized();
 
-        const float scale = getDpiScale();
+        const float scale = lfs::python::get_shared_dpi_scale();
         const auto& t = theme();
 
         ImGui::SetNextWindowSize({400.0f * scale, 0}, ImGuiCond_Always);

@@ -14,7 +14,6 @@
 #include "core/path_utils.hpp"
 #include "core/sogs.hpp"
 #include "core/splat_data_export.hpp"
-#include "gui/dpi_scale.hpp"
 #include "gui/editor/python_editor.hpp"
 #include "gui/html_viewer_export.hpp"
 #include "gui/localization_manager.hpp"
@@ -271,7 +270,7 @@ namespace lfs::vis::gui {
         xscale = std::clamp(xscale, 1.0f, 4.0f);
 
         // Store DPI scale for use by UI components
-        setDpiScale(xscale);
+        lfs::python::set_shared_dpi_scale(xscale);
 
         // Set application icon - use the resource path helper
         try {
@@ -700,7 +699,7 @@ namespace lfs::vis::gui {
                 lfs::vis::Scene* scene = sm ? &sm->getScene() : nullptr;
 
                 const float avail_h = ImGui::GetContentRegionAvail().y;
-                const float dpi = getDpiScale();
+                const float dpi = lfs::python::get_shared_dpi_scale();
                 constexpr float SPLITTER_H = 6.0f;
                 constexpr float MIN_H = 80.0f;
                 const float splitter_h = SPLITTER_H * dpi;
@@ -2600,7 +2599,7 @@ namespace lfs::vis::gui {
             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
 
         const auto& t = theme();
-        const float scale = getDpiScale();
+        const float scale = lfs::python::get_shared_dpi_scale();
         const float btn_size = t.sizes.toolbar_button_size * scale;
         const float spacing = t.sizes.toolbar_spacing * scale;
         const float padding = t.sizes.toolbar_padding * scale;
