@@ -110,6 +110,11 @@ namespace lfs::python {
         // Thread-safety: Set once during init, read from render thread only
         void* g_imgui_context{nullptr};
 
+        constexpr float DEFAULT_DPI_SCALE{1.0f};
+
+        void* g_view_context_state{nullptr};
+        float g_shared_dpi_scale{DEFAULT_DPI_SCALE};
+
         // Viewport bounds (set by gui_manager each frame)
         // Protected by mutex for multi-field atomicity
         struct ViewportBounds {
@@ -449,6 +454,22 @@ namespace lfs::python {
 
     void* get_imgui_context() {
         return g_imgui_context;
+    }
+
+    void set_view_context_state(void* state) {
+        g_view_context_state = state;
+    }
+
+    void* get_view_context_state() {
+        return g_view_context_state;
+    }
+
+    void set_shared_dpi_scale(float scale) {
+        g_shared_dpi_scale = scale;
+    }
+
+    float get_shared_dpi_scale() {
+        return g_shared_dpi_scale;
     }
 
     void set_ensure_initialized_callback(EnsureInitializedCallback cb) {

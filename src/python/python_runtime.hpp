@@ -520,6 +520,11 @@ namespace lfs::python {
     LFS_PYTHON_RUNTIME_API void set_imgui_context(void* ctx);
     LFS_PYTHON_RUNTIME_API void* get_imgui_context();
 
+    LFS_PYTHON_RUNTIME_API void  set_view_context_state(void* state);
+    LFS_PYTHON_RUNTIME_API void* get_view_context_state();
+    LFS_PYTHON_RUNTIME_API void  set_shared_dpi_scale(float scale);
+    LFS_PYTHON_RUNTIME_API float get_shared_dpi_scale();
+
     // Exit popup state - thread-safe flag for window close callback
     LFS_PYTHON_RUNTIME_API bool is_exit_popup_open();
     LFS_PYTHON_RUNTIME_API void set_exit_popup_open(bool open);

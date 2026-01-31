@@ -4,17 +4,14 @@
 
 #pragma once
 
+namespace lfs::python {
+    void  set_shared_dpi_scale(float scale);
+    float get_shared_dpi_scale();
+} // namespace lfs::python
+
 namespace lfs::vis::gui {
 
-    // Global DPI scale factor for UI elements
-    // This is set during GuiManager::init() and should be used to scale
-    // hardcoded UI dimensions (window sizes, button widths, etc.)
-    inline float& dpiScale() {
-        static float scale = 1.0f;
-        return scale;
-    }
-
-    inline float getDpiScale() { return dpiScale(); }
-    inline void setDpiScale(float scale) { dpiScale() = scale; }
+    inline float getDpiScale() { return lfs::python::get_shared_dpi_scale(); }
+    inline void setDpiScale(float scale) { lfs::python::set_shared_dpi_scale(scale); }
 
 } // namespace lfs::vis::gui
