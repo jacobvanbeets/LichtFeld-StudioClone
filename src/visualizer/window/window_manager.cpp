@@ -5,6 +5,7 @@
 #include "window_manager.hpp"
 #include "core/events.hpp"
 #include "core/logger.hpp"
+#include "python/python_runtime.hpp"
 // clang-format off
 // GLAD must be included before GLFW
 #include <glad/glad.h>
@@ -82,6 +83,8 @@ namespace lfs::vis {
             glfwTerminate();
             return false;
         }
+
+        lfs::python::set_gl_loader_func(reinterpret_cast<void*>(glfwGetProcAddress));
 
         // Set window focus callback
         glfwSetWindowFocusCallback(window_, window_focus_callback);

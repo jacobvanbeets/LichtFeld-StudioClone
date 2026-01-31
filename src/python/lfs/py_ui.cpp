@@ -50,6 +50,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <imgui.h>
+#include <implot.h>
 
 #ifdef _WIN32
 #include <shellapi.h>
@@ -3551,6 +3552,19 @@ namespace lfs::python {
                     reinterpret_cast<ImGuiMemFreeFunc>(free_fn),
                     user_data);
             }
+
+            static bool gl_initialized = false;
+            if (!gl_initialized) {
+                void* const loader = get_gl_loader_func();
+                if (loader) {
+                    gladLoadGLLoader(reinterpret_cast<GLADloadproc>(loader));
+                    gl_initialized = true;
+                }
+            }
+
+            void* const plot_ctx = get_implot_context();
+            if (plot_ctx)
+                ImPlot::SetCurrentContext(static_cast<ImPlotContext*>(plot_ctx));
         };
         bridge.draw_panels = [](PanelSpace space) { PyPanelRegistry::instance().draw_panels(space); };
         bridge.draw_single_panel = [](const char* label) {

@@ -114,6 +114,9 @@ namespace lfs::python {
 
         constexpr float DEFAULT_DPI_SCALE{1.0f};
 
+        void* g_gl_loader_func{nullptr};
+        void* g_implot_context{nullptr};
+
         void* g_view_context_state{nullptr};
         float g_shared_dpi_scale{DEFAULT_DPI_SCALE};
 
@@ -468,6 +471,11 @@ namespace lfs::python {
         *free_func = g_imgui_free_fn;
         *user_data = g_imgui_alloc_user_data;
     }
+
+    void set_gl_loader_func(void* loader_func) { g_gl_loader_func = loader_func; }
+    void* get_gl_loader_func() { return g_gl_loader_func; }
+    void set_implot_context(void* ctx) { g_implot_context = ctx; }
+    void* get_implot_context() { return g_implot_context; }
 
     void set_view_context_state(void* state) {
         g_view_context_state = state;

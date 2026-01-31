@@ -519,6 +519,11 @@ namespace lfs::python {
     LFS_PYTHON_RUNTIME_API void  set_imgui_allocator_functions(void* alloc_func, void* free_func, void* user_data);
     LFS_PYTHON_RUNTIME_API void  get_imgui_allocator_functions(void** alloc_func, void** free_func, void** user_data);
 
+    LFS_PYTHON_RUNTIME_API void  set_gl_loader_func(void* loader_func);
+    LFS_PYTHON_RUNTIME_API void* get_gl_loader_func();
+    LFS_PYTHON_RUNTIME_API void  set_implot_context(void* ctx);
+    LFS_PYTHON_RUNTIME_API void* get_implot_context();
+
     LFS_PYTHON_RUNTIME_API void  set_view_context_state(void* state);
     LFS_PYTHON_RUNTIME_API void* get_view_context_state();
     LFS_PYTHON_RUNTIME_API void  set_shared_dpi_scale(float scale);

@@ -249,6 +249,7 @@ namespace lfs::vis::gui {
             reinterpret_cast<void*>(alloc_fn),
             reinterpret_cast<void*>(free_fn),
             alloc_user_data);
+        lfs::python::set_implot_context(ImPlot::GetCurrentContext());
 
         ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
