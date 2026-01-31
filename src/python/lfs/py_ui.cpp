@@ -3537,9 +3537,19 @@ namespace lfs::python {
         // Register all Python callbacks via consolidated bridge
         PyBridge bridge;
         bridge.prepare_ui = []() {
-            void* ctx = get_imgui_context();
-            if (ctx) {
-                ImGui::SetCurrentContext(static_cast<ImGuiContext*>(ctx));
+            void* const ctx = get_imgui_context();
+            if (!ctx)
+                return;
+            ImGui::SetCurrentContext(static_cast<ImGuiContext*>(ctx));
+            void* alloc_fn{};
+            void* free_fn{};
+            void* user_data{};
+            get_imgui_allocator_functions(&alloc_fn, &free_fn, &user_data);
+            if (alloc_fn && free_fn) {
+                ImGui::SetAllocatorFunctions(
+                    reinterpret_cast<ImGuiMemAllocFunc>(alloc_fn),
+                    reinterpret_cast<ImGuiMemFreeFunc>(free_fn),
+                    user_data);
             }
         };
         bridge.draw_panels = [](PanelSpace space) { PyPanelRegistry::instance().draw_panels(space); };

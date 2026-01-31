@@ -106,9 +106,11 @@ namespace lfs::python {
         std::once_flag g_redirect_once;
         std::atomic<bool> g_plugins_loaded{false};
 
-        // ImGui context - shared from exe to pyd for Windows DLL boundary crossing
-        // Thread-safety: Set once during init, read from render thread only
+        // ImGui state shared across DLL boundaries (set once during init, read from render thread)
         void* g_imgui_context{nullptr};
+        void* g_imgui_alloc_fn{nullptr};
+        void* g_imgui_free_fn{nullptr};
+        void* g_imgui_alloc_user_data{nullptr};
 
         constexpr float DEFAULT_DPI_SCALE{1.0f};
 
@@ -447,13 +449,24 @@ namespace lfs::python {
     void mark_plugins_loaded() { g_plugins_loaded.store(true, std::memory_order_release); }
     bool are_plugins_loaded() { return g_plugins_loaded.load(std::memory_order_acquire); }
 
-    // ImGui context sharing
     void set_imgui_context(void* ctx) {
         g_imgui_context = ctx;
     }
 
     void* get_imgui_context() {
         return g_imgui_context;
+    }
+
+    void set_imgui_allocator_functions(void* alloc_func, void* free_func, void* user_data) {
+        g_imgui_alloc_fn = alloc_func;
+        g_imgui_free_fn = free_func;
+        g_imgui_alloc_user_data = user_data;
+    }
+
+    void get_imgui_allocator_functions(void** alloc_func, void** free_func, void** user_data) {
+        *alloc_func = g_imgui_alloc_fn;
+        *free_func = g_imgui_free_fn;
+        *user_data = g_imgui_alloc_user_data;
     }
 
     void set_view_context_state(void* state) {

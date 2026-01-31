@@ -237,11 +237,18 @@ namespace lfs::vis::gui {
         ImGui::CreateContext();
         ImPlot::CreateContext();
 
-        // Share ImGui context with Python module (required for Windows DLL boundaries)
-        ImGuiContext* ctx = ImGui::GetCurrentContext();
-        std::fprintf(stderr, "[gui] ImGui context created: %p\n", static_cast<void*>(ctx));
-        std::fflush(stderr);
+        // Share ImGui state with Python module across DLL boundaries
+        ImGuiContext* const ctx = ImGui::GetCurrentContext();
         lfs::python::set_imgui_context(ctx);
+
+        ImGuiMemAllocFunc alloc_fn{};
+        ImGuiMemFreeFunc free_fn{};
+        void* alloc_user_data{};
+        ImGui::GetAllocatorFunctions(&alloc_fn, &free_fn, &alloc_user_data);
+        lfs::python::set_imgui_allocator_functions(
+            reinterpret_cast<void*>(alloc_fn),
+            reinterpret_cast<void*>(free_fn),
+            alloc_user_data);
 
         ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
