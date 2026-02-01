@@ -249,6 +249,56 @@ namespace lfs::vis::gui {
             alloc_user_data);
         lfs::python::set_implot_context(ImPlot::GetCurrentContext());
 
+        lfs::python::set_gl_texture_service(
+            [](const unsigned char* data, const int w, const int h, const int channels) -> lfs::python::TextureResult {
+                if (!data || w <= 0 || h <= 0)
+                    return {0, 0, 0};
+
+                GLuint tex = 0;
+                glGenTextures(1, &tex);
+                if (tex == 0)
+                    return {0, 0, 0};
+
+                glBindTexture(GL_TEXTURE_2D, tex);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+                GLenum format = GL_RGB;
+                GLenum internal_format = GL_RGB8;
+                if (channels == 1) {
+                    format = GL_RED;
+                    internal_format = GL_R8;
+                } else if (channels == 4) {
+                    format = GL_RGBA;
+                    internal_format = GL_RGBA8;
+                }
+
+                glTexImage2D(GL_TEXTURE_2D, 0, internal_format, w, h, 0, format, GL_UNSIGNED_BYTE, data);
+
+                if (channels == 1) {
+                    GLint swizzle[] = {GL_RED, GL_RED, GL_RED, GL_ONE};
+                    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzle);
+                }
+
+                glBindTexture(GL_TEXTURE_2D, 0);
+                return {tex, w, h};
+            },
+            [](const uint32_t tex) {
+                if (tex > 0) {
+                    const auto gl_tex = static_cast<GLuint>(tex);
+                    glDeleteTextures(1, &gl_tex);
+                }
+            },
+            []() -> int {
+                constexpr int FALLBACK_MAX_TEXTURE_SIZE = 4096;
+                GLint sz = 0;
+                glGetIntegerv(GL_MAX_TEXTURE_SIZE, &sz);
+                return sz > 0 ? sz : FALLBACK_MAX_TEXTURE_SIZE;
+            });
+
         ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;

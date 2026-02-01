@@ -2,8 +2,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <glad/glad.h>
-
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
@@ -1017,21 +1015,10 @@ NB_MODULE(lichtfeld, m) {
                 const auto path = lfs::vis::getAssetPath("icon/" + name + ".png");
                 const auto [data, width, height, channels] = lfs::core::load_image_with_alpha(path);
 
-                unsigned int tex_id = 0;
-                glGenTextures(1, &tex_id);
-                glBindTexture(GL_TEXTURE_2D, tex_id);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-                const GLenum format = (channels == 4) ? GL_RGBA : GL_RGB;
-                glTexImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(format), width, height, 0, format, GL_UNSIGNED_BYTE, data);
-
+                const auto result = lfs::python::create_gl_texture(data, width, height, channels);
                 lfs::core::free_image(data);
-                glBindTexture(GL_TEXTURE_2D, 0);
 
-                return static_cast<uint64_t>(tex_id);
+                return static_cast<uint64_t>(result.texture_id);
             } catch (const std::exception& e) {
                 LOG_WARN("Failed to load icon {}: {}", name, e.what());
                 return 0;
@@ -1040,11 +1027,9 @@ NB_MODULE(lichtfeld, m) {
         nb::arg("name"), "Load an icon texture from assets/icon/{name}.png, returns OpenGL texture ID");
 
     m.def(
-        "free_icon", [](uint64_t texture_id) {
-            if (texture_id > 0) {
-                auto tex = static_cast<unsigned int>(texture_id);
-                glDeleteTextures(1, &tex);
-            }
+        "free_icon", [](const uint64_t texture_id) {
+            if (texture_id > 0)
+                lfs::python::delete_gl_texture(static_cast<uint32_t>(texture_id));
         },
         nb::arg("texture_id"), "Free an icon texture");
 

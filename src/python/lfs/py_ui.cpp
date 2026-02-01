@@ -2,8 +2,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include <glad/glad.h>
-
 #include "control/command_api.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
 #include "core/events.hpp"
@@ -169,19 +167,9 @@ namespace lfs::python {
         unsigned int load_icon_from_path(const std::filesystem::path& path, const std::string& cache_key) {
             const auto [data, width, height, channels] = lfs::core::load_image_with_alpha(path);
 
-            unsigned int texture_id;
-            glGenTextures(1, &texture_id);
-            glBindTexture(GL_TEXTURE_2D, texture_id);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-            const GLenum format = (channels == 4) ? GL_RGBA : GL_RGB;
-            glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-
+            const auto result = lfs::python::create_gl_texture(data, width, height, channels);
             lfs::core::free_image(data);
-            glBindTexture(GL_TEXTURE_2D, 0);
+            const auto texture_id = result.texture_id;
 
             {
                 std::lock_guard lock(g_icon_cache_mutex);
@@ -293,7 +281,7 @@ namespace lfs::python {
             for (const auto& key : keys_to_free) {
                 auto it = g_icon_cache.find(key);
                 if (it != g_icon_cache.end()) {
-                    glDeleteTextures(1, &it->second);
+                    lfs::python::delete_gl_texture(it->second);
                     g_icon_cache.erase(it);
                 }
             }
@@ -328,63 +316,21 @@ namespace lfs::python {
         std::unordered_map<std::string, std::unique_ptr<PreloadEntry>> g_preload_cache;
         std::mutex g_preload_mutex;
 
-        GLint g_max_texture_size = 0;
+        int g_max_texture_size = 0;
 
         void ensure_max_texture_size() {
-            if (g_max_texture_size == 0 && glGetIntegerv) {
-                glGetIntegerv(GL_MAX_TEXTURE_SIZE, &g_max_texture_size);
-                if (g_max_texture_size == 0)
-                    g_max_texture_size = 4096;
-            }
+            if (g_max_texture_size == 0)
+                g_max_texture_size = lfs::python::get_max_texture_size();
         }
 
-        std::tuple<uint64_t, int, int> create_gl_texture_from_data(unsigned char* data, int width, int height, int channels) {
+        std::tuple<uint64_t, int, int> create_gl_texture_from_data(unsigned char* data, const int width, const int height, const int channels) {
             if (!data || width <= 0 || height <= 0)
                 return {0, 0, 0};
 
             ensure_max_texture_size();
 
-            GLuint texture_id = 0;
-            glGenTextures(1, &texture_id);
-            if (texture_id == 0)
-                return {0, 0, 0};
-
-            glBindTexture(GL_TEXTURE_2D, texture_id);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-            GLenum format = GL_RGB;
-            GLenum internal_format = GL_RGB8;
-            switch (channels) {
-            case 1:
-                format = GL_RED;
-                internal_format = GL_R8;
-                break;
-            case 3:
-                format = GL_RGB;
-                internal_format = GL_RGB8;
-                break;
-            case 4:
-                format = GL_RGBA;
-                internal_format = GL_RGBA8;
-                break;
-            default:
-                glDeleteTextures(1, &texture_id);
-                return {0, 0, 0};
-            }
-
-            glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-
-            if (channels == 1) {
-                GLint swizzle[] = {GL_RED, GL_RED, GL_RED, GL_ONE};
-                glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzle);
-            }
-
-            glBindTexture(GL_TEXTURE_2D, 0);
-            return {static_cast<uint64_t>(texture_id), width, height};
+            const auto result = lfs::python::create_gl_texture(data, width, height, channels);
+            return {static_cast<uint64_t>(result.texture_id), result.width, result.height};
         }
 
         vis::op::OperatorResult parse_operator_result(nb::object result, nb::object instance = nb::none()) {
@@ -3190,11 +3136,9 @@ namespace lfs::python {
 
         m.def(
             "release_texture",
-            [](uint64_t tex_id) {
-                if (tex_id == 0)
-                    return;
-                GLuint id = static_cast<GLuint>(tex_id);
-                glDeleteTextures(1, &id);
+            [](const uint64_t tex_id) {
+                if (tex_id > 0)
+                    lfs::python::delete_gl_texture(static_cast<uint32_t>(tex_id));
             },
             nb::arg("texture_id"), "Release an OpenGL texture");
 
@@ -3551,15 +3495,6 @@ namespace lfs::python {
                     reinterpret_cast<ImGuiMemAllocFunc>(alloc_fn),
                     reinterpret_cast<ImGuiMemFreeFunc>(free_fn),
                     user_data);
-            }
-
-            static bool gl_initialized = false;
-            if (!gl_initialized) {
-                void* const loader = get_gl_loader_func();
-                if (loader) {
-                    gladLoadGLLoader(reinterpret_cast<GLADloadproc>(loader));
-                    gl_initialized = true;
-                }
             }
 
             void* const plot_ctx = get_implot_context();

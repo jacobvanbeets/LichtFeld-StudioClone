@@ -114,7 +114,10 @@ namespace lfs::python {
 
         constexpr float DEFAULT_DPI_SCALE{1.0f};
 
-        void* g_gl_loader_func{nullptr};
+        CreateTextureFn g_create_texture{nullptr};
+        DeleteTextureFn g_delete_texture{nullptr};
+        MaxTextureSizeFn g_max_texture_size_fn{nullptr};
+
         void* g_implot_context{nullptr};
 
         void* g_view_context_state{nullptr};
@@ -472,8 +475,28 @@ namespace lfs::python {
         *user_data = g_imgui_alloc_user_data;
     }
 
-    void set_gl_loader_func(void* loader_func) { g_gl_loader_func = loader_func; }
-    void* get_gl_loader_func() { return g_gl_loader_func; }
+    void set_gl_texture_service(const CreateTextureFn create, const DeleteTextureFn del, const MaxTextureSizeFn max_size) {
+        assert(create && del && max_size);
+        g_create_texture = create;
+        g_delete_texture = del;
+        g_max_texture_size_fn = max_size;
+    }
+
+    TextureResult create_gl_texture(const unsigned char* data, const int w, const int h, const int channels) {
+        assert(g_create_texture);
+        return g_create_texture(data, w, h, channels);
+    }
+
+    void delete_gl_texture(const uint32_t texture_id) {
+        assert(g_delete_texture);
+        g_delete_texture(texture_id);
+    }
+
+    int get_max_texture_size() {
+        assert(g_max_texture_size_fn);
+        return g_max_texture_size_fn();
+    }
+
     void set_implot_context(void* ctx) { g_implot_context = ctx; }
     void* get_implot_context() { return g_implot_context; }
 

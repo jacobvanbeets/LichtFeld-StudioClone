@@ -513,14 +513,29 @@ namespace lfs::python {
     LFS_PYTHON_RUNTIME_API void mark_plugins_loaded();
     LFS_PYTHON_RUNTIME_API bool are_plugins_loaded();
 
+    // GL texture service — all GL calls happen in the EXE, Python DLL calls through these
+    struct TextureResult {
+        uint32_t texture_id;
+        int width;
+        int height;
+    };
+
+    using CreateTextureFn = TextureResult (*)(const unsigned char* data, int w, int h, int channels);
+    using DeleteTextureFn = void (*)(uint32_t texture_id);
+    using MaxTextureSizeFn = int (*)();
+
+    LFS_PYTHON_RUNTIME_API void set_gl_texture_service(CreateTextureFn create, DeleteTextureFn del,
+                                                        MaxTextureSizeFn max_size);
+    LFS_PYTHON_RUNTIME_API TextureResult create_gl_texture(const unsigned char* data, int w, int h, int channels);
+    LFS_PYTHON_RUNTIME_API void delete_gl_texture(uint32_t texture_id);
+    LFS_PYTHON_RUNTIME_API int get_max_texture_size();
+
     // ImGui state sharing across DLL boundaries (void* to avoid imgui.h dependency)
     LFS_PYTHON_RUNTIME_API void  set_imgui_context(void* ctx);
     LFS_PYTHON_RUNTIME_API void* get_imgui_context();
     LFS_PYTHON_RUNTIME_API void  set_imgui_allocator_functions(void* alloc_func, void* free_func, void* user_data);
     LFS_PYTHON_RUNTIME_API void  get_imgui_allocator_functions(void** alloc_func, void** free_func, void** user_data);
 
-    LFS_PYTHON_RUNTIME_API void  set_gl_loader_func(void* loader_func);
-    LFS_PYTHON_RUNTIME_API void* get_gl_loader_func();
     LFS_PYTHON_RUNTIME_API void  set_implot_context(void* ctx);
     LFS_PYTHON_RUNTIME_API void* get_implot_context();
 

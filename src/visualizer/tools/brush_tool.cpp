@@ -30,11 +30,14 @@ namespace lfs::vis::tools {
 
     void BrushTool::renderUI([[maybe_unused]] const lfs::vis::gui::UIContext& ui_ctx,
                              [[maybe_unused]] bool* p_open) {
-        if (!isEnabled() || ImGui::GetIO().WantCaptureMouse)
+        if (!isEnabled() || !tool_context_ || ImGui::GetIO().WantCaptureMouse)
             return;
 
         const auto& t = theme();
         ImDrawList* const draw_list = ImGui::GetForegroundDrawList();
+        const auto& bounds = tool_context_->getViewportBounds();
+        draw_list->PushClipRect({bounds.x, bounds.y},
+                                {bounds.x + bounds.width, bounds.y + bounds.height}, true);
         const ImVec2 mouse_pos(last_mouse_pos_.x, last_mouse_pos_.y);
 
         // Selection mode uses primary color, saturation uses warning (orange)
@@ -56,6 +59,7 @@ namespace lfs::vis::tools {
         const ImVec2 text_pos(mouse_pos.x + brush_radius_ + 10, mouse_pos.y - t.fonts.heading_size / 2);
         draw_list->AddText(ImGui::GetFont(), t.fonts.heading_size, ImVec2(text_pos.x + 1, text_pos.y + 1), t.overlay_shadow_u32(), info_text);
         draw_list->AddText(ImGui::GetFont(), t.fonts.heading_size, text_pos, t.overlay_text_u32(), info_text);
+        draw_list->PopClipRect();
     }
 
     void BrushTool::onEnabledChanged(bool enabled) {

@@ -84,8 +84,6 @@ namespace lfs::vis {
             return false;
         }
 
-        lfs::python::set_gl_loader_func(reinterpret_cast<void*>(glfwGetProcAddress));
-
         // Set window focus callback
         glfwSetWindowFocusCallback(window_, window_focus_callback);
 

@@ -237,17 +237,18 @@ namespace lfs::vis::tools {
 
     void SelectionTool::renderUI([[maybe_unused]] const lfs::vis::gui::UIContext& ui_ctx,
                                  [[maybe_unused]] bool* p_open) {
-        if (!isEnabled() || ImGui::GetIO().WantCaptureMouse)
+        if (!isEnabled() || !tool_context_ || ImGui::GetIO().WantCaptureMouse)
             return;
 
         auto sel_mode = lfs::rendering::SelectionMode::Centers;
-        if (tool_context_) {
-            const auto* const rm = tool_context_->getRenderingManager();
-            if (rm)
-                sel_mode = rm->getSelectionMode();
-        }
+        const auto* const rm = tool_context_->getRenderingManager();
+        if (rm)
+            sel_mode = rm->getSelectionMode();
 
         ImDrawList* const draw_list = ImGui::GetForegroundDrawList();
+        const auto& vp_bounds = tool_context_->getViewportBounds();
+        draw_list->PushClipRect({vp_bounds.x, vp_bounds.y},
+                                {vp_bounds.x + vp_bounds.width, vp_bounds.y + vp_bounds.height}, true);
         const ImVec2 mouse_pos = ImGui::GetMousePos();
         const auto& t = theme();
 
@@ -297,26 +298,24 @@ namespace lfs::vis::tools {
 
         // Modifier indicator
         const char* mod_suffix = "";
-        if (tool_context_) {
-            GLFWwindow* const win = tool_context_->getWindow();
-            const bool shift = glfwGetKey(win, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
-                               glfwGetKey(win, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-            const bool ctrl = glfwGetKey(win, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-                              glfwGetKey(win, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+        GLFWwindow* const win = tool_context_->getWindow();
+        const bool shift = glfwGetKey(win, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                           glfwGetKey(win, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+        const bool ctrl = glfwGetKey(win, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                          glfwGetKey(win, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
 
-            int mods = 0;
-            if (shift)
-                mods |= GLFW_MOD_SHIFT;
-            if (ctrl)
-                mods |= GLFW_MOD_CONTROL;
+        int mods = 0;
+        if (shift)
+            mods |= GLFW_MOD_SHIFT;
+        if (ctrl)
+            mods |= GLFW_MOD_CONTROL;
 
-            if (mods != 0) {
-                const auto op = getOpFromModifiers(mods);
-                if (op == SelectionOp::Add)
-                    mod_suffix = " +";
-                else if (op == SelectionOp::Remove)
-                    mod_suffix = " -";
-            }
+        if (mods != 0) {
+            const auto op = getOpFromModifiers(mods);
+            if (op == SelectionOp::Add)
+                mod_suffix = " +";
+            else if (op == SelectionOp::Remove)
+                mod_suffix = " -";
         }
 
         // Build label
@@ -356,20 +355,19 @@ namespace lfs::vis::tools {
         draw_list->AddText(ImGui::GetFont(), t.fonts.heading_size, text_pos, t.overlay_text_u32(), label_buf);
 
         // Draw depth filter
-        if (depth_filter_enabled_ && tool_context_) {
+        if (depth_filter_enabled_) {
             drawDepthFrustum(*tool_context_);
         }
 
-        if (crop_filter_enabled_ && tool_context_) {
+        if (crop_filter_enabled_) {
             constexpr float MARGIN_X = 10.0f;
             constexpr float MARGIN_SINGLE = 45.0f;
             constexpr float MARGIN_STACKED = 70.0f;
             constexpr float LINE_SPACING = 18.0f;
             constexpr ImU32 CROP_FILTER_COLOR = IM_COL32(100, 200, 255, 255);
 
-            const auto& bounds = tool_context_->getViewportBounds();
-            const float text_x = bounds.x + MARGIN_X;
-            const float text_y = bounds.y + bounds.height - (depth_filter_enabled_ ? MARGIN_STACKED : MARGIN_SINGLE);
+            const float text_x = vp_bounds.x + MARGIN_X;
+            const float text_y = vp_bounds.y + vp_bounds.height - (depth_filter_enabled_ ? MARGIN_STACKED : MARGIN_SINGLE);
 
             draw_list->AddText(ImGui::GetFont(), t.fonts.large_size, {text_x + 1.0f, text_y + 1.0f},
                                t.overlay_shadow_u32(), "Crop Filter: ON");
@@ -378,6 +376,7 @@ namespace lfs::vis::tools {
             draw_list->AddText(ImGui::GetFont(), t.fonts.small_size, {text_x, text_y + LINE_SPACING},
                                t.overlay_hint_u32(), "Ctrl+Shift+F: off");
         }
+        draw_list->PopClipRect();
     }
 
 } // namespace lfs::vis::tools
