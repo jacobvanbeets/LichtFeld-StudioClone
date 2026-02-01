@@ -8,9 +8,11 @@
 #include "core/cuda_version.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
 #include "core/events.hpp"
+#include "core/image_loader.hpp"
 #include "core/logger.hpp"
 #include "core/path_utils.hpp"
 #include "core/tensor/internal/memory_pool.hpp"
+#include "io/cache_image_loader.hpp"
 #include "rendering/framebuffer_factory.hpp"
 #include "training/trainer.hpp"
 #include "training/training_setup.hpp"
@@ -215,6 +217,11 @@ namespace lfs::app {
     } // namespace
 
     int Application::run(std::unique_ptr<lfs::core::param::TrainingParameters> params) {
+        lfs::core::set_image_loader([](const lfs::core::ImageLoadParams& p) {
+            return lfs::io::CacheLoader::getInstance().load_cached_image(
+                p.path, {.resize_factor = p.resize_factor, .max_width = p.max_width, .cuda_stream = p.stream});
+        });
+
         if (params->optimization.headless) {
             return runHeadless(std::move(params));
         }

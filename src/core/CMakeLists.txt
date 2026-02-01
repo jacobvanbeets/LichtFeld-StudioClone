@@ -21,17 +21,15 @@ set(CORE_SOURCES
         animatable_property.cpp
         argument_parser.cpp
         camera.cpp
-        converter.cpp
+        image_loader.cpp
         cuda_version.cpp
         image_io.cpp
         logger.cpp
         parameters.cpp
         property_registry.cpp
         splat_data.cpp
-        splat_data_export.cpp
         splat_data_mirror.cpp
         splat_data_transform.cpp
-        sogs.cpp
         tensor_debug.cpp
         tinyply.cpp
         training_snapshot.cpp
@@ -52,30 +50,6 @@ target_include_directories(lfs_core
         ${OPENGL_INCLUDE_DIRS}
 )
 
-# Find the actual WebP library target
-if(TARGET WebP::webp)
-    set(WEBP_LIB WebP::webp)
-elseif(TARGET WebP::libwebp)
-    set(WEBP_LIB WebP::libwebp)
-elseif(TARGET webp)
-    set(WEBP_LIB webp)
-else()
-    find_library(WEBP_LIBRARY NAMES webp libwebp REQUIRED)
-    set(WEBP_LIB ${WEBP_LIBRARY})
-endif()
-
-# Find the actual LibArchive library target
-if(TARGET LibArchive::LibArchive)
-    set(ARCHIVE_LIB LibArchive::LibArchive)
-elseif(TARGET archive)
-    set(ARCHIVE_LIB archive)
-elseif(TARGET archive_static)
-    set(ARCHIVE_LIB archive_static)
-else()
-    find_library(ARCHIVE_LIBRARY NAMES archive libarchive REQUIRED)
-    set(ARCHIVE_LIB ${ARCHIVE_LIBRARY})
-endif()
-
 target_link_libraries(lfs_core
     PUBLIC
         lfs_event_bridge # Shared event bus for Python module interop
@@ -87,13 +61,8 @@ target_link_libraries(lfs_core
         Threads::Threads
         CUDA::cudart    # For Camera CUDA operations
         spdlog::spdlog
-        ${WEBP_LIB}     # WebP for SOG compression
-        ${ARCHIVE_LIB}  # LibArchive for SOG bundle support
-        lfs_io          # For CacheLoader used in camera.cpp
     PRIVATE
         taywee::args    # Only used in argument_parser.cpp
-        # NOTE: lfs_training, lfs_visualizer, lfs_project removed - all create circular dependencies
-        # These should be linked at the application level, not in the core library
 )
 
 # Platform-specific settings

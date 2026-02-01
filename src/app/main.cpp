@@ -4,7 +4,7 @@
 
 #include "app/application.hpp"
 #include "core/argument_parser.hpp"
-#include "core/converter.hpp"
+#include "app/converter.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
 #include "core/logger.hpp"
 #include "git_version.h"
@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
         } else if constexpr (std::is_same_v<T, lfs::core::args::WarmupMode>) {
             return 0;
         } else if constexpr (std::is_same_v<T, lfs::core::args::ConvertMode>) {
-            return lfs::core::run_converter(mode.params);
+            return lfs::app::run_converter(mode.params);
         } else if constexpr (std::is_same_v<T, lfs::core::args::McpMode>) {
             return runMcpServer(mode);
         } else if constexpr (std::is_same_v<T, lfs::core::args::PluginMode>) {

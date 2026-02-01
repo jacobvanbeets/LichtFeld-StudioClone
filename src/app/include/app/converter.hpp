@@ -6,9 +6,8 @@
 
 #include "core/parameters.hpp"
 
-namespace lfs::core {
+namespace lfs::app {
 
-    // Returns 0 on success, 1 on failure
-    int run_converter(const param::ConvertParameters& params);
+    int run_converter(const lfs::core::param::ConvertParameters& params);
 
-} // namespace lfs::core
+} // namespace lfs::app

@@ -118,6 +118,7 @@ target_include_directories(lfs_training
 target_link_libraries(lfs_training
     PUBLIC
         lfs_core                # Depends on new core module (SplatData, Tensor)
+        lfs_io                  # For CacheLoader, exporter, pipelined loader
         lfs_event_bridge        # Shared event bridge for cross-module singletons
         lfs_training_kernels    # LibTorch-free SSIM kernels
         fastlfs_backend         # For adam_step_raw CUDA kernel (LibTorch-free)

@@ -12,8 +12,6 @@
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
 #include "core/path_utils.hpp"
-#include "core/sogs.hpp"
-#include "core/splat_data_export.hpp"
 #include "gui/editor/python_editor.hpp"
 #include "gui/html_viewer_export.hpp"
 #include "gui/localization_manager.hpp"
@@ -3282,14 +3280,14 @@ namespace lfs::vis::gui {
                     break;
                 }
                 case ExportFormat::SOG: {
-                    const lfs::core::SogWriteOptions options{
-                        .iterations = 10,
+                    const lfs::io::SogSaveOptions options{
                         .output_path = path,
+                        .kmeans_iterations = 10,
                         .progress_callback = update_progress};
-                    if (auto result = lfs::core::write_sog(*splat_data, options); result) {
+                    if (auto result = lfs::io::save_sog(*splat_data, options); result) {
                         success = true;
                     } else {
-                        error_msg = result.error();
+                        error_msg = result.error().message;
                     }
                     break;
                 }

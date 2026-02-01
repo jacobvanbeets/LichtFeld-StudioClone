@@ -139,12 +139,7 @@ namespace lfs::core {
         // Soft deletion mask: bool tensor [N], true = hidden from rendering
         Tensor _deleted;
 
-        // Allow free functions in splat_data_export.cpp and splat_data_transform.cpp
-        // to access private members
-        friend void save_ply(const SplatData&, const std::filesystem::path&, int, bool, std::string);
-        friend std::filesystem::path save_sog(const SplatData&, const std::filesystem::path&, int, int, bool);
-        friend PointCloud to_point_cloud(const SplatData&);
-        friend std::vector<std::string> get_attribute_names(const SplatData&);
+        // Allow free functions in splat_data_transform.cpp to access private members
         friend SplatData& transform(SplatData&, const glm::mat4&);
         friend SplatData crop_by_cropbox(const SplatData&, const lfs::geometry::BoundingBox&, bool);
         friend SplatData extract_by_mask(const SplatData&, const Tensor&);

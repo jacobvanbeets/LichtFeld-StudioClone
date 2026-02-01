@@ -4,8 +4,8 @@
 
 #include "core/camera.hpp"
 #include "core/image_io.hpp"
+#include "core/image_loader.hpp"
 #include "core/logger.hpp"
-#include "io/cache_image_loader.hpp"
 #include <cuda_runtime.h>
 
 namespace lfs::core {
@@ -247,15 +247,13 @@ namespace lfs::core {
     }
 
     Tensor Camera::load_and_get_image(int resize_factor, int max_width) {
-        auto& loader = lfs::io::CacheLoader::getInstance();
-        // Load image synchronously - returns preprocessed tensor [C,H,W] float32
-        lfs::io::LoadParams params{
+        const ImageLoadParams params{
+            .path = _image_path,
             .resize_factor = resize_factor,
             .max_width = max_width,
-            .cuda_stream = _stream // Use camera's CUDA stream
-        };
+            .stream = _stream};
 
-        auto image = loader.load_cached_image(_image_path, params);
+        auto image = load_image_cached(params);
 
         // Extract dimensions from tensor shape
         auto shape = image.shape();
@@ -363,13 +361,13 @@ namespace lfs::core {
             return Tensor();
         }
 
-        auto& loader = lfs::io::CacheLoader::getInstance();
-        const lfs::io::LoadParams params{
+        const ImageLoadParams params{
+            .path = _mask_path,
             .resize_factor = resize_factor,
             .max_width = max_width,
-            .cuda_stream = _stream};
+            .stream = _stream};
 
-        auto mask = loader.load_cached_image(_mask_path, params);
+        auto mask = load_image_cached(params);
 
         if (mask.device() != Device::CUDA) {
             mask = mask.to(Device::CUDA, _stream);
