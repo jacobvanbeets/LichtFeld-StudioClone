@@ -177,6 +177,8 @@ namespace lfs::python {
     // UI layout object passed to draw() - wraps ImGui calls
     class PyUILayout {
     public:
+        explicit PyUILayout(int initial_menu_depth = 0) : menu_depth_(initial_menu_depth) {}
+
         // Text
         void label(const std::string& text);
         void label_centered(const std::string& text);
@@ -490,6 +492,7 @@ namespace lfs::python {
 
     private:
         std::stack<LayoutContext> layout_stack_;
+        int menu_depth_;
     };
 
     enum class PanelOption : uint32_t {

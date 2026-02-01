@@ -67,7 +67,7 @@ namespace lfs::python {
                         should_draw = nb::cast<bool>(mc.menu_class.attr("poll")(nb::none()));
                     }
                     if (should_draw && nb::hasattr(mc.menu_instance, "draw")) {
-                        PyUILayout layout;
+                        PyUILayout layout(1);
                         mc.menu_instance.attr("draw")(layout);
                     }
                 } catch (const std::exception& e) {
@@ -152,7 +152,7 @@ namespace lfs::python {
                 should_draw = nb::cast<bool>(target->menu_class.attr("poll")(nb::none()));
             }
             if (should_draw && nb::hasattr(target->menu_instance, "draw")) {
-                PyUILayout layout;
+                PyUILayout layout(1);
                 target->menu_instance.attr("draw")(layout);
             }
         } catch (const std::exception& e) {

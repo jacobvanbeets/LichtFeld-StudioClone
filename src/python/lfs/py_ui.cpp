@@ -42,6 +42,7 @@
 #include <iostream>
 
 #include <algorithm>
+#include <cassert>
 #include <cstring>
 #include <future>
 #include <stack>
@@ -865,32 +866,36 @@ namespace lfs::python {
         std::string label = text.empty() ? (desc ? desc->label : operator_id) : text;
         std::string btn_text = LOC(label.c_str());
 
-        bool can_execute = vis::op::operators().poll(operator_id);
-
-        if (!can_execute) {
-            ImGui::BeginDisabled();
-        }
+        const bool can_execute = vis::op::operators().poll(operator_id);
 
         bool clicked = false;
-        if (!icon.empty()) {
-            unsigned int tex_id = load_icon_texture(icon);
-            if (tex_id) {
-                float size = ImGui::GetTextLineHeight();
-                clicked = ImGui::ImageButton(operator_id.c_str(), static_cast<ImTextureID>(tex_id),
-                                             ImVec2(size, size));
-                if (!btn_text.empty()) {
-                    ImGui::SameLine();
-                    ImGui::TextUnformatted(btn_text.c_str());
+        if (menu_depth_ > 0) {
+            clicked = ImGui::MenuItem(btn_text.c_str(), nullptr, false, can_execute);
+        } else {
+            if (!can_execute) {
+                ImGui::BeginDisabled();
+            }
+
+            if (!icon.empty()) {
+                unsigned int tex_id = load_icon_texture(icon);
+                if (tex_id) {
+                    float size = ImGui::GetTextLineHeight();
+                    clicked = ImGui::ImageButton(operator_id.c_str(), static_cast<ImTextureID>(tex_id),
+                                                 ImVec2(size, size));
+                    if (!btn_text.empty()) {
+                        ImGui::SameLine();
+                        ImGui::TextUnformatted(btn_text.c_str());
+                    }
+                } else {
+                    clicked = ImGui::Button(btn_text.c_str());
                 }
             } else {
                 clicked = ImGui::Button(btn_text.c_str());
             }
-        } else {
-            clicked = ImGui::Button(btn_text.c_str());
-        }
 
-        if (!can_execute) {
-            ImGui::EndDisabled();
+            if (!can_execute) {
+                ImGui::EndDisabled();
+            }
         }
 
         auto props = PyOperatorProperties(operator_id);
@@ -1574,10 +1579,16 @@ namespace lfs::python {
     }
 
     bool PyUILayout::begin_menu(const std::string& label) {
-        return ImGui::BeginMenu(label.c_str());
+        if (ImGui::BeginMenu(label.c_str())) {
+            ++menu_depth_;
+            return true;
+        }
+        return false;
     }
 
     void PyUILayout::end_menu() {
+        assert(menu_depth_ > 0);
+        --menu_depth_;
         ImGui::EndMenu();
     }
 
