@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "core/export.hpp"
+
 #include "operator.hpp"
 #include "operator_id.hpp"
 #include <array>
@@ -36,7 +38,7 @@ namespace lfs::vis::op {
         ACTIVE_PYTHON
     };
 
-    class OperatorRegistry {
+    class LFS_VIS_API OperatorRegistry {
     public:
         static OperatorRegistry& instance();
 

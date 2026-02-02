@@ -4,13 +4,15 @@
 
 #pragma once
 
+#include "core/export.hpp"
+
 #include <mutex>
 #include <string>
 #include <unordered_map>
 
 namespace lfs::vis::gui {
 
-    class IconCache {
+    class LFS_VIS_API IconCache {
     public:
         static IconCache& instance();
 

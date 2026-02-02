@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "core/camera_types.h"
 #include "core/tensor.hpp"
 #include <cuda_runtime.h>
@@ -13,7 +14,7 @@
 
 namespace lfs::core {
 
-    class Camera {
+    class LFS_CORE_API Camera {
     public:
         Camera() = default;
 

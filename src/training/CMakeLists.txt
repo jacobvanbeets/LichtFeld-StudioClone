@@ -35,7 +35,7 @@ target_include_directories(lfs_training_kernels
 
 target_link_libraries(lfs_training_kernels
     PUBLIC
-        lfs_tensor       # For lfs::core::Tensor
+        lfs_core         # For lfs::core::Tensor (tensor merged into lfs_core)
         CUDA::cudart
 )
 

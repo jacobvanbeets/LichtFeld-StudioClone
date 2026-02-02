@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "core/export.hpp"
+
 #include "animatable_property.hpp"
 #include "property_system.hpp"
 
@@ -30,7 +32,7 @@ namespace lfs::core::prop {
         }
     };
 
-    class PropertyRegistry {
+    class LFS_CORE_API PropertyRegistry {
     public:
         static PropertyRegistry& instance();
 

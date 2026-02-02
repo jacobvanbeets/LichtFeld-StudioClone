@@ -138,13 +138,9 @@ target_compile_definitions(lfs_py PRIVATE
     LFS_PYTHON_EXECUTABLE="${Python_EXECUTABLE}"
 )
 
-#Need to explicitly link tensor kernels since they're linked privately in lfs_tensor
-#When building a shared library(nanobind module), all symbols must be resolved at link time
 target_link_libraries(lfs_py PRIVATE
     lfs_core
     lfs_event_bridge    # Explicit: shared event bus for Python<->C++ events
-    lfs_tensor
-    lfs_tensor_kernels
     lfs_training
     lfs_geometry
     lfs_io
@@ -184,6 +180,7 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:lfs_python_runtime>"
             "$<TARGET_FILE:lfs_event_bridge>"
+            "$<TARGET_FILE:lfs_core>"
             "${CMAKE_CURRENT_BINARY_DIR}"
         COMMENT "Copying project DLLs to Python module directory"
     )

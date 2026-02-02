@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "core/point_cloud.hpp"
 #include "core/tensor.hpp"
 
@@ -35,7 +36,7 @@ namespace lfs::core {
      *
      * Note: Gradients are managed by AdamOptimizer, not SplatData.
      */
-    class SplatData {
+    class LFS_CORE_API SplatData {
     public:
         SplatData() = default;
         ~SplatData();
@@ -156,7 +157,7 @@ namespace lfs::core {
      * @param capacity If > 0, pre-allocate for this many gaussians (bypasses memory pool)
      * @return SplatData on success, error string on failure
      */
-    std::expected<SplatData, std::string> init_model_from_pointcloud(
+    LFS_CORE_API std::expected<SplatData, std::string> init_model_from_pointcloud(
         const param::TrainingParameters& params,
         Tensor scene_center,
         const PointCloud& point_cloud,

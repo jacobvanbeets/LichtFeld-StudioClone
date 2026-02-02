@@ -285,7 +285,7 @@ target_link_libraries(lichtfeld_tests PRIVATE
     lfs_geometry
     lfs_io
     lfs_video
-    lfs_tensor
+
 
     # Backend libraries
     fastlfs_backend
@@ -350,7 +350,7 @@ target_link_libraries(lichtfeld_benchmarks PRIVATE
     lfs_core
     lfs_geometry
     lfs_io
-    lfs_tensor
+
     fastlfs_backend
     spz_lib
     GTest::gtest

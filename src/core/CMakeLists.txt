@@ -2,26 +2,44 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # ============================================================================
-# core module - New LibTorch-free core module with lfs::core namespace
+# core module - LibTorch-free core + tensor library (SHARED)
 # ============================================================================
 
-# Add tensor library
+# Tensor CUDA kernels (STATIC, linked privately)
 add_subdirectory(tensor)
 
-# Add unified CUDA library (private to core module)
-# Contains: memory_arena, lanczos_resize, core_kernels (kmeans, morton)
+# Core CUDA library (STATIC, linked privately)
 add_subdirectory(cuda)
 
-# Event bridge shared library (solves singleton duplication between exe and Python module)
+# Event bridge shared library
 add_subdirectory(event_bridge)
 
-# Core module - fundamental data structures and utilities
-# Note: lfs_tensor library is now in src/core/tensor
+# Tensor C++ sources (merged from src/core/tensor/)
+set(TENSOR_SOURCES
+        tensor/tensor.cpp
+        tensor/tensor_factory.cpp
+        tensor/tensor_utils.cpp
+        tensor/tensor_matrix_ops.cpp
+        tensor/tensor_unified_ops.cpp
+        tensor/tensor_movement_ops.cpp
+        tensor/tensor_random_ops.cpp
+        tensor/tensor_broadcast.cpp
+        tensor/tensor_shape_ops.cpp
+        tensor/tensor_masking_ops.cpp
+        tensor/tensor_advanced_ops.cpp
+        tensor/tensor_row_proxy.cpp
+        tensor/tensor_nn_ops.cpp
+        tensor/pinned_memory_allocator.cpp
+        tensor/offset_allocator.cpp
+)
+
+# Core module sources
 set(CORE_SOURCES
         animatable_property.cpp
         argument_parser.cpp
         camera.cpp
         checkpoint_format.cpp
+        cuda_alloc_tracker.cpp
         image_loader.cpp
         cuda_version.cpp
         image_io.cpp
@@ -32,39 +50,51 @@ set(CORE_SOURCES
         splat_data_mirror.cpp
         splat_data_transform.cpp
         tensor_debug.cpp
-        tinyply.cpp
         training_snapshot.cpp
 )
 
-add_library(lfs_core STATIC ${CORE_SOURCES})
+add_library(lfs_core SHARED ${CORE_SOURCES} ${TENSOR_SOURCES})
+
+target_compile_definitions(lfs_core PRIVATE LFS_CORE_EXPORTS)
 
 target_include_directories(lfs_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_BINARY_DIR}/include  # For generated config.h
-        ${CMAKE_SOURCE_DIR}/src/training/rasterization/gsplat  # For Common.h (camera model types)
-        ${CMAKE_SOURCE_DIR}/fastgs    # For fastgs headers
-        ${CUDAToolkit_INCLUDE_DIRS}   # For CUDA interop in Camera
+        ${CMAKE_BINARY_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src/training/rasterization/gsplat
+        ${CMAKE_SOURCE_DIR}/fastgs
+        ${CUDAToolkit_INCLUDE_DIRS}
     PRIVATE
-        ${CMAKE_SOURCE_DIR}/src       # For inter-module includes (training/, visualizer/, etc.)
-        ${CMAKE_SOURCE_DIR}/external  # For tinyply and STB headers
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/external
+        ${CMAKE_CURRENT_SOURCE_DIR}/tensor  # For internal/ headers
         ${OPENGL_INCLUDE_DIRS}
 )
 
 target_link_libraries(lfs_core
     PUBLIC
-        lfs_event_bridge # Shared event bus for Python module interop
-        lfs_core_cuda   # Unified CUDA library (tensor, memory arena, kernels, lanczos)
-        lfs_geometry    # For events.hpp -> bounding_box.hpp
+        lfs_event_bridge
+        lfs_geometry
         TBB::tbb
         nlohmann_json::nlohmann_json
         glm::glm
         Threads::Threads
-        CUDA::cudart    # For Camera CUDA operations
+        CUDA::cudart
+        CUDA::curand
         spdlog::spdlog
     PRIVATE
-        taywee::args    # Only used in argument_parser.cpp
+        lfs_core_cuda
+        lfs_tensor_kernels
+        taywee::args
+        OpenImageIO::OpenImageIO
 )
+
+# OpenMP for tensor multi-threaded operations
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(lfs_core PRIVATE OpenMP::OpenMP_CXX)
+    message(STATUS "✓ OpenMP support enabled for lfs_core")
+endif()
 
 # Platform-specific settings
 if(UNIX)
@@ -77,6 +107,7 @@ if(MSVC)
         $<$<CONFIG:Debug>:/Od /Z7>
         $<$<CONFIG:Release>:/O2 /DNDEBUG>
     )
+    target_compile_definitions(lfs_core PRIVATE _USE_MATH_DEFINES NOMINMAX)
 else()
     target_compile_options(lfs_core PRIVATE
         $<$<CONFIG:Debug>:-O0 -g -fno-omit-frame-pointer -DDEBUG>
@@ -94,21 +125,24 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             $<$<COMPILE_LANGUAGE:CXX>:-mavx2 -mfma>
         )
         target_compile_definitions(lfs_core PRIVATE HAS_AVX2_SUPPORT)
-        message(STATUS "✓ AVX2 support enabled for gs_core")
-    else()
-        message(WARNING "✗ Compiler does not support AVX2")
     endif()
 endif()
 
-# Debug symbols in debug builds
-set_target_properties(lfs_core PROPERTIES DEBUG_POSTFIX d)
-
-# Set properties
+# Visibility: hide by default, export only LFS_CORE_API symbols
 set_target_properties(lfs_core PROPERTIES
     CXX_STANDARD 23
     CXX_STANDARD_REQUIRED ON
     POSITION_INDEPENDENT_CODE ON
     EXPORT_COMPILE_COMMANDS ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_BINARY_DIR}
+    DEBUG_POSTFIX d
 )
 
 # Configure build type
@@ -135,14 +169,12 @@ configure_build_type(lfs_core)
 # Allocation profiling
 if(ENABLE_ALLOCATION_PROFILING)
     target_compile_definitions(lfs_core PUBLIC ENABLE_ALLOCATION_PROFILING=1)
-    message(STATUS "  • Allocation profiling: ENABLED")
 else()
     target_compile_definitions(lfs_core PUBLIC ENABLE_ALLOCATION_PROFILING=0)
-    message(STATUS "  • Allocation profiling: DISABLED")
 endif()
 
 message(STATUS "╔════════════════════════════════════════════════════════════════╗")
-message(STATUS "║  core - LibTorch-free Core Module                         ║")
+message(STATUS "║  lfs_core - Core + Tensor Library (SHARED)                    ║")
 message(STATUS "╚════════════════════════════════════════════════════════════════╝")
 message(STATUS "  • Namespace: lfs::core")
-message(STATUS "  • Tensor library: lfs_tensor")
+message(STATUS "  • Includes: tensor, core utilities, parameters, splat data")

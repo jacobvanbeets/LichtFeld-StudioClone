@@ -4,13 +4,15 @@
 
 #pragma once
 
+#include "core/export.hpp"
+
 #include "undo_entry.hpp"
 #include <deque>
 #include <mutex>
 
 namespace lfs::vis::op {
 
-    class UndoHistory {
+    class LFS_VIS_API UndoHistory {
     public:
         static constexpr size_t MAX_ENTRIES = 100;
 

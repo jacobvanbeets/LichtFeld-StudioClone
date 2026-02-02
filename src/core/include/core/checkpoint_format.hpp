@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "core/parameters.hpp"
 #include "core/splat_data.hpp"
 #include <cstdint>
@@ -41,13 +42,13 @@ namespace lfs::core {
         uint64_t params_json_size = 0;
     };
 
-    std::expected<CheckpointHeader, std::string> load_checkpoint_header(
+    LFS_CORE_API std::expected<CheckpointHeader, std::string> load_checkpoint_header(
         const std::filesystem::path& path);
 
-    std::expected<SplatData, std::string> load_checkpoint_splat_data(
+    LFS_CORE_API std::expected<SplatData, std::string> load_checkpoint_splat_data(
         const std::filesystem::path& path);
 
-    std::expected<param::TrainingParameters, std::string> load_checkpoint_params(
+    LFS_CORE_API std::expected<param::TrainingParameters, std::string> load_checkpoint_params(
         const std::filesystem::path& path);
 
 } // namespace lfs::core

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "core/tensor.hpp"
 #include <filesystem>
 #include <functional>
@@ -19,7 +20,7 @@ namespace lfs::core {
 
     using ImageLoadFunc = std::function<Tensor(const ImageLoadParams&)>;
 
-    void set_image_loader(ImageLoadFunc fn);
-    Tensor load_image_cached(const ImageLoadParams& params);
+    LFS_CORE_API void set_image_loader(ImageLoadFunc fn);
+    LFS_CORE_API Tensor load_image_cached(const ImageLoadParams& params);
 
 } // namespace lfs::core

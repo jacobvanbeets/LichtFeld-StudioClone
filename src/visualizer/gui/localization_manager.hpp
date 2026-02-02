@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/export.hpp"
+
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -8,7 +10,7 @@
 namespace lichtfeld {
 
     // Manages GUI localization with runtime language switching
-    class LocalizationManager {
+    class LFS_VIS_API LocalizationManager {
     public:
         static LocalizationManager& getInstance();
 

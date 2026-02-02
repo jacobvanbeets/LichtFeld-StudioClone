@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "core/tensor.hpp"
 #include "io/error.hpp"
 #include <chrono>
@@ -66,7 +67,7 @@ namespace lfs::io {
      * This class provides a clean facade over all loading functionality.
      * All implementation details are hidden behind this interface.
      */
-    class Loader {
+    class LFS_IO_API Loader {
     public:
         /**
          * @brief Create a loader instance
@@ -133,10 +134,10 @@ namespace lfs::io {
 
     /// Check if PLY contains Gaussian splat properties (opacity, scaling, rotation)
     /// Returns false for simple point clouds (xyz + colors only)
-    bool is_gaussian_splat_ply(const std::filesystem::path& filepath);
+    LFS_IO_API bool is_gaussian_splat_ply(const std::filesystem::path& filepath);
 
     /// Load PLY as simple point cloud (xyz + optional colors)
     /// Use this for PLY files that are NOT Gaussian splats
-    std::expected<PointCloud, std::string> load_ply_point_cloud(const std::filesystem::path& filepath);
+    LFS_IO_API std::expected<PointCloud, std::string> load_ply_point_cloud(const std::filesystem::path& filepath);
 
 } // namespace lfs::io

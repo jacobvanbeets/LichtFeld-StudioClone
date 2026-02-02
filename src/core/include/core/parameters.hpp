@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "core/export.hpp"
+
 #include <array>
 #include <expected>
 #include <filesystem>
@@ -30,7 +32,7 @@ namespace lfs::core {
             Random      // Random per-pixel colors each iteration
         };
 
-        struct OptimizationParameters {
+        struct LFS_CORE_API OptimizationParameters {
             size_t iterations = 30'000;
             size_t sh_degree_interval = 1'000;
             float means_lr = 0.000016f;
@@ -132,7 +134,7 @@ namespace lfs::core {
             static OptimizationParameters adc_defaults();
         };
 
-        struct LoadingParams {
+        struct LFS_CORE_API LoadingParams {
             bool use_cpu_memory = true;
             float min_cpu_free_memory_ratio = 0.1f; // make sure at least 10% RAM is free
             float min_cpu_free_GB = 1.0f;           // min GB we want to be free
@@ -144,7 +146,7 @@ namespace lfs::core {
             static LoadingParams from_json(const nlohmann::json& j);
         };
 
-        struct DatasetConfig {
+        struct LFS_CORE_API DatasetConfig {
             std::filesystem::path data_path = "";
             std::filesystem::path output_path = "";
             std::string images = "images";
@@ -163,7 +165,7 @@ namespace lfs::core {
             static DatasetConfig from_json(const nlohmann::json& j);
         };
 
-        struct TrainingParameters {
+        struct LFS_CORE_API TrainingParameters {
             DatasetConfig dataset;
             OptimizationParameters optimization;
 
@@ -190,7 +192,7 @@ namespace lfs::core {
                                   HTML };
 
         // Parameters for the convert command
-        struct ConvertParameters {
+        struct LFS_CORE_API ConvertParameters {
             std::filesystem::path input_path;
             std::filesystem::path output_path; // Empty = derive from input
             OutputFormat format = OutputFormat::PLY;
@@ -200,10 +202,10 @@ namespace lfs::core {
         };
 
         // Modern C++23 functions returning expected values
-        std::expected<OptimizationParameters, std::string> read_optim_params_from_json(const std::filesystem::path& path);
+        LFS_CORE_API std::expected<OptimizationParameters, std::string> read_optim_params_from_json(const std::filesystem::path& path);
 
         // Save training parameters to JSON
-        std::expected<void, std::string> save_training_parameters_to_json(
+        LFS_CORE_API std::expected<void, std::string> save_training_parameters_to_json(
             const TrainingParameters& params,
             const std::filesystem::path& output_path);
 

@@ -22,18 +22,23 @@ target_include_directories(lfs_core_cuda
     PUBLIC
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src  # For core/cuda/* path
+        ${CMAKE_SOURCE_DIR}/src/core/include  # For core headers (tensor, logger, etc.)
+        ${CMAKE_BINARY_DIR}/include
         ${CUDAToolkit_INCLUDE_DIRS}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}  # For local includes within cuda/
+        ${CMAKE_SOURCE_DIR}/src/core/tensor  # For internal/ headers
         ${CMAKE_SOURCE_DIR}/src/core/tensor/internal  # For memory_pool.hpp and other internal headers
 )
 
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 target_link_libraries(lfs_core_cuda
     PUBLIC
-        lfs_tensor      # Tensor library needed by lanczos_resize and kernels
         CUDA::cudart
         CUDA::cuda_driver
+        CUDA::curand
+        spdlog::spdlog
+        glm::glm
         OpenMP::OpenMP_CXX
 )
 

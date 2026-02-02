@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "core/logger.hpp"
 #include "core/tensor.hpp"
 #include <cmath>
@@ -33,8 +34,8 @@ namespace lfs::core::debug {
         }
     };
 
-    TensorValidation validate_tensor_cpu(const Tensor& tensor);
-    TensorValidation validate_tensor_gpu(const Tensor& tensor);
+    LFS_CORE_API TensorValidation validate_tensor_cpu(const Tensor& tensor);
+    LFS_CORE_API TensorValidation validate_tensor_gpu(const Tensor& tensor);
 
     // Auto-select validation based on device and size
     inline TensorValidation validate_tensor(const Tensor& tensor) {

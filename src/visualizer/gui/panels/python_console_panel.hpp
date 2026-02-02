@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "core/export.hpp"
+
 #include "gui/ui_context.hpp"
 #include <algorithm>
 #include <atomic>
@@ -25,7 +27,7 @@ namespace lfs::vis::terminal {
 
 namespace lfs::vis::gui::panels {
 
-    class PythonConsoleState {
+    class LFS_VIS_API PythonConsoleState {
     public:
         static PythonConsoleState& getInstance();
 

@@ -6,6 +6,7 @@
 
 #include "input/input_types.hpp"
 #include <glm/glm.hpp>
+#include <memory>
 #include <string>
 #include <variant>
 #include <vector>

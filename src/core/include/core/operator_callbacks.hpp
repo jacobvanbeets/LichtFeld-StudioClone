@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "core/modal_event.hpp"
 #include <functional>
 
@@ -16,7 +17,7 @@ namespace lfs::core {
     using ModalEventCallback = std::function<bool(const ModalEvent&)>;
 
     // Interface for callback storage (implemented by EditorContext)
-    class IOperatorCallbacks {
+    class LFS_CORE_API IOperatorCallbacks {
     public:
         virtual ~IOperatorCallbacks() = default;
 

@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "core/export.hpp"
+
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -19,7 +21,7 @@ namespace lfs::vis::gui::panels {
     };
 
     // Script manager state (singleton)
-    class PythonScriptManagerState {
+    class LFS_VIS_API PythonScriptManagerState {
     public:
         static PythonScriptManagerState& getInstance();
 

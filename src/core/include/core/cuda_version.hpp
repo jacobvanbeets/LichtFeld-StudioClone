@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include <string>
 
 namespace lfs::core {
@@ -20,7 +21,7 @@ namespace lfs::core {
         bool query_failed = false;
     };
 
-    CudaVersionInfo check_cuda_version();
+    LFS_CORE_API CudaVersionInfo check_cuda_version();
 
     // PyTorch CUDA wheel tags
     enum class PytorchCudaTag {
@@ -34,7 +35,7 @@ namespace lfs::core {
     // If version_hint is "auto", detects from system CUDA driver
     // If version_hint is "11.8", "12.1", "12.4", "12.8", uses that version
     // Returns tag string like "cu118", "cu121", "cu124", "cu128"
-    std::string get_pytorch_cuda_tag(const std::string& version_hint = "auto");
+    LFS_CORE_API std::string get_pytorch_cuda_tag(const std::string& version_hint = "auto");
 
     // Convert tag enum to string (e.g., CU124 -> "cu124")
     constexpr const char* pytorch_cuda_tag_str(PytorchCudaTag tag) {

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "core/export.hpp"
 #include "property_traits.hpp"
 
 #include <functional>
@@ -18,8 +19,8 @@ namespace lfs::core::prop {
                                             std::function<void(const std::any&)>)>;
 
     // Global undo callback setter (set by command system at startup)
-    void set_undo_callback(UndoCallback callback);
-    UndoCallback get_undo_callback();
+    LFS_CORE_API void set_undo_callback(UndoCallback callback);
+    LFS_CORE_API UndoCallback get_undo_callback();
 
     // AnimatableProperty: Observable with undo integration and property path
     template <typename T>
