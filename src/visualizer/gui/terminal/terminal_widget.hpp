@@ -4,6 +4,11 @@
 #pragma once
 
 #include "pty_process.hpp"
+
+#ifdef _WIN32
+#undef small // Windows rpcndr.h defines 'small' as 'char'; conflicts with libvterm
+#endif
+
 #include <deque>
 #include <mutex>
 #include <string>
