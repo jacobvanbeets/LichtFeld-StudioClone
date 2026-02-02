@@ -19,7 +19,7 @@ namespace lfs::core {
     // Interface for callback storage (implemented by EditorContext)
     class LFS_CORE_API IOperatorCallbacks {
     public:
-        virtual ~IOperatorCallbacks() = default;
+        virtual ~IOperatorCallbacks();
 
         virtual void setCancelOperatorCallback(CancelOperatorCallback cb) = 0;
         virtual void setInvokeOperatorCallback(InvokeOperatorCallback cb) = 0;

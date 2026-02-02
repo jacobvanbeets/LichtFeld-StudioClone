@@ -26,18 +26,19 @@ namespace lfs::core {
 #define CUDA_INFINITY FLT_MAX
 #else
 // Forward declaration for C++ files - implementation in tensor_ops.cu
+#include "core/export.hpp"
 namespace lfs::core::tensor_ops {
     template <typename InT, typename OutT, typename Op>
-    void launch_binary_op_generic(const InT* a, const InT* b, OutT* c, size_t n,
-                                  Op op, cudaStream_t stream = nullptr);
+    LFS_CORE_API void launch_binary_op_generic(const InT* a, const InT* b, OutT* c, size_t n,
+                                               Op op, cudaStream_t stream = nullptr);
 
     template <typename T, typename OutT, typename Op>
-    void launch_unary_op_generic(const T* input, OutT* output, size_t n,
-                                 Op op, cudaStream_t stream = nullptr);
+    LFS_CORE_API void launch_unary_op_generic(const T* input, OutT* output, size_t n,
+                                              Op op, cudaStream_t stream = nullptr);
 
     template <typename T, typename OutputT, typename Op>
-    void launch_scalar_op_generic(const T* data, T scalar, OutputT* result, size_t n,
-                                  Op op, cudaStream_t stream = nullptr);
+    LFS_CORE_API void launch_scalar_op_generic(const T* data, T scalar, OutputT* result, size_t n,
+                                               Op op, cudaStream_t stream = nullptr);
 } // namespace lfs::core::tensor_ops
 #define CUDA_INFINITY INFINITY
 #endif
@@ -211,10 +212,10 @@ namespace lfs::core::tensor_ops {
 // Forward declaration for C++ files - implementation in tensor_broadcast_ops.cu
 namespace lfs::core::tensor_ops {
     template <typename T, typename OutputT, typename BinaryOp>
-    void launch_broadcast_binary(const T* a, const T* b, OutputT* c,
-                                 const size_t* a_shape, const size_t* b_shape, const size_t* c_shape,
-                                 size_t a_rank, size_t b_rank, size_t c_rank,
-                                 size_t c_elements, BinaryOp op, cudaStream_t stream);
+    LFS_CORE_API void launch_broadcast_binary(const T* a, const T* b, OutputT* c,
+                                              const size_t* a_shape, const size_t* b_shape, const size_t* c_shape,
+                                              size_t a_rank, size_t b_rank, size_t c_rank,
+                                              size_t c_elements, BinaryOp op, cudaStream_t stream);
 }
 #endif
 

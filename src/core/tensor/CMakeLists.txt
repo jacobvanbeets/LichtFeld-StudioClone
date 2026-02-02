@@ -61,6 +61,8 @@ if(LFS_TENSOR_CUDA_SOURCES)
             $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<NOT:$<CXX_COMPILER_ID:MSVC>>,$<CONFIG:Release>>:-O3 -use_fast_math --extended-lambda --expt-relaxed-constexpr --ptxas-options=-v>
     )
 
+    target_compile_definitions(lfs_tensor_kernels PRIVATE LFS_CORE_EXPORTS)
+
     if(MSVC)
         target_compile_definitions(lfs_tensor_kernels PRIVATE
             $<$<COMPILE_LANGUAGE:CUDA>:FMT_UNICODE=0>
