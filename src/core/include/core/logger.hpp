@@ -40,7 +40,7 @@ namespace lfs::core {
         Count = 11
     };
 
-    class LFS_CORE_API Logger {
+    class LFS_LOGGER_API Logger {
     public:
         static Logger& get();
 
@@ -130,7 +130,7 @@ namespace lfs::core {
     };
 
     // Scoped timer for performance measurement
-    class LFS_CORE_API ScopedTimer {
+    class LFS_LOGGER_API ScopedTimer {
     public:
         explicit ScopedTimer(std::string name, LogLevel level = LogLevel::Performance,
                              std::source_location loc = std::source_location::current());

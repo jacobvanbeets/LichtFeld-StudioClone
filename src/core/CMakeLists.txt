@@ -14,6 +14,9 @@ add_subdirectory(cuda)
 # Event bridge shared library
 add_subdirectory(event_bridge)
 
+# Logger shared library (leaf dep, breaks lfs_core ↔ lfs_event_bridge cycle)
+add_subdirectory(logger)
+
 # Tensor C++ sources (merged from src/core/tensor/)
 set(TENSOR_SOURCES
         tensor/tensor.cpp
@@ -44,7 +47,6 @@ set(CORE_SOURCES
         image_loader.cpp
         cuda_version.cpp
         image_io.cpp
-        logger.cpp
         parameters.cpp
         property_registry.cpp
         splat_data.cpp
@@ -74,6 +76,7 @@ target_include_directories(lfs_core
 
 target_link_libraries(lfs_core
     PUBLIC
+        lfs_logger
         lfs_event_bridge
         lfs_geometry
         TBB::tbb

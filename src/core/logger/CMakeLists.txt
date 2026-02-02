@@ -1,39 +1,29 @@
 # SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# Event bridge SHARED library - solves singleton duplication between
-# main executable and Python module
+# Logger SHARED library - leaf dependency with zero upstream deps.
+# Extracted from lfs_core to break the lfs_core ↔ lfs_event_bridge cycle.
 
-add_library(lfs_event_bridge SHARED
-    event_bridge.cpp
-    control_boundary.cpp
-    command_center_bridge.cpp
-    scoped_handler.cpp
-    localization_manager.cpp
+add_library(lfs_logger SHARED
+    ../logger.cpp
 )
 
-target_include_directories(lfs_event_bridge
+target_include_directories(lfs_logger
     PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/src/core/include
 )
 
-target_link_libraries(lfs_event_bridge
-    PUBLIC
-        CUDA::cudart
+target_link_libraries(lfs_logger
     PRIVATE
-        lfs_logger
         spdlog::spdlog
-        nlohmann_json::nlohmann_json
 )
 
-target_compile_definitions(lfs_event_bridge
+target_compile_definitions(lfs_logger
     PRIVATE
-        LFS_EVENT_BRIDGE_EXPORTS
+        LFS_LOGGER_EXPORTS
 )
 
-set_target_properties(lfs_event_bridge PROPERTIES
+set_target_properties(lfs_logger PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_STANDARD 23
     CXX_STANDARD_REQUIRED ON
