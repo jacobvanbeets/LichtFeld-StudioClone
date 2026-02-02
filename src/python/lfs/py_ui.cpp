@@ -23,7 +23,7 @@
 #include "python/ui_hooks.hpp"
 #include "rendering/render_constants.hpp"
 #include "visualizer/core/editor_context.hpp"
-#include "visualizer/gui/localization_manager.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "visualizer/operator/operator_context.hpp"
 #include "visualizer/operator/operator_registry.hpp"
 #include "visualizer/operator/property_schema.hpp"
@@ -2817,26 +2817,26 @@ namespace lfs::python {
         // Localization
         m.def(
             "tr",
-            [](const std::string& key) { return lichtfeld::LocalizationManager::getInstance().get(key); },
+            [](const std::string& key) { return lfs::event::LocalizationManager::getInstance().get(key); },
             nb::arg("key"), "Get localized string by key");
 
         m.def(
             "loc_set",
             [](const std::string& key, const std::string& value) {
-                lichtfeld::LocalizationManager::getInstance().setOverride(key, value);
+                lfs::event::LocalizationManager::getInstance().setOverride(key, value);
             },
             nb::arg("key"), nb::arg("value"), "Override a localization string at runtime");
 
         m.def(
             "loc_clear",
             [](const std::string& key) {
-                lichtfeld::LocalizationManager::getInstance().clearOverride(key);
+                lfs::event::LocalizationManager::getInstance().clearOverride(key);
             },
             nb::arg("key"), "Clear a localization override");
 
         m.def(
             "loc_clear_all", []() {
-                lichtfeld::LocalizationManager::getInstance().clearAllOverrides();
+                lfs::event::LocalizationManager::getInstance().clearAllOverrides();
             },
             "Clear all localization overrides");
 
@@ -3452,21 +3452,21 @@ namespace lfs::python {
         m.def(
             "set_language",
             [](const std::string& lang_code) {
-                lichtfeld::LocalizationManager::getInstance().setLanguage(lang_code);
+                lfs::event::LocalizationManager::getInstance().setLanguage(lang_code);
             },
             nb::arg("lang_code"), "Set language by code (e.g., 'en', 'de')");
 
         m.def(
             "get_current_language",
             []() -> std::string {
-                return lichtfeld::LocalizationManager::getInstance().getCurrentLanguage();
+                return lfs::event::LocalizationManager::getInstance().getCurrentLanguage();
             },
             "Get current language code");
 
         m.def(
             "get_languages",
             []() -> std::vector<std::tuple<std::string, std::string>> {
-                auto& loc = lichtfeld::LocalizationManager::getInstance();
+                auto& loc = lfs::event::LocalizationManager::getInstance();
                 auto codes = loc.getAvailableLanguages();
                 auto names = loc.getAvailableLanguageNames();
                 std::vector<std::tuple<std::string, std::string>> result;
@@ -3480,7 +3480,7 @@ namespace lfs::python {
         m.def(
             "tr",
             [](const std::string& key) -> std::string {
-                return lichtfeld::LocalizationManager::getInstance().get(key.c_str());
+                return lfs::event::LocalizationManager::getInstance().get(key.c_str());
             },
             nb::arg("key"), "Translate a string key");
 

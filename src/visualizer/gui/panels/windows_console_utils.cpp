@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gui/panels/windows_console_utils.hpp"
-#include "gui/localization_manager.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "gui/string_keys.hpp"
 #include <imgui.h>
 #ifdef WIN32

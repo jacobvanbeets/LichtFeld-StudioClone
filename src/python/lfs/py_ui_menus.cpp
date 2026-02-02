@@ -4,7 +4,7 @@
 
 #include "core/logger.hpp"
 #include "py_ui.hpp"
-#include "visualizer/gui/localization_manager.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 
 #include <algorithm>
 #include <imgui.h>

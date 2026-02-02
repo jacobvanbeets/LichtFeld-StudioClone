@@ -5,7 +5,7 @@
 #include "gui/ui_widgets.hpp"
 #include "core/image_io.hpp"
 #include "python/python_runtime.hpp"
-#include "gui/localization_manager.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "gui/string_keys.hpp"
 #include "internal/resource_paths.hpp"
 #include "scene/scene_manager.hpp"

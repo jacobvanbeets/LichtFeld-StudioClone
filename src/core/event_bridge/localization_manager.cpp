@@ -1,3 +1,6 @@
+/* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
+ * SPDX-License-Identifier: GPL-3.0-or-later */
+
 #include "localization_manager.hpp"
 
 #include "core/logger.hpp"
@@ -9,7 +12,7 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-namespace lichtfeld {
+namespace lfs::event {
 
     namespace {
         constexpr const char* LANGUAGE_NAME_KEY = "_language_name";
@@ -44,7 +47,6 @@ namespace lichtfeld {
 
             available_languages_.push_back(lang_code);
 
-            // Extract language name from parsed strings
             const auto it = test_strings.find(LANGUAGE_NAME_KEY);
             language_names_[lang_code] = (it != test_strings.end()) ? it->second : lang_code;
         }
@@ -65,7 +67,6 @@ namespace lichtfeld {
     const char* LocalizationManager::get(std::string_view key) const {
         const std::string key_str(key);
 
-        // Check overrides first
         const auto override_it = overrides_.find(key_str);
         if (override_it != overrides_.end()) {
             return override_it->second.c_str();
@@ -184,4 +185,4 @@ namespace lichtfeld {
         }
     }
 
-} // namespace lichtfeld
+} // namespace lfs::event

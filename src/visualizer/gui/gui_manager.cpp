@@ -14,7 +14,7 @@
 #include "core/path_utils.hpp"
 #include "gui/editor/python_editor.hpp"
 #include "gui/html_viewer_export.hpp"
-#include "gui/localization_manager.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "gui/panels/python_console_panel.hpp"
 #include "gui/panels/tools_panel.hpp"
 #include "gui/panels/windows_console_utils.hpp"
@@ -310,7 +310,7 @@ namespace lfs::vis::gui {
         ImGui_ImplOpenGL3_Init("#version 430");
 
         // Initialize localization system
-        auto& loc = lichtfeld::LocalizationManager::getInstance();
+        auto& loc = lfs::event::LocalizationManager::getInstance();
         const std::string locale_path = lfs::core::path_to_utf8(lfs::core::getLocalesDir());
         if (!loc.initialize(locale_path)) {
             LOG_WARN("Failed to initialize localization system, using default strings");
@@ -3830,7 +3830,7 @@ namespace lfs::vis::gui {
             ImGui::SameLine(0.0f, 8.0f);
             ImGui::SetNextItemWidth(LANG_COMBO_WIDTH);
 
-            auto& loc = lichtfeld::LocalizationManager::getInstance();
+            auto& loc = lfs::event::LocalizationManager::getInstance();
             const auto& current_lang = loc.getCurrentLanguage();
             const auto available_langs = loc.getAvailableLanguages();
             const auto lang_names = loc.getAvailableLanguageNames();

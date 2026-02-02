@@ -13,7 +13,7 @@
 #include <shellapi.h>
 #include <winsock2.h>
 #endif
-#include "gui/localization_manager.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "gui/string_keys.hpp"
 #include "gui/utils/windows_utils.hpp"
 #include "theme/theme.hpp"

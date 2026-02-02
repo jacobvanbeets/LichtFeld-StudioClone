@@ -5,7 +5,7 @@
 #include "gui/windows/file_browser.hpp"
 #include "core/path_utils.hpp"
 #include "python/python_runtime.hpp"
-#include "gui/localization_manager.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "gui/string_keys.hpp"
 #include "io/loader.hpp"
 #include "theme/theme.hpp"

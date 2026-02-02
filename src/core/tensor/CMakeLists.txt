@@ -9,6 +9,7 @@
 
 set(LFS_TENSOR_CUDA_SOURCES
     tensor_ops.cu
+    tensor_exports.cu
     tensor_warp_reduce.cu
     tensor_matrix_ops.cu
     tensor_broadcast_ops.cu

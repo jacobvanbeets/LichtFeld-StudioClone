@@ -5,7 +5,7 @@
 #include "notification_bridge.hpp"
 #include "core/events.hpp"
 #include "core/path_utils.hpp"
-#include "gui/localization_manager.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "gui/string_keys.hpp"
 #include "py_ui.hpp"
 

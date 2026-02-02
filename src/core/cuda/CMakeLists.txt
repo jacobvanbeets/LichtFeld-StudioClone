@@ -58,6 +58,8 @@ target_compile_options(lfs_core_cuda PRIVATE
     $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-O0 -g ${LFS_CUDA_DEVICE_DEBUG_FLAGS} -lineinfo --extended-lambda --expt-relaxed-constexpr>
 )
 
+target_compile_definitions(lfs_core_cuda PRIVATE LFS_CORE_EXPORTS)
+
 # Windows: Disable fmt Unicode check for CUDA files
 if(MSVC)
     target_compile_definitions(lfs_core_cuda PRIVATE

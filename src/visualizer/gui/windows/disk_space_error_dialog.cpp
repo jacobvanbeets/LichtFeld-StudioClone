@@ -5,7 +5,7 @@
 #include "disk_space_error_dialog.hpp"
 #include "core/path_utils.hpp"
 #include "python/python_runtime.hpp"
-#include "gui/localization_manager.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "gui/string_keys.hpp"
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/windows_utils.hpp"

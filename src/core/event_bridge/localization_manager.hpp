@@ -1,16 +1,18 @@
+/* SPDX-FileCopyrightText: 2025 LichtFeld Studio Authors
+ * SPDX-License-Identifier: GPL-3.0-or-later */
+
 #pragma once
 
-#include "core/export.hpp"
+#include "event_bridge.hpp"
 
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
-namespace lichtfeld {
+namespace lfs::event {
 
-    // Manages GUI localization with runtime language switching
-    class LFS_VIS_API LocalizationManager {
+    class LFS_BRIDGE_API LocalizationManager {
     public:
         static LocalizationManager& getInstance();
 
@@ -25,7 +27,6 @@ namespace lichtfeld {
         std::string getCurrentLanguageName() const;
         bool reload();
 
-        // Runtime override API (for Python)
         void setOverride(const std::string& key, const std::string& value);
         void clearOverride(const std::string& key);
         void clearAllOverrides();
@@ -49,6 +50,6 @@ namespace lichtfeld {
         mutable std::unordered_map<std::string, std::string> overrides_;
     };
 
-#define LOC(key) lichtfeld::LocalizationManager::getInstance().get(key)
+#define LOC(key) lfs::event::LocalizationManager::getInstance().get(key)
 
-} // namespace lichtfeld
+} // namespace lfs::event
