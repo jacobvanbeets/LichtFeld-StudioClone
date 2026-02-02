@@ -45,7 +45,7 @@
 #include "config.h"
 #include "python/runner.hpp"
 #include "rendering/rendering_manager.hpp"
-#include "training/checkpoint.hpp"
+#include "core/checkpoint_format.hpp"
 #include "training/strategies/istrategy.hpp"
 #include "training/trainer.hpp"
 #include "visualizer/core/editor_context.hpp"
@@ -1505,19 +1505,19 @@ Example:
         [](const std::string& path) { return lfs::io::detect_dataset_info(path); },
         nb::arg("path"), "Detect dataset information from a directory path");
 
-    nb::class_<lfs::training::CheckpointHeader>(m, "CheckpointHeader", "Information from a checkpoint file header")
-        .def_ro("iteration", &lfs::training::CheckpointHeader::iteration)
-        .def_ro("num_gaussians", &lfs::training::CheckpointHeader::num_gaussians)
-        .def_ro("sh_degree", &lfs::training::CheckpointHeader::sh_degree)
-        .def("__repr__", [](const lfs::training::CheckpointHeader& h) {
+    nb::class_<lfs::core::CheckpointHeader>(m, "CheckpointHeader", "Information from a checkpoint file header")
+        .def_ro("iteration", &lfs::core::CheckpointHeader::iteration)
+        .def_ro("num_gaussians", &lfs::core::CheckpointHeader::num_gaussians)
+        .def_ro("sh_degree", &lfs::core::CheckpointHeader::sh_degree)
+        .def("__repr__", [](const lfs::core::CheckpointHeader& h) {
             return std::format("CheckpointHeader(iteration={}, num_gaussians={}, sh_degree={})",
                                h.iteration, h.num_gaussians, h.sh_degree);
         });
 
     m.def(
         "read_checkpoint_header",
-        [](const std::string& path) -> std::optional<lfs::training::CheckpointHeader> {
-            auto result = lfs::training::load_checkpoint_header(path);
+        [](const std::string& path) -> std::optional<lfs::core::CheckpointHeader> {
+            auto result = lfs::core::load_checkpoint_header(path);
             if (!result) {
                 return std::nullopt;
             }
@@ -1540,7 +1540,7 @@ Example:
     m.def(
         "read_checkpoint_params",
         [](const std::string& path) -> std::optional<lfs::core::param::DatasetConfig> {
-            auto result = lfs::training::load_checkpoint_params(path);
+            auto result = lfs::core::load_checkpoint_params(path);
             if (!result) {
                 return std::nullopt;
             }

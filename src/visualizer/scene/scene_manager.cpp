@@ -16,6 +16,7 @@
 #include "operation/undo_history.hpp"
 #include "python/python_runtime.hpp"
 #include "rendering/rendering_manager.hpp"
+#include "core/checkpoint_format.hpp"
 #include "training/checkpoint.hpp"
 #include "training/components/ppisp.hpp"
 #include "training/components/ppisp_controller.hpp"
@@ -1507,13 +1508,13 @@ namespace lfs::vis {
 
         try {
             // === Phase 1: Validate checkpoint BEFORE clearing scene ===
-            const auto header_result = lfs::training::load_checkpoint_header(path);
+            const auto header_result = lfs::core::load_checkpoint_header(path);
             if (!header_result) {
                 throw std::runtime_error("Failed to load checkpoint header: " + header_result.error());
             }
             const int checkpoint_iteration = header_result->iteration;
 
-            auto params_result = lfs::training::load_checkpoint_params(path);
+            auto params_result = lfs::core::load_checkpoint_params(path);
             if (!params_result) {
                 throw std::runtime_error("Failed to load checkpoint params: " + params_result.error());
             }
@@ -1563,7 +1564,7 @@ namespace lfs::vis {
                 }
             }
 
-            auto splat_result = lfs::training::load_checkpoint_splat_data(path);
+            auto splat_result = lfs::core::load_checkpoint_splat_data(path);
             if (!splat_result) {
                 throw std::runtime_error("Failed to load checkpoint SplatData: " + splat_result.error());
             }

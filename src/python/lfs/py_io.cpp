@@ -13,10 +13,12 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
+#include "core/camera.hpp"
 #include "core/logger.hpp"
 #include "core/splat_data.hpp"
 #include "io/exporter.hpp"
 #include "io/loader.hpp"
+#include "training/dataset.hpp"
 
 #include <filesystem>
 #include <format>
@@ -61,7 +63,8 @@ namespace lfs::python {
 
         struct PyLoadResult {
             std::shared_ptr<core::SplatData> splat_data;
-            std::shared_ptr<io::LoadedScene> scene;
+            std::vector<std::shared_ptr<core::Camera>> cameras;
+            std::shared_ptr<core::PointCloud> point_cloud;
             PyTensor scene_center;
             std::string loader_used;
             int64_t load_time_ms;
@@ -74,18 +77,21 @@ namespace lfs::python {
             }
 
             std::optional<PyCameraDataset> get_cameras() const {
-                if (scene && scene->cameras)
-                    return PyCameraDataset(scene->cameras);
-                return std::nullopt;
+                if (cameras.empty())
+                    return std::nullopt;
+                training::DatasetConfig config;
+                auto dataset = std::make_shared<training::CameraDataset>(
+                    cameras, config, training::CameraDataset::Split::ALL);
+                return PyCameraDataset(dataset);
             }
 
             std::optional<PyPointCloud> get_point_cloud() const {
-                if (scene && scene->point_cloud)
-                    return PyPointCloud(scene->point_cloud.get());
+                if (point_cloud)
+                    return PyPointCloud(point_cloud.get());
                 return std::nullopt;
             }
 
-            bool is_dataset() const { return scene && scene->cameras; }
+            bool is_dataset() const { return !cameras.empty(); }
         };
 
     } // namespace
@@ -142,8 +148,9 @@ namespace lfs::python {
                 if (std::holds_alternative<std::shared_ptr<core::SplatData>>(result->data)) {
                     py_result.splat_data = std::get<std::shared_ptr<core::SplatData>>(result->data);
                 } else {
-                    auto scene = std::get<io::LoadedScene>(result->data);
-                    py_result.scene = std::make_shared<io::LoadedScene>(std::move(scene));
+                    auto& scene = std::get<io::LoadedScene>(result->data);
+                    py_result.cameras = std::move(scene.cameras);
+                    py_result.point_cloud = std::move(scene.point_cloud);
                 }
 
                 return py_result;

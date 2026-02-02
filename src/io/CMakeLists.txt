@@ -175,6 +175,7 @@ target_include_directories(lfs_io
         PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/external
         ${CMAKE_SOURCE_DIR}/external/nvImageCodec/include
         ${CMAKE_SOURCE_DIR}/external/spz
 )
@@ -220,7 +221,6 @@ add_dependencies(lfs_io lfs_io_cuda)
 target_link_libraries(lfs_io
         PUBLIC
         lfs_core            # Link to modular core library for SplatData, Camera, etc.
-        lfs_training        # For checkpoint loading
         lfs_video           # Video encoding for sequencer export
         PRIVATE
         TBB::tbb

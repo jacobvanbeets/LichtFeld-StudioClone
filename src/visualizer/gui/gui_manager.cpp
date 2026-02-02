@@ -3459,7 +3459,7 @@ namespace lfs::vis::gui {
                             import_state_.num_points = data->size();
                             import_state_.num_images = 0;
                         } else if constexpr (std::is_same_v<T, lfs::io::LoadedScene>) {
-                            import_state_.num_images = data.cameras ? data.cameras->size() : 0;
+                            import_state_.num_images = data.cameras.size();
                             import_state_.num_points = data.point_cloud ? data.point_cloud->size() : 0;
                         }
                     },

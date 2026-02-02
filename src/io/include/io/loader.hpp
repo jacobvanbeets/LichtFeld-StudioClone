@@ -16,13 +16,10 @@
 
 // Forward declarations only - hide implementation details
 namespace lfs::core {
+    class Camera;
     class SplatData;
     struct PointCloud;
 } // namespace lfs::core
-
-namespace lfs::training {
-    class CameraDataset;
-} // namespace lfs::training
 
 namespace lfs::io {
 
@@ -51,7 +48,7 @@ namespace lfs::io {
     };
 
     struct LoadedScene {
-        std::shared_ptr<lfs::training::CameraDataset> cameras;
+        std::vector<std::shared_ptr<lfs::core::Camera>> cameras;
         std::shared_ptr<PointCloud> point_cloud;
     };
 

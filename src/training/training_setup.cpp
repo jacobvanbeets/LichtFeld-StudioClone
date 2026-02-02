@@ -182,7 +182,7 @@ namespace lfs::training {
                 }
 
                 // Get camera info for train/val splits
-                const auto& cameras = data.cameras->get_cameras();
+                const auto& cameras = data.cameras;
                 const bool enable_eval = params.optimization.enable_eval;
                 const int test_every = params.dataset.test_every;
 
@@ -503,7 +503,7 @@ namespace lfs::training {
                 }
 
                 // Build camera hierarchy
-                const auto& cameras = data.cameras->get_cameras();
+                const auto& cameras = data.cameras;
                 const bool enable_eval = params.optimization.enable_eval;
                 const int test_every = params.dataset.test_every;
 

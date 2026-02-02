@@ -13,6 +13,7 @@
 #include "python/runner.hpp"
 #include "rendering/gs_rasterizer_tensor.hpp"
 #include "rendering/rasterizer/rasterization/include/rasterization_api_tensor.h"
+#include "core/checkpoint_format.hpp"
 #include "training/checkpoint.hpp"
 #include "training/dataset.hpp"
 #include "training/training_setup.hpp"
@@ -105,18 +106,18 @@ namespace lfs::mcp {
 
         stop_training();
 
-        auto header_result = training::load_checkpoint_header(path);
+        auto header_result = core::load_checkpoint_header(path);
         if (!header_result) {
             return std::unexpected(header_result.error());
         }
 
-        auto params_result = training::load_checkpoint_params(path);
+        auto params_result = core::load_checkpoint_params(path);
         if (!params_result) {
             return std::unexpected(params_result.error());
         }
         params_ = std::move(*params_result);
 
-        auto splat_result = training::load_checkpoint_splat_data(path);
+        auto splat_result = core::load_checkpoint_splat_data(path);
         if (!splat_result) {
             return std::unexpected(splat_result.error());
         }
