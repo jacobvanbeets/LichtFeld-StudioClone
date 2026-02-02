@@ -2480,6 +2480,10 @@ namespace lfs::core::tensor_ops {
         const float*, const float*, float*, size_t, ops::mod_op, cudaStream_t);
     template void launch_binary_op_generic<int, int, ops::mod_op>(
         const int*, const int*, int*, size_t, ops::mod_op, cudaStream_t);
+    template void launch_binary_op_generic<unsigned char, unsigned char, ops::mod_op>(
+        const unsigned char*, const unsigned char*, unsigned char*, size_t, ops::mod_op, cudaStream_t);
+    template void launch_binary_op_generic<__half, __half, ops::mod_op>(
+        const __half*, const __half*, __half*, size_t, ops::mod_op, cudaStream_t);
 
     // Comparison operations for additional types
     template void launch_binary_op_generic<int64_t, unsigned char, ops::greater_op>(
@@ -2517,6 +2521,16 @@ namespace lfs::core::tensor_ops {
         const __half*, const __half*, unsigned char*, size_t, ops::logical_and_op, cudaStream_t);
     template void launch_binary_op_generic<__half, unsigned char, ops::logical_or_op>(
         const __half*, const __half*, unsigned char*, size_t, ops::logical_or_op, cudaStream_t);
+    template void launch_binary_op_generic<float, unsigned char, ops::logical_xor_op>(
+        const float*, const float*, unsigned char*, size_t, ops::logical_xor_op, cudaStream_t);
+    template void launch_binary_op_generic<int, unsigned char, ops::logical_xor_op>(
+        const int*, const int*, unsigned char*, size_t, ops::logical_xor_op, cudaStream_t);
+    template void launch_binary_op_generic<unsigned char, unsigned char, ops::logical_xor_op>(
+        const unsigned char*, const unsigned char*, unsigned char*, size_t, ops::logical_xor_op, cudaStream_t);
+    template void launch_binary_op_generic<int64_t, unsigned char, ops::logical_xor_op>(
+        const int64_t*, const int64_t*, unsigned char*, size_t, ops::logical_xor_op, cudaStream_t);
+    template void launch_binary_op_generic<__half, unsigned char, ops::logical_xor_op>(
+        const __half*, const __half*, unsigned char*, size_t, ops::logical_xor_op, cudaStream_t);
 
     // ============= STRIDED FILL KERNEL =============
 

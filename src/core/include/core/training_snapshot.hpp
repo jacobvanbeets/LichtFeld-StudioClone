@@ -37,7 +37,7 @@ namespace lfs::core::debug {
     LFS_CORE_API MemorySnapshot get_memory_snapshot();
 
     // Training state snapshot for debugging
-    struct TrainingSnapshot {
+    struct LFS_CORE_API TrainingSnapshot {
         int iteration = 0;
         float loss = 0.0f;
         float learning_rate = 0.0f;

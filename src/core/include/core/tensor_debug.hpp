@@ -80,7 +80,7 @@ namespace lfs::core::debug {
         }
     };
 
-    TensorDiff diff_tensors(const Tensor& expected, const Tensor& actual, float tolerance = 1e-5f);
+    LFS_CORE_API TensorDiff diff_tensors(const Tensor& expected, const Tensor& actual, float tolerance = 1e-5f);
 
     inline void log_tensor_diff(const Tensor& expected, const Tensor& actual,
                                 const char* name, const float tolerance = 1e-5f) {
@@ -107,7 +107,7 @@ namespace lfs::core::debug {
         }
     };
 
-    TensorStats get_tensor_stats(const Tensor& tensor);
+    LFS_CORE_API TensorStats get_tensor_stats(const Tensor& tensor);
 
     inline void log_tensor_info(const Tensor& tensor, const char* name) {
         LOG_DEBUG("Tensor '{}': {}", name, get_tensor_stats(tensor).to_string());
