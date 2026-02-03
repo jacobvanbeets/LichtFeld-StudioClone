@@ -2,8 +2,10 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "py_ui.hpp"
 #include "control/command_api.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "core/events.hpp"
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
@@ -16,14 +18,12 @@
 #include "py_params.hpp"
 #include "py_prop_registry.hpp"
 #include "py_signals.hpp"
-#include "py_ui.hpp"
 #include "py_uilist.hpp"
 #include "py_viewport.hpp"
 #include "python/python_runtime.hpp"
 #include "python/ui_hooks.hpp"
 #include "rendering/render_constants.hpp"
 #include "visualizer/core/editor_context.hpp"
-#include "core/event_bridge/localization_manager.hpp"
 #include "visualizer/operator/operator_context.hpp"
 #include "visualizer/operator/operator_registry.hpp"
 #include "visualizer/operator/property_schema.hpp"
@@ -45,11 +45,11 @@
 #include <cassert>
 #include <cstring>
 #include <future>
+#include <implot.h>
 #include <stack>
 #include <string_view>
 #include <unordered_map>
 #include <imgui.h>
-#include <implot.h>
 
 #ifdef _WIN32
 #include <shellapi.h>
@@ -2305,12 +2305,9 @@ namespace lfs::python {
                     return &self;
                 },
                 "Enter layout context manager scope")
-            .def(
-                "__exit__", [](PyLayoutContextManager& self, nb::object, nb::object, nb::object) {
+            .def("__exit__", [](PyLayoutContextManager& self, nb::object, nb::object, nb::object) {
                     self.exit();
-                    return false;
-                },
-                "Exit layout context manager scope");
+                    return false; }, "Exit layout context manager scope");
 
         // PyUILayout - Window flags enum
         nb::class_<PyWindowFlags>(m, "WindowFlags")

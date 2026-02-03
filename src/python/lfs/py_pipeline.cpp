@@ -126,13 +126,10 @@ namespace lfs::python {
                     return p;
                 },
                 "Chain two stages into a pipeline")
-            .def(
-                "execute", [](const PyStage& s) {
+            .def("execute", [](const PyStage& s) {
                     PyPipeline p;
                     p.add(s);
-                    return p.execute();
-                },
-                "Execute this stage immediately");
+                    return p.execute(); }, "Execute this stage immediately");
 
         nb::class_<PyPipeline>(pipe, "Pipeline")
             .def(nb::init<>())

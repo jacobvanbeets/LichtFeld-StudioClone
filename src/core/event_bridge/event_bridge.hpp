@@ -27,8 +27,8 @@ namespace lfs::event {
 
     template <typename T>
     concept Event = requires {
-                        typename T::event_id;
-                    } && std::is_aggregate_v<T>;
+        typename T::event_id;
+    } && std::is_aggregate_v<T>;
 
     class LFS_BRIDGE_API EventBridge {
     public:

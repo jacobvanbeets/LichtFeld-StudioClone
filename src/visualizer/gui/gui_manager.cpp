@@ -9,12 +9,12 @@
 
 #include "gui/gui_manager.hpp"
 #include "core/cuda_version.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
 #include "core/path_utils.hpp"
 #include "gui/editor/python_editor.hpp"
 #include "gui/html_viewer_export.hpp"
-#include "core/event_bridge/localization_manager.hpp"
 #include "gui/panels/python_console_panel.hpp"
 #include "gui/panels/tools_panel.hpp"
 #include "gui/panels/windows_console_utils.hpp"

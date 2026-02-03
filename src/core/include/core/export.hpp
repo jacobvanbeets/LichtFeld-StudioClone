@@ -19,7 +19,7 @@
 #define LFS_VIS_API
 #else
 #define LFS_LOGGER_API __attribute__((visibility("default")))
-#define LFS_CORE_API __attribute__((visibility("default")))
-#define LFS_IO_API __attribute__((visibility("default")))
-#define LFS_VIS_API __attribute__((visibility("default")))
+#define LFS_CORE_API   __attribute__((visibility("default")))
+#define LFS_IO_API     __attribute__((visibility("default")))
+#define LFS_VIS_API    __attribute__((visibility("default")))
 #endif

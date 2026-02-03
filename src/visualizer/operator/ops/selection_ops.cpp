@@ -4,11 +4,11 @@
 
 #include "selection_ops.hpp"
 #include "core/services.hpp"
-#include "operation/undo_entry.hpp"
-#include "operation/undo_history.hpp"
 #include "core/splat_data.hpp"
 #include "gui/gui_manager.hpp"
 #include "internal/viewport.hpp"
+#include "operation/undo_entry.hpp"
+#include "operation/undo_history.hpp"
 #include "operator/operator_registry.hpp"
 #include "rendering/rasterizer/rasterization/include/forward.h"
 #include "rendering/rasterizer/rasterization/include/rasterization_api_tensor.h"

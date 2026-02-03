@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gui/windows/file_browser.hpp"
-#include "core/path_utils.hpp"
-#include "python/python_runtime.hpp"
 #include "core/event_bridge/localization_manager.hpp"
+#include "core/path_utils.hpp"
 #include "gui/string_keys.hpp"
 #include "io/loader.hpp"
+#include "python/python_runtime.hpp"
 #include "theme/theme.hpp"
 #include <algorithm>
 #include <imgui.h>

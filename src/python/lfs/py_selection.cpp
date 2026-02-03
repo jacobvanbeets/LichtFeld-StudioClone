@@ -229,8 +229,7 @@ namespace lfs::python {
                     rm->setRectPreview(x0, y0, x1, y1, add_mode);
                 }
             },
-            nb::arg("x0"), nb::arg("y0"), nb::arg("x1"), nb::arg("y1"), nb::arg("add_mode") = true,
-            "Draw rectangle selection preview");
+            nb::arg("x0"), nb::arg("y0"), nb::arg("x1"), nb::arg("y1"), nb::arg("add_mode") = true, "Draw rectangle selection preview");
 
         sel.def(
             "clear_rect_preview", []() {
@@ -247,8 +246,7 @@ namespace lfs::python {
                     rm->setPolygonPreview(points, closed, add_mode);
                 }
             },
-            nb::arg("points"), nb::arg("closed") = false, nb::arg("add_mode") = true,
-            "Draw polygon selection preview");
+            nb::arg("points"), nb::arg("closed") = false, nb::arg("add_mode") = true, "Draw polygon selection preview");
 
         sel.def(
             "clear_polygon_preview", []() {
@@ -265,8 +263,7 @@ namespace lfs::python {
                     rm->setLassoPreview(points, add_mode);
                 }
             },
-            nb::arg("points"), nb::arg("add_mode") = true,
-            "Draw lasso selection preview");
+            nb::arg("points"), nb::arg("add_mode") = true, "Draw lasso selection preview");
 
         sel.def(
             "clear_lasso_preview", []() {

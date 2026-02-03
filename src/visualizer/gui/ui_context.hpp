@@ -39,7 +39,8 @@ namespace lfs::vis {
                 int best = 0;
                 float best_diff = std::numeric_limits<float>::max();
                 for (int i = 0; i < MONO_SIZE_COUNT; ++i) {
-                    if (!monospace_sized[i]) break;
+                    if (!monospace_sized[i])
+                        break;
                     const float diff = monospace_sizes[i] - scale;
                     const float dist = diff * diff;
                     if (dist < best_diff) {

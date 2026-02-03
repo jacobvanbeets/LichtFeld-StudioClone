@@ -433,7 +433,8 @@ _add_dll_dirs()
     static std::atomic<int> g_repl_write_fd{-1};
 
     static void close_fd(int fd) {
-        if (fd < 0) return;
+        if (fd < 0)
+            return;
 #ifdef _WIN32
         _close(fd);
 #else

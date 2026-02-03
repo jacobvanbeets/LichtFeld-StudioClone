@@ -81,8 +81,8 @@ namespace lfs::vis {
         // Ellipsoid (data stored in scene graph EllipsoidData, these are UI toggles only)
         bool show_ellipsoid = false;
         bool use_ellipsoid = false;
-        bool desaturate_unselected = false; // Desaturate unselected PLYs when one is selected
-        bool desaturate_cropping = true;    // Desaturate outside crop box/ellipsoid instead of hiding
+        bool desaturate_unselected = false;     // Desaturate unselected PLYs when one is selected
+        bool desaturate_cropping = true;        // Desaturate outside crop box/ellipsoid instead of hiding
         bool crop_filter_for_selection = false; // Use crop box/ellipsoid as selection filter
 
         // Appearance correction (PPISP)
@@ -365,7 +365,11 @@ namespace lfs::vis {
         void clearRectPreview();
         [[nodiscard]] bool isRectPreviewActive() const { return rect_preview_active_; }
         void getRectPreview(float& x0, float& y0, float& x1, float& y1, bool& add_mode) const {
-            x0 = rect_x0_; y0 = rect_y0_; x1 = rect_x1_; y1 = rect_y1_; add_mode = rect_add_mode_;
+            x0 = rect_x0_;
+            y0 = rect_y0_;
+            x1 = rect_x1_;
+            y1 = rect_y1_;
+            add_mode = rect_add_mode_;
         }
 
         // Polygon preview

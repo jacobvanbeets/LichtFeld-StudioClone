@@ -200,8 +200,10 @@ namespace lfs::vis::terminal {
         if (py_read_fd < 0 || py_write_fd < 0) {
             LOG_ERROR("_open_osfhandle failed");
             pty_.close();
-            if (py_read_fd < 0) CloseHandle(stdin_read);
-            if (py_write_fd < 0) CloseHandle(stdout_write);
+            if (py_read_fd < 0)
+                CloseHandle(stdin_read);
+            if (py_write_fd < 0)
+                CloseHandle(stdout_write);
             return {};
         }
 

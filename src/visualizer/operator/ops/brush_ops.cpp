@@ -4,10 +4,10 @@
 
 #include "brush_ops.hpp"
 #include "core/services.hpp"
-#include "operation/undo_entry.hpp"
-#include "operation/undo_history.hpp"
 #include "core/splat_data.hpp"
 #include "gui/gui_manager.hpp"
+#include "operation/undo_entry.hpp"
+#include "operation/undo_history.hpp"
 #include "operator/operator_registry.hpp"
 #include "rendering/rendering_manager.hpp"
 #include "scene/scene_manager.hpp"

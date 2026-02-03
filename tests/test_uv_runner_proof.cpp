@@ -63,7 +63,8 @@ TEST_F(UvRunnerProofTest, OutputIsCorrectlyCaptured) {
 
     std::cout << "\n=== PROOF: Output correctly captured ===" << std::endl;
     std::cout << "Total lines captured: " << captured_lines.size() << std::endl;
-    std::cout << "Full output:\n" << full_output << std::endl;
+    std::cout << "Full output:\n"
+              << full_output << std::endl;
 }
 
 // PROOF 2: UI is not blocked - poll() returns immediately

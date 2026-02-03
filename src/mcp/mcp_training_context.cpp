@@ -6,6 +6,7 @@
 #include "mcp_tools.hpp"
 #include "selection_client.hpp"
 
+#include "core/checkpoint_format.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
@@ -13,7 +14,6 @@
 #include "python/runner.hpp"
 #include "rendering/gs_rasterizer_tensor.hpp"
 #include "rendering/rasterizer/rasterization/include/rasterization_api_tensor.h"
-#include "core/checkpoint_format.hpp"
 #include "training/checkpoint.hpp"
 #include "training/dataset.hpp"
 #include "training/training_setup.hpp"

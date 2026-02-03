@@ -111,13 +111,12 @@ namespace lfs::core {
 
             // Check various naming patterns nanobind might produce.
             for (const auto& name : {
-                "lichtfeld.abi3.so",
-                "lichtfeld.so",
-                "lichtfeld.pyd",
-                "lichtfeld.abi3.pyd",
-                "lichtfeld.cp312-win_amd64.pyd",
-                "lichtfeld.cp311-win_amd64.pyd"
-            }) {
+                     "lichtfeld.abi3.so",
+                     "lichtfeld.so",
+                     "lichtfeld.pyd",
+                     "lichtfeld.abi3.pyd",
+                     "lichtfeld.cp312-win_amd64.pyd",
+                     "lichtfeld.cp311-win_amd64.pyd"}) {
                 if (std::filesystem::exists(dir / name, ec)) {
                     return true;
                 }

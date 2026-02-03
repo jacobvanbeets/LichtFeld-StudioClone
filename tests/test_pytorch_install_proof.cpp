@@ -86,7 +86,8 @@ TEST(PyTorchInstallProof, StreamingOutputWhileUIResponsive) {
 
     ASSERT_TRUE(started) << "Failed to start torch installation";
 
-    std::cout << "\n\033[1m>>> Simulating 60 FPS GUI render loop...\033[0m\n" << std::endl;
+    std::cout << "\n\033[1m>>> Simulating 60 FPS GUI render loop...\033[0m\n"
+              << std::endl;
 
     // Simulate GUI render loop at 60 FPS
     while (!done) {

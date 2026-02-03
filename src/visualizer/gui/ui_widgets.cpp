@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gui/ui_widgets.hpp"
-#include "core/image_io.hpp"
-#include "python/python_runtime.hpp"
 #include "core/event_bridge/localization_manager.hpp"
+#include "core/image_io.hpp"
 #include "gui/string_keys.hpp"
 #include "internal/resource_paths.hpp"
+#include "python/python_runtime.hpp"
 #include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
 #include "training/training_manager.hpp"

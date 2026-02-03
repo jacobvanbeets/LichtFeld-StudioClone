@@ -96,7 +96,9 @@ protected:
         // Create tensor with special values: normal, NaN, +Inf, -Inf, 0
         std::vector<float> data = {1.0f, -1.0f, 0.0f, NAN, INFINITY, -INFINITY, 1e-30f, 1e30f};
         auto torch_t = torch::from_blob(data.data(), {(int64_t)data.size()},
-                                        torch::kFloat32).clone().cuda();
+                                        torch::kFloat32)
+                           .clone()
+                           .cuda();
         auto ours = tensor_from_torch(torch_t);
         return {ours, torch_t};
     }

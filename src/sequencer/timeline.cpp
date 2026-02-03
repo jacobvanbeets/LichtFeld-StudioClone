@@ -13,7 +13,7 @@ namespace lfs::sequencer {
     namespace {
         constexpr int JSON_VERSION = 1;
         constexpr int DEFAULT_EASING_VALUE = 3; // EASE_IN_OUT
-    }                                           // namespace
+    } // namespace
 
     void Timeline::addKeyframe(const Keyframe& keyframe) {
         keyframes_.push_back(keyframe);

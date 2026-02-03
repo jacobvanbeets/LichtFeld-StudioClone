@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "app/application.hpp"
-#include "core/argument_parser.hpp"
 #include "app/converter.hpp"
+#include "core/argument_parser.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
 #include "core/logger.hpp"
 #include "git_version.h"

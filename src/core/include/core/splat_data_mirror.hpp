@@ -24,8 +24,8 @@ namespace lfs::core {
 
     /// Mirror selected gaussians in-place (positions, rotations, SH coefficients)
     LFS_CORE_API void mirror_gaussians(SplatData& splat_data,
-                          const Tensor& selection_mask,
-                          MirrorAxis axis,
-                          const glm::vec3& center);
+                                       const Tensor& selection_mask,
+                                       MirrorAxis axis,
+                                       const glm::vec3& center);
 
 } // namespace lfs::core

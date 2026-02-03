@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "notification_bridge.hpp"
+#include "core/event_bridge/localization_manager.hpp"
 #include "core/events.hpp"
 #include "core/path_utils.hpp"
-#include "core/event_bridge/localization_manager.hpp"
 #include "gui/string_keys.hpp"
 #include "py_ui.hpp"
 
@@ -103,7 +103,8 @@ namespace lfs::python {
         });
 
         state::TrainingCompleted::when([](const auto& e) {
-            if (e.user_stopped) return;
+            if (e.user_stopped)
+                return;
 
             if (e.success) {
                 const auto message = std::format(

@@ -2,9 +2,9 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
+#include "core/event_bridge/localization_manager.hpp"
 #include "core/logger.hpp"
 #include "py_ui.hpp"
-#include "core/event_bridge/localization_manager.hpp"
 
 #include <algorithm>
 #include <imgui.h>

@@ -43,9 +43,9 @@
 #include "python/python_runtime.hpp"
 
 #include "config.h"
+#include "core/checkpoint_format.hpp"
 #include "python/runner.hpp"
 #include "rendering/rendering_manager.hpp"
-#include "core/checkpoint_format.hpp"
 #include "training/strategies/istrategy.hpp"
 #include "training/trainer.hpp"
 #include "visualizer/core/editor_context.hpp"

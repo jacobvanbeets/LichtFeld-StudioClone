@@ -28,9 +28,9 @@ namespace lfs::core {
     load_image(std::filesystem::path p, int res_div = -1, int max_width = 3840);
     LFS_CORE_API void save_image(const std::filesystem::path& path, Tensor image);
     LFS_CORE_API void save_image(const std::filesystem::path& path,
-                    const std::vector<Tensor>& images,
-                    bool horizontal = true,
-                    int separator_width = 2);
+                                 const std::vector<Tensor>& images,
+                                 bool horizontal = true,
+                                 int separator_width = 2);
 
     LFS_CORE_API bool save_img_data(const std::filesystem::path& p, const std::tuple<unsigned char*, int, int, int>& image_data);
 
