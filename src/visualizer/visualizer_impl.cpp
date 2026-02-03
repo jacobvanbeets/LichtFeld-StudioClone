@@ -544,9 +544,9 @@ namespace lfs::vis {
         });
 
         state::TrainingCompleted::when([](const auto& event) {
-            const char* state = !event.success    ? "error"
-                              : event.user_stopped ? "stopped"
-                                                   : "completed";
+            const char* state = !event.success       ? "error"
+                                : event.user_stopped ? "stopped"
+                                                     : "completed";
             python::update_training_state(false, state);
         });
 
