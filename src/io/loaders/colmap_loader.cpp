@@ -11,6 +11,7 @@
 #include "io/filesystem_utils.hpp"
 #include "training/dataset.hpp"
 #include <algorithm>
+#include <stb_image.h>
 #include <cctype>
 #include <chrono>
 #include <filesystem>
@@ -200,6 +201,15 @@ namespace lfs::io {
 
             LOG_DEBUG("Creating {} camera objects", cameras.size());
 
+            bool images_have_alpha = false;
+            if (!cameras.empty()) {
+                int w, h, c;
+                const auto& img_path = cameras[0]->image_path();
+                if (stbi_info(lfs::core::path_to_utf8(img_path).c_str(), &w, &h, &c)) {
+                    images_have_alpha = (c == 4);
+                }
+            }
+
             // Create dataset configuration
             lfs::training::DatasetConfig dataset_config;
             dataset_config.resize_factor = options.resize_factor;
@@ -250,6 +260,7 @@ namespace lfs::io {
                     .point_cloud = std::move(point_cloud)},
                 .scene_center = scene_center,
                 .scene_scale = scene_scale,
+                .images_have_alpha = images_have_alpha,
                 .loader_used = name(),
                 .load_time = load_time,
                 .warnings = (has_points || has_points_text) ? std::vector<std::string>{} : std::vector<std::string>{"No sparse point cloud found - using random initialization"}};

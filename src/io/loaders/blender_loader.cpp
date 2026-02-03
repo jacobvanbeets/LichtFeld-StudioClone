@@ -4,7 +4,6 @@
 
 #include "io/loaders/blender_loader.hpp"
 #include "core/camera.hpp"
-#include "core/image_io.hpp"
 #include "core/logger.hpp"
 #include "core/path_utils.hpp"
 #include "core/point_cloud.hpp"
@@ -12,6 +11,7 @@
 #include "io/error.hpp"
 #include "training/dataset.hpp"
 #include <chrono>
+#include <stb_image.h>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -178,8 +178,10 @@ namespace lfs::io {
 
                     // Validate mask dimensions match image dimensions
                     if (!mask_path.empty()) {
-                        auto [img_w, img_h, img_c] = lfs::core::get_image_info(info._image_path);
-                        auto [mask_w, mask_h, mask_c] = lfs::core::get_image_info(mask_path);
+                        int img_w, img_h, img_c;
+                        int mask_w, mask_h, mask_c;
+                        stbi_info(lfs::core::path_to_utf8(info._image_path).c_str(), &img_w, &img_h, &img_c);
+                        stbi_info(lfs::core::path_to_utf8(mask_path).c_str(), &mask_w, &mask_h, &mask_c);
                         if (img_w != mask_w || img_h != mask_h) {
                             return make_error(ErrorCode::MASK_SIZE_MISMATCH,
                                               std::format("Mask '{}' is {}x{} but image '{}' is {}x{}",
@@ -210,6 +212,15 @@ namespace lfs::io {
                 } catch (const std::exception& e) {
                     LOG_ERROR("Failed to create camera {}: {}", i, e.what());
                     throw;
+                }
+            }
+
+            bool images_have_alpha = false;
+            if (!cameras.empty()) {
+                int w, h, c;
+                const auto& img_path = cameras[0]->image_path();
+                if (stbi_info(lfs::core::path_to_utf8(img_path).c_str(), &w, &h, &c)) {
+                    images_have_alpha = (c == 4);
                 }
             }
 
@@ -276,6 +287,7 @@ namespace lfs::io {
                     .point_cloud = std::move(point_cloud)},
                 .scene_center = scene_center,
                 .scene_scale = scene_scale,
+                .images_have_alpha = images_have_alpha,
                 .loader_used = name(),
                 .load_time = load_time,
                 .warnings = std::move(warnings)};
