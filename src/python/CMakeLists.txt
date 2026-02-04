@@ -2,10 +2,6 @@
 #
 #SPDX - License - Identifier : GPL - 3.0 - or -later
 
-if (NOT BUILD_PYTHON_BINDINGS)
-    return()
-endif()
-
 message(STATUS "Configuring Python components (runner + nanobind module)")
 
 #Python for interpreter + embedding + nanobind
@@ -33,7 +29,6 @@ target_link_libraries(lfs_python_runtime
 target_compile_definitions(lfs_python_runtime
     PRIVATE
         LFS_PYTHON_RUNTIME_EXPORTS
-        LFS_BUILD_PYTHON_BINDINGS
 )
 
 set_target_properties(lfs_python_runtime PROPERTIES
@@ -73,7 +68,6 @@ target_link_libraries(lfs_python_utils
 
 target_compile_definitions(lfs_python_utils
     PUBLIC
-        LFS_BUILD_PYTHON_BINDINGS
         LFS_PYTHON_EXECUTABLE="${Python_EXECUTABLE}"
 )
 
@@ -358,7 +352,7 @@ endif()
 # =============================================================================
 # PORTABLE BUILD - Bundle vcpkg Python interpreter and standard library
 # =============================================================================
-if(BUILD_PORTABLE AND BUILD_PYTHON_BINDINGS)
+if(BUILD_PORTABLE)
     message(STATUS "Portable build: bundling Python ${Python_VERSION}")
 
     # Get vcpkg Python directories

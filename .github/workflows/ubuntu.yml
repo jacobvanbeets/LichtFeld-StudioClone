@@ -110,7 +110,6 @@ jobs:
           cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
-            -DBUILD_PYTHON_BINDINGS=ON \
             -DBUILD_PYTHON_STUBS=OFF \
             -DCUDA_DEVICE_DEBUG=OFF
 

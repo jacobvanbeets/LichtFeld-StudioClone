@@ -10,13 +10,10 @@
 #include <cstdlib>
 #include <print>
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #include <Python.h>
-#endif
 
 namespace lfs::python {
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
     namespace {
 
         struct PyObjectGuard {
@@ -53,10 +50,8 @@ namespace lfs::python {
         }
 
     } // anonymous namespace
-#endif
 
     int run_plugin_command(const lfs::core::args::PluginMode& mode) {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         ensure_initialized();
 
         const PyGILState_STATE gstate = PyGILState_Ensure();
@@ -240,10 +235,6 @@ namespace lfs::python {
         std::fflush(stdout);
         std::fflush(stderr);
         _exit(result);
-#else
-        std::println(stderr, "Error: Python bindings not enabled");
-        return 1;
-#endif
     }
 
 } // namespace lfs::python

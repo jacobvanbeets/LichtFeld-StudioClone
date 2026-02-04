@@ -64,13 +64,7 @@ option(ENABLE_CUDA_GL_INTEROP "Enable CUDA-OpenGL interoperability" ON)
 option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_UNICODE_TEST_ONLY "Build only Unicode path test (no CUDA)" OFF)
 option(ENABLE_ALLOCATION_PROFILING "Enable tensor allocation profiling" OFF)
-option(BUILD_PYTHON_BINDINGS "Build Python bindings (nanobind)" OFF)
-
-# Enable position-independent code globally when building Python bindings
-# This is required for all static libraries that will be linked into the shared module
-if(BUILD_PYTHON_BINDINGS)
-    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-endif()
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Debug options
 option(ENABLE_TENSOR_VALIDATION "Enable runtime tensor NaN/Inf validation" OFF)
@@ -334,9 +328,7 @@ add_subdirectory(src/sequencer)  # Sequencer module (lfs::sequencer namespace)
 add_subdirectory(src/visualizer) # Visualizer module (lfs::vis namespace)
 add_subdirectory(src/geometry)   # Geometry utilities
 add_subdirectory(src/mcp)        # MCP server (AI agent integration)
-if(BUILD_PYTHON_BINDINGS)
-    add_subdirectory(src/python)
-endif()
+add_subdirectory(src/python)
 
 # =============================================================================
 # MAIN EXECUTABLES
@@ -383,7 +375,7 @@ target_link_libraries(${PROJECT_NAME}
         lfs_io             # For CacheLoader
         lfs_mcp            # MCP server for AI agent integration
         fastlfs_backend    # Rasterizer and optimizer
-        $<$<BOOL:${BUILD_PYTHON_BINDINGS}>:lfs_python_utils>  # Python integration
+        lfs_python_utils    # Python integration
 
         ${OPENGL_LIBRARIES}
         CUDA::cudart
@@ -424,7 +416,7 @@ if(TARGET nvimgcodec)
 endif()
 
 # Copy Python DLLs for Windows runtime (Python is embedded in the application)
-if(WIN32 AND BUILD_PYTHON_BINDINGS)
+if(WIN32)
     get_filename_component(VCPKG_PYTHON_DIR "${Python_EXECUTABLE}" DIRECTORY)
 
     # Glob python*.dll - check both tools/python3/ and parent bin/ (vcpkg layout varies)
@@ -752,17 +744,15 @@ install(FILES "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/core11-logo-dark.pn
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/src/visualizer/gui/resources/locales" DESTINATION "${INSTALL_RESOURCE_DIR}")
 
 # Plugin development documentation
-if(BUILD_PYTHON_BINDINGS)
-    set(DOC_INSTALL_DIR "${CMAKE_INSTALL_DATADIR}/doc/LichtFeld-Studio")
-    install(FILES
-        "${CMAKE_SOURCE_DIR}/docs/PYTHON_API.md"
-        "${CMAKE_SOURCE_DIR}/docs/plugin-system.md"
-        "${CMAKE_SOURCE_DIR}/docs/plugin-use-cases.md"
-        "${CMAKE_SOURCE_DIR}/docs/plugin-dev-workflow.md"
-        DESTINATION "${DOC_INSTALL_DIR}"
-        OPTIONAL
-    )
-endif()
+set(DOC_INSTALL_DIR "${CMAKE_INSTALL_DATADIR}/doc/LichtFeld-Studio")
+install(FILES
+    "${CMAKE_SOURCE_DIR}/docs/PYTHON_API.md"
+    "${CMAKE_SOURCE_DIR}/docs/plugin-system.md"
+    "${CMAKE_SOURCE_DIR}/docs/plugin-use-cases.md"
+    "${CMAKE_SOURCE_DIR}/docs/plugin-dev-workflow.md"
+    DESTINATION "${DOC_INSTALL_DIR}"
+    OPTIONAL
+)
 
 if(TARGET nvimgcodec)
     install(TARGETS nvimgcodec

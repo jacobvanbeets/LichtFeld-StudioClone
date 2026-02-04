@@ -23,9 +23,7 @@
 #include "lfs/kernels/ssim.cuh"
 #include "losses/losses.hpp"
 #include "optimizer/adam_optimizer.hpp"
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #include "python/runner.hpp"
-#endif
 #include "rasterization/fast_rasterizer.hpp"
 #include "rasterization/gsplat_rasterizer.hpp"
 #include "strategies/adc.hpp"
@@ -711,7 +709,6 @@ namespace lfs::training {
                     lfs::training::TrainingPhase::SafeControl);
             }
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
             // Default Python control script if none provided
             if (python_scripts_.empty()) {
                 std::filesystem::path default_script = std::filesystem::path(PROJECT_ROOT_PATH) / "src/python/sample/command_demo.py";
@@ -730,7 +727,6 @@ namespace lfs::training {
                     return std::unexpected(std::format("Failed to run Python scripts: {}", py_result.error()));
                 }
             }
-#endif
 
             initialized_ = true;
             LOG_INFO("Trainer initialization complete");

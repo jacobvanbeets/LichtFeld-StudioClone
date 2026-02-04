@@ -4,8 +4,6 @@
 #include <gtest/gtest.h>
 
 #include "core/logger.hpp"
-
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #include "python/runner.hpp"
 
 #include <atomic>
@@ -56,11 +54,3 @@ TEST_F(PythonIntegrationTest, EmptyScriptListSucceeds) {
 // NOTE: Tests that actually execute Python scripts require the lichtfeld module
 // to be importable, which depends on the CommandCenter and training infrastructure.
 // These are better tested via integration tests (running training with --python-script).
-
-#else // !LFS_BUILD_PYTHON_BINDINGS
-
-TEST(PythonIntegrationTest, BindingsDisabled) {
-    GTEST_SKIP() << "Python bindings not enabled";
-}
-
-#endif // LFS_BUILD_PYTHON_BINDINGS

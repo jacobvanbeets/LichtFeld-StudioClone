@@ -5,9 +5,7 @@
 #include "core/logger.hpp"
 #include <algorithm>
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #include <Python.h>
-#endif
 
 namespace lfs::vis::editor {
 
@@ -23,7 +21,6 @@ namespace lfs::vis::editor {
     }
 
     void PythonIntrospector::refresh() {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized()) {
             return;
         }
@@ -88,12 +85,10 @@ namespace lfs::vis::editor {
             cached_globals_ = std::move(new_globals);
             last_refresh_ = std::chrono::steady_clock::now();
         }
-#endif
     }
 
     void PythonIntrospector::introspectObject(const std::string& obj_expr,
                                               std::vector<CompletionItem>& out) {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || obj_expr.empty()) {
             return;
         }
@@ -146,20 +141,11 @@ namespace lfs::vis::editor {
         }
 
         PyGILState_Release(gil);
-#else
-        (void)obj_expr;
-        (void)out;
-#endif
     }
 
     std::vector<CompletionItem> PythonIntrospector::getCompletions(
         const std::string& prefix, const std::string& context) {
 
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        (void)prefix;
-        (void)context;
-        return {};
-#else
         // Auto-refresh if needed
         if (shouldRefresh()) {
             refresh();
@@ -213,7 +199,6 @@ namespace lfs::vis::editor {
         }
 
         return results;
-#endif
     }
 
 } // namespace lfs::vis::editor

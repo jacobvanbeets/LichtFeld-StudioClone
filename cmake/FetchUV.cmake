@@ -35,11 +35,6 @@ endif()
 
 # Function to download and extract uv
 function(fetch_uv)
-    if(NOT BUILD_PYTHON_BINDINGS)
-        message(STATUS "FetchUV: Skipping (Python bindings disabled)")
-        return()
-    endif()
-
     # Check if already downloaded
     if(EXISTS "${UV_BINARY_PATH}")
         message(STATUS "FetchUV: uv ${UV_VERSION} already available")
@@ -94,7 +89,7 @@ endfunction()
 
 # Copy uv to build/bin/ for development builds
 function(copy_uv_to_build)
-    if(NOT BUILD_PYTHON_BINDINGS OR NOT EXISTS "${UV_BINARY_PATH}")
+    if(NOT EXISTS "${UV_BINARY_PATH}")
         return()
     endif()
 
@@ -110,10 +105,6 @@ endfunction()
 
 # Function to install uv to the bin directory
 function(install_uv)
-    if(NOT BUILD_PYTHON_BINDINGS)
-        return()
-    endif()
-
     # First try the downloaded binary
     if(EXISTS "${UV_BINARY_PATH}")
         install(PROGRAMS "${UV_BINARY_PATH}"

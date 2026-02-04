@@ -16,7 +16,6 @@
 #include <thread>
 #include <imgui.h>
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #include <Python.h>
 #include <filesystem>
 #include <mutex>
@@ -190,7 +189,6 @@ namespace {
     }
 
 } // namespace
-#endif
 
 namespace lfs::vis::gui::panels {
 
@@ -254,7 +252,6 @@ namespace lfs::vis::gui::panels {
         }
     }
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
     void PythonConsoleState::interruptScript() {
         const unsigned long tid = script_thread_id_.load();
         if (tid != 0 && script_running_.load()) {
@@ -305,10 +302,6 @@ namespace lfs::vis::gui::panels {
             script_running_ = false;
         });
     }
-#else
-    void PythonConsoleState::interruptScript() {}
-    void PythonConsoleState::runScriptAsync(const std::string&) {}
-#endif
 
     void PythonConsoleState::increaseFontScale() {
         for (int i = 0; i < FONT_STEP_COUNT; ++i) {
@@ -387,15 +380,6 @@ namespace lfs::vis::gui::panels {
         if (!open || !*open)
             return;
 
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        ImGui::SetNextWindowSize(ImVec2(500, 300), ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("Python Console", open)) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f),
-                               "Python bindings not available. Rebuild with -DBUILD_PYTHON_BINDINGS=ON");
-        }
-        ImGui::End();
-        return;
-#else
         // Initialize Python and set up output capture
         lfs::python::ensure_initialized();
         lfs::python::install_output_redirect();
@@ -772,22 +756,9 @@ namespace lfs::vis::gui::panels {
         }
 
         ImGui::End();
-#endif // LFS_BUILD_PYTHON_BINDINGS
     }
 
     void DrawDockedPythonConsole(const UIContext& ctx, const ImVec2& pos, const ImVec2& size) {
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-        ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-        if (ImGui::Begin("##DockedPythonConsole", nullptr,
-                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar)) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f),
-                               "Python bindings not available");
-        }
-        ImGui::End();
-        return;
-#else
         lfs::python::ensure_initialized();
         lfs::python::install_output_redirect();
         setup_sys_path();
@@ -1182,7 +1153,6 @@ namespace lfs::vis::gui::panels {
 
         ImGui::End();
         ImGui::PopStyleColor();
-#endif // LFS_BUILD_PYTHON_BINDINGS
     }
 
 } // namespace lfs::vis::gui::panels

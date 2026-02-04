@@ -16,9 +16,7 @@
 #ifdef WIN32
 #include <windows.h>
 #endif
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #include "python/runner.hpp"
-#endif
 
 namespace lfs::core {
 
@@ -81,12 +79,9 @@ namespace lfs::core {
 
         LOG_INFO("Headless training completed successfully");
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!params->python_scripts.empty()) {
-            // Clean up Python interpreter and all callbacks
             lfs::python::finalize();
         }
-#endif
 
         return 0;
     }

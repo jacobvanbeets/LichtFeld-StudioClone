@@ -16,10 +16,7 @@ namespace lfs::vis::editor {
             providers_.push_back(std::move(p));
         }
 
-        // Add runtime Python introspector
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         providers_.push_back(std::make_unique<PythonIntrospector>());
-#endif
     }
 
     AutocompleteManager::~AutocompleteManager() = default;

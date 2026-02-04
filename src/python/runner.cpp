@@ -15,7 +15,6 @@
 #include <core/logger.hpp>
 #include <core/path_utils.hpp>
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #include "python_runtime.hpp"
 #include "training/control/control_boundary.hpp"
 #include <Python.h>
@@ -24,11 +23,9 @@
 #ifndef _WIN32
 #include <unistd.h>
 #endif
-#endif
 
 namespace lfs::python {
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
     static bool g_we_initialized_python = false;
 
     namespace {
@@ -107,30 +104,19 @@ sys.stderr = OutputCapture(True)
         PyRun_SimpleString(redirect_code);
         LOG_DEBUG("Python output redirect installed");
     }
-#endif
 
     void set_output_callback(std::function<void(const std::string&, bool)> callback) {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         std::lock_guard lock(g_output_mutex);
         g_output_callback = std::move(callback);
-#else
-        (void)callback;
-#endif
     }
 
     void write_output(const std::string& text, bool is_error) {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         std::lock_guard lock(g_output_mutex);
         if (g_output_callback) {
             g_output_callback(text, is_error);
         }
-#else
-        (void)text;
-        (void)is_error;
-#endif
     }
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
     static void add_dll_directories() {
 #ifdef _WIN32
         // Python 3.8+ on Windows requires os.add_dll_directory() for DLL loading
@@ -269,14 +255,12 @@ _add_dll_dirs()
 
         Py_DECREF(lf);
     }
-#endif
 
     std::filesystem::path get_user_packages_dir() {
         return PackageManager::instance().site_packages_dir();
     }
 
     void ensure_initialized() {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         call_once_py_init([] {
             if (!Py_IsInitialized()) {
                 PyImport_AppendInittab("_lfs_output", init_capture_module);
@@ -338,14 +322,9 @@ _add_dll_dirs()
             set_gil_state_ready(true);
             LOG_DEBUG("GIL released, external_init={}", !g_we_initialized_python);
         });
-#endif
     }
 
     bool start_debugpy(const int port) {
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        (void)port;
-        return false;
-#else
         ensure_initialized();
 
         auto& pm = PackageManager::instance();
@@ -371,11 +350,9 @@ _add_dll_dirs()
 
         LOG_INFO("debugpy listening on port {}", port);
         return true;
-#endif
     }
 
     void finalize() {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized()) {
             return;
         }
@@ -405,28 +382,20 @@ _add_dll_dirs()
         PyGC_Collect();
 
         // Skip Py_FinalizeEx() - nanobind static destructors need Python alive
-#endif
     }
 
     bool was_python_used() {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         return get_main_thread_state() != nullptr || Py_IsInitialized();
-#else
-        return false;
-#endif
     }
 
     void install_output_redirect() {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         call_once_redirect([] {
             const PyGILState_STATE gil = PyGILState_Ensure();
             redirect_output();
             PyGILState_Release(gil);
         });
-#endif
     }
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
     static std::thread g_repl_thread;
     static std::atomic<bool> g_repl_running{false};
     static std::atomic<int> g_repl_read_fd{-1};
@@ -441,13 +410,8 @@ _add_dll_dirs()
         ::close(fd);
 #endif
     }
-#endif
 
     void start_embedded_repl(int read_fd, int write_fd) {
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        (void)read_fd;
-        (void)write_fd;
-#else
         stop_embedded_repl();
         ensure_initialized();
 
@@ -559,11 +523,9 @@ _repl_out.close()
             g_repl_running = false;
             LOG_INFO("Embedded REPL thread exited");
         });
-#endif
     }
 
     void stop_embedded_repl() {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (g_repl_running.load()) {
             const int rfd = g_repl_read_fd.load();
             const int wfd = g_repl_write_fd.load();
@@ -579,11 +541,9 @@ _repl_out.close()
         if (g_repl_thread.joinable()) {
             g_repl_thread.join();
         }
-#endif
     }
 
     void update_python_path() {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         const auto packages = get_user_packages_dir();
         if (!std::filesystem::exists(packages))
             return;
@@ -602,7 +562,6 @@ _repl_out.close()
         }
 
         PyGILState_Release(gil);
-#endif
     }
 
     std::expected<void, std::string> run_scripts(const std::vector<std::filesystem::path>& scripts) {
@@ -610,9 +569,6 @@ _repl_out.close()
             return {};
         }
 
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        return std::unexpected("Python bindings disabled; rebuild with -DBUILD_PYTHON_BINDINGS=ON");
-#else
         ensure_initialized();
 
         const PyGILState_STATE gil_state = PyGILState_Ensure();
@@ -688,13 +644,9 @@ _repl_out.close()
 
         PyGILState_Release(gil_state);
         return {};
-#endif
     }
 
     FormatResult format_python_code(const std::string& code) {
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        return {code, "", true};
-#else
         if (code.empty())
             return {code, "", true};
 
@@ -848,7 +800,6 @@ def _lfs_format_code(code):
 
         PyGILState_Release(gil);
         return result;
-#endif
     }
 
     // Frame callback for animations
@@ -877,7 +828,6 @@ def _lfs_format_code(code):
             cb = g_frame_callback;
         }
         if (cb) {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
             const PyGILState_STATE gil = PyGILState_Ensure();
             try {
                 cb(dt);
@@ -885,16 +835,10 @@ def _lfs_format_code(code):
                 LOG_ERROR("Frame callback error: {}", e.what());
             }
             PyGILState_Release(gil);
-#else
-            cb(dt);
-#endif
         }
     }
 
     CapabilityResult invoke_capability(const std::string& name, const std::string& args_json) {
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        return {false, "", "Python bindings disabled"};
-#else
         ensure_initialized();
         const PyGILState_STATE gil = PyGILState_Ensure();
         CapabilityResult result;
@@ -983,13 +927,9 @@ def _lfs_format_code(code):
         Py_DECREF(lfs_plugins);
         PyGILState_Release(gil);
         return result;
-#endif
     }
 
     bool has_capability(const std::string& name) {
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        return false;
-#else
         ensure_initialized();
         const PyGILState_STATE gil = PyGILState_Ensure();
         bool result = false;
@@ -1020,14 +960,10 @@ def _lfs_format_code(code):
 
         PyGILState_Release(gil);
         return result;
-#endif
     }
 
     std::vector<CapabilityInfo> list_capabilities() {
         std::vector<CapabilityInfo> result;
-#ifndef LFS_BUILD_PYTHON_BINDINGS
-        return result;
-#else
         ensure_initialized();
         const PyGILState_STATE gil = PyGILState_Ensure();
 
@@ -1076,7 +1012,6 @@ def _lfs_format_code(code):
 
         PyGILState_Release(gil);
         return result;
-#endif
     }
 
 } // namespace lfs::python

@@ -124,13 +124,8 @@ target_link_libraries(lfs_training
         fastlfs_backend         # For adam_step_raw CUDA kernel (LibTorch-free)
         gsplat_backend_lfs      # LibTorch-free gsplat rasterization backend
     PRIVATE
-        $<$<BOOL:${BUILD_PYTHON_BINDINGS}>:lfs_python_utils>
+        lfs_python_utils
 )
-
-# Python support: define LFS_BUILD_PYTHON_BINDINGS when bindings are enabled
-if(BUILD_PYTHON_BINDINGS)
-    target_compile_definitions(lfs_training PRIVATE LFS_BUILD_PYTHON_BINDINGS)
-endif()
 
 # Set C++ standard
 set_target_properties(lfs_training PROPERTIES

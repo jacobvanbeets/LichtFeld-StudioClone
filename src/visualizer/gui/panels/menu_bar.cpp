@@ -29,13 +29,10 @@ using namespace lichtfeld::Strings;
 #include <cfloat>
 #include <cstdlib>
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #include "python/runner.hpp"
 #include <Python.h>
-// Python.h defines PLATFORM macro that conflicts with string_keys.hpp
 #ifdef PLATFORM
 #undef PLATFORM
-#endif
 #endif
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT
@@ -202,7 +199,6 @@ namespace lfs::vis::gui {
     }
 
     void MenuBar::renderPluginInstallPopup() {
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!show_plugin_install_popup_)
             return;
 
@@ -292,7 +288,6 @@ namespace lfs::vis::gui {
 
         ImGui::PopStyleColor();
         ImGui::PopStyleVar(2);
-#endif
     }
 
 } // namespace lfs::vis::gui

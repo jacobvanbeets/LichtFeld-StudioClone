@@ -128,7 +128,7 @@ target_link_libraries(lfs_visualizer
         lfs_rendering
         lfs_training
         lfs_python_runtime
-        $<$<BOOL:${BUILD_PYTHON_BINDINGS}>:lfs_python_utils>
+        lfs_python_utils
         lfs_sequencer      # Camera animation sequencer
         glad::glad
         glfw
@@ -146,11 +146,6 @@ target_link_libraries(lfs_visualizer
         ${OPENGL_LIBRARIES}
         vterm              # Terminal emulator (libvterm)
 )
-
-# Python support: define LFS_BUILD_PYTHON_BINDINGS when bindings are enabled
-if(BUILD_PYTHON_BINDINGS)
-    target_compile_definitions(lfs_visualizer PRIVATE LFS_BUILD_PYTHON_BINDINGS)
-endif()
 
 # Set C++ standard
 target_compile_features(lfs_visualizer PUBLIC cxx_std_23)

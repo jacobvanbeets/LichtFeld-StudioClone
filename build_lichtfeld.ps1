@@ -11,7 +11,6 @@ param(
     [switch]$SkipVerification,
     [switch]$SkipVcpkg,
     [switch]$SkipLibTorch,
-    [switch]$NoPythonBindings,
     [switch]$Clean,
     [switch]$Help
 )
@@ -34,15 +33,13 @@ Options:
   -SkipVerification               Skip environment verification
   -SkipVcpkg                      Skip vcpkg setup
   -SkipLibTorch                   Skip LibTorch download
-  -NoPythonBindings               Disable Python bindings (enabled by default, requires Python 3.12)
   -Clean                          Clean build directory before building
   -Help                           Show this help message
 
 Examples:
-  .\build_lichtfeld.ps1                            Build Release with Python bindings (default)
-  .\build_lichtfeld.ps1 -Configuration Debug       Build Debug with Python bindings
+  .\build_lichtfeld.ps1                            Build Release (default)
+  .\build_lichtfeld.ps1 -Configuration Debug       Build Debug
   .\build_lichtfeld.ps1 -Clean                     Clean and rebuild
-  .\build_lichtfeld.ps1 -NoPythonBindings          Build without Python support
   .\build_lichtfeld.ps1 -SkipLibTorch              Skip LibTorch download (if already present)
 
 Notes:
@@ -188,7 +185,6 @@ function Launch-VSDevEnvironment {
     if ($SkipVerification) { $ParamString += " -SkipVerification" }
     if ($SkipVcpkg) { $ParamString += " -SkipVcpkg" }
     if ($SkipLibTorch) { $ParamString += " -SkipLibTorch" }
-    if ($NoPythonBindings) { $ParamString += " -NoPythonBindings" }
     if ($Clean) { $ParamString += " -Clean" }
 
     # Create temp script to launch dev shell and run build
@@ -239,7 +235,7 @@ function Test-BuildEnvironment {
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host ""
 
-    $TotalChecks = if (-not $NoPythonBindings) { 8 } else { 7 }
+    $TotalChecks = 8
 
     # Check 1: PowerShell Version
     Write-Host "[1/$TotalChecks] Checking PowerShell..." -ForegroundColor Yellow
@@ -362,26 +358,24 @@ function Test-BuildEnvironment {
         Write-Warning-Status "Disk Space" "Could not determine free space"
     }
 
-    # Check 8: Python (unless explicitly disabled)
-    if (-not $NoPythonBindings) {
-        Write-Host "[8/$TotalChecks] Checking Python 3.12..." -ForegroundColor Yellow
-        if (Test-Command "python") {
-            try {
-                $PythonVersion = python --version 2>&1
-                if ($PythonVersion -match "3\.12") {
-                    Write-Status "Python" $true $PythonVersion
-                } else {
-                    Write-Warning-Status "Python" "$PythonVersion (3.12 recommended)" `
-                        "Python 3.12 is recommended for best compatibility"
-                }
-            } catch {
-                Write-Status "Python" $true "Found (version check failed)"
+    # Check 8: Python
+    Write-Host "[8/$TotalChecks] Checking Python 3.12..." -ForegroundColor Yellow
+    if (Test-Command "python") {
+        try {
+            $PythonVersion = python --version 2>&1
+            if ($PythonVersion -match "3\.12") {
+                Write-Status "Python" $true $PythonVersion
+            } else {
+                Write-Warning-Status "Python" "$PythonVersion (3.12 recommended)" `
+                    "Python 3.12 is recommended for best compatibility"
             }
-        } else {
-            Write-Status "Python" $false "" `
-                "Python not found in PATH" `
-                "Download Python 3.12 from: https://www.python.org/downloads/"
+        } catch {
+            Write-Status "Python" $true "Found (version check failed)"
         }
+    } else {
+        Write-Status "Python" $false "" `
+            "Python not found in PATH" `
+            "Download Python 3.12 from: https://www.python.org/downloads/"
     }
 
     Write-Host ""
@@ -600,11 +594,8 @@ function Copy-RequiredDLLs {
         @{ Source = "src\core\event_bridge\$Config\lfs_event_bridge.dll"; Name = "lfs_event_bridge.dll" }
     )
 
-    # Add Python DLLs if building with Python bindings (default)
-    if (-not $NoPythonBindings) {
-        $DLLSources += @{ Source = "src\python\$Config\lfs_python_runtime.dll"; Name = "lfs_python_runtime.dll" }
-        $DLLSources += @{ Source = "src\python\$Config\python3.dll"; Name = "python3.dll" }
-    }
+    $DLLSources += @{ Source = "src\python\$Config\lfs_python_runtime.dll"; Name = "lfs_python_runtime.dll" }
+    $DLLSources += @{ Source = "src\python\$Config\python3.dll"; Name = "python3.dll" }
 
     $CopiedCount = 0
     foreach ($DLL in $DLLSources) {
@@ -642,11 +633,7 @@ function Copy-RequiredDLLs {
 function Build-LichtFeldStudio {
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "Building LichtFeld-Studio ($Configuration)" -ForegroundColor Cyan
-    if (-not $NoPythonBindings) {
-        Write-Host "  with Python Bindings" -ForegroundColor Cyan
-    } else {
-        Write-Host "  WITHOUT Python Bindings" -ForegroundColor Cyan
-    }
+    Write-Host "  with Python Bindings" -ForegroundColor Cyan
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host ""
 
@@ -731,12 +718,6 @@ function Build-LichtFeldStudio {
             "-DCMAKE_TOOLCHAIN_FILE=$VcpkgToolchain"
         )
 
-        if (-not $NoPythonBindings) {
-            $CMakeArgs += "-DBUILD_PYTHON_BINDINGS=ON"
-        } else {
-            $CMakeArgs += "-DBUILD_PYTHON_BINDINGS=OFF"
-        }
-
         # Add LibTorch path for CMake (required if tests are built)
         $TorchConfigPath = if ($Configuration -eq 'Debug') {
             Join-Path $ProjectRoot "external\debug\libtorch\share\cmake\Torch"
@@ -753,11 +734,7 @@ function Build-LichtFeldStudio {
         Write-Host "  Generator: $Generator" -ForegroundColor Gray
         Write-Host "  Configuration: $Configuration" -ForegroundColor Gray
         Write-Host "  Toolchain: $VcpkgToolchain" -ForegroundColor Gray
-        if (-not $NoPythonBindings) {
-            Write-Host "  Python Bindings: Enabled" -ForegroundColor Gray
-        } else {
-            Write-Host "  Python Bindings: Disabled" -ForegroundColor Gray
-        }
+        Write-Host "  Python Bindings: Enabled" -ForegroundColor Gray
         Write-Host ""
 
         & cmake @CMakeArgs
@@ -797,11 +774,9 @@ function Build-LichtFeldStudio {
         Write-Host "  $BuildDir\$Configuration\LichtFeld-Studio.exe" -ForegroundColor White
         Write-Host ""
 
-        if (-not $NoPythonBindings) {
-            Write-Host "Python module location:" -ForegroundColor Cyan
-            Write-Host "  $BuildDir\src\python\$Configuration\lichtfeld.pyd" -ForegroundColor White
-            Write-Host ""
-        }
+        Write-Host "Python module location:" -ForegroundColor Cyan
+        Write-Host "  $BuildDir\src\python\$Configuration\lichtfeld.pyd" -ForegroundColor White
+        Write-Host ""
 
     } finally {
         Pop-Location
@@ -819,11 +794,7 @@ Write-Host "================================================================" -F
 Write-Host ""
 Write-Host "Project: $ProjectRoot" -ForegroundColor Gray
 Write-Host "Configuration: $Configuration" -ForegroundColor Gray
-if (-not $NoPythonBindings) {
-    Write-Host "Python Bindings: Enabled" -ForegroundColor Gray
-} else {
-    Write-Host "Python Bindings: Disabled" -ForegroundColor Gray
-}
+Write-Host "Python Bindings: Enabled" -ForegroundColor Gray
 Write-Host ""
 
 # Phase 1: Environment Verification

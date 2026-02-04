@@ -291,7 +291,7 @@ target_link_libraries(lichtfeld_tests PRIVATE
     # Backend libraries
     fastlfs_backend
     spz_lib  # Niantic SPZ format library
-    $<$<BOOL:${BUILD_PYTHON_BINDINGS}>:lfs_python_utils>
+    lfs_python_utils
 
     # External libraries
     GTest::gtest

@@ -12,9 +12,7 @@
 #include <mutex>
 #include <unordered_set>
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #include <Python.h>
-#endif
 
 namespace lfs::python {
 
@@ -95,11 +93,9 @@ namespace lfs::python {
         std::atomic<vis::input::InputBindings*> g_keymap_bindings{nullptr};
         std::atomic<bool> g_gil_state_ready{false};
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         // Main thread GIL state - stored here in the shared library
         // to ensure single copy across all modules
         std::atomic<PyThreadState*> g_main_thread_state{nullptr};
-#endif
 
         // Initialization guards - must be in shared library
         std::once_flag g_py_init_once;
@@ -415,7 +411,6 @@ namespace lfs::python {
     void set_gil_state_ready(const bool ready) { g_gil_state_ready.store(ready, std::memory_order_release); }
     bool is_gil_state_ready() { return g_gil_state_ready.load(std::memory_order_acquire); }
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
     void set_main_thread_state(void* state) {
         g_main_thread_state.store(static_cast<PyThreadState*>(state), std::memory_order_release);
     }
@@ -435,13 +430,6 @@ namespace lfs::python {
         PyThreadState* state = PyEval_SaveThread();
         g_main_thread_state.store(state, std::memory_order_release);
     }
-#else
-    // Stubs when Python bindings disabled
-    void set_main_thread_state(void*) {}
-    void* get_main_thread_state() { return nullptr; }
-    void acquire_gil_main_thread() {}
-    void release_gil_main_thread() {}
-#endif
 
     // Initialization guards
     void call_once_py_init(std::function<void()> fn) {
@@ -520,7 +508,6 @@ namespace lfs::python {
         g_ensure_initialized_callback = cb;
     }
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
     std::string extract_python_error() {
         PyObject *type, *value, *tb;
         PyErr_Fetch(&type, &value, &tb);
@@ -542,11 +529,6 @@ namespace lfs::python {
         Py_XDECREF(tb);
         return msg;
     }
-#else
-    std::string extract_python_error() {
-        return "(Python bindings not enabled)";
-    }
-#endif
 
     void invoke_python_cleanup() {
         if (g_bridge.cleanup) {
@@ -558,7 +540,6 @@ namespace lfs::python {
         if (!g_bridge.draw_panels)
             return;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         assert(Py_IsInitialized());
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return;
@@ -571,9 +552,6 @@ namespace lfs::python {
         g_bridge.draw_panels(space);
         PyGILState_Release(gil);
         set_scene_for_python(nullptr);
-#else
-        g_bridge.draw_panels(space);
-#endif
     }
 
     bool has_python_panels(PanelSpace space) {
@@ -583,16 +561,12 @@ namespace lfs::python {
         if (!g_bridge.has_panels)
             return false;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return false;
         const PyGILState_STATE gil = PyGILState_Ensure();
         const bool result = g_bridge.has_panels(space);
         PyGILState_Release(gil);
         return result;
-#else
-        return g_bridge.has_panels(space);
-#endif
     }
 
     std::vector<std::string> get_python_panel_names(PanelSpace space) {
@@ -602,11 +576,9 @@ namespace lfs::python {
         if (!g_bridge.get_panel_names)
             return {};
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return {};
         const PyGILState_STATE gil = PyGILState_Ensure();
-#endif
 
         std::vector<std::string> result;
         g_bridge.get_panel_names(
@@ -616,9 +588,7 @@ namespace lfs::python {
             },
             &result);
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         PyGILState_Release(gil);
-#endif
         return result;
     }
 
@@ -626,7 +596,6 @@ namespace lfs::python {
         if (!g_bridge.draw_single_panel)
             return;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return;
 
@@ -638,9 +607,6 @@ namespace lfs::python {
         g_bridge.draw_single_panel(name.c_str());
         PyGILState_Release(gil);
         set_scene_for_python(nullptr);
-#else
-        g_bridge.draw_single_panel(name.c_str());
-#endif
     }
 
     bool has_main_panel_tabs() {
@@ -650,16 +616,12 @@ namespace lfs::python {
         if (!g_bridge.has_main_panel_tabs)
             return false;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return false;
         const PyGILState_STATE gil = PyGILState_Ensure();
         const bool result = g_bridge.has_main_panel_tabs();
         PyGILState_Release(gil);
         return result;
-#else
-        return g_bridge.has_main_panel_tabs();
-#endif
     }
 
     std::vector<MainPanelTabInfo> get_main_panel_tabs() {
@@ -669,11 +631,9 @@ namespace lfs::python {
         if (!g_bridge.get_main_panel_tabs)
             return {};
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return {};
         const PyGILState_STATE gil = PyGILState_Ensure();
-#endif
 
         std::vector<MainPanelTabInfo> result;
         g_bridge.get_main_panel_tabs(
@@ -683,9 +643,7 @@ namespace lfs::python {
             },
             &result);
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         PyGILState_Release(gil);
-#endif
         return result;
     }
 
@@ -693,7 +651,6 @@ namespace lfs::python {
         if (!g_bridge.draw_main_panel_tab)
             return;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return;
 
@@ -705,15 +662,11 @@ namespace lfs::python {
         g_bridge.draw_main_panel_tab(idname.c_str());
         PyGILState_Release(gil);
         set_scene_for_python(nullptr);
-#else
-        g_bridge.draw_main_panel_tab(idname.c_str());
-#endif
     }
 
     void draw_python_menu_items(MenuLocation location) {
         if (!g_bridge.draw_menus)
             return;
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #ifndef NDEBUG
         assert(Py_IsInitialized() && "Python not initialized before draw_python_menu_items");
 #endif
@@ -726,9 +679,6 @@ namespace lfs::python {
         const PyGILState_STATE gil = PyGILState_Ensure();
         g_bridge.draw_menus(location);
         PyGILState_Release(gil);
-#else
-        g_bridge.draw_menus(location);
-#endif
     }
 
     bool has_python_menu_items(MenuLocation location) {
@@ -738,16 +688,12 @@ namespace lfs::python {
         if (!g_bridge.has_menus)
             return false;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return false;
         const PyGILState_STATE gil = PyGILState_Ensure();
         const bool result = g_bridge.has_menus(location);
         PyGILState_Release(gil);
         return result;
-#else
-        return g_bridge.has_menus(location);
-#endif
     }
 
     bool has_menu_bar_entries() {
@@ -757,16 +703,12 @@ namespace lfs::python {
         if (!g_bridge.has_menu_bar_entries)
             return false;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return false;
         const PyGILState_STATE gil = PyGILState_Ensure();
         const bool result = g_bridge.has_menu_bar_entries();
         PyGILState_Release(gil);
         return result;
-#else
-        return g_bridge.has_menu_bar_entries();
-#endif
     }
 
     std::vector<MenuBarEntry> get_menu_bar_entries() {
@@ -776,11 +718,9 @@ namespace lfs::python {
         if (!g_bridge.get_menu_bar_entries)
             return {};
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return {};
         const PyGILState_STATE gil = PyGILState_Ensure();
-#endif
 
         std::vector<MenuBarEntry> result;
         g_bridge.get_menu_bar_entries(
@@ -790,9 +730,7 @@ namespace lfs::python {
             },
             &result);
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         PyGILState_Release(gil);
-#endif
         return result;
     }
 
@@ -800,7 +738,6 @@ namespace lfs::python {
         if (!g_bridge.draw_menu_bar_entry)
             return;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return;
 
@@ -810,15 +747,11 @@ namespace lfs::python {
         const PyGILState_STATE gil = PyGILState_Ensure();
         g_bridge.draw_menu_bar_entry(idname.c_str());
         PyGILState_Release(gil);
-#else
-        g_bridge.draw_menu_bar_entry(idname.c_str());
-#endif
     }
 
     void draw_python_modals(lfs::vis::Scene* scene) {
         if (!g_bridge.draw_modals)
             return;
-#ifdef LFS_BUILD_PYTHON_BINDINGS
 #ifndef NDEBUG
         assert(Py_IsInitialized() && "Python not initialized before draw_python_modals");
 #endif
@@ -833,25 +766,18 @@ namespace lfs::python {
         g_bridge.draw_modals();
         PyGILState_Release(gil);
         set_scene_for_python(nullptr);
-#else
-        g_bridge.draw_modals();
-#endif
     }
 
     bool has_python_modals() {
         if (!g_bridge.has_modals)
             return false;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return false;
         const PyGILState_STATE gil = PyGILState_Ensure();
         const bool result = g_bridge.has_modals();
         PyGILState_Release(gil);
         return result;
-#else
-        return g_bridge.has_modals();
-#endif
     }
 
     void set_popup_draw_callback(DrawPopupsCallback cb) { g_popup_draw_callback = cb; }
@@ -860,7 +786,6 @@ namespace lfs::python {
         if (!g_popup_draw_callback)
             return;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         assert(Py_IsInitialized());
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return;
@@ -873,9 +798,6 @@ namespace lfs::python {
         g_popup_draw_callback();
         PyGILState_Release(gil);
         set_scene_for_python(nullptr);
-#else
-        g_popup_draw_callback();
-#endif
     }
 
     void set_export_callback(ExportCallback cb) { g_export_callback = cb; }
@@ -898,16 +820,12 @@ namespace lfs::python {
         if (!g_bridge.has_toolbar)
             return false;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return false;
         const PyGILState_STATE gil = PyGILState_Ensure();
         const bool result = g_bridge.has_toolbar();
         PyGILState_Release(gil);
         return result;
-#else
-        return g_bridge.has_toolbar();
-#endif
     }
 
     void cancel_active_operator() {
@@ -920,7 +838,6 @@ namespace lfs::python {
         if (!callbacks || !callbacks->hasCancelOperatorCallback())
             return;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return;
 
@@ -929,11 +846,6 @@ namespace lfs::python {
         callbacks->cancelOperator();
         PyGILState_Release(gil);
         in_cancel.store(false);
-#else
-        in_cancel.store(true);
-        callbacks->cancelOperator();
-        in_cancel.store(false);
-#endif
     }
 
     bool invoke_operator(const std::string& operator_id) {
@@ -946,7 +858,6 @@ namespace lfs::python {
         if (!callbacks || !callbacks->hasInvokeOperatorCallback())
             return false;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready())
             return false;
 
@@ -956,12 +867,6 @@ namespace lfs::python {
         PyGILState_Release(gil);
         in_invoke.store(false);
         return result;
-#else
-        in_invoke.store(true);
-        const bool result = callbacks->invokeOperator(operator_id.c_str());
-        in_invoke.store(false);
-        return result;
-#endif
     }
 
     // Selection sub-mode
@@ -988,7 +893,6 @@ namespace lfs::python {
         core_evt.scroll_x = event.scroll_x;
         core_evt.scroll_y = event.scroll_y;
 
-#ifdef LFS_BUILD_PYTHON_BINDINGS
         if (!Py_IsInitialized() || !is_gil_state_ready()) {
             return false;
         }
@@ -996,9 +900,6 @@ namespace lfs::python {
         const bool consumed = callbacks->dispatchModalEvent(core_evt);
         PyGILState_Release(gil);
         return consumed;
-#else
-        return callbacks->dispatchModalEvent(core_evt);
-#endif
     }
 
     void set_viewport_bounds(float x, float y, float w, float h) {

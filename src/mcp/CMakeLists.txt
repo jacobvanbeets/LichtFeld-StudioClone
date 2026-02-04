@@ -28,16 +28,12 @@ target_link_libraries(lfs_mcp
     lfs_training
     lfs_visualizer
     lfs_rendering
-    $<$<BOOL:${BUILD_PYTHON_BINDINGS}>:lfs_python_utils>
+    lfs_python_utils
     OpenSSL::SSL
     OpenSSL::Crypto
 )
 
 target_compile_features(lfs_mcp PUBLIC cxx_std_23)
-
-if(BUILD_PYTHON_BINDINGS)
-    target_compile_definitions(lfs_mcp PRIVATE LFS_BUILD_PYTHON_BINDINGS)
-endif()
 
 # Standalone MCP server executable
 add_executable(lichtfeld-mcp
