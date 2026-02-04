@@ -378,10 +378,9 @@ class TransformPanel:
 
         old = self._state.transforms_before_edit[0]
         if old != current:
-            lf.ops.invoke("transform.apply_batch", {
-                "node_names": [node_name],
-                "old_transforms": [old]
-            })
+            lf.ops.invoke("transform.apply_batch",
+                          node_names=[node_name],
+                          old_transforms=[old])
 
         self._state.reset_single_edit()
 
@@ -400,20 +399,18 @@ class TransformPanel:
                 break
 
         if any_changed:
-            lf.ops.invoke("transform.apply_batch", {
-                "node_names": self._state.multi_node_names,
-                "old_transforms": self._state.multi_transforms_before
-            })
+            lf.ops.invoke("transform.apply_batch",
+                          node_names=self._state.multi_node_names,
+                          old_transforms=self._state.multi_transforms_before)
 
         self._state.reset_multi_edit()
 
     def _reset_single_transform(self, node_name: str, current_transform: List[float]):
         identity = lf.compose_transform([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
         lf.set_node_transform(node_name, identity)
-        lf.ops.invoke("transform.apply_batch", {
-            "node_names": [node_name],
-            "old_transforms": [current_transform]
-        })
+        lf.ops.invoke("transform.apply_batch",
+                      node_names=[node_name],
+                      old_transforms=[current_transform])
         self._state.euler_display = [0.0, 0.0, 0.0]
         self._state.euler_display_rotation = [0.0, 0.0, 0.0, 1.0]
 
@@ -438,10 +435,9 @@ class TransformPanel:
         for name in selected:
             lf.set_node_transform(name, identity)
 
-        lf.ops.invoke("transform.apply_batch", {
-            "node_names": selected,
-            "old_transforms": old_transforms
-        })
+        lf.ops.invoke("transform.apply_batch",
+                      node_names=selected,
+                      old_transforms=old_transforms)
 
 
 _panel_instance: Optional[TransformPanel] = None
