@@ -5,6 +5,7 @@
 
 #include "core/export.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <cuda_runtime.h>
 #include <memory>
@@ -87,6 +88,14 @@ namespace lfs::core {
         void prewarm();
 
         /**
+         * @brief Explicitly shut down the allocator and release all resources
+         *
+         * Should be called before CUDA context destruction to ensure safe cleanup.
+         * Safe to call multiple times.
+         */
+        void shutdown();
+
+        /**
          * @brief Get statistics about allocator usage
          */
         struct Stats {
@@ -154,6 +163,7 @@ namespace lfs::core {
         mutable std::mutex mutex_;
         Stats stats_;
         bool enabled_{true}; // Can disable for A/B testing
+        std::atomic<bool> shutdown_{false};
     };
 
 } // namespace lfs::core
