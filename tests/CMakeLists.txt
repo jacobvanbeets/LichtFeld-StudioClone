@@ -249,9 +249,9 @@ foreach(TEST_FILE ${TEST_FILES})
     endif()
 endforeach()
 
-# Support source for modal registry lock-order regression tests.
+# PyModalRegistry data layer (no ImGui) for lock-order regression tests.
 list(APPEND TEST_SOURCES
-    ${CMAKE_SOURCE_DIR}/src/python/lfs/py_ui_modals.cpp
+    ${CMAKE_SOURCE_DIR}/src/python/lfs/py_modal_registry.cpp
 )
 
 # Build benchmark sources list
@@ -313,7 +313,6 @@ target_link_libraries(lichtfeld_tests PRIVATE
 
     # External libraries
     GTest::gtest
-    imgui::imgui
     nanobind-static
     ${TORCH_LIBRARIES}
     ${OPENGL_LIBRARIES}

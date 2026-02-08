@@ -149,6 +149,7 @@ nanobind_add_module(
     lfs/py_ui_context.cpp
     lfs/py_ui_theme.cpp
     lfs/py_ui_operators.cpp
+    lfs/py_modal_registry.cpp
     lfs/py_ui_modals.cpp
     lfs/notification_bridge.cpp
     lfs/py_ui_hooks.cpp
