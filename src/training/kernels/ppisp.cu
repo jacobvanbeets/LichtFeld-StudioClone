@@ -320,21 +320,21 @@ namespace lfs::training::kernels {
         // CRF layout: [num_cameras * 3 channels * 4 params] where params are [toe, shoulder, gamma, center]
         int crf_total = num_cameras * 3 * 4;
         if (idx < crf_total) {
-            int param_idx = idx % 4;  // Which of the 4 CRF params
+            int param_idx = idx % 4; // Which of the 4 CRF params
             float raw_value;
             switch (param_idx) {
-                case 0:  // toe: target=1.0, min_value=0.3
-                    raw_value = bounded_positive_inverse(1.0f, 0.3f);
-                    break;
-                case 1:  // shoulder: target=1.0, min_value=0.3
-                    raw_value = bounded_positive_inverse(1.0f, 0.3f);
-                    break;
-                case 2:  // gamma: target=1.0, min_value=0.1
-                    raw_value = bounded_positive_inverse(1.0f, 0.1f);
-                    break;
-                default:  // case 3: center: sigmoid(0) = 0.5 (identity)
-                    raw_value = 0.0f;
-                    break;
+            case 0: // toe: target=1.0, min_value=0.3
+                raw_value = bounded_positive_inverse(1.0f, 0.3f);
+                break;
+            case 1: // shoulder: target=1.0, min_value=0.3
+                raw_value = bounded_positive_inverse(1.0f, 0.3f);
+                break;
+            case 2: // gamma: target=1.0, min_value=0.1
+                raw_value = bounded_positive_inverse(1.0f, 0.1f);
+                break;
+            default: // case 3: center: sigmoid(0) = 0.5 (identity)
+                raw_value = 0.0f;
+                break;
             }
             crf[idx] = raw_value;
         }
