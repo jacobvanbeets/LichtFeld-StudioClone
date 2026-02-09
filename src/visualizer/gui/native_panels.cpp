@@ -6,6 +6,7 @@
 #include "gui/gizmo_manager.hpp"
 #include "gui/gui_manager.hpp"
 #include "gui/panel_layout.hpp"
+#include "gui/panel_registry.hpp"
 #include "gui/sequencer_ui_manager.hpp"
 #include "gui/startup_overlay.hpp"
 #include "gui/windows/file_browser.hpp"
@@ -28,18 +29,13 @@ namespace lfs::vis::gui::native_panels {
         return visible_ && *visible_;
     }
 
-    VideoExtractorPanel::VideoExtractorPanel(lfs::gui::VideoExtractorDialog* dialog, bool* visible)
-        : dialog_(dialog),
-          visible_(visible) {}
+    VideoExtractorPanel::VideoExtractorPanel(lfs::gui::VideoExtractorDialog* dialog)
+        : dialog_(dialog) {}
 
     void VideoExtractorPanel::draw(const PanelDrawContext& ctx) {
         (void)ctx;
-        dialog_->render(visible_);
-    }
-
-    bool VideoExtractorPanel::poll(const PanelDrawContext& ctx) {
-        (void)ctx;
-        return visible_ && *visible_;
+        if (!dialog_->render())
+            PanelRegistry::instance().set_panel_enabled("native.video_extractor", false);
     }
 
     DiskSpaceErrorPanel::DiskSpaceErrorPanel(DiskSpaceErrorDialog* dialog)

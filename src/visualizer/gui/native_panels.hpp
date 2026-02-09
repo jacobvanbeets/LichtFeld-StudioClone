@@ -39,13 +39,11 @@ namespace lfs::vis::gui::native_panels {
 
     class VideoExtractorPanel : public IPanel {
     public:
-        VideoExtractorPanel(lfs::gui::VideoExtractorDialog* dialog, bool* visible);
+        explicit VideoExtractorPanel(lfs::gui::VideoExtractorDialog* dialog);
         void draw(const PanelDrawContext& ctx) override;
-        bool poll(const PanelDrawContext& ctx) override;
 
     private:
         lfs::gui::VideoExtractorDialog* dialog_;
-        bool* visible_;
     };
 
     class DiskSpaceErrorPanel : public IPanel {
