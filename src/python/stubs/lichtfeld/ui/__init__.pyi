@@ -1419,6 +1419,11 @@ def duplicate_node(name: str) -> None:
 def merge_group(name: str) -> None:
     """Merge group children into a single PLY"""
 
+def save_node_to_disk(node_name: str) -> None:
+    """
+    Save a SPLAT or POINTCLOUD node to disk as a PLY file. Opens a file dialog; does nothing if cancelled.
+    """
+
 def load_image_texture(path: str) -> tuple:
     """Load image as GL texture, returns (texture_id, width, height)"""
 

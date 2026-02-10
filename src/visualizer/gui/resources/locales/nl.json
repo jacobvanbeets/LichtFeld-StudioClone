@@ -235,6 +235,7 @@
     "delete": "Verwijderen",
     "rename": "Hernoemen",
     "duplicate": "Dupliceren",
+    "save_to_disk": "Opslaan naar schijf",
     "go_to_camera_view": "Ga naar Camera Weergave",
     "go_to_cam_view": "Ga naar Cam Weergave",
     "fit_to_scene": "Aanpassen aan Scène",

@@ -528,6 +528,8 @@ class ScenePanel(Panel):
                 lf.ui.add_cropbox(node.name)
             if layout.menu_item(tr("scene.add_crop_ellipsoid")):
                 lf.ui.add_ellipsoid(node.name)
+            if layout.menu_item(tr("scene.save_to_disk")):
+                lf.ui.save_node_to_disk(node.name)
             layout.separator()
 
         if is_deletable:

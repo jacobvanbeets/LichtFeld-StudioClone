@@ -235,6 +235,7 @@
     "delete": "削除",
     "rename": "名前を変更",
     "duplicate": "複製",
+    "save_to_disk": "ディスクに保存",
     "go_to_camera_view": "カメラビューに移動",
     "go_to_cam_view": "カメラビューに移動",
     "fit_to_scene": "シーンにフィット",

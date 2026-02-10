@@ -235,6 +235,7 @@
     "delete": "删除",
     "rename": "重命名",
     "duplicate": "复制",
+    "save_to_disk": "保存到磁盘",
     "go_to_camera_view": "转到相机视图",
     "go_to_cam_view": "转到相机视图",
     "fit_to_scene": "适应场景",

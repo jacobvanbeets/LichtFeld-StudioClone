@@ -235,6 +235,7 @@
     "delete": "Löschen",
     "rename": "Umbenennen",
     "duplicate": "Duplizieren",
+    "save_to_disk": "Auf Datenträger speichern",
     "go_to_camera_view": "Zur Kameraansicht wechseln",
     "go_to_cam_view": "Zur Kameraansicht",
     "fit_to_scene": "An Szene anpassen",

@@ -235,6 +235,7 @@
     "delete": "Supprimer",
     "rename": "Renommer",
     "duplicate": "Dupliquer",
+    "save_to_disk": "Enregistrer sur le disque",
     "go_to_camera_view": "Aller à la Vue Caméra",
     "go_to_cam_view": "Aller à la Vue Caméra",
     "fit_to_scene": "Ajuster à la Scène",

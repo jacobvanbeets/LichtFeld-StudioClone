@@ -235,6 +235,7 @@
     "delete": "삭제",
     "rename": "이름 변경",
     "duplicate": "복제",
+    "save_to_disk": "디스크에 저장",
     "go_to_camera_view": "카메라 뷰로 이동",
     "go_to_cam_view": "카메라 뷰로 이동",
     "fit_to_scene": "씬에 맞추기",
