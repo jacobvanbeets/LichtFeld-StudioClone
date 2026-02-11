@@ -98,7 +98,7 @@ class PluginInstaller:
             cmd,
             capture_output=True,
             text=True,
-            env=self._python_probe_env(),
+            env=self._uv_env(),
         )
 
         if result.returncode != 0:
