@@ -48,6 +48,40 @@ namespace lfs::io {
         return {};
     }
 
+    // Case-insensitive resolution of a relative path (may contain subdirectories)
+    inline fs::path find_path_ci(const fs::path& base_dir, const fs::path& relative_path) {
+        if (!safe_exists(base_dir) || !safe_is_directory(base_dir))
+            return {};
+
+        fs::path current = base_dir;
+
+        for (const auto& component : relative_path) {
+            if (component == ".")
+                continue;
+
+            std::string target = component.string();
+            std::transform(target.begin(), target.end(), target.begin(), ::tolower);
+
+            bool found = false;
+            std::error_code ec;
+            for (const auto& entry : fs::directory_iterator(current, ec)) {
+                if (ec)
+                    break;
+                std::string name = entry.path().filename().string();
+                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+                if (name == target) {
+                    current = entry.path();
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                return {};
+        }
+
+        return safe_exists(current) ? current : fs::path{};
+    }
+
     // Find file in multiple locations (case-insensitive)
     inline fs::path find_file_in_paths(const std::vector<fs::path>& search_paths,
                                        const std::string& filename) {

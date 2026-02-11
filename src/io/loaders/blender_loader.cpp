@@ -10,6 +10,7 @@
 #include "core/point_cloud.hpp"
 #include "formats/transforms.hpp"
 #include "io/error.hpp"
+#include "io/filesystem_utils.hpp"
 #include <chrono>
 #include <filesystem>
 #include <format>
@@ -26,11 +27,9 @@ namespace lfs::io {
 
     namespace {
         constexpr std::array MASK_FOLDERS = {"masks", "mask", "segmentation"};
-        constexpr std::array MASK_EXTENSIONS = {".png", ".jpg", ".jpeg", ".PNG", ".JPG", ".JPEG", ".mask.png"};
+        constexpr std::array MASK_EXTENSIONS = {".png", ".jpg", ".jpeg", ".mask.png"};
     } // namespace
 
-    // Searches for mask file matching image_name in mask folders.
-    // Priority: exact match, stem+ext (e.g., img.png), full+ext (e.g., img.jpg.png)
     static std::filesystem::path find_mask_path(const std::filesystem::path& base_path,
                                                 const std::string& image_name) {
         const std::filesystem::path img_path = lfs::core::utf8_to_path(image_name);
@@ -38,24 +37,27 @@ namespace lfs::io {
 
         for (const auto& folder : MASK_FOLDERS) {
             const std::filesystem::path mask_dir = base_path / folder;
-            if (!std::filesystem::exists(mask_dir))
+            if (!safe_exists(mask_dir))
                 continue;
 
-            if (const auto exact = mask_dir / img_path; std::filesystem::exists(exact))
+            if (const auto exact = mask_dir / img_path; safe_exists(exact))
                 return exact;
 
+            if (auto found = find_path_ci(mask_dir, img_path); !found.empty())
+                return found;
+
             for (const auto& ext : MASK_EXTENSIONS) {
-                auto path = mask_dir / stem_path;
-                path += ext;
-                if (std::filesystem::exists(path))
-                    return path;
+                std::filesystem::path target_path = stem_path;
+                target_path += ext;
+                if (auto found = find_path_ci(mask_dir, target_path); !found.empty())
+                    return found;
             }
 
             for (const auto& ext : MASK_EXTENSIONS) {
-                auto path = mask_dir / img_path;
-                path += ext;
-                if (std::filesystem::exists(path))
-                    return path;
+                std::filesystem::path target_path = img_path;
+                target_path += ext;
+                if (auto found = find_path_ci(mask_dir, target_path); !found.empty())
+                    return found;
             }
         }
         return {};
