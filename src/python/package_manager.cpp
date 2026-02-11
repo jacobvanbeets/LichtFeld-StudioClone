@@ -208,6 +208,11 @@ namespace lfs::python {
             return true;
         }
 
+        if (std::filesystem::exists(m_venv_dir) && !std::filesystem::exists(venv_python())) {
+            LOG_WARN("Broken venv (missing python), removing: {}", m_venv_dir.string());
+            std::filesystem::remove_all(m_venv_dir);
+        }
+
         const auto embedded_python = lfs::core::getEmbeddedPython();
         if (embedded_python.empty()) {
             LOG_ERROR("Embedded Python not found (exe_dir={})", lfs::core::getExecutableDir().string());

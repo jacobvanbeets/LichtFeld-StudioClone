@@ -58,8 +58,13 @@ class PluginInstaller:
         venv_path = self.plugin.info.path / ".venv"
         self.plugin.venv_path = venv_path
 
-        if venv_path.exists():
+        venv_python = self._get_venv_python()
+        if venv_python.exists():
             return True
+
+        if venv_path.exists():
+            logger.warning("Broken venv (missing python), recreating: %s", venv_path)
+            shutil.rmtree(venv_path)
 
         embedded_python = self._get_embedded_python()
         python_exe = str(embedded_python) if embedded_python and embedded_python.exists() else sys.executable
