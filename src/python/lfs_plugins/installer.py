@@ -35,15 +35,20 @@ class PluginInstaller:
             python_path = lichtfeld.packages.embedded_python_path()
             if python_path:
                 return Path(python_path)
+            logger.info("embedded_python_path() returned empty, falling back to sys.executable: %s",
+                        Path(sys.executable).resolve())
         except (ImportError, AttributeError):
-            pass
+            logger.info("lichtfeld.packages not available, falling back to sys.executable: %s",
+                        Path(sys.executable).resolve())
         return None
 
     @staticmethod
     def _uv_env() -> dict:
-        """Return env dict with PYTHONHOME stripped so uv-managed Python isn't poisoned."""
+        """Return env dict with PYTHONHOME set to sys.prefix for uv subprocesses."""
         env = os.environ.copy()
         env.pop("PYTHONHOME", None)
+        env["PYTHONHOME"] = sys.prefix
+        logger.info("uv subprocess env: PYTHONHOME=%s", sys.prefix)
         return env
 
     def ensure_venv(self) -> bool:
@@ -53,6 +58,7 @@ class PluginInstaller:
 
         venv_python = self._get_venv_python()
         if venv_python.exists():
+            logger.info("Plugin venv ready: %s", venv_python)
             return True
 
         if venv_path.exists():
@@ -96,7 +102,8 @@ class PluginInstaller:
             raise PluginDependencyError("uv not found")
 
         embedded = self._get_embedded_python()
-        python_exe = str(embedded) if embedded and embedded.exists() else sys.executable
+        python_exe = str(embedded) if embedded and embedded.exists() else str(Path(sys.executable).resolve())
+        logger.info("uv sync python: %s (embedded=%s)", python_exe, embedded)
 
         cmd = [
             str(uv),
@@ -106,6 +113,8 @@ class PluginInstaller:
             "--python",
             python_exe,
         ]
+
+        logger.info("uv sync command: %s", " ".join(cmd))
 
         if on_progress:
             on_progress("Syncing dependencies with uv...")
@@ -132,33 +141,39 @@ class PluginInstaller:
             raise PluginDependencyError(f"uv sync failed:\n{tail}")
 
         self._deps_stamp_path().touch()
+        logger.info("Dependencies installed for %s", self.plugin.info.name)
         return True
 
     def _find_uv(self) -> Optional[Path]:
         """Find uv binary."""
-        # First try to get uv path from the C++ PackageManager (most reliable)
+        result = None
+
         try:
             import lichtfeld
             uv_path = lichtfeld.packages.uv_path()
             if uv_path:
-                return Path(uv_path)
+                result = Path(uv_path)
         except (ImportError, AttributeError):
             pass
 
-        # Fallback: check bundled location (build directory)
-        exe_dir = Path(sys.executable).parent
-        bundled_paths = [
-            exe_dir / "bin" / "uv",
-            exe_dir / "uv",
-            exe_dir.parent / "bin" / "uv",
-        ]
-        for p in bundled_paths:
-            if p.exists():
-                return p
+        if not result:
+            exe_dir = Path(sys.executable).parent
+            bundled_paths = [
+                exe_dir / "bin" / "uv",
+                exe_dir / "uv",
+                exe_dir.parent / "bin" / "uv",
+            ]
+            for p in bundled_paths:
+                if p.exists():
+                    result = p
+                    break
 
-        # Fall back to system PATH
-        uv = shutil.which("uv")
-        return Path(uv) if uv else None
+        if not result:
+            uv = shutil.which("uv")
+            result = Path(uv) if uv else None
+
+        logger.info("uv resolved: %s", result)
+        return result
 
     def _get_venv_python(self) -> Path:
         """Get path to venv's Python interpreter."""

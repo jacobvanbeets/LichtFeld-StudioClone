@@ -62,6 +62,28 @@ jobs:
           }
           Write-Host "PASS: uv sync recovered broken venv"
 
+          # Test 3: uv sync works when PYTHONHOME is set (simulates in-app environment)
+          Remove-Item -Recurse -Force "$PLUGIN\.venv"
+          $env:PYTHONHOME = "$PWD\python-embed"
+          uv sync --project $PLUGIN --python $PYTHON
+          $env:PYTHONHOME = $null
+          if (-not (Test-Path "$PLUGIN\.venv\Scripts\python.exe")) {
+            Write-Error "FAIL: uv sync failed with PYTHONHOME set"
+            exit 1
+          }
+          Write-Host "PASS: uv sync works with PYTHONHOME set"
+
+          # Test 4: uv sync works when PYTHONHOME points to wrong location
+          Remove-Item -Recurse -Force "$PLUGIN\.venv"
+          $env:PYTHONHOME = "C:\nonexistent\path"
+          uv sync --project $PLUGIN --python $PYTHON
+          $env:PYTHONHOME = $null
+          if (-not (Test-Path "$PLUGIN\.venv\Scripts\python.exe")) {
+            Write-Error "FAIL: uv sync failed with wrong PYTHONHOME"
+            exit 1
+          }
+          Write-Host "PASS: uv sync resilient to wrong PYTHONHOME"
+
   build-windows:
     if: github.repository == 'MrNeRF/LichtFeld-Studio' || github.event.pull_request.base.repo.full_name == 'MrNeRF/LichtFeld-Studio'
     runs-on: windows-2022

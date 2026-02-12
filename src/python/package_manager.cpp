@@ -204,6 +204,7 @@ namespace lfs::python {
             return true;
 
         if (std::filesystem::exists(venv_python())) {
+            LOG_INFO("Existing venv found: {}", venv_python().string());
             m_venv_ready = true;
             return true;
         }
@@ -227,7 +228,17 @@ namespace lfs::python {
 
         LOG_INFO("Creating venv at {} with {}", m_venv_dir.string(), embedded_python.string());
 
+        const auto python_home = lfs::core::getPythonHome();
+        LOG_INFO("Python home: {}", python_home.empty() ? "(empty)" : python_home.string());
+
         std::ostringstream cmd;
+#ifdef _WIN32
+        if (!python_home.empty())
+            cmd << "set PYTHONHOME=" << python_home.string() << "&& ";
+#else
+        if (!python_home.empty())
+            cmd << "PYTHONHOME=\"" << python_home.string() << "\" ";
+#endif
         cmd << "\"" << uv.string() << "\" venv"
             << " \"" << m_venv_dir.string() << "\""
             << " --python \"" << embedded_python.string() << "\"";
@@ -279,6 +290,7 @@ namespace lfs::python {
         for (const auto& arg : args)
             cmd << " " << arg;
 
+        LOG_INFO("Executing uv: {}", cmd.str());
         const auto [exit_code, output] = execute_command(cmd.str());
 
         InstallResult result;

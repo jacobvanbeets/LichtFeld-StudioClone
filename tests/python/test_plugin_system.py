@@ -604,3 +604,24 @@ hot_reload = false
         os.utime(pyproject, (future, future))
 
         assert installer._deps_already_installed() is False
+
+    def test_uv_env_sets_pythonhome(self, installer_plugin):
+        """_uv_env() must set PYTHONHOME to sys.prefix for uv subprocesses."""
+        installer = self._make_installer(installer_plugin)
+        env = installer._uv_env()
+        assert env["PYTHONHOME"] == sys.prefix
+
+    def test_install_passes_pythonhome_to_subprocess(self, installer_plugin):
+        """install_dependencies() must pass PYTHONHOME in subprocess env."""
+        from unittest.mock import patch
+
+        installer = self._make_installer(installer_plugin)
+        mock_uv = installer_plugin / "uv"
+        mock_uv.touch()
+        mock_proc = self._mock_popen()
+
+        with patch.object(installer, "_find_uv", return_value=mock_uv), \
+             patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+            installer.install_dependencies()
+            env = mock_popen.call_args[1].get("env", {})
+            assert env.get("PYTHONHOME") == sys.prefix
