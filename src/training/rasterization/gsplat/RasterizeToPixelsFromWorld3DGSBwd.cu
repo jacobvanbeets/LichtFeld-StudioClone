@@ -62,12 +62,12 @@ namespace gsplat_lfs {
                                                       // image_width, CDIM]
         const scalar_t* __restrict__ v_render_alphas, // [C, image_height, image_width, 1]
         // grad inputs
-        vec3* __restrict__ v_means,        // [N, 3]
-        vec4* __restrict__ v_quats,        // [N, 4]
-        vec3* __restrict__ v_scales,       // [N, 3]
-        scalar_t* __restrict__ v_colors,   // [C, N, CDIM] or [nnz, CDIM]
-        scalar_t* __restrict__ v_opacities, // [C, N] or [nnz]
-        float* __restrict__ densification_info,         // [2, N] flattened or nullptr
+        vec3* __restrict__ v_means,                          // [N, 3]
+        vec4* __restrict__ v_quats,                          // [N, 4]
+        vec3* __restrict__ v_scales,                         // [N, 3]
+        scalar_t* __restrict__ v_colors,                     // [C, N, CDIM] or [nnz, CDIM]
+        scalar_t* __restrict__ v_opacities,                  // [C, N] or [nnz]
+        float* __restrict__ densification_info,              // [2, N] flattened or nullptr
         const scalar_t* __restrict__ densification_error_map // [H, W] or nullptr
     ) {
         auto block = cg::this_thread_block();

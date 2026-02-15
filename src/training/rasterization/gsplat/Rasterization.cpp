@@ -155,20 +155,20 @@ namespace gsplat_lfs {
             return;
         }
 
-#define __LAUNCH_KERNEL__(CDIM)                                         \
-    case CDIM:                                                          \
-        launch_rasterize_to_pixels_from_world_3dgs_bwd_kernel<CDIM>(    \
-            means, quats, scales, colors, opacities,                    \
-            backgrounds, bg_images, masks, C, N, n_isects,              \
-            image_width, image_height, tile_size,                       \
-            viewmats0, viewmats1, Ks, camera_model,                     \
-            ut_params, rs_type,                                         \
-            radial_coeffs, tangential_coeffs, thin_prism_coeffs,        \
-            tile_offsets, flatten_ids,                                  \
-            render_alphas, last_ids,                                    \
-            v_render_colors, v_render_alphas,                           \
-            v_means, v_quats, v_scales, v_colors, v_opacities,          \
-            densification_info, densification_error_map, stream);        \
+#define __LAUNCH_KERNEL__(CDIM)                                      \
+    case CDIM:                                                       \
+        launch_rasterize_to_pixels_from_world_3dgs_bwd_kernel<CDIM>( \
+            means, quats, scales, colors, opacities,                 \
+            backgrounds, bg_images, masks, C, N, n_isects,           \
+            image_width, image_height, tile_size,                    \
+            viewmats0, viewmats1, Ks, camera_model,                  \
+            ut_params, rs_type,                                      \
+            radial_coeffs, tangential_coeffs, thin_prism_coeffs,     \
+            tile_offsets, flatten_ids,                               \
+            render_alphas, last_ids,                                 \
+            v_render_colors, v_render_alphas,                        \
+            v_means, v_quats, v_scales, v_colors, v_opacities,       \
+            densification_info, densification_error_map, stream);    \
         break;
 
         switch (channels) {
