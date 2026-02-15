@@ -1545,6 +1545,11 @@ Mesh-to-Splat:
   lf.get_mesh2splat_progress()   - Get progress (0.0-1.0)
   lf.get_mesh2splat_error()      - Get error message
 
+Camera Control:
+  lf.get_camera()          - Get current camera state (eye, target, up, fov)
+  lf.set_camera(eye, target) - Move viewport camera
+  lf.set_camera_fov(45.0)  - Set viewport FOV in degrees
+
 Utilities:
   lf.run("script.py") - Execute a Python script file
   lf.help()           - Show this help

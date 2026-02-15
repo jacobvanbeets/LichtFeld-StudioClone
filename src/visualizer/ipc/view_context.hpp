@@ -20,10 +20,20 @@ namespace lfs::vis {
     struct ViewInfo {
         std::array<float, 9> rotation;
         std::array<float, 3> translation;
+        std::array<float, 3> pivot;
         int width;
         int height;
         float fov;
     };
+
+    struct SetViewParams {
+        std::array<float, 3> eye;
+        std::array<float, 3> target;
+        std::array<float, 3> up;
+    };
+
+    using SetViewCallback = std::function<void(const SetViewParams&)>;
+    using SetFovCallback = std::function<void(float)>;
 
     struct ViewportRender {
         std::shared_ptr<lfs::core::Tensor> image;
@@ -37,6 +47,11 @@ namespace lfs::vis {
     LFS_VIS_API void set_viewport_render_callback(GetViewportRenderCallback callback);
     [[nodiscard]] LFS_VIS_API std::optional<ViewInfo> get_current_view_info();
     [[nodiscard]] LFS_VIS_API std::optional<ViewportRender> get_viewport_render();
+
+    LFS_VIS_API void set_set_view_callback(SetViewCallback callback);
+    LFS_VIS_API void set_set_fov_callback(SetFovCallback callback);
+    LFS_VIS_API void apply_set_view(const SetViewParams& params);
+    LFS_VIS_API void apply_set_fov(float fov_degrees);
 
     struct RenderSettingsProxy {
         float focal_length_mm = 35.0f;

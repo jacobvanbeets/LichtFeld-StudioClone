@@ -1047,6 +1047,30 @@ def compute_screen_positions(rotation: Tensor, translation: Tensor, width: int, 
 def get_current_view() -> ViewInfo | None:
     """Get current viewport camera info (None if not available)"""
 
+class CameraState:
+    @property
+    def eye(self) -> tuple[float, float, float]: ...
+
+    @property
+    def target(self) -> tuple[float, float, float]: ...
+
+    @property
+    def up(self) -> tuple[float, float, float]: ...
+
+    @property
+    def fov(self) -> float: ...
+
+def get_camera() -> CameraState | None:
+    """
+    Get current viewport camera state (eye, target, up, fov) or None if unavailable
+    """
+
+def set_camera(eye: tuple[float, float, float], target: tuple[float, float, float], up: tuple[float, float, float] = (0.0, 1.0, 0.0)) -> None:
+    """Move the viewport camera to look from eye toward target"""
+
+def set_camera_fov(fov: float) -> None:
+    """Set viewport field of view in degrees"""
+
 def look_at(eye: tuple[float, float, float], target: tuple[float, float, float], up: tuple[float, float, float] = (0.0, 1.0, 0.0)) -> tuple[Tensor, Tensor]:
     """
     Compute (rotation, translation) camera matrices for render_view from eye/target position.

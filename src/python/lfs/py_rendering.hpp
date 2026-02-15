@@ -33,6 +33,19 @@ namespace lfs::python {
         std::optional<PyTensor> screen_positions;
     };
 
+    struct PyCameraState {
+        std::tuple<float, float, float> eye;
+        std::tuple<float, float, float> target;
+        std::tuple<float, float, float> up;
+        float fov;
+    };
+
+    [[nodiscard]] std::optional<PyCameraState> get_camera();
+    void set_camera(const std::tuple<float, float, float>& eye,
+                    const std::tuple<float, float, float>& target,
+                    const std::tuple<float, float, float>& up);
+    void set_camera_fov(float fov_degrees);
+
     [[nodiscard]] std::optional<PyViewportRender> get_viewport_render();
 
     [[nodiscard]] std::optional<PyViewportRender> capture_viewport();
@@ -47,12 +60,12 @@ namespace lfs::python {
     [[nodiscard]] std::optional<PyViewInfo> get_current_view();
 
     [[nodiscard]] std::tuple<PyTensor, PyTensor> look_at(
-        std::tuple<float, float, float> eye, std::tuple<float, float, float> target,
-        std::tuple<float, float, float> up = {0.0f, 1.0f, 0.0f});
+        const std::tuple<float, float, float>& eye, const std::tuple<float, float, float>& target,
+        const std::tuple<float, float, float>& up = {0.0f, 1.0f, 0.0f});
 
     [[nodiscard]] std::optional<PyTensor> render_at(
-        std::tuple<float, float, float> eye, std::tuple<float, float, float> target, int width, int height,
-        float fov_degrees = 60.0f, std::tuple<float, float, float> up = {0.0f, 1.0f, 0.0f},
+        const std::tuple<float, float, float>& eye, const std::tuple<float, float, float>& target, int width,
+        int height, float fov_degrees = 60.0f, const std::tuple<float, float, float>& up = {0.0f, 1.0f, 0.0f},
         const PyTensor* bg_color = nullptr);
 
     class PyRenderSettings {

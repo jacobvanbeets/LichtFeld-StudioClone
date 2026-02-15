@@ -377,6 +377,40 @@ namespace lfs::python {
         return result;
     }
 
+    std::optional<PyCameraState> get_camera() {
+        const auto info = vis::get_current_view_info();
+        if (!info)
+            return std::nullopt;
+
+        const auto& r = info->rotation;
+        glm::mat3 c2w;
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                c2w[j][i] = r[i * 3 + j];
+
+        return PyCameraState{
+            .eye = {info->translation[0], info->translation[1], info->translation[2]},
+            .target = {info->pivot[0], info->pivot[1], info->pivot[2]},
+            .up = {c2w[1].x, c2w[1].y, c2w[1].z},
+            .fov = info->fov,
+        };
+    }
+
+    void set_camera(const std::tuple<float, float, float>& eye,
+                    const std::tuple<float, float, float>& target,
+                    const std::tuple<float, float, float>& up) {
+        const vis::SetViewParams params{
+            .eye = {std::get<0>(eye), std::get<1>(eye), std::get<2>(eye)},
+            .target = {std::get<0>(target), std::get<1>(target), std::get<2>(target)},
+            .up = {std::get<0>(up), std::get<1>(up), std::get<2>(up)},
+        };
+        vis::apply_set_view(params);
+    }
+
+    void set_camera_fov(float fov_degrees) {
+        vis::apply_set_fov(fov_degrees);
+    }
+
     std::optional<PyRenderSettings> get_render_settings() {
         auto settings = vis::get_render_settings();
         if (!settings)
@@ -550,16 +584,16 @@ namespace lfs::python {
         };
     }
 
-    std::tuple<PyTensor, PyTensor> look_at(std::tuple<float, float, float> eye,
-                                           std::tuple<float, float, float> target,
-                                           std::tuple<float, float, float> up) {
+    std::tuple<PyTensor, PyTensor> look_at(const std::tuple<float, float, float>& eye,
+                                           const std::tuple<float, float, float>& target,
+                                           const std::tuple<float, float, float>& up) {
         auto [R, T] = compute_w2c(eye, target, up);
         return {PyTensor(std::move(R), true), PyTensor(std::move(T), true)};
     }
 
-    std::optional<PyTensor> render_at(std::tuple<float, float, float> eye,
-                                      std::tuple<float, float, float> target, int width, int height,
-                                      float fov_degrees, std::tuple<float, float, float> up,
+    std::optional<PyTensor> render_at(const std::tuple<float, float, float>& eye,
+                                      const std::tuple<float, float, float>& target, int width, int height,
+                                      float fov_degrees, const std::tuple<float, float, float>& up,
                                       const PyTensor* bg_color) {
         auto* scene = get_render_scene();
         auto* model = get_model(scene);
@@ -636,6 +670,24 @@ Returns:
 )doc");
 
         m.def("get_current_view", &get_current_view, "Get current viewport camera info (None if not available)");
+
+        nb::class_<PyCameraState>(m, "CameraState")
+            .def_ro("eye", &PyCameraState::eye)
+            .def_ro("target", &PyCameraState::target)
+            .def_ro("up", &PyCameraState::up)
+            .def_ro("fov", &PyCameraState::fov);
+
+        m.def("get_camera", &get_camera,
+              "Get current viewport camera state (eye, target, up, fov) or None if unavailable");
+
+        m.def("set_camera", &set_camera,
+              nb::arg("eye"), nb::arg("target"),
+              nb::arg("up") = std::make_tuple(0.0f, 1.0f, 0.0f),
+              "Move the viewport camera to look from eye toward target");
+
+        m.def("set_camera_fov", &set_camera_fov,
+              nb::arg("fov"),
+              "Set viewport field of view in degrees");
 
         m.def("look_at", &look_at, nb::arg("eye"), nb::arg("target"),
               nb::arg("up") = std::make_tuple(0.0f, 1.0f, 0.0f),

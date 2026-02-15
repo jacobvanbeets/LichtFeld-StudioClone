@@ -678,10 +678,34 @@ namespace lfs::vis {
                     for (int j = 0; j < 3; ++j)
                         info.rotation[i * 3 + j] = R[j][i];
                 info.translation = {T.x, T.y, T.z};
+                const auto P = viewport_.camera.getPivot();
+                info.pivot = {P.x, P.y, P.z};
                 info.width = viewport_.windowSize.x;
                 info.height = viewport_.windowSize.y;
                 info.fov = lfs::rendering::focalLengthToVFov(settings.focal_length_mm);
                 return info;
+            });
+
+            vis::set_set_view_callback([this](const vis::SetViewParams& params) {
+                const glm::vec3 eye(params.eye[0], params.eye[1], params.eye[2]);
+                const glm::vec3 target(params.target[0], params.target[1], params.target[2]);
+                const glm::vec3 up(params.up[0], params.up[1], params.up[2]);
+
+                const glm::vec3 forward = glm::normalize(target - eye);
+                const glm::vec3 right = glm::normalize(glm::cross(up, forward));
+                const glm::vec3 cam_up = glm::cross(forward, right);
+
+                viewport_.camera.R = glm::mat3(right, cam_up, forward);
+                viewport_.camera.t = eye;
+                viewport_.camera.setPivot(target);
+
+                if (rendering_manager_)
+                    rendering_manager_->markDirty();
+            });
+
+            vis::set_set_fov_callback([this](float fov_degrees) {
+                if (rendering_manager_)
+                    rendering_manager_->setFocalLength(lfs::rendering::vFovToFocalLength(fov_degrees));
             });
 
             // Set up viewport render callback for Python rendering API

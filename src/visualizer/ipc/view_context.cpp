@@ -13,6 +13,8 @@ namespace lfs::vis {
         GetViewportRenderCallback viewport_render_callback;
         GetRenderSettingsCallback get_render_settings_callback;
         SetRenderSettingsCallback set_render_settings_callback;
+        SetViewCallback set_view_callback;
+        SetFovCallback set_fov_callback;
     };
 
     static ViewContextState& state() {
@@ -44,6 +46,28 @@ namespace lfs::vis {
         if (!s.viewport_render_callback)
             return std::nullopt;
         return s.viewport_render_callback();
+    }
+
+    void set_set_view_callback(SetViewCallback callback) {
+        state().set_view_callback = std::move(callback);
+    }
+
+    void set_set_fov_callback(SetFovCallback callback) {
+        state().set_fov_callback = std::move(callback);
+    }
+
+    void apply_set_view(const SetViewParams& params) {
+        const auto& s = state();
+        if (s.set_view_callback) {
+            s.set_view_callback(params);
+        }
+    }
+
+    void apply_set_fov(float fov_degrees) {
+        const auto& s = state();
+        if (s.set_fov_callback) {
+            s.set_fov_callback(fov_degrees);
+        }
     }
 
     void set_render_settings_callbacks(GetRenderSettingsCallback get_cb, SetRenderSettingsCallback set_cb) {
