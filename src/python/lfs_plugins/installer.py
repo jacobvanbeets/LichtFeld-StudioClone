@@ -544,35 +544,30 @@ def uninstall_plugin(plugin_dir: Path) -> bool:
     if not plugin_dir.exists():
         return False
 
-    def _on_remove_error(func, path, exc_info):
-        # Windows often marks git object/pack files as read-only. Make writable and retry.
-        ex = exc_info[1]
-        if isinstance(ex, PermissionError):
+    def _on_remove_error(func, path, exc):
+        # Git marks object/pack files read-only; make writable and retry.
+        if isinstance(exc, PermissionError):
             os.chmod(path, stat.S_IWRITE)
             func(path)
             return
-        raise ex
+        raise exc
 
-    # Retry a few times for transient Windows locks (indexer/AV/file scanner).
+    # Retry for transient Windows locks (indexer, AV, file scanner).
     last_error: Optional[Exception] = None
     for attempt in range(3):
         try:
-            shutil.rmtree(plugin_dir, onerror=_on_remove_error)
+            shutil.rmtree(plugin_dir, onexc=_on_remove_error)
             return True
         except PermissionError as e:
             last_error = e
             if os.name != "nt":
                 raise
-            # WinError 5 (access denied) / 32 (sharing violation)
+            # WinError 5 = access denied, 32 = sharing violation
             if getattr(e, "winerror", None) not in (5, 32):
                 raise
             time.sleep(0.15 * (attempt + 1))
-        except Exception:
-            raise
 
-    if last_error:
-        raise PluginError(
-            f"Failed to remove plugin directory '{plugin_dir}'. "
-            "A file is likely locked by another process (or remains read-only)."
-        ) from last_error
-    return True
+    raise PluginError(
+        f"Failed to remove plugin directory '{plugin_dir}'. "
+        "A file is likely locked by another process (or remains read-only)."
+    ) from last_error
