@@ -24,6 +24,12 @@ namespace lfs::vis::gui {
 
         void setOnShowPythonConsole(std::function<void()> callback);
 
+#ifdef LFS_VR_ENABLED
+        void setOnToggleVR(std::function<void()> callback);
+        void setVRActive(bool active) { vr_active_ = active; }
+        void setVRError(const std::string& err) { vr_error_ = err; }
+#endif
+
         void renderPluginInstallPopup();
 
         void triggerShowPythonConsole() {
@@ -53,6 +59,12 @@ namespace lfs::vis::gui {
         void updateThumbnails();
 
         std::function<void()> on_show_python_console_;
+
+#ifdef LFS_VR_ENABLED
+        std::function<void()> on_toggle_vr_;
+        bool vr_active_ = false;
+        std::string vr_error_;
+#endif
 
         bool show_plugin_install_popup_ = false;
         std::string plugin_install_url_;

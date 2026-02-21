@@ -10,6 +10,10 @@
 #include "io/nvcodec_image_loader.hpp"
 #include "rendering/cuda_gl_interop.hpp"
 #include "rendering/rendering.hpp"
+#ifdef LFS_VR_ENABLED
+#include "vr/vr_manager.hpp"
+#include "vr/vr_input.hpp"
+#endif
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -339,6 +343,18 @@ namespace lfs::vis {
         // Access to rendering engine (for initialization only)
         lfs::rendering::RenderingEngine* getRenderingEngine();
 
+#ifdef LFS_VR_ENABLED
+        // --- VR ---
+        /// Toggle VR mode. Returns true if VR started successfully.
+        bool toggleVR();
+        /// True if VR session is active and rendering to HMD.
+        [[nodiscard]] bool isVRActive() const;
+        /// Get last VR error (for UI display).
+        [[nodiscard]] std::string getVRError() const;
+        /// Render a VR frame (both eyes) and submit to compositor.
+        void renderVRFrame(const RenderContext& context, SceneManager* scene_manager);
+#endif
+
         // Camera frustum picking
         int pickCameraFrustum(const glm::vec2& mouse_pos);
         void setHoveredCameraId(int cam_id) { hovered_camera_id_ = cam_id; }
@@ -563,6 +579,13 @@ namespace lfs::vis {
         glm::mat4 pending_cropbox_transform_{1.0f};
         glm::vec3 pending_ellipsoid_radii_{1.0f};
         glm::mat4 pending_ellipsoid_transform_{1.0f};
+
+#ifdef LFS_VR_ENABLED
+        // VR state
+        std::unique_ptr<vr::VRManager> vr_manager_;
+        std::unique_ptr<vr::VRInput> vr_input_;
+        std::chrono::steady_clock::time_point vr_last_frame_time_;
+#endif
     };
 
 } // namespace lfs::vis

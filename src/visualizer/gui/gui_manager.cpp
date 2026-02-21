@@ -145,6 +145,20 @@ namespace lfs::vis::gui {
         menu_bar_->setOnShowPythonConsole([this]() {
             window_states_["python_console"] = !window_states_["python_console"];
         });
+
+#ifdef LFS_VR_ENABLED
+        menu_bar_->setOnToggleVR([this]() {
+            if (auto* rm = viewer_->getRenderingManager()) {
+                const bool now_active = rm->toggleVR();
+                menu_bar_->setVRActive(now_active);
+                if (!now_active) {
+                    menu_bar_->setVRError("");
+                } else if (!rm->isVRActive()) {
+                    menu_bar_->setVRError(rm->getVRError());
+                }
+            }
+        });
+#endif
     }
 
     FontSet GuiManager::buildFontSet() const {

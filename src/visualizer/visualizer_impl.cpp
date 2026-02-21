@@ -987,6 +987,18 @@ namespace lfs::vis {
             rendering_manager_->setEllipsoidGizmoActive(gui_manager_->gizmo().isEllipsoidGizmoActive());
         }
 
+#ifdef LFS_VR_ENABLED
+        // VR active: render to HMD, skip GUI, mirror left eye to desktop
+        if (rendering_manager_->isVRActive()) {
+            rendering_manager_->renderVRFrame(context, scene_manager_.get());
+            window_manager_->swapBuffers();
+
+            // VR compositor handles timing; always poll so window stays responsive
+            window_manager_->pollEvents();
+            return;
+        }
+#endif
+
         rendering_manager_->renderFrame(context, scene_manager_.get());
         gui_manager_->render();
         window_manager_->swapBuffers();
@@ -1045,6 +1057,13 @@ namespace lfs::vis {
     }
 
     void VisualizerImpl::shutdown() {
+#ifdef LFS_VR_ENABLED
+        // Stop VR before GPU resources are freed
+        if (rendering_manager_ && rendering_manager_->isVRActive()) {
+            rendering_manager_->toggleVR(); // Stop VR
+        }
+#endif
+
         // Stop training before GPU resources are freed
         if (trainer_manager_) {
             if (trainer_manager_->isTrainingActive()) {

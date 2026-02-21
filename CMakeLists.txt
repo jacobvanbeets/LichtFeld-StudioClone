@@ -61,6 +61,7 @@ file(WRITE "${CMAKE_BINARY_DIR}/include/git_version.h"
 get_filename_component(PROJ_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 
 option(ENABLE_CUDA_GL_INTEROP "Enable CUDA-OpenGL interoperability" ON)
+option(ENABLE_VR "Enable OpenVR/SteamVR support for VR viewing" OFF)
 option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_UNICODE_TEST_ONLY "Build only Unicode path test (no CUDA)" OFF)
 option(ENABLE_ALLOCATION_PROFILING "Enable tensor allocation profiling" OFF)

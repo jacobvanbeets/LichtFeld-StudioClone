@@ -129,6 +129,32 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         gui/utils/drag_drop_native.cpp
 )
 
+# VR support (optional, OpenVR/SteamVR)
+if(ENABLE_VR AND WIN32)
+    target_sources(lfs_visualizer PRIVATE
+        vr/vr_manager.cpp
+        vr/vr_input.cpp
+    )
+    target_include_directories(lfs_visualizer PRIVATE
+        ${CMAKE_SOURCE_DIR}/libs/openvr/headers
+    )
+    target_link_libraries(lfs_visualizer PRIVATE
+        ${CMAKE_SOURCE_DIR}/libs/openvr/lib/win64/openvr_api.lib
+    )
+    target_compile_definitions(lfs_visualizer PRIVATE LFS_VR_ENABLED)
+
+    # Copy openvr_api.dll next to the executable
+    add_custom_command(TARGET lfs_visualizer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/libs/openvr/bin/win64/openvr_api.dll"
+            "$<TARGET_FILE_DIR:lfs_visualizer>"
+        COMMENT "Copying openvr_api.dll"
+    )
+    message(STATUS "VR support: ENABLED (OpenVR/SteamVR)")
+elseif(ENABLE_VR AND NOT WIN32)
+    message(WARNING "VR support: DISABLED (OpenVR only supported on Windows)")
+endif()
+
 # Set include directories
 target_include_directories(lfs_visualizer
         PUBLIC

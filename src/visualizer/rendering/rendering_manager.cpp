@@ -2127,4 +2127,169 @@ namespace lfs::vis {
         markDirty();
     }
 
+#ifdef LFS_VR_ENABLED
+
+    bool RenderingManager::toggleVR() {
+        if (!vr_manager_) {
+            vr_manager_ = std::make_unique<vr::VRManager>();
+            vr_input_ = std::make_unique<vr::VRInput>();
+        }
+
+        if (vr_manager_->is_active()) {
+            vr_manager_->stop();
+            LOG_INFO("VR mode disabled");
+            markDirty();
+            return false;
+        }
+
+        if (vr_manager_->start()) {
+            vr_input_->reset();
+            vr_last_frame_time_ = std::chrono::steady_clock::now();
+            LOG_INFO("VR mode enabled");
+            markDirty();
+            return true;
+        }
+
+        LOG_ERROR("Failed to start VR: {}", vr_manager_->get_last_error());
+        return false;
+    }
+
+    bool RenderingManager::isVRActive() const {
+        return vr_manager_ && vr_manager_->is_active();
+    }
+
+    std::string RenderingManager::getVRError() const {
+        return vr_manager_ ? vr_manager_->get_last_error() : "VR not initialized";
+    }
+
+    void RenderingManager::renderVRFrame(const RenderContext& context, SceneManager* scene_manager) {
+        if (!vr_manager_ || !vr_manager_->is_active() || !engine_)
+            return;
+
+        // Delta time
+        const auto now = std::chrono::steady_clock::now();
+        const float dt = std::chrono::duration<float>(now - vr_last_frame_time_).count();
+        vr_last_frame_time_ = now;
+
+        // Process VR events and update poses (this blocks until HMD VSync)
+        vr_manager_->process_events();
+
+        // Process controller input
+        vr_input_->update(*vr_manager_, dt);
+
+        // Check for exit VR: both menu buttons pressed simultaneously
+        if (vr_manager_->get_left_controller().menu_button &&
+            vr_manager_->get_right_controller().menu_button) {
+            vr_manager_->stop();
+            markDirty();
+            return;
+        }
+
+        const auto* model = scene_manager ? scene_manager->getModelForRendering() : nullptr;
+        if (!model || model->size() == 0) {
+            // Submit black frames so compositor doesn't stall
+            vr_manager_->submit_frames(
+                vr_manager_->get_eye_texture(vr::VREye::Left),
+                vr_manager_->get_eye_texture(vr::VREye::Right));
+            return;
+        }
+
+        const glm::ivec2 vr_size = vr_manager_->get_render_size();
+        const glm::mat4 hmd_pose = vr_manager_->get_hmd_pose();
+        const glm::mat4 world_transform = vr_input_->get_world_transform();
+
+        // Build scene render state for node transforms/visibility
+        const auto scene_state = scene_manager->buildRenderState();
+
+        // Render each eye
+        for (int eye_idx = 0; eye_idx < 2; ++eye_idx) {
+            const auto eye = static_cast<vr::VREye>(eye_idx);
+
+            // eye_world = camera-to-world transform for this eye
+            glm::mat4 eye_to_head = vr_manager_->get_eye_to_head(eye);
+            // Flip only the eye offset along X (IPD sign) to correct stereo without touching head pose
+            eye_to_head[3][0] *= -1.0f;
+            const glm::mat4 eye_world = world_transform * hmd_pose * eye_to_head;
+
+            // Extract camera-to-world rotation and camera position
+            glm::mat3 R_camera;
+            for (int i = 0; i < 3; ++i)
+                for (int j = 0; j < 3; ++j)
+                    R_camera[i][j] = eye_world[i][j];
+            glm::vec3 T_camera(eye_world[3][0], eye_world[3][1], eye_world[3][2]);
+
+            // Fix mirrored yaw/roll caused by downstream YZ flip: mirror X once here
+            R_camera[0] = -R_camera[0];
+
+            // Get projection and convert to focal length
+            const glm::mat4 proj = vr_manager_->get_eye_projection(eye, 0.05f, 500.0f);
+            // proj[1][1] = 1/tan(fovy/2), so fovy = 2*atan(1/proj[1][1])
+            const float fovy_rad = 2.0f * std::atan(1.0f / std::abs(proj[1][1]));
+            const float fovy_deg = glm::degrees(fovy_rad);
+            const float focal_length_mm = lfs::rendering::vFovToFocalLength(fovy_deg);
+
+            // Build render request
+            lfs::rendering::RenderRequest request{
+                .viewport = {
+                    .rotation = R_camera,
+                    .translation = T_camera,
+                    .size = vr_size,
+                    .focal_length_mm = focal_length_mm,
+                    .orthographic = false,
+                    .ortho_scale = 1.0f},
+                .scaling_modifier = settings_.scaling_modifier,
+                .antialiasing = false, // Disable for VR perf
+                .mip_filter = false,
+                .sh_degree = settings_.sh_degree,
+                .background_color = settings_.background_color,
+                .model_transforms = scene_state.model_transforms,
+                .transform_indices = scene_state.transform_indices,
+                .node_visibility_mask = scene_state.node_visibility_mask};
+
+            // Render gaussians
+            auto render_result = engine_->renderGaussians(*model, request);
+            if (!render_result) {
+                LOG_ERROR("VR eye {} render failed: {}", eye_idx, render_result.error());
+                continue;
+            }
+
+            // Blit result into the VR eye FBO
+            vr_manager_->bind_eye_fbo(eye);
+            glClearColor(settings_.background_color.r, settings_.background_color.g,
+                         settings_.background_color.b, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            engine_->presentToScreen(*render_result, {0, 0}, vr_size);
+        }
+
+        // Unbind FBO
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // Submit in natural order (left, right)
+        vr_manager_->submit_frames(
+            vr_manager_->get_eye_texture(vr::VREye::Left),
+            vr_manager_->get_eye_texture(vr::VREye::Right));
+
+        // Mirror left eye to the desktop window
+        const auto& fb_size = context.viewport.frameBufferSize;
+        glViewport(0, 0, fb_size.x, fb_size.y);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        // Blit left eye FBO to default framebuffer for desktop mirror
+        const GLuint left_fbo = vr_manager_->get_eye_fbo(vr::VREye::Left);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, left_fbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBlitFramebuffer(
+            0, 0, vr_size.x, vr_size.y,
+            0, 0, fb_size.x, fb_size.y,
+            GL_COLOR_BUFFER_BIT, GL_LINEAR);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+
+        // Always need next frame in VR
+        needs_render_.store(true);
+    }
+
+#endif // LFS_VR_ENABLED
+
 } // namespace lfs::vis

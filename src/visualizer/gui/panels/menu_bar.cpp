@@ -171,6 +171,21 @@ namespace lfs::vis::gui {
                 }
             }
 
+#ifdef LFS_VR_ENABLED
+            if (ImGui::BeginMenu("VR")) {
+                const char* label = vr_active_ ? "Exit VR" : "Switch to VR";
+                if (ImGui::MenuItem(label)) {
+                    if (on_toggle_vr_)
+                        on_toggle_vr_();
+                }
+                if (!vr_error_.empty() && !vr_active_) {
+                    ImGui::Separator();
+                    ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s", vr_error_.c_str());
+                }
+                ImGui::EndMenu();
+            }
+#endif
+
             const float h = ImGui::GetWindowHeight();
             ImGui::GetWindowDrawList()->AddLine({0, h - 1}, {ImGui::GetWindowWidth(), h - 1},
                                                 t.menu_bottom_border_u32(), 1.0f);
@@ -198,6 +213,12 @@ namespace lfs::vis::gui {
     void MenuBar::setOnShowPythonConsole(std::function<void()> callback) {
         on_show_python_console_ = std::move(callback);
     }
+
+#ifdef LFS_VR_ENABLED
+    void MenuBar::setOnToggleVR(std::function<void()> callback) {
+        on_toggle_vr_ = std::move(callback);
+    }
+#endif
 
     void MenuBar::renderPluginInstallPopup() {
         if (!show_plugin_install_popup_)
