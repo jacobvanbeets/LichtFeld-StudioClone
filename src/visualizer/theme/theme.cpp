@@ -445,19 +445,19 @@ namespace lfs::vis {
         const Theme DEFAULT_GRUVBOX = {
             .name = "Gruvbox",
             .palette = {
-                .background = {0.157f, 0.157f, 0.157f, 1.0f}, // #282828
-                .surface = {0.235f, 0.220f, 0.212f, 1.0f}, // #3c3836
+                .background = {0.157f, 0.157f, 0.157f, 1.0f},     // #282828
+                .surface = {0.235f, 0.220f, 0.212f, 1.0f},        // #3c3836
                 .surface_bright = {0.314f, 0.286f, 0.271f, 1.0f}, // #504945
-                .primary = {0.514f, 0.647f, 0.596f, 1.0f}, // #83a598
-                .primary_dim = {0.271f, 0.522f, 0.533f, 1.0f}, // #458588
-                .secondary = {0.827f, 0.525f, 0.608f, 1.0f}, // #d3869b
-                .text = {0.922f, 0.859f, 0.698f, 1.0f}, // #ebdbb2
-                .text_dim = {0.573f, 0.514f, 0.455f, 1.0f}, // #928374
-                .border = {0.400f, 0.361f, 0.329f, 1.0f}, // #665c54
-                .success = {0.722f, 0.733f, 0.149f, 1.0f}, // #b8bb26
-                .warning = {0.980f, 0.741f, 0.184f, 1.0f}, // #fabd2f
-                .error = {0.984f, 0.286f, 0.204f, 1.0f}, // #fb4934
-                .info = {0.557f, 0.753f, 0.486f, 1.0f}, // #8ec07c
+                .primary = {0.514f, 0.647f, 0.596f, 1.0f},        // #83a598
+                .primary_dim = {0.271f, 0.522f, 0.533f, 1.0f},    // #458588
+                .secondary = {0.827f, 0.525f, 0.608f, 1.0f},      // #d3869b
+                .text = {0.922f, 0.859f, 0.698f, 1.0f},           // #ebdbb2
+                .text_dim = {0.573f, 0.514f, 0.455f, 1.0f},       // #928374
+                .border = {0.400f, 0.361f, 0.329f, 1.0f},         // #665c54
+                .success = {0.722f, 0.733f, 0.149f, 1.0f},        // #b8bb26
+                .warning = {0.980f, 0.741f, 0.184f, 1.0f},        // #fabd2f
+                .error = {0.984f, 0.286f, 0.204f, 1.0f},          // #fb4934
+                .info = {0.557f, 0.753f, 0.486f, 1.0f},           // #8ec07c
                 .row_even = {1.0f, 1.0f, 1.0f, 0.035f},
                 .row_odd = {0.0f, 0.0f, 0.0f, 0.14f},
             },
@@ -1174,8 +1174,7 @@ namespace lfs::vis {
                     normalized == "gruvbox" ||
                     normalized == "catppuccin_mocha" ||
                     normalized == "catppuccin_latte" ||
-                    normalized == "nord"
-                ) {
+                    normalized == "nord") {
                     file << normalized;
                 } else {
                     file << "dark";
@@ -1201,8 +1200,7 @@ namespace lfs::vis {
                         normalized == "gruvbox" ||
                         normalized == "catppuccin_mocha" ||
                         normalized == "catppuccin_latte" ||
-                        normalized == "nord"
-                    ) {
+                        normalized == "nord") {
                         return normalized;
                     }
                 }

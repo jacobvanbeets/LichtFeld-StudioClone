@@ -236,7 +236,7 @@ namespace lfs::vis {
     [[nodiscard]] LFS_VIS_API const Theme& catppuccinLatteTheme();
     [[nodiscard]] LFS_VIS_API const Theme& nordTheme();
     LFS_VIS_API bool setThemeByName(const std::string& name); // e.g. "dark", "light", "gruvbox", "catppuccin_mocha", "catppuccin_latte", "nord"
-    LFS_VIS_API void checkThemeFileChanges(); // Call periodically to hot-reload
+    LFS_VIS_API void checkThemeFileChanges();                 // Call periodically to hot-reload
 
     // Persistence
     LFS_VIS_API bool saveTheme(const Theme& t, const std::string& path);
