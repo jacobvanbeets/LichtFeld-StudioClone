@@ -23,7 +23,9 @@
     "view.debug_info": "Información de Depuración...",
     "help": "Ayuda",
     "help.getting_started": "Primeros Pasos",
-    "help.about": "Acerca de LichtFeld Studio"
+    "help.about": "Acerca de LichtFeld Studio",
+    "view.python_console": "Consola de Python",
+    "view.plugin_marketplace": "Marketplace de Plugins"
   },
   "window": {
     "getting_started": "Primeros Pasos",
@@ -46,7 +48,9 @@
     "video_colmap": "Tutorial COLMAP",
     "video_lichtfeld": "Tutorial LichtFeld",
     "video_masks": "Tutorial de Máscaras",
-    "loading": "Cargando..."
+    "loading": "Cargando...",
+    "wiki_label": "Wiki:",
+    "watch_tooltip": "Ver: {title}"
   },
   "about": {
     "title": "LICHTFELD STUDIO",
@@ -68,7 +72,10 @@
     "repository": "Repositorio:",
     "website": "Sitio Web:",
     "authors": "Autores de LichtFeld Studio",
-    "license": "Licenciado bajo GPLv3"
+    "license": "Licenciado bajo GPLv3",
+    "build_info.property": "Propiedad",
+    "build_info.value": "Valor",
+    "separator": "  |  "
   },
   "training": {
     "section.dataset": "Dataset",
@@ -226,7 +233,23 @@
     "button.save_checkpoint": "Guardar Punto de Control",
     "button.switch_edit_mode": "Modo Edición",
     "button.add": "Añadir",
-    "button.remove": "Eliminar"
+    "button.remove": "Eliminar",
+    "value.none": "(ninguno)",
+    "value.default": "(predeterminado)",
+    "value.not_set": "(sin definir)",
+    "options.strategy.mcmc": "MCMC",
+    "options.strategy.adc": "ADC",
+    "options.tile.full": "1 (Completo)",
+    "options.tile.half": "2 (Mitad)",
+    "options.tile.quarter": "4 (Cuarto)",
+    "options.mask.none": "Ninguno",
+    "options.mask.segment": "Segmento",
+    "options.mask.ignore": "Ignorar",
+    "options.mask.alpha_consistent": "Consistente con alfa",
+    "options.bg.color": "Color",
+    "options.bg.modulation": "Modulacion",
+    "options.bg.image": "Imagen",
+    "options.bg.random": "Aleatorio"
   },
   "scene": {
     "add_ply": "Añadir PLY...",
@@ -272,7 +295,13 @@
     "update_keyframe": "Actualizar a la vista actual",
     "select_in_timeline": "Seleccionar en la línea de tiempo",
     "add_keyframe_scene": "Añadir keyframe",
-    "keyframe_easing": "Easing"
+    "keyframe_easing": "Easing",
+    "new_group_name": "Nuevo Grupo",
+    "keyframe_easing.linear": "Lineal",
+    "keyframe_easing.ease_in": "Aceleracion suave",
+    "keyframe_easing.ease_out": "Desaceleracion suave",
+    "keyframe_easing.ease_in_out": "Aceleracion/desaceleracion suave",
+    "keyframe_label": "Fotograma clave {index}  ({time:.2f}s)"
   },
   "export": {
     "title": "Exportar",
@@ -305,7 +334,11 @@
     "browse": "Examinar...",
     "apply": "Aplicar",
     "reset": "Reiniciar",
-    "double_click_reset": "doble clic para reiniciar"
+    "double_click_reset": "doble clic para reiniciar",
+    "auto": "Auto",
+    "column_label": "Etiqueta",
+    "column_control": "Control",
+    "na": "N/D"
   },
   "status": {
     "ready": "Listo",
@@ -335,7 +368,8 @@
     "empty": "Vacío",
     "dataset": "Dataset",
     "edit_mode": "Modo Edición",
-    "ply_models": "Modelos PLY:"
+    "ply_models": "Modelos PLY:",
+    "viewer": "Visor"
   },
   "messages": {
     "no_data_loaded": "No hay datos cargados",
@@ -352,8 +386,8 @@
     "err_non_pinhole": "Active --gut o --undistort para entrenar con cámaras no-pinhole."
   },
   "controls": {
-    "wasd": "WASD:",
-    "zoom": "Zoom:"
+    "wasd": "WASD",
+    "zoom": "Zoom"
   },
   "preferences": {
     "title": "Preferencias",
@@ -410,7 +444,8 @@
     "selection_groups": "Grupos de Selección",
     "add_group": "+ Añadir Grupo",
     "no_selection_groups": "Sin grupos de selección",
-    "clear": "Limpiar"
+    "clear": "Limpiar",
+    "mesh": "Malla"
   },
   "toolbar": {
     "selection": "Selección",
@@ -444,7 +479,8 @@
     "center_markers": "Marcadores Centrales",
     "perspective": "Perspectiva (O)",
     "orthographic": "Ortográfica (O)",
-    "sequencer": "Secuenciador"
+    "sequencer": "Secuenciador",
+    "ellipsoid": "Ellipsoid"
   },
   "transform": {
     "node": "Nodo: %s",
@@ -505,15 +541,17 @@
     "new_step": "Nuevo Paso",
     "no_save_steps": "No hay pasos de guardado configurados",
     "sparsity": "Configuración de Dispersión",
-    "pruning_growing": "Poda/Crecimiento"
+    "pruning_growing": "Poda/Crecimiento",
+    "no_trainer_loaded": "No hay entrenador cargado",
+    "parameters_unavailable": "Parametros no disponibles",
+    "no_dataset_loaded": "No hay dataset cargado",
+    "iters_per_sec": "iter/s"
   },
   "tooltip": {
     "gut_mode": "Para cámaras fisheye/distorsionadas/equirect",
     "mip_filter": "Reducir aliasing para Gaussianos sub-píxel",
     "appearance_correction": "PPISP Correction",
     "ppisp_mode": "Mode",
-    "ppisp_mode_manual": "Manual",
-    "ppisp_mode_auto": "Auto (Controller)",
     "ppisp_exposure": "Adjust exposure in EV stops",
     "ppisp_gamma": "Ajustar curva gamma",
     "ppisp_color_rgb": "Desplazar la cromaticidad de este canal de color",
@@ -628,7 +666,12 @@
     "mode.scale": "Escalar",
     "mode.align": "Herramienta de Alineación",
     "mode.crop_box": "Caja de Recorte",
-    "mode.unknown": "Desconocido"
+    "mode.unknown": "Desconocido",
+    "title": "AJUSTES DE ENTRADA",
+    "save_hint": "Guarde para conservar vinculaciones personalizadas",
+    "double_click_hint": "Consejo: haga doble clic para asignar accion de doble clic",
+    "export_dialog_title": "Exportar vinculaciones de entrada",
+    "import_dialog_title": "Importar vinculaciones de entrada"
   },
   "debug_info": {
     "free_memory": "Libre: %.2f GB",
@@ -729,7 +772,11 @@
     "file_label": "Archivo: %s",
     "visible": "Visible",
     "hidden": "Oculto",
-    "mask_section": "MÁSCARA"
+    "mask_section": "MÁSCARA",
+    "no_images_loaded": "No hay imagenes cargadas",
+    "no_image": "Sin imagen",
+    "zoom": "Zoom",
+    "fit": "Ajustar"
   },
   "startup": {
     "supported_by": "Apoyado por",
@@ -844,9 +891,105 @@
     "error": "Error: %s",
     "dismiss": "Descartar"
   },
+  "plugin_marketplace": {
+    "title_line": "Explora plugins instalables desde el registro de plugins.",
+    "warning_body": "ADVERTENCIA: LFS no respalda directamente ni asume responsabilidad. Úsalo bajo tu propio riesgo.",
+    "filter_label": "Filtro",
+    "sort_label": "Ordenar",
+    "filter.all": "Todos",
+    "filter.installed": "Instalados",
+    "filter.not_installed": "No instalados",
+    "sort.popularity_desc": "Popularidad: mayor -> menor",
+    "sort.popularity_asc": "Popularidad: menor -> mayor",
+    "sort.name_asc": "Nombre: A -> Z",
+    "sort.name_desc": "Nombre: Z -> A",
+    "loading": "Obteniendo registro de plugins...",
+    "no_plugins": "No hay plugins disponibles.",
+    "edit_list_hint": "Comprueba la configuración del registro o la conexión a internet.",
+    "unknown_plugin": "Plugin desconocido",
+    "no_description": "No hay descripción disponible.",
+    "stars": "Estrellas",
+    "downloads": "Descargas",
+    "invalid_link": "Enlace inválido",
+    "button.install": "Instalar",
+    "button.github": "GitHub",
+    "local_install": "Instalación local",
+    "confirm_uninstall_title": "Confirmar desinstalación del plugin",
+    "confirm_uninstall_message": "¿Seguro que deseas desinstalar \"{name}\"?",
+    "confirm_uninstall_yes": "Sí",
+    "confirm_uninstall_no": "No"
+  },
   "sequencer": {
     "edit_focal_length": "Editar distancia focal...",
     "edit_focal_length_title": "Editar distancia focal",
     "focal_length_mm": "Distancia focal (mm)"
+  },
+  "rendering_panel": {
+    "fov_format": "FOV: {hfov:.1f}° H / {vfov:.1f}° V"
+  },
+  "scripts_panel": {
+    "actions": "Acciones",
+    "reload_all": "Recargar todo",
+    "clear_all": "Limpiar todo",
+    "no_scripts_loaded": "No hay scripts de Python cargados.",
+    "load_hint": "Use --python-script <ruta> para cargar scripts.",
+    "loaded_scripts": "Scripts cargados:",
+    "path": "Ruta",
+    "error": "Error",
+    "reload": "Recargar"
+  },
+  "status_bar": {
+    "gt_compare": "Comparacion GT",
+    "camera": "Cam {cam_id}",
+    "split": "Division:",
+    "gpu": "GPU",
+    "strategy_default": "Predeterminado"
+  },
+  "plugin_manager": {
+    "section.install_from_github": "Instalar desde GitHub",
+    "section.installed_plugins": "Plugins instalados",
+    "github_url_or_shorthand": "URL de GitHub o formato corto:",
+    "supported_formats": "Formatos compatibles",
+    "working": "Trabajando...",
+    "output": "Salida",
+    "button.install_plugin": "Instalar plugin",
+    "button.explore_options": "Explorar opciones",
+    "button.reload": "Recargar",
+    "button.unload": "Descargar",
+    "button.load": "Cargar",
+    "button.update": "Actualizar",
+    "button.uninstall": "Desinstalar",
+    "no_plugins_installed": "No hay plugins instalados",
+    "version": "Version",
+    "description": "Descripcion",
+    "status": "Estado",
+    "status_not_loaded": "no cargado",
+    "error.enter_github_url": "Por favor ingrese una URL de GitHub",
+    "status.installed": "Instalado: {}",
+    "status.install_failed": "Error al instalar",
+    "status.loaded": "Cargado: {name}",
+    "status.load_failed": "Error al cargar",
+    "status.unloaded": "Descargado: {name}",
+    "status.unload_failed": "Error al descargar",
+    "status.reloaded": "Recargado: {name}",
+    "status.reload_failed": "Error al recargar",
+    "status.updated": "Actualizado: {name}",
+    "status.update_failed": "Error al actualizar",
+    "status.uninstalled": "Desinstalado: {name}",
+    "status.uninstall_failed": "Error al desinstalar",
+    "status.unloading": "Unloading {name}...",
+    "status.uninstalling": "Uninstalling {name}..."
+  },
+  "ellipsoid": {
+    "title": "Ellipsoid",
+    "not_visible": "Ellipsoid not visible",
+    "no_selection": "No ellipsoid selected",
+    "invalid": "Invalid ellipsoid",
+    "position": "Position",
+    "rotation": "Rotation",
+    "radii": "Radii",
+    "appearance": "Appearance",
+    "line_width": "Line Width",
+    "instructions": "Enter: Commit selection | Ctrl+C: Copy contents"
   }
 }
