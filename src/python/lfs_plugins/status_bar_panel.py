@@ -18,6 +18,7 @@ def _strip_colon(s: str) -> str:
     return s.rstrip(": \uff1a")
 
 
+
 def _fmt_count(n: int) -> str:
     if n >= 1_000_000:
         return f"{n / 1e6:.2f}M"
@@ -195,7 +196,7 @@ class StatusBarPanel(Panel):
             layout.same_line(spacing=20)
             layout.text_colored("|", sep_color)
             layout.same_line()
-            layout.text_colored(f"{tr('controls.wasd')}: {wasd_speed:.0f}", speed_color)
+            layout.text_colored(f"{_strip_colon(tr('controls.wasd'))}: {wasd_speed:.0f}", speed_color)
 
         if zoom_alpha > 0:
             sep_color = (p.text_dim[0], p.text_dim[1], p.text_dim[2], zoom_alpha)
@@ -203,7 +204,7 @@ class StatusBarPanel(Panel):
             layout.same_line(spacing=20)
             layout.text_colored("|", sep_color)
             layout.same_line()
-            layout.text_colored(f"{tr('controls.zoom')}: {zoom_speed * 10:.0f}", speed_color)
+            layout.text_colored(f"{_strip_colon(tr('controls.zoom'))}: {zoom_speed * 10:.0f}", speed_color)
 
     def _draw_right_section(self, layout, p):
         used, total = lf.ui.get_gpu_memory()
