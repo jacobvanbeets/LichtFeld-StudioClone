@@ -14,7 +14,6 @@ version = "0.1.0"
 description = "A new LichtFeld plugin"
 
 [tool.lichtfeld]
-auto_start = true
 hot_reload = true
 '''
 

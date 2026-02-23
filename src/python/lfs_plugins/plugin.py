@@ -30,7 +30,7 @@ class PluginInfo:
     author: str = ""
     entry_point: str = "__init__"
     dependencies: List[str] = field(default_factory=list)
-    auto_start: bool = True
+    auto_start: bool = False
     hot_reload: bool = True
     min_lichtfeld_version: str = ""
 

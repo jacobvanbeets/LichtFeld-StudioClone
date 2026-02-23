@@ -921,7 +921,8 @@
     "confirm_uninstall_title": "Confirmar desinstalación del plugin",
     "confirm_uninstall_message": "¿Seguro que deseas desinstalar \"{name}\"?",
     "confirm_uninstall_yes": "Sí",
-    "confirm_uninstall_no": "No"
+    "confirm_uninstall_no": "No",
+    "load_on_startup": "Cargar al inicio"
   },
   "sequencer": {
     "edit_focal_length": "Editar distancia focal...",

@@ -921,7 +921,8 @@
     "confirm_uninstall_no": "否",
     "sort.popularity_desc": "热度：高 -> 低",
     "sort.popularity_asc": "热度：低 -> 高",
-    "downloads": "下载量"
+    "downloads": "下载量",
+    "load_on_startup": "启动时加载"
   },
   "sequencer": {
     "edit_focal_length": "编辑焦距...",

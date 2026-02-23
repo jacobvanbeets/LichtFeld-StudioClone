@@ -921,7 +921,8 @@
     "confirm_uninstall_title": "Potwierdz odinstalowanie wtyczki",
     "confirm_uninstall_message": "Czy na pewno chcesz odinstalować \"{name}\"?",
     "confirm_uninstall_yes": "Tak",
-    "confirm_uninstall_no": "Nie"
+    "confirm_uninstall_no": "Nie",
+    "load_on_startup": "Ładuj przy starcie"
   },
   "sequencer": {
     "edit_focal_length": "Edytuj ogniskową...",

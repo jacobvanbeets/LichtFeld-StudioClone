@@ -14,7 +14,7 @@ def reload(name: str) -> bool:
     """Reload plugin"""
 
 def load_all() -> object:
-    """Load all auto_start plugins"""
+    """Load all user-enabled plugins"""
 
 def list_loaded() -> object:
     """List loaded plugins"""

@@ -921,7 +921,8 @@
     "confirm_uninstall_title": "Plugin-Deinstallation bestätigen",
     "confirm_uninstall_message": "Möchten Sie \"{name}\" wirklich deinstallieren?",
     "confirm_uninstall_yes": "Ja",
-    "confirm_uninstall_no": "Nein"
+    "confirm_uninstall_no": "Nein",
+    "load_on_startup": "Beim Start laden"
   },
   "sequencer": {
     "edit_focal_length": "Brennweite bearbeiten...",

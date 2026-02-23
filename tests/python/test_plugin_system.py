@@ -21,16 +21,23 @@ def temp_plugins_dir(monkeypatch):
             sys.path.insert(0, str(scripts_dir))
 
         from lfs_plugins.manager import PluginManager
+        from lfs_plugins.settings import SettingsManager
 
-        original_instance = PluginManager._instance
+        original_pm = PluginManager._instance
         PluginManager._instance = None
+
+        original_sm = SettingsManager._instance
+        SettingsManager._instance = None
+        sm = SettingsManager.instance()
+        sm._settings_dir = plugins_dir
 
         mgr = PluginManager.instance()
         mgr._plugins_dir = plugins_dir
 
         yield plugins_dir
 
-        PluginManager._instance = original_instance
+        SettingsManager._instance = original_sm
+        PluginManager._instance = original_pm
 
 
 @pytest.fixture
@@ -338,10 +345,10 @@ class TestPluginLifecycle:
         assert mgr.list_loaded() == []
 
     def test_load_all(self, temp_plugins_dir):
-        """Should load all plugins with auto_start=True."""
+        """Should load plugins where user enabled load_on_startup."""
         from lfs_plugins import PluginManager
+        from lfs_plugins.settings import SettingsManager
 
-        # Create two plugins
         for name in ["plugin_a", "plugin_b"]:
             plugin_dir = temp_plugins_dir / name
             plugin_dir.mkdir()
@@ -350,25 +357,77 @@ class TestPluginLifecycle:
 [project]
 name = "{name}"
 version = "1.0.0"
-description = "Auto-start plugin {name}"
+description = "Plugin {name}"
 
 [tool.lichtfeld]
-auto_start = true
 hot_reload = false
 """
             )
             (plugin_dir / "__init__.py").write_text("def on_load(): pass")
 
         mgr = PluginManager.instance()
+        sm = SettingsManager.instance()
+        sm.get("plugin_a").set("load_on_startup", True)
+        sm.get("plugin_b").set("load_on_startup", True)
+
         results = mgr.load_all()
 
         assert len(results) == 2
         assert results["plugin_a"] is True
         assert results["plugin_b"] is True
 
-        # Cleanup
         mgr.unload("plugin_a")
         mgr.unload("plugin_b")
+
+    def test_load_all_ignores_manifest_auto_start(self, temp_plugins_dir):
+        """Manifest auto_start=true must NOT cause auto-load without user opt-in."""
+        from lfs_plugins import PluginManager
+
+        plugin_dir = temp_plugins_dir / "sneaky_plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "pyproject.toml").write_text(
+            """
+[project]
+name = "sneaky_plugin"
+version = "1.0.0"
+description = "Plugin with auto_start in manifest"
+
+[tool.lichtfeld]
+auto_start = true
+hot_reload = false
+"""
+        )
+        (plugin_dir / "__init__.py").write_text("def on_load(): pass")
+
+        mgr = PluginManager.instance()
+
+        results = mgr.load_all()
+        assert len(results) == 0
+
+    def test_manifest_without_auto_start_parses(self, temp_plugins_dir):
+        """Manifest without auto_start field should parse successfully."""
+        from lfs_plugins import PluginManager
+
+        plugin_dir = temp_plugins_dir / "no_autostart_plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "pyproject.toml").write_text(
+            """
+[project]
+name = "no_autostart_plugin"
+version = "1.0.0"
+description = "Plugin without auto_start"
+
+[tool.lichtfeld]
+hot_reload = true
+"""
+        )
+        (plugin_dir / "__init__.py").write_text("def on_load(): pass")
+
+        mgr = PluginManager.instance()
+        plugins = mgr.discover()
+        assert len(plugins) == 1
+        assert plugins[0].name == "no_autostart_plugin"
+        assert plugins[0].auto_start is False
 
 
 class TestVersionEnforcement:

@@ -51,7 +51,7 @@ namespace lfs::python {
             nb::arg("name"), "Reload plugin");
 
         plugins.def(
-            "load_all", []() { return get_plugin_manager().attr("load_all")(); }, "Load all auto_start plugins");
+            "load_all", []() { return get_plugin_manager().attr("load_all")(); }, "Load all user-enabled plugins");
 
         plugins.def(
             "list_loaded", []() { return get_plugin_manager().attr("list_loaded")(); }, "List loaded plugins");

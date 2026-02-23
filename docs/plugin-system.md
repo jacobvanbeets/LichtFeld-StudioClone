@@ -33,7 +33,6 @@ dependencies = [
 ]
 
 [tool.lichtfeld]
-auto_start = true
 hot_reload = true
 min_lichtfeld_version = "1.0.0"
 ```
@@ -59,7 +58,7 @@ requires-python = ">=3.12"
 dependencies = ["torch>=2.6.0"]
 
 [tool.lichtfeld]
-auto_start = true
+hot_reload = true
 
 [[tool.uv.index]]
 name = "pytorch-cu124"
@@ -132,7 +131,7 @@ mgr.reload("colmap")
 # Unload
 mgr.unload("colmap")
 
-# Load all auto_start plugins
+# Load all user-enabled plugins
 mgr.load_all()
 
 # Hot reload file watcher

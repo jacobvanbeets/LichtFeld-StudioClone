@@ -569,7 +569,7 @@ mgr = PluginManager.instance()
 | `load(name, on_progress=None)`        | `bool`                     | Load a plugin                     |
 | `unload(name)`                        | `bool`                     | Unload a plugin                   |
 | `reload(name)`                        | `bool`                     | Hot-reload a plugin               |
-| `load_all()`                          | `dict[str, bool]`          | Load all auto-start plugins       |
+| `load_all()`                          | `dict[str, bool]`          | Load all user-enabled plugins     |
 | `install(url, on_progress=None, auto_load=True)` | `str`          | Install from Git URL              |
 | `uninstall(name)`                     | `bool`                     | Remove a plugin                   |
 | `update(name, on_progress=None)`      | `bool`                     | Update a plugin                   |
@@ -591,7 +591,7 @@ class PluginInfo:
     author: str = ""
     entry_point: str = "__init__"
     dependencies: list[str] = []
-    auto_start: bool = True
+    auto_start: bool = False  # deprecated, ignored — use user settings via load_on_startup
     hot_reload: bool = True
     min_lichtfeld_version: str = ""
 ```
@@ -1388,7 +1388,6 @@ authors = []                 # list[{name, email}], optional - PEP 621 authors
 dependencies = []            # list[string], optional - Python packages (PEP 508)
 
 [tool.lichtfeld]
-auto_start = true            # bool, required
 hot_reload = true            # bool, required
 entry_point = "__init__"     # string, optional - Module to load (default: __init__)
 min_lichtfeld_version = ""   # string, optional - Minimum LichtFeld version

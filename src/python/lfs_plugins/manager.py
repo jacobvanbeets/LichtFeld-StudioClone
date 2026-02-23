@@ -125,9 +125,8 @@ class PluginManager:
             if field not in project:
                 raise ValueError(f"Missing project.{field}")
 
-        for field in ("auto_start", "hot_reload"):
-            if field not in lf:
-                raise ValueError(f"Missing tool.lichtfeld.{field}")
+        if "hot_reload" not in lf:
+            raise ValueError("Missing tool.lichtfeld.hot_reload")
 
         authors = project.get("authors", [])
         author = authors[0].get("name", "") if authors else lf.get("author", "")
@@ -140,7 +139,7 @@ class PluginManager:
             author=author,
             entry_point=lf.get("entry_point", "__init__"),
             dependencies=project.get("dependencies", []),
-            auto_start=lf["auto_start"],
+            auto_start=lf.get("auto_start", False),
             hot_reload=lf["hot_reload"],
             min_lichtfeld_version=lf.get("min_lichtfeld_version", ""),
         )
@@ -388,13 +387,16 @@ class PluginManager:
             return False
 
     def load_all(self) -> Dict[str, bool]:
-        """Load all discovered plugins with auto_start=True."""
+        """Load all discovered plugins where the user enabled load_on_startup."""
+        from .settings import SettingsManager
+
         discovered = self.discover()
         _log.info("load_all: discovered %d plugins: %s", len(discovered), [p.name for p in discovered])
         results = {}
         for info in discovered:
-            if info.auto_start:
-                _log.info("load_all: loading %s (auto_start=True)", info.name)
+            prefs = SettingsManager.instance().get(info.name)
+            if prefs.get("load_on_startup", False):
+                _log.info("load_all: loading %s (user-enabled)", info.name)
                 success = self.load(info.name)
                 results[info.name] = success
                 if not success:

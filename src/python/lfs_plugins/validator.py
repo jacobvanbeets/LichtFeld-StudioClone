@@ -32,9 +32,8 @@ def validate_plugin(plugin_path: str | Path) -> list[str]:
             for field in ("name", "version", "description"):
                 if field not in project:
                     errors.append(f"pyproject.toml: missing project.{field}")
-            for field in ("auto_start", "hot_reload"):
-                if field not in lf:
-                    errors.append(f"pyproject.toml: missing tool.lichtfeld.{field}")
+            if "hot_reload" not in lf:
+                errors.append("pyproject.toml: missing tool.lichtfeld.hot_reload")
         except Exception as e:
             errors.append(f"pyproject.toml: {e}")
 

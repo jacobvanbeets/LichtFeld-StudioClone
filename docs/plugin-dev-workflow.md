@@ -61,7 +61,6 @@ dependencies = [
 ]
 
 [tool.lichtfeld]
-auto_start = true
 hot_reload = true
 min_lichtfeld_version = "1.0.0"
 ```
@@ -213,7 +212,7 @@ lf.plugins.discover()              # Find plugins in ~/.lichtfeld/plugins/
 lf.plugins.load("name")            # Load a plugin
 lf.plugins.unload("name")          # Unload a plugin
 lf.plugins.reload("name")          # Reload a plugin
-lf.plugins.load_all()              # Load all auto_start plugins
+lf.plugins.load_all()              # Load all user-enabled plugins
 lf.plugins.list_loaded()           # List active plugins
 ```
 

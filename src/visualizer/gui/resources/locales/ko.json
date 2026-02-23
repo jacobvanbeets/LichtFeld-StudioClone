@@ -921,7 +921,8 @@
     "confirm_uninstall_title": "플러그인 제거 확인",
     "confirm_uninstall_message": "\"{name}\" 플러그인을 정말 제거하시겠습니까?",
     "confirm_uninstall_yes": "예",
-    "confirm_uninstall_no": "아니요"
+    "confirm_uninstall_no": "아니요",
+    "load_on_startup": "시작 시 로드"
   },
   "sequencer": {
     "edit_focal_length": "초점 거리 편집...",

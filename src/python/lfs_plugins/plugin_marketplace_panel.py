@@ -309,8 +309,19 @@ class PluginMarketplacePanel(Panel):
         avail_button_w, button_spacing, button_height, scale,
     ):
         import lichtfeld as lf
+        from .settings import SettingsManager
 
         tr = lf.ui.tr
+
+        if plugin_name:
+            prefs = SettingsManager.instance().get(plugin_name)
+            startup = prefs.get("load_on_startup", False)
+            changed, startup = layout.checkbox(
+                f"{tr('plugin_marketplace.load_on_startup')}##startup_{idx}", startup
+            )
+            if changed:
+                prefs.set("load_on_startup", startup)
+
         disabled = install_in_progress
         if disabled:
             layout.begin_disabled()

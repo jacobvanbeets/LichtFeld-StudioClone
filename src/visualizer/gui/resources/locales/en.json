@@ -989,7 +989,8 @@
     "confirm_uninstall_title": "Confirm Plugin Uninstall",
     "confirm_uninstall_message": "Are you sure you want to uninstall \"{name}\"?",
     "confirm_uninstall_yes": "Yes",
-    "confirm_uninstall_no": "No"
+    "confirm_uninstall_no": "No",
+    "load_on_startup": "Load on Startup"
   },
   "sequencer": {
     "edit_focal_length": "Edit Focal Length...",

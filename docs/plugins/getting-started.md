@@ -32,7 +32,6 @@ authors = [{name = "Your Name"}]
 dependencies = []
 
 [tool.lichtfeld]
-auto_start = true
 hot_reload = true
 ```
 
@@ -68,7 +67,6 @@ description = "Hello World example"
 dependencies = []
 
 [tool.lichtfeld]
-auto_start = true
 hot_reload = true
 ```
 
