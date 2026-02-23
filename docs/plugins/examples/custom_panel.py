@@ -37,7 +37,7 @@ class DemoSettings(PropertyGroup):
 
 class DemoPanel(Panel):
     label = "Widget Demo"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 150
 
     def __init__(self):

@@ -68,6 +68,7 @@ namespace lfs::vis::gui {
         std::shared_ptr<IPanel> panel;
         std::string label;
         std::string idname;
+        std::string parent_idname;
         PanelSpace space = PanelSpace::Floating;
         int order = 100;
         bool enabled = true;
@@ -98,6 +99,7 @@ namespace lfs::vis::gui {
         IPanel* panel;
         std::string label;
         std::string idname;
+        std::string parent_idname;
         uint32_t options;
         bool is_native;
         PollDependency poll_deps;
@@ -127,6 +129,7 @@ namespace lfs::vis::gui {
 
         void draw_panels(PanelSpace space, const PanelDrawContext& ctx);
         void draw_single_panel(const std::string& idname, const PanelDrawContext& ctx);
+        void draw_child_panels(const std::string& parent_idname, const PanelDrawContext& ctx);
         bool has_panels(PanelSpace space) const;
 
         std::vector<PanelSummary> get_panels_for_space(PanelSpace space);
@@ -137,6 +140,7 @@ namespace lfs::vis::gui {
         bool set_panel_label(const std::string& idname, const std::string& new_label);
         bool set_panel_order(const std::string& idname, int new_order);
         bool set_panel_space(const std::string& idname, PanelSpace new_space);
+        bool set_panel_parent(const std::string& idname, const std::string& parent_idname);
         void invalidate_poll_cache(PollDependency changed = PollDependency::ALL);
 
     private:
@@ -146,6 +150,7 @@ namespace lfs::vis::gui {
         PanelRegistry& operator=(const PanelRegistry&) = delete;
 
         bool check_poll(const PanelSnapshot& snap, const PanelDrawContext& ctx);
+        void track_draw_result(const PanelSnapshot& snap, bool draw_succeeded);
 
         mutable std::mutex mutex_;
         mutable std::mutex poll_mutex_;

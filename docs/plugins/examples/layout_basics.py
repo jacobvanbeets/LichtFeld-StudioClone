@@ -8,7 +8,7 @@ from lfs_plugins.types import Panel
 
 class LayoutBasicsPanel(Panel):
     label = "Layout Basics"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 300
 
     def __init__(self):

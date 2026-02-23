@@ -9,7 +9,7 @@ from lfs_plugins.types import Panel
 
 class HelloPanel(Panel):
     label = "Hello World"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 200
 
     def draw(self, layout):

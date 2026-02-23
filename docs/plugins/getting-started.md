@@ -79,7 +79,7 @@ from lfs_plugins.types import Panel
 
 class HelloPanel(Panel):
     label = "Hello World"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 200
 
     def draw(self, layout):
@@ -110,7 +110,7 @@ from lfs_plugins.types import Panel
 class MyPanel(Panel):
     idname = "my_plugin.panel"  # Unique ID (default: module.qualname)
     label = "My Panel"          # Display name
-    space = "SIDE_PANEL"        # Where it appears
+    space = "MAIN_PANEL_TAB"        # Where it appears
     order = 100                 # Sort order (lower = higher)
     options = set()             # e.g. {"DEFAULT_CLOSED", "HIDE_HEADER"}
     poll_deps = set()           # e.g. {"SCENE", "SELECTION", "TRAINING"}
@@ -130,6 +130,7 @@ class MyPanel(Panel):
 | `idname`    | `str`      | `module.qualname`     | Unique panel identifier. Used for enable/disable, replacement, and API lookups. |
 | `label`     | `str`      | `""`                  | Display name shown in the UI                     |
 | `space`     | `str`      | `"FLOATING"`          | Where the panel renders (see table below)        |
+| `parent`    | `str`      | `""`                  | Parent tab idname — embeds as collapsible section (overrides `space`) |
 | `order`     | `int`      | `100`                 | Sort order within its space (lower = higher)     |
 | `options`   | `Set[str]` | `set()`               | `"DEFAULT_CLOSED"` (start hidden), `"HIDE_HEADER"` (no collapsing header) |
 | `poll_deps` | `Set[str]` | `set()` (= poll always) | Declare which state changes trigger `poll()` re-evaluation: `"SCENE"`, `"SELECTION"`, `"TRAINING"`. Empty means poll on every frame. |
@@ -138,13 +139,34 @@ class MyPanel(Panel):
 
 | Space             | Description                        |
 |-------------------|------------------------------------|
-| `SIDE_PANEL`      | Right sidebar panel                |
-| `MAIN_PANEL_TAB`  | Tab in the main panel area         |
+| `MAIN_PANEL_TAB`  | Own tab in the right panel (default for plugins) |
+| `SIDE_PANEL`      | Right sidebar panel (legacy — prefer `parent` attribute) |
 | `VIEWPORT_OVERLAY`| Drawn over the 3D viewport         |
 | `SCENE_HEADER`    | Header area above the scene tree   |
 | `FLOATING`        | Free-floating window               |
 | `DOCKABLE`        | Dockable window                    |
 | `STATUS_BAR`      | Bottom status bar                  |
+
+### Embedding in an existing tab
+
+Use `parent` to embed your panel as a collapsible section inside a built-in tab:
+
+```python
+class MyAnalysis(Panel):
+    label = "My Analysis"
+    parent = "lfs.rendering"  # Embed inside the Rendering tab
+    order = 200
+
+    def draw(self, layout):
+        layout.label("Analysis results here")
+```
+
+| `parent` value    | Effect                                  |
+|-------------------|-----------------------------------------|
+| `"lfs.rendering"` | Collapsible section inside Rendering tab |
+| `"lfs.training"`  | Collapsible section inside Training tab  |
+
+When `parent` is set, `space` is ignored.
 
 ### Register and unregister
 
@@ -165,7 +187,7 @@ from lfs_plugins.types import Panel
 class MyTrainingPanel(Panel):
     idname = "lfs.training"      # same idname as the built-in training panel
     label = "Training"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 20
 
     def draw(self, layout):
@@ -188,7 +210,8 @@ lf.ui.get_panel("my_plugin.panel")      # Returns dict with idname, label, order
 lf.ui.set_panel_label("my_plugin.panel", "New Name")
 lf.ui.set_panel_order("my_plugin.panel", 50)
 lf.ui.set_panel_space("my_plugin.panel", "FLOATING")
-lf.ui.get_panel_names("SIDE_PANEL")     # List panel idnames for a space
+lf.ui.set_panel_parent("my_plugin.panel", "lfs.rendering")  # Embed in Rendering tab
+lf.ui.get_panel_names("MAIN_PANEL_TAB")  # List panel idnames for a space
 ```
 
 ### Example: side panel with interactive widgets
@@ -199,7 +222,7 @@ from lfs_plugins.types import Panel
 
 class SettingsPanel(Panel):
     label = "Settings"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 50
 
     def __init__(self):
@@ -957,7 +980,7 @@ from lfs_plugins.ui.signals import Signal
 
 class TrainingMonitor(Panel):
     label = "Training Monitor"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 50
 
     def __init__(self):

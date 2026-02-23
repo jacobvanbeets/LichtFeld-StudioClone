@@ -8,7 +8,7 @@ from lfs_plugins.types import Panel
 
 class NestedLayoutPanel(Panel):
     label = "Nested Layout"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 302
 
     def __init__(self):

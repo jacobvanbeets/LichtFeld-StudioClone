@@ -236,6 +236,9 @@ def set_panel_order(idname: str, order: int) -> bool:
 def set_panel_space(idname: str, space: str) -> bool:
     """Set the panel space (where it renders)"""
 
+def set_panel_parent(idname: str, parent: str) -> bool:
+    """Set the parent panel (embeds as collapsible section)"""
+
 def has_main_panel_tabs() -> bool:
     """Check if any main panel tabs are registered"""
 

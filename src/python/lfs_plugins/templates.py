@@ -52,7 +52,7 @@ class MainPanel(Panel):
     """Example plugin panel."""
 
     label = "{title}"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 100
 
     def draw(self, layout):

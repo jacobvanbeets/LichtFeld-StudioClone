@@ -138,7 +138,7 @@ class FilterByOpacity(Operator):
 
 class SceneToolsPanel(Panel):
     label = "Scene Tools"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 120
 
     def __init__(self):

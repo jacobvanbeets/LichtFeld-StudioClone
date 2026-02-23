@@ -15,7 +15,8 @@ from lfs_plugins.types import Panel
 class MyPanel(Panel):
     idname = "my_plugin.panel"
     label = "My Custom Panel"
-    space = "FLOATING"      # SIDE_PANEL, FLOATING, VIEWPORT_OVERLAY, DOCKABLE, MAIN_PANEL_TAB, SCENE_HEADER, STATUS_BAR
+    space = "FLOATING"      # MAIN_PANEL_TAB, FLOATING, VIEWPORT_OVERLAY, DOCKABLE, SCENE_HEADER, STATUS_BAR
+    parent = ""             # e.g. "lfs.rendering" to embed inside a tab
     order = 100
     options = set()           # e.g. {"DEFAULT_CLOSED"}
     poll_deps = {"SCENE", "SELECTION", "TRAINING"}
@@ -43,11 +44,11 @@ lf.register_class(MyPanel)
 
 | Space | Description |
 |-------|-------------|
-| `SIDE_PANEL` | Sidebar panel |
+| `MAIN_PANEL_TAB` | Own tab in the right panel (default for plugins) |
 | `FLOATING` | Standalone window |
 | `VIEWPORT_OVERLAY` | Draw over viewport |
 | `DOCKABLE` | Dockable window |
-| `MAIN_PANEL_TAB` | Main tab container |
+| `SIDE_PANEL` | Sidebar panel (legacy — prefer `parent` attribute) |
 | `SCENE_HEADER` | Scene panel/header area |
 | `STATUS_BAR` | Bottom status bar |
 
@@ -68,7 +69,8 @@ lf.ui.get_panel_names("FLOATING")
 lf.ui.get_panel("my_plugin.panel")
 lf.ui.set_panel_label("my_plugin.panel", "New Label")
 lf.ui.set_panel_order("my_plugin.panel", 10)
-lf.ui.set_panel_space("my_plugin.panel", "SIDE_PANEL")
+lf.ui.set_panel_space("my_plugin.panel", "MAIN_PANEL_TAB")
+lf.ui.set_panel_parent("my_plugin.panel", "lfs.rendering")  # Embed in tab
 ```
 
 ### Poll Context
@@ -425,7 +427,7 @@ from lfs_plugins.types import Panel
 class GaussianFilterPanel(Panel):
     idname = "example.gaussian_filter"
     label = "Gaussian Filter"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 50
 
     def __init__(self):

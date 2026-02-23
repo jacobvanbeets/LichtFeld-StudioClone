@@ -110,10 +110,10 @@ namespace lfs::vis::gui {
             snapshots.reserve(panels_.size());
             for (size_t i = 0; i < panels_.size(); ++i) {
                 auto& p = panels_[i];
-                if (p.space == space && p.enabled && !p.error_disabled) {
+                if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty()) {
                     snapshots.push_back({i, p.panel.get(), p.label, p.idname,
-                                         p.options, p.is_native, p.poll_deps,
-                                         p.initial_width, p.initial_height});
+                                         p.parent_idname, p.options, p.is_native,
+                                         p.poll_deps, p.initial_width, p.initial_height});
                 }
             }
         }
@@ -235,22 +235,7 @@ namespace lfs::vis::gui {
                 LOG_ERROR("Panel '{}' draw error: {}", snap.label, e.what());
             }
 
-            if (!draw_succeeded && !snap.is_native) {
-                std::lock_guard lock(mutex_);
-                if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname) {
-                    panels_[snap.index].consecutive_errors++;
-                    if (panels_[snap.index].consecutive_errors >= PanelInfo::MAX_CONSECUTIVE_ERRORS) {
-                        panels_[snap.index].error_disabled = true;
-                        LOG_ERROR("Panel '{}' disabled after {} errors",
-                                  snap.label, panels_[snap.index].consecutive_errors);
-                    }
-                }
-            } else if (draw_succeeded && !snap.is_native) {
-                std::lock_guard lock(mutex_);
-                if (snap.index < panels_.size() && panels_[snap.index].idname == snap.idname) {
-                    panels_[snap.index].consecutive_errors = 0;
-                }
-            }
+            track_draw_result(snap, draw_succeeded);
         }
     }
 
@@ -264,8 +249,8 @@ namespace lfs::vis::gui {
                 if (panels_[i].idname == idname && panels_[i].enabled && !panels_[i].error_disabled) {
                     panel_holder = panels_[i].panel;
                     snap = {i, panels_[i].panel.get(), panels_[i].label, panels_[i].idname,
-                            panels_[i].options, panels_[i].is_native, panels_[i].poll_deps,
-                            panels_[i].initial_width, panels_[i].initial_height};
+                            panels_[i].parent_idname, panels_[i].options, panels_[i].is_native,
+                            panels_[i].poll_deps, panels_[i].initial_width, panels_[i].initial_height};
                     found = true;
                     break;
                 }
@@ -274,6 +259,14 @@ namespace lfs::vis::gui {
 
         if (!found)
             return;
+
+        try {
+            if (!check_poll(snap, ctx))
+                return;
+        } catch (const std::exception& e) {
+            LOG_ERROR("Panel '{}' poll error: {}", snap.label, e.what());
+            return;
+        }
 
         bool draw_succeeded = false;
         try {
@@ -286,28 +279,13 @@ namespace lfs::vis::gui {
             LOG_ERROR("Panel '{}' error: {}", snap.label, e.what());
         }
 
-        if (!draw_succeeded && !snap.is_native) {
-            std::lock_guard lock(mutex_);
-            if (snap.index < panels_.size() && panels_[snap.index].idname == idname) {
-                panels_[snap.index].consecutive_errors++;
-                if (panels_[snap.index].consecutive_errors >= PanelInfo::MAX_CONSECUTIVE_ERRORS) {
-                    panels_[snap.index].error_disabled = true;
-                    LOG_ERROR("Panel '{}' disabled after {} errors",
-                              snap.label, panels_[snap.index].consecutive_errors);
-                }
-            }
-        } else if (draw_succeeded && !snap.is_native) {
-            std::lock_guard lock(mutex_);
-            if (snap.index < panels_.size() && panels_[snap.index].idname == idname) {
-                panels_[snap.index].consecutive_errors = 0;
-            }
-        }
+        track_draw_result(snap, draw_succeeded);
     }
 
     bool PanelRegistry::has_panels(PanelSpace space) const {
         std::lock_guard lock(mutex_);
         for (const auto& p : panels_) {
-            if (p.space == space && p.enabled && !p.error_disabled)
+            if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty())
                 return true;
         }
         return false;
@@ -317,7 +295,7 @@ namespace lfs::vis::gui {
         std::lock_guard lock(mutex_);
         std::vector<PanelSummary> result;
         for (const auto& p : panels_) {
-            if (p.space == space && p.enabled && !p.error_disabled)
+            if (p.space == space && p.enabled && !p.error_disabled && p.parent_idname.empty())
                 result.push_back({p.label, p.idname, p.space, p.order, p.enabled});
         }
         std::stable_sort(result.begin(), result.end(), [](const PanelSummary& a, const PanelSummary& b) {
@@ -402,6 +380,98 @@ namespace lfs::vis::gui {
             }
         }
         return false;
+    }
+
+    bool PanelRegistry::set_panel_parent(const std::string& idname, const std::string& parent_idname) {
+        std::lock_guard lock(mutex_);
+
+        if (!parent_idname.empty()) {
+            bool parent_found = false;
+            for (const auto& p : panels_) {
+                if (p.idname == parent_idname) {
+                    parent_found = true;
+                    break;
+                }
+            }
+            if (!parent_found)
+                LOG_WARN("Panel '{}': parent '{}' not registered (may register later)", idname, parent_idname);
+        }
+
+        for (auto& p : panels_) {
+            if (p.idname == idname) {
+                p.parent_idname = parent_idname;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void PanelRegistry::draw_child_panels(const std::string& parent_idname, const PanelDrawContext& ctx) {
+        std::vector<PanelSnapshot> snapshots;
+        {
+            std::lock_guard lock(mutex_);
+            snapshots.reserve(panels_.size());
+            for (size_t i = 0; i < panels_.size(); ++i) {
+                auto& p = panels_[i];
+                if (p.parent_idname == parent_idname && p.enabled && !p.error_disabled) {
+                    snapshots.push_back({i, p.panel.get(), p.label, p.idname,
+                                         p.parent_idname, p.options, p.is_native,
+                                         p.poll_deps, p.initial_width, p.initial_height});
+                }
+            }
+        }
+
+        for (auto& snap : snapshots) {
+            bool draw_succeeded = false;
+            try {
+                if (!check_poll(snap, ctx))
+                    continue;
+            } catch (const std::exception& e) {
+                LOG_ERROR("Panel '{}' poll error: {}", snap.label, e.what());
+                continue;
+            }
+
+            try {
+                ImGui::PushID(snap.idname.c_str());
+
+                if (snap.has_option(PanelOption::HIDE_HEADER)) {
+                    snap.panel->draw(ctx);
+                } else {
+                    const ImGuiTreeNodeFlags flags = snap.has_option(PanelOption::DEFAULT_CLOSED)
+                                                         ? ImGuiTreeNodeFlags_None
+                                                         : ImGuiTreeNodeFlags_DefaultOpen;
+                    if (ImGui::CollapsingHeader(snap.label.c_str(), flags)) {
+                        snap.panel->draw(ctx);
+                    }
+                }
+
+                ImGui::PopID();
+                draw_succeeded = true;
+            } catch (const std::exception& e) {
+                ImGui::PopID();
+                LOG_ERROR("Panel '{}' draw error: {}", snap.label, e.what());
+            }
+
+            track_draw_result(snap, draw_succeeded);
+        }
+    }
+
+    void PanelRegistry::track_draw_result(const PanelSnapshot& snap, bool draw_succeeded) {
+        if (snap.is_native)
+            return;
+        std::lock_guard lock(mutex_);
+        if (snap.index >= panels_.size() || panels_[snap.index].idname != snap.idname)
+            return;
+        if (!draw_succeeded) {
+            panels_[snap.index].consecutive_errors++;
+            if (panels_[snap.index].consecutive_errors >= PanelInfo::MAX_CONSECUTIVE_ERRORS) {
+                panels_[snap.index].error_disabled = true;
+                LOG_ERROR("Panel '{}' disabled after {} errors",
+                          snap.label, panels_[snap.index].consecutive_errors);
+            }
+        } else {
+            panels_[snap.index].consecutive_errors = 0;
+        }
     }
 
     void PanelRegistry::invalidate_poll_cache(PollDependency changed) {

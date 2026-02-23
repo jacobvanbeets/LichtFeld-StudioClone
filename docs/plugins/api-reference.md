@@ -26,6 +26,7 @@ from lfs_plugins.types import Panel
 | `idname`    | `str`      | `module.qualname` | Unique panel identifier              |
 | `label`     | `str`      | `""`              | Display name (`idname` fallback when empty) |
 | `space`     | `str`      | `"FLOATING"`      | Panel space (see below)              |
+| `parent`    | `str`      | `""`              | Parent tab idname — embeds as collapsible section (overrides `space`) |
 | `order`     | `int`      | `100`             | Sort order (lower = higher)          |
 | `options`   | `Set[str]` | `set()`           | `"DEFAULT_CLOSED"`, `"HIDE_HEADER"` |
 | `poll_deps` | `Set[str]` | `{"SCENE","SELECTION","TRAINING"}` | Which state changes trigger `poll()` |
@@ -39,7 +40,7 @@ Registering a panel with the same `idname` as an existing panel replaces it (see
 
 ### Panel spaces
 
-`SIDE_PANEL`, `MAIN_PANEL_TAB`, `VIEWPORT_OVERLAY`, `SCENE_HEADER`, `FLOATING`, `DOCKABLE`, `STATUS_BAR`
+`MAIN_PANEL_TAB`, `SIDE_PANEL`, `VIEWPORT_OVERLAY`, `SCENE_HEADER`, `FLOATING`, `DOCKABLE`, `STATUS_BAR`
 
 ---
 
@@ -1239,6 +1240,7 @@ lf.undo.push(name: str, undo: Callable, redo: Callable, validate: Callable | Non
 | `lf.ui.set_panel_label(idname, label)`      | `bool`           | Change panel display name  |
 | `lf.ui.set_panel_order(idname, order)`      | `bool`           | Change panel sort order    |
 | `lf.ui.set_panel_space(idname, space)`      | `bool`           | Move panel to a different space |
+| `lf.ui.set_panel_parent(idname, parent)`    | `bool`           | Embed panel inside a tab as collapsible section |
 | `lf.ui.ops.invoke(op_id, **kwargs)`         | `OperatorReturnValue` | Invoke operator       |
 | `lf.ui.ops.poll(op_id)`                     | `bool`           | Operator poll              |
 | `lf.ui.ops.cancel_modal()`                  | `None`           | Cancel modal operator      |

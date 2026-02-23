@@ -18,7 +18,7 @@ class MonitorSettings(PropertyGroup):
 
 class TrainingMonitorPanel(Panel):
     label = "Training Monitor"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 40
 
     def __init__(self):

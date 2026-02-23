@@ -190,7 +190,7 @@ from lfs_plugins.types import Panel
 
 class MyPanel(Panel):
     label = "My Panel"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 10
 
     def __init__(self):

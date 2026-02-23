@@ -12,7 +12,7 @@ class GridEnumSettings:
 
 class GridEnumPanel(Panel):
     label = "Grid & Enum Demo"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 301
 
     def __init__(self):

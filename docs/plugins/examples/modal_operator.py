@@ -110,7 +110,7 @@ class PointInfoOperator(Operator):
 
 class ModalDemoPanel(Panel):
     label = "Modal Tools"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 160
 
     def draw(self, layout):

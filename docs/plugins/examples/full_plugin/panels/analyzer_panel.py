@@ -21,7 +21,7 @@ class AnalyzerSettings(PropertyGroup):
 
 class AnalyzerPanel(Panel):
     label = "Gaussian Analyzer"
-    space = "SIDE_PANEL"
+    space = "MAIN_PANEL_TAB"
     order = 45
 
     def __init__(self):

@@ -143,6 +143,7 @@ namespace lfs::vis::gui {
                         const std::string child_id = "##" + tab.idname + "Panel";
                         if (ImGui::BeginChild(child_id.c_str(), {0, 0}, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground)) {
                             reg.draw_single_panel(tab.idname, draw_ctx);
+                            reg.draw_child_panels(tab.idname, draw_ctx);
                             reg.draw_panels(PanelSpace::SidePanel, draw_ctx);
                         }
                         ImGui::EndChild();

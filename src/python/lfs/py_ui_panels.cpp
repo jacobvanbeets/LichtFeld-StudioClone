@@ -56,7 +56,7 @@ namespace lfs::python {
 
         std::string label = "Python Panel";
         std::string idname = get_class_id(panel_class);
-        PanelSpace space = PanelSpace::Floating;
+        PanelSpace space = PanelSpace::MainPanelTab;
         int order = 100;
         uint32_t options = 0;
         PollDependency poll_deps = PollDependency::ALL;
@@ -74,7 +74,7 @@ namespace lfs::python {
                     if (auto ps = parse_panel_space(space_str)) {
                         space = *ps;
                     } else {
-                        LOG_WARN("Unknown panel space '{}' for panel '{}', defaulting to Floating", space_str, label);
+                        LOG_WARN("Unknown panel space '{}' for panel '{}', defaulting to MainPanelTab", space_str, label);
                     }
                 }
             }
@@ -135,10 +135,20 @@ namespace lfs::python {
         }
 
         auto adapter = std::make_shared<PythonPanelAdapter>(instance, nb::hasattr(panel_class, "poll"));
+        std::string parent_idname;
+        try {
+            if (nb::hasattr(panel_class, "parent")) {
+                parent_idname = nb::cast<std::string>(panel_class.attr("parent"));
+            }
+        } catch (const std::exception& e) {
+            LOG_ERROR("register_panel: failed to extract parent for '{}': {}", label, e.what());
+        }
+
         gui::PanelInfo info;
         info.panel = adapter;
         info.label = label;
         info.idname = idname;
+        info.parent_idname = parent_idname;
         info.space = to_gui_space(space);
         info.order = order;
         info.options = options;
@@ -263,12 +273,18 @@ namespace lfs::python {
             "set_panel_space", [](const std::string& idname, const std::string& space_str) {
                 auto ps = parse_panel_space(space_str);
                 if (!ps) {
-                    LOG_WARN("Unknown panel space '{}' for panel '{}', defaulting to Floating", space_str, idname);
+                    LOG_WARN("Unknown panel space '{}' for panel '{}', defaulting to MainPanelTab", space_str, idname);
                 }
-                auto gui_space = to_gui_space(ps.value_or(PanelSpace::Floating));
+                auto gui_space = to_gui_space(ps.value_or(PanelSpace::MainPanelTab));
                 return gui::PanelRegistry::instance().set_panel_space(idname, gui_space);
             },
             nb::arg("idname"), nb::arg("space"), "Set the panel space (where it renders)");
+
+        m.def(
+            "set_panel_parent", [](const std::string& idname, const std::string& parent_idname) {
+                return gui::PanelRegistry::instance().set_panel_parent(idname, parent_idname);
+            },
+            nb::arg("idname"), nb::arg("parent"), "Set the parent panel (embeds as collapsible section)");
 
         m.def(
             "has_main_panel_tabs", []() {
