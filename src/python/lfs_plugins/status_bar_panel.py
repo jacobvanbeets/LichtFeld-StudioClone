@@ -207,8 +207,9 @@ class StatusBarPanel(Panel):
             layout.text_colored(f"{_strip_colon(tr('controls.zoom'))}: {zoom_speed * 10:.0f}", speed_color)
 
     def _draw_right_section(self, layout, p):
-        used, total = lf.ui.get_gpu_memory()
-        used_gb = used / 1e9
+        app_used, total_used, total = lf.ui.get_gpu_memory()
+        app_gb = app_used / 1e9
+        used_gb = total_used / 1e9
         total_gb = total / 1e9
         pct = (used_gb / total_gb) * 100 if total_gb > 0 else 0
 
@@ -229,18 +230,24 @@ class StatusBarPanel(Panel):
 
         git_commit = lf.ui.get_git_commit()
 
-        mem_text = f"{used_gb:.1f}/{total_gb:.1f}GB"
+        icon_sz = 14
+        icon_spacing = 4
+        lfs_text = f"LFS {app_gb:.1f}GB"
+        used_text = f"{tr('status_bar.gpu')} {used_gb:.1f}/{total_gb:.1f}GB"
         fps_text = f"{fps:.0f}"
-        gpu_label = f"{tr('status_bar.gpu')} "
         fps_label = f" {tr('status.fps')}"
 
-        gpu_w, _ = layout.calc_text_size(gpu_label)
-        mem_w, _ = layout.calc_text_size(mem_text)
+        lfs_w, _ = layout.calc_text_size(lfs_text)
+        sep_w, _ = layout.calc_text_size(" | ")
+        used_w, _ = layout.calc_text_size(used_text)
         fps_w, _ = layout.calc_text_size(fps_text)
         fps_label_w, _ = layout.calc_text_size(fps_label)
         commit_w, _ = layout.calc_text_size(git_commit)
         padding = 16
-        right_width = gpu_w + mem_w + padding + fps_w + fps_label_w + padding + commit_w + padding
+        right_width = (icon_sz + icon_spacing
+                       + lfs_w + sep_w + used_w
+                       + padding + fps_w + fps_label_w
+                       + padding + commit_w + padding)
 
         window_w = layout.get_window_width()
         target_x = window_w - right_width
@@ -250,9 +257,16 @@ class StatusBarPanel(Panel):
         if target_x > cur_x:
             layout.set_cursor_pos_x(target_x)
 
-        layout.text_colored(gpu_label, p.text_dim)
+        gpu_tex = self._get_gpu_icon()
+        if gpu_tex:
+            layout.image(gpu_tex, (icon_sz, icon_sz), p.text_dim)
+            layout.same_line(spacing=icon_spacing)
+
+        layout.text_colored(lfs_text, p.info)
         layout.same_line(spacing=0)
-        layout.text_colored(mem_text, mem_color)
+        layout.text_colored(" | ", p.text_dim)
+        layout.same_line(spacing=0)
+        layout.text_colored(used_text, mem_color)
 
         layout.same_line(spacing=16)
         layout.text_colored(fps_text, fps_color)
@@ -261,3 +275,9 @@ class StatusBarPanel(Panel):
 
         layout.same_line(spacing=16)
         layout.text_colored(git_commit, p.text_dim)
+
+    def _get_gpu_icon(self):
+        if not hasattr(self, "_gpu_icon_tex"):
+            from . import icon_manager
+            self._gpu_icon_tex = icon_manager.get_ui_icon("gpu.png")
+        return self._gpu_icon_tex

@@ -1251,7 +1251,7 @@ lf.undo.push(name: str, undo: Callable, redo: Callable, validate: Callable | Non
 | `lf.ui.set_transform_space(space)`          | `None`           | Set transform space index  |
 | `lf.ui.get_pivot_mode()` / `set_pivot_mode(mode)` | `int`      | Pivot mode enum index      |
 | `lf.ui.get_fps()`                           | `float`          | Current FPS                |
-| `lf.ui.get_gpu_memory()`                    | `(int, int)`     | (used, total) bytes        |
+| `lf.ui.get_gpu_memory()`                    | `(int, int, int)` | (process_used, total_used, total) bytes |
 | `lf.ui.get_git_commit()`                    | `str`            | Git commit hash            |
 
 ### File Dialogs

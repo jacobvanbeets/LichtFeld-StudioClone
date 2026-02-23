@@ -58,7 +58,12 @@
 #include <imgui.h>
 
 #ifdef _WIN32
+#include <process.h>
 #include <shellapi.h>
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#include <unistd.h>
 #endif
 
 namespace lfs::python {
@@ -66,6 +71,99 @@ namespace lfs::python {
     using lfs::training::CommandCenter;
 
     namespace {
+
+        // NVML types/constants mirrored for dlopen (no link dependency)
+        using NvmlDevice = void*;
+        enum { NVML_SUCCESS = 0 };
+        constexpr int NVML_PCI_BUS_ID_LEN = 32;
+
+        struct NvmlProcessInfo {
+            unsigned int pid;
+            unsigned long long usedGpuMemory;
+            unsigned int gpuInstanceId;
+            unsigned int computeInstanceId;
+        };
+
+        using FnNvmlInit = int (*)();
+        using FnNvmlShutdown = int (*)();
+        using FnNvmlDeviceGetHandleByPciBusId = int (*)(const char*, NvmlDevice*);
+        using FnNvmlDeviceGetComputeRunningProcesses = int (*)(NvmlDevice, unsigned int*, NvmlProcessInfo*);
+
+        struct NvmlState {
+            bool initialized = false;
+            NvmlDevice device = nullptr;
+            unsigned int pid = 0;
+#ifdef _WIN32
+            HMODULE lib = nullptr;
+#else
+            void* lib = nullptr;
+#endif
+            FnNvmlDeviceGetComputeRunningProcesses fn_get_procs = nullptr;
+
+            NvmlState() {
+#ifdef _WIN32
+                lib = LoadLibraryA("nvml.dll");
+#else
+                lib = dlopen("libnvidia-ml.so.1", RTLD_LAZY);
+                if (!lib)
+                    lib = dlopen("libnvidia-ml.so", RTLD_LAZY);
+#endif
+                if (!lib)
+                    return;
+
+                auto load = [this](const char* name) -> void* {
+#ifdef _WIN32
+                    return reinterpret_cast<void*>(GetProcAddress(lib, name));
+#else
+                    return dlsym(lib, name);
+#endif
+                };
+
+                auto fn_init = reinterpret_cast<FnNvmlInit>(load("nvmlInit_v2"));
+                auto fn_get_handle = reinterpret_cast<FnNvmlDeviceGetHandleByPciBusId>(load("nvmlDeviceGetHandleByPciBusId_v2"));
+                fn_get_procs = reinterpret_cast<FnNvmlDeviceGetComputeRunningProcesses>(load("nvmlDeviceGetComputeRunningProcesses_v3"));
+
+                if (!fn_init || !fn_get_handle || !fn_get_procs)
+                    return;
+                if (fn_init() != NVML_SUCCESS)
+                    return;
+
+                int cuda_device = 0;
+                cudaGetDevice(&cuda_device);
+                char pci_bus_id[NVML_PCI_BUS_ID_LEN];
+                if (cudaDeviceGetPCIBusId(pci_bus_id, sizeof(pci_bus_id), cuda_device) != cudaSuccess)
+                    return;
+                if (fn_get_handle(pci_bus_id, &device) != NVML_SUCCESS)
+                    return;
+
+#ifdef _WIN32
+                pid = static_cast<unsigned int>(_getpid());
+#else
+                pid = static_cast<unsigned int>(getpid());
+#endif
+                initialized = true;
+            }
+
+            size_t get_process_memory() const {
+                if (!initialized)
+                    return 0;
+                unsigned int count = 64;
+                NvmlProcessInfo procs[64];
+                if (fn_get_procs(device, &count, procs) != NVML_SUCCESS)
+                    return 0;
+                for (unsigned int i = 0; i < count; ++i) {
+                    if (procs[i].pid == pid)
+                        return static_cast<size_t>(procs[i].usedGpuMemory);
+                }
+                return 0;
+            }
+        };
+
+        NvmlState& nvml_state() {
+            static NvmlState s;
+            return s;
+        }
+
         std::string get_class_id(nb::object cls) {
             auto mod = nb::cast<std::string>(cls.attr("__module__"));
             auto name = nb::cast<std::string>(cls.attr("__qualname__"));
@@ -3292,7 +3390,8 @@ namespace lfs::python {
                                  {0, 0}, {u1, v1}, t, {0, 0, 0, 0});
                 },
                 nb::arg("texture"), nb::arg("size"), nb::arg("tint") = nb::none(), "Draw a DynamicTexture with automatic UV scaling")
-            .def("image_tensor", [](PyUILayout& /*self*/, const std::string& label, PyTensor& tensor, std::tuple<float, float> size, nb::object tint) {
+            .def(
+                "image_tensor", [](PyUILayout& /*self*/, const std::string& label, PyTensor& tensor, std::tuple<float, float> size, nb::object tint) {
                     PyDynamicTexture* tex_ptr = nullptr;
                     {
                         std::lock_guard lock(g_dynamic_textures_mutex);
@@ -4650,12 +4749,15 @@ namespace lfs::python {
             "Get current FPS");
 
         m.def(
-            "get_gpu_memory", []() -> std::tuple<size_t, size_t> {
+            "get_gpu_memory", []() -> std::tuple<size_t, size_t, size_t> {
                 size_t free_mem = 0, total_mem = 0;
                 cudaMemGetInfo(&free_mem, &total_mem);
-                return {total_mem - free_mem, total_mem};
+                size_t process_bytes = nvml_state().get_process_memory();
+                if (process_bytes > total_mem)
+                    process_bytes = 0;
+                return {process_bytes, total_mem - free_mem, total_mem};
             },
-            "Get GPU memory (used, total) in bytes");
+            "Get GPU memory (process_used, total_used, total) in bytes");
 
         m.def(
             "get_content_type", []() -> const char* {

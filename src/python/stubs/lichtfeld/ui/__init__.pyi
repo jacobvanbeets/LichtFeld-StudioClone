@@ -1773,8 +1773,8 @@ def is_point_cloud_forced() -> bool:
 def get_fps() -> float:
     """Get current FPS"""
 
-def get_gpu_memory() -> tuple[int, int]:
-    """Get GPU memory (used, total) in bytes"""
+def get_gpu_memory() -> tuple[int, int, int]:
+    """Get GPU memory (process_used, total_used, total) in bytes"""
 
 def get_content_type() -> str:
     """Get content type (empty, splat_files, dataset)"""

@@ -200,6 +200,7 @@ target_link_libraries(lfs_py PRIVATE
     OpenImageIO::OpenImageIO
     CUDA::cudart
     CUDA::curand
+    ${CMAKE_DL_LIBS}
     imgui::imgui
     implot::implot
     glfw
