@@ -38,6 +38,24 @@ namespace lfs::python {
     void ensure_initialized();
 
     /**
+     * @brief Load user plugins configured for startup.
+     *        This requires a ready Python runtime.
+     */
+    void ensure_plugins_loaded();
+
+    /**
+     * @brief Schedule asynchronous plugin autoload after startup.
+     *        This keeps first-frame startup responsive.
+     */
+    void preload_user_plugins_async();
+
+    /**
+     * @brief Join the plugin preload thread if running.
+     *        Called from finalize() to ensure clean shutdown.
+     */
+    void join_plugin_preload();
+
+    /**
      * @brief Start an embedded Python REPL on a background thread.
      * @param read_fd File descriptor for stdin. Ownership transferred.
      * @param write_fd File descriptor for stdout/stderr. Ownership transferred.
