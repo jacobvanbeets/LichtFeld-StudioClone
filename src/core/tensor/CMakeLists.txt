@@ -17,7 +17,6 @@ set(LFS_TENSOR_CUDA_SOURCES
     tensor_strided_ops.cu
     tensor_dot_optimized.cu
     tensor_nn_ops.cu
-    tensor_fused_pointwise.cu
 )
 
 if(LFS_TENSOR_CUDA_SOURCES)

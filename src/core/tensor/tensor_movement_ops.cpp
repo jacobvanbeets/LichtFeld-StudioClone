@@ -125,13 +125,6 @@ namespace lfs::core {
                     return {};
                 }
 
-                if (state_ && state_->has_deferred_expr) {
-                    std::vector<int> axes(shape_.rank());
-                    std::iota(axes.begin(), axes.end(), 0);
-                    std::swap(axes[dim1], axes[dim2]);
-                    return permute(std::span<const int>(axes));
-                }
-
                 // ZERO-COPY TRANSPOSE: Just swap stride metadata!
                 Tensor view;
                 view.data_ = data_;
@@ -153,8 +146,8 @@ namespace lfs::core {
                 // Copy storage offset
                 view.storage_offset_ = storage_offset_;
 
+                // After transpose, usually non-contiguous
                 view.is_contiguous_ = check_contiguous(view.shape_, view.strides_);
-                propagate_view_meta(view);
 
                 return view;
             }
@@ -352,7 +345,7 @@ namespace lfs::core {
                         ptr<float>(), result.ptr<float>(),
                         shape_.dims().data(), strides_.data(),
                         new_shape.data(), pad_before.data(),
-                        shape_.rank(), numel(), result.stream());
+                        shape_.rank(), numel(), nullptr);
                 } else if (device_ == Device::CPU && dtype_ == DataType::Float32) {
                     if (!is_contiguous())
                         return contiguous().movement(op, args);

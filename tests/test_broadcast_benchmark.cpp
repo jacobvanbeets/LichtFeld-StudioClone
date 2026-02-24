@@ -118,8 +118,7 @@ TEST_F(BroadcastBenchmarkTest, BroadcastAddition) {
             // Custom
             {
                 Timer timer;
-                Tensor result = a_custom + b_custom;
-                result.data_ptr();
+                Tensor result = a_custom + b_custom; // Force evaluation!
                 cudaDeviceSynchronize();
                 total_custom += timer.elapsed_ms();
             }
@@ -171,7 +170,6 @@ TEST_F(BroadcastBenchmarkTest, BroadcastMultiplication) {
             {
                 Timer timer;
                 auto result = a_custom * b_custom;
-                result.data_ptr();
                 cudaDeviceSynchronize();
                 total_custom += timer.elapsed_ms();
             }
@@ -225,7 +223,6 @@ TEST_F(BroadcastBenchmarkTest, ChainedBroadcastOperations) {
             auto normalized = (img_custom - mean_custom) / (std_custom + 1e-8f);
             auto scaled = normalized * scale_custom;
             auto result = scaled.clamp(0.0f, 255.0f);
-            result.data_ptr();
             cudaDeviceSynchronize();
             total_custom += timer.elapsed_ms();
         }
@@ -295,7 +292,6 @@ TEST_F(BroadcastBenchmarkTest, ComparisonOperations) {
             {
                 Timer timer;
                 auto result = custom_op();
-                result.data_ptr();
                 cudaDeviceSynchronize();
                 total_custom += timer.elapsed_ms();
             }

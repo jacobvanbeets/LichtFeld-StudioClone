@@ -133,7 +133,7 @@ namespace {
         CheckpointStrategies,
         CheckpointResumeTest,
         ::testing::Combine(
-            ::testing::Values("mcmc", "adc"),
+            ::testing::Values("mcmc", "default"),
             ::testing::Values(0, 1, 2, 3)),
         TestName);
 

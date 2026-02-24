@@ -91,7 +91,9 @@ namespace lfs::training {
 
         const auto layout = get_layout_info(pred, "PSNR");
 
-        auto squared_diff = (pred - target).square();
+        auto diff = pred - target;
+        auto squared_diff = diff * diff;
+        diff = {};
 
         float mse;
         if (mask.is_valid()) {

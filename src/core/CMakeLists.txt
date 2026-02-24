@@ -19,10 +19,6 @@ add_subdirectory(logger)
 
 # Tensor C++ sources (merged from src/core/tensor/)
 set(TENSOR_SOURCES
-        tensor/cuda_stream_context.cpp
-        tensor/lazy_config.cpp
-        tensor/lazy_ir.cpp
-        tensor/lazy_executor.cpp
         tensor/tensor.cpp
         tensor/tensor_factory.cpp
         tensor/tensor_utils.cpp

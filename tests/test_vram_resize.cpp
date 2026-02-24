@@ -4,6 +4,7 @@
 
 #include "core/logger.hpp"
 #include "core/tensor.hpp"
+#include "core/tensor/internal/memory_pool.hpp"
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
@@ -19,10 +20,11 @@ namespace {
         return {used_bytes / (1024 * 1024), total_bytes / (1024 * 1024)};
     }
 
-    // Force CUDA memory cleanup via the shared library's pool instance
+    // Force CUDA memory cleanup - including memory pool trim
     void forceMemoryCleanup() {
         cudaDeviceSynchronize();
-        Tensor::trim_memory_pool();
+        // Trim the CUDA memory pool to release cached memory back to OS
+        CudaMemoryPool::instance().trim_cached_memory();
         cudaDeviceSynchronize();
     }
 
@@ -31,8 +33,6 @@ namespace {
 class VRAMResizeTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Warm up allocator (slab init is lazy, ~288MB)
-        { auto _ = Tensor::empty({1}, Device::CUDA); }
         forceMemoryCleanup();
         auto [used, total] = getGPUMemoryMB();
         baseline_vram_mb_ = used;
@@ -243,11 +243,9 @@ TEST_F(VRAMResizeTest, MemoryPerResolution) {
 
         LOG_INFO("{}: {} MB (expected ~{} MB)", res.name, delta, expected);
 
-        // Verify upper bound strictly; lower bound tolerates CUDA pool slack from prior tests
+        // Verify within reasonable range
+        EXPECT_GE(delta, expected * 0.8) << res.name << " should use at least 80% of expected";
         EXPECT_LE(delta, expected * 1.5) << res.name << " should use at most 150% of expected";
-        if (delta > 0) {
-            EXPECT_GE(delta, expected * 0.5) << res.name << " allocated less than 50% of expected";
-        }
     }
 }
 

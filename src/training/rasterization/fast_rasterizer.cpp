@@ -339,8 +339,6 @@ namespace lfs::training {
         // output = image + (1 - alpha) * bg_color (or bg_image)
         // (output_image is pre-allocated above)
 
-        const cudaStream_t stream = output_image.stream();
-
         // Use background image if provided, otherwise use solid color
         if (bg_image.is_valid() && !bg_image.is_empty()) {
             kernels::launch_fused_background_blend_with_image(
@@ -350,7 +348,8 @@ namespace lfs::training {
                 output_image.ptr<float>(),
                 height,
                 width,
-                stream);
+                nullptr // default stream
+            );
         } else {
             kernels::launch_fused_background_blend(
                 image.ptr<float>(),
@@ -359,7 +358,8 @@ namespace lfs::training {
                 output_image.ptr<float>(),
                 height,
                 width,
-                stream);
+                nullptr // default stream
+            );
         }
 
         render_output.image = output_image;
@@ -433,16 +433,7 @@ namespace lfs::training {
             throw std::runtime_error("Unexpected grad_image shape");
         }
 
-        thread_local core::Tensor cached_grad_alpha;
-        thread_local int cached_ga_h = 0, cached_ga_w = 0;
-        if (!cached_grad_alpha.is_valid() || cached_ga_h != H || cached_ga_w != W) {
-            cached_grad_alpha = core::Tensor::empty({static_cast<size_t>(H), static_cast<size_t>(W)}, core::Device::CUDA);
-            cached_ga_h = H;
-            cached_ga_w = W;
-        }
-        auto& grad_alpha = cached_grad_alpha;
-        const cudaStream_t stream = grad_image.stream();
-        grad_alpha.set_stream(stream);
+        auto grad_alpha = core::Tensor::empty({static_cast<size_t>(H), static_cast<size_t>(W)}, core::Device::CUDA);
 
         // Use background image kernel if available, otherwise use solid color kernel
         if (ctx.bg_image.is_valid() && !ctx.bg_image.is_empty() && is_chw_layout) {
@@ -451,7 +442,7 @@ namespace lfs::training {
                 ctx.bg_image.ptr<float>(),
                 grad_alpha.ptr<float>(),
                 H, W,
-                stream);
+                nullptr);
         } else {
             kernels::launch_fused_grad_alpha(
                 grad_image.ptr<float>(),
@@ -459,14 +450,11 @@ namespace lfs::training {
                 grad_alpha.ptr<float>(),
                 H, W,
                 is_chw_layout,
-                stream);
+                nullptr);
         }
 
         if (grad_alpha_extra.is_valid() && grad_alpha_extra.numel() > 0) {
-            auto extra = (grad_alpha_extra.ndim() == 3 && grad_alpha_extra.shape()[0] == 1)
-                             ? grad_alpha_extra.squeeze(0)
-                             : grad_alpha_extra;
-            grad_alpha.add_(extra);
+            grad_alpha = grad_alpha + grad_alpha_extra;
         }
 
         const int n_primitives = static_cast<int>(ctx.means.shape()[0]);
@@ -490,9 +478,7 @@ namespace lfs::training {
             if (error_map_2d.device() != core::Device::CUDA) {
                 error_map_2d = error_map_2d.cuda();
             }
-            if (!error_map_2d.is_contiguous()) {
-                error_map_2d = error_map_2d.contiguous();
-            }
+            error_map_2d = error_map_2d.contiguous();
         }
 
         // Get gradient pointers from optimizer

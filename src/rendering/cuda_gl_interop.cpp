@@ -8,6 +8,7 @@
 
 #include "core/logger.hpp"
 #include "core/tensor.hpp"
+#include "core/tensor/internal/memory_pool.hpp"
 #include "cuda_gl_interop.hpp"
 #include "image_layout.hpp"
 #include <cassert>
@@ -87,7 +88,7 @@ namespace lfs::rendering {
         LOG_TRACE("Resize non-interop texture: {}x{} -> {}x{}",
                   allocated_width_, allocated_height_, alloc_width, alloc_height);
 
-        lfs::core::Tensor::trim_memory_pool();
+        lfs::core::CudaMemoryPool::instance().trim_cached_memory();
 
         auto result = init(alloc_width, alloc_height);
         if (result) {
@@ -413,7 +414,7 @@ namespace lfs::rendering {
         LOG_TRACE("Resize interop texture: {}x{} -> {}x{}",
                   allocated_width_, allocated_height_, alloc_width, alloc_height);
 
-        lfs::core::Tensor::trim_memory_pool();
+        lfs::core::CudaMemoryPool::instance().trim_cached_memory();
 
         auto result = init(alloc_width, alloc_height);
         if (result) {

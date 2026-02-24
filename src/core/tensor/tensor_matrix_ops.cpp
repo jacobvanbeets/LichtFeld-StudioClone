@@ -61,7 +61,7 @@ namespace lfs::core {
         if (device_ == Device::CUDA) {
             auto result = empty({m, n}, Device::CUDA, dtype_);
             tensor_ops::launch_sgemm(a.ptr<float>(), b.ptr<float>(), result.ptr<float>(),
-                                     m, n, k, result.stream());
+                                     m, n, k, nullptr);
             return result;
         }
 
@@ -109,7 +109,7 @@ namespace lfs::core {
         if (device_ == Device::CUDA) {
             auto result = empty({batch_size, m, n}, Device::CUDA, dtype_);
             tensor_ops::launch_sgemm_batched(a.ptr<float>(), b.ptr<float>(), result.ptr<float>(),
-                                             batch_size, m, n, k, result.stream());
+                                             batch_size, m, n, k, nullptr);
             return result;
         }
 
@@ -247,13 +247,14 @@ namespace lfs::core {
 
         // GPU: Use optimized CUDA kernel
         if (device_ == Device::CUDA) {
-            auto result = empty({}, Device::CUDA, dtype_);
+            auto result = empty({}, Device::CUDA, dtype_); // Scalar on GPU
             tensor_ops::launch_dot_product(
                 a.ptr<float>(),
                 b.ptr<float>(),
                 result.ptr<float>(),
                 n,
-                result.stream());
+                nullptr // default stream
+            );
             return result;
         }
 

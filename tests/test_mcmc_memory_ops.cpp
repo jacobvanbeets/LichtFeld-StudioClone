@@ -11,6 +11,7 @@
  * memory accumulation seen in long MCMC training runs.
  */
 
+#include "../src/core/tensor/internal/memory_pool.hpp"
 #include "core/tensor.hpp"
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
@@ -232,7 +233,7 @@ TEST(MemoryLeak, MultinomialRepeatedCalls) {
         auto sampled_indices = Tensor::multinomial(weights, n_samples, true);
 
         if (i % 10 == 0) {
-            Tensor::trim_memory_pool();
+            CudaMemoryPool::instance().trim_cached_memory();
         }
     }
 
@@ -265,7 +266,7 @@ TEST(MemoryLeak, AppendGatherVsIndexSelectCat) {
             param = Tensor::cat({param, new_values}, 0);
 
             if (i % 10 == 0) {
-                Tensor::trim_memory_pool();
+                CudaMemoryPool::instance().trim_cached_memory();
             }
         }
 
@@ -289,7 +290,7 @@ TEST(MemoryLeak, AppendGatherVsIndexSelectCat) {
             param.append_gather(sampled_idxs); // No intermediate allocation
 
             if (i % 10 == 0) {
-                Tensor::trim_memory_pool();
+                CudaMemoryPool::instance().trim_cached_memory();
             }
         }
 
@@ -343,7 +344,7 @@ TEST(MemoryLeak, RealisticMCMCLoop) {
                 params[i].append_gather(sampled_idxs);
             }
 
-            Tensor::trim_memory_pool();
+            CudaMemoryPool::instance().trim_cached_memory();
         }
     }
 
