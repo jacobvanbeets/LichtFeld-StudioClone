@@ -597,7 +597,10 @@ namespace lfs::core {
         }
 
         // Helper for binary operations with automatic type promotion
-        // Promotes types, converts operands if needed, and creates BinaryExpr
+        // Promotes types, converts operands if needed, and evaluates eagerly.
+        // Binary ops are always eager because our fusion system only handles
+        // unary/scalar chains — deferring binary ops provides no fusion benefit
+        // and creates dangerous reference chains when stored in member variables.
         template <typename Op>
         Tensor binary_op_with_promotion(const Tensor& other, Op op) const {
             validate_binary_op(other, false, true);
@@ -612,16 +615,18 @@ namespace lfs::core {
             // Compute broadcast shape
             auto broadcast_shape = lhs.broadcast_shape(rhs.shape());
 
-            // Create and return the binary expression with promoted dtype
-            Tensor result = BinaryExpr<TensorLeaf, TensorLeaf, Op>(
+            // Evaluate eagerly — binary ops can't be fused by the pointwise system
+            auto expr = BinaryExpr<TensorLeaf, TensorLeaf, Op>(
                 TensorLeaf(lhs), TensorLeaf(rhs), op,
                 broadcast_shape, lhs.device(), result_dtype);
-            link_deferred_result_to_inputs(result, {lhs.lazy_expr_id(), rhs.lazy_expr_id()});
+            Tensor result = expr.eval();
+            internal::lazy_ir_record_binary(lhs, rhs, result, "binary");
             return result;
         }
 
         // Helper for comparison operations with automatic type promotion
-        // Promotes operand types for comparison, but always returns Bool
+        // Promotes operand types for comparison, but always returns Bool.
+        // Eager for the same reasons as binary_op_with_promotion.
         template <typename Op>
         Tensor comparison_op_with_promotion(const Tensor& other, Op op) const {
             validate_binary_op(other, false, true);
@@ -636,11 +641,11 @@ namespace lfs::core {
             // Compute broadcast shape
             auto broadcast_shape = lhs.broadcast_shape(rhs.shape());
 
-            // Return Bool tensor (comparison result)
-            Tensor result = BinaryExpr<TensorLeaf, TensorLeaf, Op>(
+            auto expr = BinaryExpr<TensorLeaf, TensorLeaf, Op>(
                 TensorLeaf(lhs), TensorLeaf(rhs), op,
                 broadcast_shape, lhs.device(), DataType::Bool);
-            link_deferred_result_to_inputs(result, {lhs.lazy_expr_id(), rhs.lazy_expr_id()});
+            Tensor result = expr.eval();
+            internal::lazy_ir_record_binary(lhs, rhs, result, "comparison");
             return result;
         }
 
