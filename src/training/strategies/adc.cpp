@@ -5,7 +5,6 @@
 #include "adc.hpp"
 #include "core/logger.hpp"
 #include "core/parameters.hpp"
-#include "core/tensor/internal/memory_pool.hpp"
 #include "core/tensor/internal/tensor_serialization.hpp"
 #include "kernels/densification_kernels.hpp"
 #include "optimizer/render_output.hpp"
@@ -59,8 +58,12 @@ namespace lfs::training {
     }
 
     void ADC::remove_gaussians(const lfs::core::Tensor& mask) {
-        int mask_sum = mask.to(lfs::core::DataType::Int32).sum().template item<int>();
+        if (!mask.is_valid() || mask.numel() == 0) {
+            LOG_DEBUG("No Gaussians to remove");
+            return;
+        }
 
+        int mask_sum = mask.to(lfs::core::DataType::Int32).sum().template item<int>();
         if (mask_sum == 0) {
             LOG_DEBUG("No Gaussians to remove");
             return;
@@ -498,7 +501,7 @@ namespace lfs::training {
         lfs::core::Tensor is_prune = _splat_data->get_opacity() < _params->prune_opacity;
 
         auto rotation_raw = _splat_data->rotation_raw();
-        is_prune = is_prune.logical_or((rotation_raw * rotation_raw).sum(-1, false) < 1e-8f);
+        is_prune = is_prune.logical_or(rotation_raw.square().sum(-1, false) < 1e-8f);
 
         // Check for too large Gaussians
         if (iter > _params->reset_every) {
@@ -561,7 +564,7 @@ namespace lfs::training {
             prune_gs(iter);
 
             // Trim memory pools after densification to release temporary allocations
-            lfs::core::CudaMemoryPool::instance().trim_cached_memory();
+            lfs::core::Tensor::trim_memory_pool();
 
             _splat_data->_densification_info = lfs::core::Tensor::zeros(
                 {2, static_cast<size_t>(_splat_data->size())},
@@ -586,7 +589,7 @@ namespace lfs::training {
     namespace {
         constexpr uint32_t DEFAULT_MAGIC = 0x4C464446; // "LFDF"
         constexpr uint32_t DEFAULT_VERSION = 2;        // v2 adds free_mask serialization
-    } // namespace
+    }                                                  // namespace
 
     void ADC::serialize(std::ostream& os) const {
         os.write(reinterpret_cast<const char*>(&DEFAULT_MAGIC), sizeof(DEFAULT_MAGIC));
