@@ -504,7 +504,7 @@ namespace lfs::vis {
         state::TrainingStarted::when([this](const auto&) {
             ui::PointCloudModeChanged{
                 .enabled = false,
-                .voxel_size = 0.03f}
+                .voxel_size = 0.01f}
                 .emit();
 
             // Select the training model so it's visible
