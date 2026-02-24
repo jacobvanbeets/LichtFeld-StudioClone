@@ -84,6 +84,7 @@ namespace lfs::vis {
             bool isCapturingInput() const;
             bool isModalWindowOpen() const;
             [[nodiscard]] bool isStartupVisible() const { return startup_overlay_.isVisible(); }
+            void dismissStartupOverlay();
             void captureKey(int key, int mods);
             void captureMouseButton(int button, int mods);
 

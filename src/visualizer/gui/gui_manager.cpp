@@ -1149,11 +1149,15 @@ namespace lfs::vis::gui {
     }
 
     bool GuiManager::needsAnimationFrame() const {
-        if (startup_overlay_.isVisible())
+        if (startup_overlay_.needsAnimationFrame())
             return true;
         if (video_extractor_dialog_ && video_extractor_dialog_->isVideoPlaying())
             return true;
         return false;
+    }
+
+    void GuiManager::dismissStartupOverlay() {
+        startup_overlay_.dismiss();
     }
 
     void GuiManager::setFileSelectedCallback(std::function<void(const std::filesystem::path&, bool)> callback) {
