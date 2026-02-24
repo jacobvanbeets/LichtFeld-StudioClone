@@ -211,8 +211,8 @@ TEST_F(TensorRowProxyTest, CudaDoubleSubscriptAssignmentPersists) {
     auto cpu = t_.to(Device::CPU);
     auto values = cpu.to_vector();
     ASSERT_EQ(values.size(), 6u);
-    EXPECT_FLOAT_EQ(values[1], 42.0f); // [0][1]
-    EXPECT_FLOAT_EQ(values[5], -7.5f); // [1][2]
+    EXPECT_FLOAT_EQ(values[1], 42.0f);  // [0][1]
+    EXPECT_FLOAT_EQ(values[5], -7.5f);  // [1][2]
 }
 
 TEST_F(TensorRowProxyTest, CudaProxyFlushesAcrossMultipleElementWrites) {
