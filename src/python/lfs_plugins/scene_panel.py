@@ -203,9 +203,14 @@ class ScenePanel(Panel):
         layout.pop_style_var()
 
     def _draw_node(self, layout, scene, node, depth, scale):
+        try:
+            node_name = node.name
+        except (UnicodeDecodeError, ValueError):
+            node_name = f"<node_{node.id}>"
+
         if self._filter_text:
             filter_lower = self._filter_text.lower()
-            if filter_lower not in node.name.lower():
+            if filter_lower not in node_name.lower():
                 for child_id in node.children:
                     child = scene.get_node_by_id(child_id)
                     if child:
@@ -246,7 +251,7 @@ class ScenePanel(Panel):
                 seq = lf.ui.get_sequencer_state()
                 if seq and seq.selected_keyframe == kf.keyframe_index:
                     is_selected = True
-        self._visible_node_order.append(node.name)
+        self._visible_node_order.append(node_name)
 
         icon_size = ICON_SIZE_BASE * scale
         icon_spacing = ICON_SPACING_BASE * scale
@@ -255,7 +260,7 @@ class ScenePanel(Panel):
         self._draw_row_background(layout, is_selected, self._row_index)
         self._row_index += 1
 
-        if self._scroll_to_node == node.name:
+        if self._scroll_to_node == node_name:
             layout.set_scroll_here_y(0.5)
             self._scroll_to_node = None
 
@@ -271,7 +276,7 @@ class ScenePanel(Panel):
         vis_tex = self._get_icon("visible") if is_visible else self._get_icon("hidden")
         vis_tint = VISIBLE_TINT if is_visible else HIDDEN_TINT
         if vis_tex and layout.image_button(f"##vis_{node.id}", vis_tex, icon_sz, vis_tint):
-            lf.set_node_visibility(node.name, not is_visible)
+            lf.set_node_visibility(node_name, not is_visible)
         layout.same_line(0.0, icon_spacing)
 
         if is_camera:
@@ -289,12 +294,12 @@ class ScenePanel(Panel):
             trash_tex = self._get_icon("trash")
             trash_tint = TRASH_SELECTED_TINT if is_selected else TRASH_DEFAULT_TINT
             if trash_tex and layout.image_button(f"##del_{node.id}", trash_tex, icon_sz, trash_tint):
-                lf.remove_node(node.name, False)
+                lf.remove_node(node_name, False)
             if layout.is_item_hovered():
                 layout.set_tooltip(tr("scene.delete_node"))
             layout.same_line(0.0, icon_spacing)
 
-        if self._rename_node == node.name:
+        if self._rename_node == node_name:
             if self._rename_focus:
                 layout.set_keyboard_focus_here()
                 self._rename_focus = False
@@ -302,7 +307,7 @@ class ScenePanel(Panel):
             entered, self._rename_buffer = layout.input_text_enter("##rename", self._rename_buffer)
             layout.pop_item_width()
             if entered and self._rename_buffer:
-                lf.rename_node(node.name, self._rename_buffer)
+                lf.rename_node(node_name, self._rename_buffer)
                 self._rename_node = None
             elif lf.ui.is_key_pressed(lf.ui.Key.ESCAPE):
                 self._rename_node = None
@@ -330,7 +335,7 @@ class ScenePanel(Panel):
                 theme = lf.ui.theme()
                 layout.push_style_color("Text", theme.palette.text_dim)
 
-            label = node.name
+            label = node_name
             if is_splat:
                 label += f"  ({node.gaussian_count:,})"
             elif is_pointcloud:
@@ -364,7 +369,7 @@ class ScenePanel(Panel):
                 self._handle_drag_drop(layout, node, can_drag)
 
                 if node_clicked:
-                    self._handle_click(node.name)
+                    self._handle_click(node_name)
                     if is_keyframe:
                         kf = node.keyframe_data()
                         if kf:
@@ -395,7 +400,7 @@ class ScenePanel(Panel):
                 self._handle_drag_drop(layout, node, can_drag)
 
                 if layout.is_item_clicked():
-                    self._handle_click(node.name)
+                    self._handle_click(node_name)
                     if is_keyframe:
                         kf = node.keyframe_data()
                         if kf:
