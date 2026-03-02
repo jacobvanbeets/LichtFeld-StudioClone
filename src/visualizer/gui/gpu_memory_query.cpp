@@ -4,7 +4,6 @@
 
 #include "gui/gpu_memory_query.hpp"
 
-#include <cstdio>
 #include <cuda_runtime.h>
 
 #ifdef _WIN32
@@ -20,9 +19,8 @@ namespace lfs::vis::gui {
     namespace {
 
 #ifdef _WIN32
-        // Windows: use DXGI QueryVideoMemoryInfo for per-process GPU memory.
-        // NVML returns NVML_VALUE_NOT_AVAILABLE for usedGpuMemory under WDDM,
-        // so DXGI is the only reliable source on Windows.
+        // Windows: DXGI QueryVideoMemoryInfo for per-process GPU memory.
+        // NVML returns NVML_VALUE_NOT_AVAILABLE under WDDM.
         struct DxgiMemoryState {
             IDXGIAdapter3* adapter3 = nullptr;
             bool init_done = false;
@@ -39,82 +37,23 @@ namespace lfs::vis::gui {
             void ensureInit() {
                 if (init_done)
                     return;
-
-                HMODULE dxgi_lib = LoadLibraryA("dxgi.dll");
-                if (!dxgi_lib)
-                    return;
-
-                using FnCreateDXGIFactory1 = HRESULT(WINAPI*)(REFIID, void**);
-                auto fn_create = reinterpret_cast<FnCreateDXGIFactory1>(
-                    GetProcAddress(dxgi_lib, "CreateDXGIFactory1"));
-                if (!fn_create)
-                    return;
+                init_done = true;
 
                 IDXGIFactory1* factory = nullptr;
-                if (FAILED(fn_create(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&factory))))
+                if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1),
+                                              reinterpret_cast<void**>(&factory))))
                     return;
 
-                // Match DXGI adapter to the active CUDA device via PCI bus ID.
                 int cuda_device = 0;
                 cudaGetDevice(&cuda_device);
-                char pci_bus_id[32] = {};
-                if (cudaDeviceGetPCIBusId(pci_bus_id, sizeof(pci_bus_id), cuda_device) != cudaSuccess) {
-                    // Fallback: pick the first adapter with dedicated video memory.
-                    for (UINT i = 0;; ++i) {
-                        IDXGIAdapter* adapter = nullptr;
-                        if (factory->EnumAdapters(i, &adapter) == DXGI_ERROR_NOT_FOUND)
-                            break;
-                        DXGI_ADAPTER_DESC desc{};
-                        if (SUCCEEDED(adapter->GetDesc(&desc)) && desc.DedicatedVideoMemory > 0) {
-                            adapter->QueryInterface(__uuidof(IDXGIAdapter3),
-                                                    reinterpret_cast<void**>(&adapter3));
-                            adapter->Release();
-                            break;
-                        }
-                        adapter->Release();
-                    }
+
+                if (matchByLuid(factory, cuda_device)) {
                     factory->Release();
-                    init_done = true;
                     return;
                 }
 
-                // Parse "domain:bus:device.function" from CUDA PCI bus ID.
-                unsigned int domain = 0, bus = 0, dev = 0, func = 0;
-                sscanf(pci_bus_id, "%x:%x:%x.%x", &domain, &bus, &dev, &func);
-
-                for (UINT i = 0;; ++i) {
-                    IDXGIAdapter* adapter = nullptr;
-                    if (factory->EnumAdapters(i, &adapter) == DXGI_ERROR_NOT_FOUND)
-                        break;
-                    DXGI_ADAPTER_DESC desc{};
-                    if (SUCCEEDED(adapter->GetDesc(&desc))) {
-                        // DXGI encodes the PCI bus location in the LUID;
-                        // match by checking dedicated VRAM matches CUDA device total memory.
-                        // For a reliable match, compare adapter's dedicated memory against
-                        // what CUDA reports for the device.
-                        size_t cuda_total = 0;
-                        cudaDeviceProp props{};
-                        if (cudaGetDeviceProperties(&props, cuda_device) == cudaSuccess)
-                            cuda_total = props.totalGlobalMem;
-
-                        // Match if dedicated VRAM is within 512MB of CUDA total
-                        // (DXGI may report slightly different due to reserved memory).
-                        auto dxgi_vram = static_cast<size_t>(desc.DedicatedVideoMemory);
-                        size_t diff = dxgi_vram > cuda_total ? dxgi_vram - cuda_total
-                                                            : cuda_total - dxgi_vram;
-                        constexpr size_t TOLERANCE = 512ULL * 1024 * 1024;
-                        if (cuda_total > 0 && diff < TOLERANCE) {
-                            adapter->QueryInterface(__uuidof(IDXGIAdapter3),
-                                                    reinterpret_cast<void**>(&adapter3));
-                            adapter->Release();
-                            break;
-                        }
-                    }
-                    adapter->Release();
-                }
-
+                matchByVram(factory, cuda_device);
                 factory->Release();
-                init_done = true;
             }
 
             size_t getProcessMemory() {
@@ -126,6 +65,70 @@ namespace lfs::vis::gui {
                         0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mem_info)))
                     return static_cast<size_t>(mem_info.CurrentUsage);
                 return 0;
+            }
+
+        private:
+            // Match DXGI adapter to CUDA device via LUID (exact, multi-GPU safe).
+            bool matchByLuid(IDXGIFactory1* factory, int cuda_device) {
+                using FnCuDeviceGetLuid = int (*)(char*, unsigned int*, int);
+                HMODULE nvcuda = GetModuleHandleA("nvcuda.dll");
+                if (!nvcuda)
+                    return false;
+                auto fn = reinterpret_cast<FnCuDeviceGetLuid>(
+                    GetProcAddress(nvcuda, "cuDeviceGetLuid"));
+                if (!fn)
+                    return false;
+
+                LUID cuda_luid{};
+                static_assert(sizeof(LUID) == 8);
+                unsigned int node_mask = 0;
+                if (fn(reinterpret_cast<char*>(&cuda_luid), &node_mask, cuda_device) != 0)
+                    return false;
+
+                for (UINT i = 0;; ++i) {
+                    IDXGIAdapter* adapter = nullptr;
+                    if (factory->EnumAdapters(i, &adapter) == DXGI_ERROR_NOT_FOUND)
+                        break;
+                    DXGI_ADAPTER_DESC desc{};
+                    if (SUCCEEDED(adapter->GetDesc(&desc)) &&
+                        desc.AdapterLuid.LowPart == cuda_luid.LowPart &&
+                        desc.AdapterLuid.HighPart == cuda_luid.HighPart) {
+                        adapter->QueryInterface(__uuidof(IDXGIAdapter3),
+                                                reinterpret_cast<void**>(&adapter3));
+                        adapter->Release();
+                        return true;
+                    }
+                    adapter->Release();
+                }
+                return false;
+            }
+
+            // Fallback: match by dedicated VRAM size (unreliable with identical GPUs).
+            void matchByVram(IDXGIFactory1* factory, int cuda_device) {
+                cudaDeviceProp props{};
+                size_t cuda_total = 0;
+                if (cudaGetDeviceProperties(&props, cuda_device) == cudaSuccess)
+                    cuda_total = props.totalGlobalMem;
+
+                for (UINT i = 0;; ++i) {
+                    IDXGIAdapter* adapter = nullptr;
+                    if (factory->EnumAdapters(i, &adapter) == DXGI_ERROR_NOT_FOUND)
+                        break;
+                    DXGI_ADAPTER_DESC desc{};
+                    if (SUCCEEDED(adapter->GetDesc(&desc))) {
+                        auto dxgi_vram = static_cast<size_t>(desc.DedicatedVideoMemory);
+                        size_t diff = dxgi_vram > cuda_total ? dxgi_vram - cuda_total
+                                                             : cuda_total - dxgi_vram;
+                        constexpr size_t TOLERANCE = 512ULL * 1024 * 1024;
+                        if (cuda_total > 0 && diff < TOLERANCE) {
+                            adapter->QueryInterface(__uuidof(IDXGIAdapter3),
+                                                    reinterpret_cast<void**>(&adapter3));
+                            adapter->Release();
+                            return;
+                        }
+                    }
+                    adapter->Release();
+                }
             }
         };
 
