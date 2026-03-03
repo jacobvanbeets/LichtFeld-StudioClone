@@ -39,6 +39,7 @@ namespace lfs::vis {
     class SelectionService;
     namespace gui {
         class GuiManager;
+        class GlobalContextMenu;
     } // namespace gui
     namespace input {
         class InputBindings;
@@ -298,6 +299,9 @@ namespace lfs::python {
 
     LFS_PYTHON_RUNTIME_API void set_gui_manager(vis::gui::GuiManager* gm);
     LFS_PYTHON_RUNTIME_API vis::gui::GuiManager* get_gui_manager();
+
+    LFS_PYTHON_RUNTIME_API void set_global_context_menu(vis::gui::GlobalContextMenu* cm);
+    LFS_PYTHON_RUNTIME_API vis::gui::GlobalContextMenu* get_global_context_menu();
 
     using Mesh2SplatStartFn = std::function<void(std::shared_ptr<core::MeshData>, std::string,
                                                  core::Mesh2SplatOptions)>;
@@ -573,6 +577,8 @@ namespace lfs::python {
         void* (*get_context)(void* host);
         void (*set_foreground)(void* host, bool fg);
         void (*mark_content_dirty)(void* host);
+        void (*set_input_clip_y)(void* host, float y_min, float y_max);
+        void (*set_input)(void* host, const void* input);
     };
 
     LFS_PYTHON_RUNTIME_API void set_rml_panel_host_ops(const RmlPanelHostOps& ops);

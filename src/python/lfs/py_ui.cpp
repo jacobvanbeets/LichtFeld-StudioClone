@@ -11,6 +11,7 @@
 #include "core/logger.hpp"
 #include "core/property_registry.hpp"
 #include "core/scene.hpp"
+#include "gui/global_context_menu.hpp"
 #include "gui/rml_menu_bar.hpp"
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/windows_utils.hpp"
@@ -3056,6 +3057,50 @@ namespace lfs::python {
         // ~PyDynamicTexture destructors run here without holding the mutex
     }
 
+    void register_ui_context_menu(nb::module_& m) {
+        m.def(
+            "show_context_menu",
+            [](nb::list items, float sx, float sy) {
+                auto* cm = get_global_context_menu();
+                if (!cm)
+                    return;
+
+                std::vector<lfs::vis::gui::ContextMenuItem> vec;
+                vec.reserve(nb::len(items));
+
+                for (auto item_handle : items) {
+                    auto d = nb::cast<nb::dict>(item_handle);
+                    lfs::vis::gui::ContextMenuItem ci;
+                    ci.label = nb::cast<std::string>(d["label"]);
+                    ci.action = nb::cast<std::string>(d["action"]);
+                    if (d.contains("separator_before"))
+                        ci.separator_before = nb::cast<bool>(d["separator_before"]);
+                    if (d.contains("is_label"))
+                        ci.is_label = nb::cast<bool>(d["is_label"]);
+                    if (d.contains("is_submenu_item"))
+                        ci.is_submenu_item = nb::cast<bool>(d["is_submenu_item"]);
+                    if (d.contains("is_active"))
+                        ci.is_active = nb::cast<bool>(d["is_active"]);
+                    vec.push_back(std::move(ci));
+                }
+
+                cm->request(std::move(vec), sx, sy);
+            },
+            nb::arg("items"), nb::arg("screen_x"), nb::arg("screen_y"));
+
+        m.def("poll_context_menu", []() -> std::string {
+            auto* cm = get_global_context_menu();
+            if (!cm)
+                return "";
+            return cm->pollResult();
+        });
+
+        m.def("get_mouse_screen_pos", []() -> nb::tuple {
+            const auto& io = ImGui::GetIO();
+            return nb::make_tuple(io.MousePos.x, io.MousePos.y);
+        });
+    }
+
     // Register UI classes with nanobind module
     void register_ui(nb::module_& m) {
         g_gl_thread_id = std::this_thread::get_id();
@@ -3064,8 +3109,10 @@ namespace lfs::python {
         register_ui_context(m);
         register_ui_theme(m);
         register_ui_panels(m);
+        register_rml_im_mode_layout(m);
         register_ui_hooks(m);
         register_ui_menus(m);
+        register_ui_context_menu(m);
         register_ui_operators(m);
         register_ui_modals(m);
         register_rml_bindings(m);
@@ -3374,7 +3421,8 @@ namespace lfs::python {
                                  {0, 0}, {u1, v1}, t, {0, 0, 0, 0});
                 },
                 nb::arg("texture"), nb::arg("size"), nb::arg("tint") = nb::none(), "Draw a DynamicTexture with automatic UV scaling")
-            .def("image_tensor", [](PyUILayout& /*self*/, const std::string& label, PyTensor& tensor, std::tuple<float, float> size, nb::object tint) {
+            .def(
+                "image_tensor", [](PyUILayout& /*self*/, const std::string& label, PyTensor& tensor, std::tuple<float, float> size, nb::object tint) {
                     PyDynamicTexture* tex_ptr = nullptr;
                     {
                         std::lock_guard lock(g_dynamic_textures_mutex);
@@ -4457,7 +4505,8 @@ namespace lfs::python {
         m.def(
             "set_language",
             [](const std::string& lang_code) {
-                lfs::event::LocalizationManager::getInstance().setLanguage(lang_code);
+                if (lfs::event::LocalizationManager::getInstance().setLanguage(lang_code))
+                    dirty_all_data_models();
             },
             nb::arg("lang_code"), "Set language by code (e.g., 'en', 'de')");
 
