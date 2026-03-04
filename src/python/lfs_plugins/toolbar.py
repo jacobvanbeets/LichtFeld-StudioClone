@@ -7,7 +7,7 @@ def _icon_src(icon_name, plugin_name=None, plugin_path=None):
     return f"../icon/{icon_name}.png"
 
 
-_TOOLBAR_VISIBLE_STATES = ("idle", "ready")
+_TOOLBAR_HIDDEN_STATES = ("running", "paused", "stopping", "completed")
 
 
 class GizmoToolbar(Panel):
@@ -26,20 +26,38 @@ class GizmoToolbar(Panel):
         self._last_enabled = {}
         self._last_submode_key = None
         self._last_pivot_key = None
-
-    @classmethod
-    def poll(cls, context) -> bool:
-        from .ui.state import AppState
-        return AppState.trainer_state.value in _TOOLBAR_VISIBLE_STATES
+        self._was_hidden = False
 
     def draw(self, layout):
         import lichtfeld as lf
         from . import rml_widgets as w
         from .op_context import get_context
+        from .ui.state import AppState
 
         doc = lf.ui.rml.get_document("viewport_overlay")
         if doc is None:
             return
+
+        container = doc.get_element_by_id("gizmo-toolbar")
+        if container is None:
+            return
+
+        hidden = AppState.trainer_state.value in _TOOLBAR_HIDDEN_STATES
+        container.set_class("hidden", hidden)
+
+        if hidden:
+            submode = doc.get_element_by_id("submode-toolbar")
+            if submode:
+                submode.set_class("hidden", True)
+            pivot = doc.get_element_by_id("pivot-toolbar")
+            if pivot:
+                pivot.set_class("hidden", True)
+            if not self._was_hidden:
+                ToolRegistry.clear_active()
+                self._was_hidden = True
+            return
+
+        self._was_hidden = False
 
         tool_defs = ToolRegistry.get_all()
         if not tool_defs:
@@ -48,10 +66,6 @@ class GizmoToolbar(Panel):
         tool_ids = [t.id for t in tool_defs]
         context = get_context()
         active_tool = lf.ui.get_active_tool()
-
-        container = doc.get_element_by_id("gizmo-toolbar")
-        if container is None:
-            return
 
         if not self._built or tool_ids != self._last_tool_ids:
             self._rebuild_tools(container, tool_defs, w)
