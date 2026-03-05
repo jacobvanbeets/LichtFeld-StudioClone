@@ -102,8 +102,7 @@ namespace lfs::vis::gui {
                 color.x + (1.0f - color.x) * factor,
                 color.y + (1.0f - color.y) * factor,
                 color.z + (1.0f - color.z) * factor,
-                color.w
-            };
+                color.w};
         }
 
         Rml::Input::KeyIdentifier sdlScancodeToRml(int scancode) {
