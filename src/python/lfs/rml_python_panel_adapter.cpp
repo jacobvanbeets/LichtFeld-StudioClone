@@ -71,38 +71,61 @@ namespace lfs::vis::gui {
         }
     }
 
-    Rml::ElementDocument* RmlPythonPanelAdapter::prepareForRender(const PanelDrawContext* ctx) {
+    Rml::ElementDocument* RmlPythonPanelAdapter::ensureDocumentInitialized() {
         if (!ensureHost())
             return nullptr;
 
         bindModelIfNeeded();
 
         const auto& ops = lfs::python::get_rml_panel_host_ops();
-        if (ops.ensure_document) {
-            if (!ops.ensure_document(host_))
-                return nullptr;
-        }
+        if (ops.ensure_document && !ops.ensure_document(host_))
+            return nullptr;
 
         auto* doc = static_cast<Rml::ElementDocument*>(ops.get_document(host_));
-        if (!doc || !lfs::python::can_acquire_gil())
-            return doc;
+        if (!doc)
+            return nullptr;
 
-        const lfs::python::GilAcquire gil;
-        cachePythonCapabilities();
-
-        bool pending_dirty = content_dirty_;
-        auto py_doc = lfs::python::PyRmlDocument(doc);
-
-        if (!loaded_) {
+        if (!loaded_ && lfs::python::can_acquire_gil()) {
+            const lfs::python::GilAcquire gil;
+            cachePythonCapabilities();
             lfs::python::RmlDocumentRegistry::instance().register_document(context_name_, doc);
             try {
+                auto py_doc = lfs::python::PyRmlDocument(doc);
                 panel_instance_.attr("on_load")(py_doc);
-                pending_dirty = true;
+                content_dirty_ = true;
             } catch (const std::exception& e) {
                 LOG_ERROR("RmlPanel on_load error: {}", e.what());
             }
             loaded_ = true;
         }
+
+        return doc;
+    }
+
+    void RmlPythonPanelAdapter::syncDirectLayout(float w, float h) {
+        if (!ensureDocumentInitialized())
+            return;
+
+        const auto& ops = lfs::python::get_rml_panel_host_ops();
+        if (ops.prepare_layout)
+            ops.prepare_layout(host_, w, h);
+    }
+
+    Rml::ElementDocument* RmlPythonPanelAdapter::prepareForRender(const PanelDrawContext* ctx) {
+        auto* doc = ensureDocumentInitialized();
+        if (!doc || !lfs::python::can_acquire_gil())
+            return doc;
+
+        const auto& ops = lfs::python::get_rml_panel_host_ops();
+        const uint64_t frame_serial = ctx ? ctx->frame_serial : 0;
+        if (frame_serial != 0 && last_prepare_frame_ == frame_serial)
+            return doc;
+
+        const lfs::python::GilAcquire gil;
+        cachePythonCapabilities();
+
+        bool pending_dirty = content_dirty_ || lfs::python::consume_document_dirty(doc);
+        auto py_doc = lfs::python::PyRmlDocument(doc);
 
         if (ctx && ctx->scene && ctx->scene_generation != last_scene_gen_) {
             try {
@@ -120,9 +143,12 @@ namespace lfs::vis::gui {
         } catch (const std::exception& e) {
             LOG_ERROR("RmlPanel on_update error: {}", e.what());
         }
+        pending_dirty |= lfs::python::consume_document_dirty(doc);
 
         if (pending_dirty && ops.mark_content_dirty)
             ops.mark_content_dirty(host_);
+        if (frame_serial != 0)
+            last_prepare_frame_ = frame_serial;
         content_dirty_ = false;
         return doc;
     }
@@ -130,11 +156,12 @@ namespace lfs::vis::gui {
     RmlPythonPanelAdapter::RmlPythonPanelAdapter(void* manager, nb::object panel_instance,
                                                  const std::string& context_name,
                                                  const std::string& rml_path,
-                                                 int height_mode)
+                                                 bool has_poll, int height_mode)
         : manager_(manager),
           context_name_(context_name),
           rml_path_(rml_path),
           panel_instance_(std::move(panel_instance)),
+          has_poll_(has_poll),
           height_mode_(height_mode) {
     }
 
@@ -186,10 +213,31 @@ namespace lfs::vis::gui {
         const auto& ops = lfs::python::get_rml_panel_host_ops();
         assert(ops.create && ops.draw_direct && ops.get_document && ops.is_loaded);
 
+        if (ctx.frame_serial == 0 || last_prepare_frame_ != ctx.frame_serial)
+            syncDirectLayout(w, h);
+
         if (!prepareForRender(&ctx))
             return;
 
         ops.draw_direct(host_, x, y, w, h);
+    }
+
+    bool RmlPythonPanelAdapter::poll(const PanelDrawContext& ctx) {
+        (void)ctx;
+        if (!has_poll_)
+            return true;
+        if (!lfs::python::can_acquire_gil())
+            return false;
+        if (lfs::python::bridge().prepare_ui)
+            lfs::python::bridge().prepare_ui();
+
+        const lfs::python::GilAcquire gil;
+        try {
+            return nb::cast<bool>(panel_instance_.attr("poll")(lfs::python::get_app_context()));
+        } catch (const std::exception& e) {
+            LOG_ERROR("RmlPanel poll error: {}", e.what());
+            return false;
+        }
     }
 
     void RmlPythonPanelAdapter::preload(const PanelDrawContext& ctx) {
@@ -201,6 +249,8 @@ namespace lfs::vis::gui {
     void RmlPythonPanelAdapter::preloadDirect(float w, float h, const PanelDrawContext& ctx,
                                               float clip_y_min, float clip_y_max,
                                               const PanelInputState* input) {
+        syncDirectLayout(w, h);
+
         if (!prepareForRender(&ctx))
             return;
 
@@ -271,6 +321,22 @@ namespace lfs::vis::gui {
 
     bool RmlPythonPanelAdapter::wantsKeyboard() const {
         return false;
+    }
+
+    bool RmlPythonPanelAdapter::needsAnimationFrame() const {
+        if (content_dirty_)
+            return true;
+        if (!host_)
+            return false;
+
+        const auto& ops = lfs::python::get_rml_panel_host_ops();
+        if (ops.get_document) {
+            auto* doc = static_cast<Rml::ElementDocument*>(ops.get_document(host_));
+            if (lfs::python::is_document_dirty(doc))
+                return true;
+        }
+
+        return ops.needs_animation ? ops.needs_animation(host_) : false;
     }
 
     void RmlPythonPanelAdapter::setForeground(bool fg) {

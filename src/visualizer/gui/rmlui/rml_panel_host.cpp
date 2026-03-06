@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cfloat>
 #include <cstddef>
 #include <filesystem>
 #include <format>
@@ -307,25 +308,117 @@ namespace lfs::vis::gui {
         scroll_el_ = document_->GetElementById("content-wrap");
     }
 
+    float RmlPanelHost::computeScrollHeightCap() const {
+        if (!scroll_el_)
+            return 0.0f;
+
+        const auto& scroll_computed = scroll_el_->GetComputedValues();
+        const bool is_scroll_container =
+            scroll_computed.overflow_y() != Rml::Style::Overflow::Visible;
+        const auto max_height = scroll_computed.max_height();
+        if (!is_scroll_container ||
+            max_height.type != Rml::Style::LengthPercentage::Length ||
+            max_height.value >= (FLT_MAX * 0.5f)) {
+            return 0.0f;
+        }
+
+        float scroll_box_h = max_height.value;
+        if (scroll_computed.box_sizing() != Rml::Style::BoxSizing::BorderBox) {
+            const auto& scroll_box = scroll_el_->GetBox();
+            scroll_box_h += scroll_box.GetEdge(Rml::BoxArea::Padding, Rml::BoxEdge::Top);
+            scroll_box_h += scroll_box.GetEdge(Rml::BoxArea::Padding, Rml::BoxEdge::Bottom);
+            scroll_box_h += scroll_box.GetEdge(Rml::BoxArea::Border, Rml::BoxEdge::Top);
+            scroll_box_h += scroll_box.GetEdge(Rml::BoxArea::Border, Rml::BoxEdge::Bottom);
+        }
+
+        return scroll_box_h;
+    }
+
+    float RmlPanelHost::computeContentHeight() const {
+        if (content_el_) {
+            const float chrome_above =
+                content_el_->GetAbsoluteOffset(Rml::BoxArea::Border).y -
+                document_->GetAbsoluteOffset(Rml::BoxArea::Border).y;
+            float chrome_below = 0.0f;
+            if (scroll_el_)
+                chrome_below = scroll_el_->GetBox().GetEdge(Rml::BoxArea::Padding, Rml::BoxEdge::Bottom);
+            float measured = chrome_above + content_el_->GetOffsetHeight() + chrome_below;
+
+            const float scroll_height_cap = computeScrollHeightCap();
+            if (scroll_height_cap > 0.0f && scroll_el_) {
+                const float chrome_above_scroll =
+                    scroll_el_->GetAbsoluteOffset(Rml::BoxArea::Border).y -
+                    document_->GetAbsoluteOffset(Rml::BoxArea::Border).y;
+                measured = std::min(measured, chrome_above_scroll + scroll_height_cap);
+            }
+
+            return measured;
+        }
+
+        return content_wrap_el_ ? content_wrap_el_->GetOffsetHeight() : 100.0f;
+    }
+
+    float RmlPanelHost::clampScrollTop(const float scroll_top) const {
+        if (!scroll_el_)
+            return 0.0f;
+
+        const float max_scroll =
+            std::max(0.0f, scroll_el_->GetScrollHeight() - scroll_el_->GetClientHeight());
+        return std::clamp(scroll_top, 0.0f, max_scroll);
+    }
+
+    void RmlPanelHost::restoreScrollTop(const float scroll_top) {
+        if (!scroll_el_ || scroll_top <= 0.0f)
+            return;
+
+        scroll_el_->SetScrollTop(clampScrollTop(scroll_top));
+    }
+
+    void RmlPanelHost::syncDirectLayout(float w, float h) {
+        if (w <= 0 || h <= 0)
+            return;
+
+        if (!ensureDocumentLoaded())
+            return;
+
+        const bool theme_dirty = syncThemeProperties();
+
+        const int pw = static_cast<int>(w);
+        int ph = 0;
+        float display_h = 0.0f;
+        resolveDirectRenderHeight(h, ph, display_h);
+
+        const bool size_dirty = (pw != last_layout_w_ || ph != last_layout_h_);
+        const bool need_layout =
+            theme_dirty || size_dirty || content_dirty_ || render_needed_ || animation_active_;
+        if (!need_layout)
+            return;
+
+        const float saved_scroll = scroll_el_ ? scroll_el_->GetScrollTop() : 0.0f;
+
+        rml_context_->SetDimensions(Rml::Vector2i(pw, ph));
+        rml_context_->Update();
+
+        restoreScrollTop(saved_scroll);
+
+        last_layout_w_ = pw;
+        last_layout_h_ = ph;
+
+        if (height_mode_ == HeightMode::Content) {
+            last_content_height_ = computeContentHeight();
+            if (content_el_)
+                last_content_el_height_ = content_el_->GetOffsetHeight();
+        }
+    }
+
     void RmlPanelHost::renderIfDirty(int pw, int ph, float& display_h) {
         if (manager_ && manager_->shouldDeferFboUpdate(fbo_))
             return;
 
         const bool theme_dirty = syncThemeProperties();
         const bool size_dirty = (pw != last_fbo_w_ || ph != last_fbo_h_);
-
-        const auto compute_content_height = [this]() -> float {
-            if (content_el_) {
-                const float chrome_above =
-                    content_el_->GetAbsoluteOffset(Rml::BoxArea::Border).y -
-                    document_->GetAbsoluteOffset(Rml::BoxArea::Border).y;
-                float chrome_below = 0.0f;
-                if (scroll_el_)
-                    chrome_below = scroll_el_->GetBox().GetEdge(Rml::BoxArea::Padding, Rml::BoxEdge::Bottom);
-                return chrome_above + content_el_->GetOffsetHeight() + chrome_below;
-            }
-            return content_wrap_el_ ? content_wrap_el_->GetOffsetHeight() : 100.0f;
-        };
+        const bool externally_clipped =
+            (clip_y_min_ >= 0.0f && clip_y_max_ > clip_y_min_);
 
         fbo_.ensure(pw, std::min(ph, kMaxFboSize));
         if (!fbo_.valid())
@@ -338,12 +431,12 @@ namespace lfs::vis::gui {
 
         const bool need_content_measure =
             height_mode_ == HeightMode::Content &&
-            (pw != last_measure_w_ || last_content_height_ <= 0.0f);
+            (pw != last_measure_w_ || ph != last_layout_h_ || content_dirty_ ||
+             last_content_height_ <= 0.0f);
+        const float saved_scroll = scroll_el_ ? scroll_el_->GetScrollTop() : 0.0f;
 
         if (need_content_measure) {
             last_measure_w_ = pw;
-
-            const float saved_scroll = scroll_el_ ? scroll_el_->GetScrollTop() : 0;
 
             int layout_h = ph;
             if (last_content_height_ > 0.0f)
@@ -359,7 +452,7 @@ namespace lfs::vis::gui {
             for (int pass = 0; pass < 3; ++pass) {
                 rml_context_->SetDimensions(Rml::Vector2i(pw, layout_h));
                 rml_context_->Update();
-                content_h = compute_content_height();
+                content_h = computeContentHeight();
 
                 const int measured = std::clamp(
                     static_cast<int>(std::ceil(content_h)), 1, kMaxFboSize);
@@ -374,7 +467,10 @@ namespace lfs::vis::gui {
                 last_content_el_height_ = content_el_->GetOffsetHeight();
             const int measured = std::clamp(
                 static_cast<int>(std::ceil(content_h)), 1, kMaxFboSize);
-            if (ph > 0 && ph < measured) {
+            if (externally_clipped) {
+                ph = measured;
+                display_h = content_h;
+            } else if (ph > 0 && ph < measured) {
                 display_h = static_cast<float>(ph);
             } else if (forced_height_ > 0 && ph > 0) {
                 display_h = static_cast<float>(ph);
@@ -389,12 +485,16 @@ namespace lfs::vis::gui {
 
             rml_context_->SetDimensions(Rml::Vector2i(pw, ph));
             rml_context_->Update();
+            last_layout_w_ = pw;
+            last_layout_h_ = ph;
 
-            if (scroll_el_ && saved_scroll > 0)
-                scroll_el_->SetScrollTop(saved_scroll);
+            restoreScrollTop(saved_scroll);
         } else {
             rml_context_->SetDimensions(Rml::Vector2i(pw, ph));
             rml_context_->Update();
+            last_layout_w_ = pw;
+            last_layout_h_ = ph;
+            restoreScrollTop(saved_scroll);
         }
         content_dirty_ = false;
         if (height_mode_ != HeightMode::Content)
@@ -420,7 +520,7 @@ namespace lfs::vis::gui {
 
         if (height_mode_ == HeightMode::Content) {
             const float prev_content_h = last_content_height_;
-            const float actual_content_h = compute_content_height();
+            const float actual_content_h = computeContentHeight();
             last_content_height_ = actual_content_h;
 
             if (content_el_)

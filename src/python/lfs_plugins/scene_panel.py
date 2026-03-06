@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Scene Graph Panel - RmlUI DOM implementation with retained-mode event delegation."""
 
+import math
 from pathlib import Path
 import lichtfeld as lf
 
 from .types import RmlPanel
 from .ui.state import AppState
+
+TREE_ROW_HEIGHT_DP = 20
+TREE_HEADER_HEIGHT_DP = 24
+TREE_OVERSCAN_ROWS = 10
 
 NODE_TYPE_ICONS = {
     "SPLAT": "splat",
@@ -69,6 +74,15 @@ def tr(key):
     return result if result else key
 
 
+def _xml_escape(text):
+    return (str(text)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&#39;"))
+
+
 def _node_type(node):
     return str(node.type).split(".")[-1]
 
@@ -102,6 +116,7 @@ class ScenePanel(RmlPanel):
         self.container = None
         self.filter_input = None
         self._filter_text = ""
+        self._flat_rows = []
         self._selected_nodes = set()
         self._click_anchor = None
         self._visible_node_order = []
@@ -118,6 +133,12 @@ class ScenePanel(RmlPanel):
         self._drag_source = None
         self._models_collapsed = False
         self._last_lang = ""
+        self._root_count = 0
+        self._tree_revision = 0
+        self._last_render_key = None
+        self._last_scroll_top = -1.0
+        self._last_view_h = -1.0
+        self._last_ui_scale = 0.0
 
     def on_load(self, doc):
         self.doc = doc
@@ -148,28 +169,45 @@ class ScenePanel(RmlPanel):
             body.add_event_listener("keydown", self._on_keydown)
             body.add_event_listener("click", self._on_body_click)
 
+        self._rebuild_tree(force=True)
+
     def on_scene_changed(self, doc):
-        self._rebuild_tree()
+        self._rebuild_tree(force=True)
 
     def on_update(self, doc):
+        dirty = False
+
+        self._capture_rename_buffer()
+
         cur_lang = lf.ui.get_current_language()
         if cur_lang != self._last_lang:
             self._last_lang = cur_lang
             if self.filter_input:
                 self.filter_input.set_attribute("placeholder", tr("scene.search"))
-            self._rebuild_tree()
+            dirty |= self._rebuild_tree(force=True)
 
         current = set(lf.get_selected_node_names())
         if current != self._prev_selected:
             self._prev_selected = current
             self._selected_nodes = current
-            self._update_selection_display()
             if current and self._restore_scroll_top is None:
                 self._scroll_to_node = next(iter(current))
-                self._do_scroll()
-            if self.container and self._restore_scroll_top is not None:
-                self.container.scroll_top = self._restore_scroll_top
-            self._restore_scroll_top = None
+            if self._restore_scroll_top is not None:
+                dirty |= self._update_selection_display()
+            else:
+                dirty |= self._render_tree_window(force=True)
+
+        if self.container:
+            view_h = self.container.client_height or self.container.offset_height
+            scroll_top = self.container.scroll_top
+            ui_scale = self._ui_scale()
+            if (self._restore_scroll_top is not None or self._scroll_to_node is not None or
+                    abs(scroll_top - self._last_scroll_top) > 0.5 or
+                    abs(view_h - self._last_view_h) > 0.5 or
+                    abs(ui_scale - self._last_ui_scale) > 0.001):
+                dirty |= self._render_tree_window(force=False)
+
+        return dirty
 
     # -- DOM traversal helpers --
 
@@ -265,6 +303,7 @@ class ScenePanel(RmlPanel):
             lf.select_node(node_name)
             self._selected_nodes = {node_name}
             self._click_anchor = node_name
+            self._prev_selected = set(self._selected_nodes)
             self._update_selection_display()
         self._show_context_menu(node_name, mouse_x, mouse_y)
 
@@ -345,37 +384,21 @@ class ScenePanel(RmlPanel):
             vis.set_attribute("sprite", "icon-hidden")
 
     def _toggle_expand(self, target_id, toggle_el):
-        if not self.doc or not target_id:
+        if not target_id:
             return
         try:
             nid = int(target_id.replace("children-", ""))
         except ValueError:
             return
-        children_elem = self.doc.get_element_by_id(target_id)
-        if children_elem is None:
-            return
         if nid in self._collapsed_ids:
             self._collapsed_ids.discard(nid)
-            children_elem.set_class("collapsed", False)
-            toggle_el.set_inner_rml("\u25BC")
         else:
             self._collapsed_ids.add(nid)
-            children_elem.set_class("collapsed", True)
-            toggle_el.set_inner_rml("\u25B6")
+        self._rebuild_tree(force=True)
 
     def _toggle_models_section(self):
-        if not self.doc:
-            return
-        content = self.doc.get_element_by_id("models-content")
-        header = self.doc.get_element_by_id("models-header")
-        if content:
-            self._models_collapsed = not self._models_collapsed
-            content.set_class("collapsed", self._models_collapsed)
-            if header:
-                arrow = "\u25BC" if not self._models_collapsed else "\u25B6"
-                scene = lf.get_scene()
-                count = sum(1 for n in scene.get_nodes() if n.parent_id == -1) if scene else 0
-                header.set_inner_rml(f'{arrow} {tr("scene.models").format(count)}')
+        self._models_collapsed = not self._models_collapsed
+        self._rebuild_tree(force=True)
 
     # -- Keyboard handling --
 
@@ -415,130 +438,239 @@ class ScenePanel(RmlPanel):
     def _on_filter_change(self, event):
         if self.filter_input:
             self._filter_text = self.filter_input.get_attribute("value") or ""
-        self._rebuild_tree()
+        self._rebuild_tree(force=True)
 
     def _preserve_scroll_for_local_selection(self):
         self._restore_scroll_top = self.container.scroll_top if self.container else None
 
     # -- Tree building --
 
-    def _rebuild_tree(self):
-        if not self.container:
+    def _ui_scale(self):
+        try:
+            return max(float(lf.get_ui_scale()), 1.0)
+        except (RuntimeError, AttributeError, ValueError, TypeError):
+            return 1.0
+
+    def _row_height_px(self):
+        return TREE_ROW_HEIGHT_DP * self._ui_scale()
+
+    def _default_header_height_px(self):
+        return TREE_HEADER_HEIGHT_DP * self._ui_scale()
+
+    def _current_header_height_px(self):
+        if self.doc:
+            header = self.doc.get_element_by_id("models-header")
+            if header:
+                return max(header.offset_height, self._default_header_height_px())
+        return self._default_header_height_px()
+
+    def _capture_rename_buffer(self):
+        if not self.doc or not self._rename_node:
             return
+        rename_el = self.doc.get_element_by_id("rename-input")
+        if rename_el:
+            self._rename_buffer = rename_el.get_attribute("value", self._rename_buffer or self._rename_node)
+
+    def _build_header_html(self):
+        arrow = "\u25BC" if not self._models_collapsed else "\u25B6"
+        header_text = _xml_escape(tr("scene.models").format(self._root_count))
+        return f'<div class="section-header" id="models-header">{arrow} {header_text}</div>'
+
+    def _make_row_state(self, scene, node, depth):
+        node_type = _node_type(node)
+        parent_is_dataset = self._check_parent_dataset(scene, node)
+        label = node.name
+        if node_type == "SPLAT" and node.gaussian_count > 0:
+            label += f"  ({node.gaussian_count:,})"
+        elif node_type == "POINTCLOUD":
+            point_cloud = node.point_cloud()
+            if point_cloud:
+                label += f"  ({point_cloud.size:,})"
+        elif node_type == "MESH":
+            mesh = node.mesh()
+            if mesh:
+                label += f"  ({mesh.vertex_count:,}V / {mesh.face_count:,}F)"
+        elif node_type == "KEYFRAME":
+            keyframe = node.keyframe_data()
+            if keyframe:
+                label = tr("scene.keyframe_label").format(index=keyframe.keyframe_index + 1, time=keyframe.time)
+
+        return {
+            "name": node.name,
+            "id": node.id,
+            "node_type": node_type,
+            "depth": depth,
+            "visible": bool(node.visible),
+            "selected": node.name in self._selected_nodes,
+            "has_children": len(node.children) > 0,
+            "collapsed": node.id in self._collapsed_ids,
+            "draggable": _can_drag(node_type, parent_is_dataset),
+            "training_enabled": bool(getattr(node, "training_enabled", True)),
+            "label": label,
+        }
+
+    def _append_rows(self, scene, node, depth, rows):
+        child_rows = []
+        for child_id in node.children:
+            child = scene.get_node_by_id(child_id)
+            if child:
+                self._append_rows(scene, child, depth + 1, child_rows)
+
+        if self._filter_text and self._filter_text.lower() not in node.name.lower():
+            rows.extend(child_rows)
+            return
+
+        row = self._make_row_state(scene, node, depth)
+        rows.append(row)
+        if row["has_children"] and not row["collapsed"]:
+            rows.extend(child_rows)
+
+    def _build_row_html(self, row, absolute_index):
+        parity = "even" if absolute_index % 2 == 0 else "odd"
+        selected_cls = " selected" if row["selected"] else ""
+        drag_attr = ' drag="drag-drop"' if row["draggable"] else ""
+        indent_px = row["depth"] * 16
+        indent_style = f' style="padding-left: {indent_px}dp"' if indent_px > 0 else ""
+        html = (f'<div class="tree-row {parity}{selected_cls}" data-node="{_xml_escape(row["name"])}" '
+                f'data-id="{row["id"]}" data-type="{row["node_type"]}"{drag_attr}{indent_style}>')
+        html += '<span class="row-content">'
+
+        if row["visible"]:
+            html += (f'<img class="row-icon icon-vis-on" sprite="icon-visible" '
+                     f'data-action="toggle-vis" data-node="{_xml_escape(row["name"])}" />')
+        else:
+            html += (f'<img class="row-icon icon-vis-off" sprite="icon-hidden" '
+                     f'data-action="toggle-vis" data-node="{_xml_escape(row["name"])}" />')
+
+        html += _type_dot_html(row["node_type"])
+
+        if row["has_children"]:
+            arrow = "\u25B6" if row["collapsed"] else "\u25BC"
+            html += f'<span class="expand-toggle" data-target="children-{row["id"]}">{arrow}</span>'
+        else:
+            html += '<span class="leaf-spacer"></span>'
+
+        if self._rename_node and row["name"] == self._rename_node:
+            value = _xml_escape(self._rename_buffer or row["name"])
+            html += f'<input class="rename-input" id="rename-input" type="text" value="{value}" />'
+        else:
+            label_cls = "node-name"
+            if row["node_type"] == "CAMERA" and not row["training_enabled"]:
+                label_cls += " training-disabled"
+            html += f'<span class="{label_cls}">{_xml_escape(row["label"])}</span>'
+
+        html += '</span></div>'
+        return html
+
+    def _render_tree_window(self, force=False):
+        if not self.container:
+            return False
+
+        row_height = self._row_height_px()
+        viewport_h = self.container.client_height or self.container.offset_height or row_height
+        header_h = self._current_header_height_px()
+        current_scroll_top = self.container.scroll_top
+        scroll_top = self._restore_scroll_top if self._restore_scroll_top is not None else current_scroll_top
+
+        if self._scroll_to_node and self._scroll_to_node in self._committed_node_order:
+            index = self._committed_node_order.index(self._scroll_to_node)
+            row_top = header_h + index * row_height
+            row_bottom = row_top + row_height
+            if row_top < scroll_top:
+                scroll_top = row_top
+            elif row_bottom > scroll_top + viewport_h:
+                scroll_top = row_bottom - viewport_h
+
+        total_rows = len(self._flat_rows)
+        total_content_h = header_h if self._models_collapsed else header_h + total_rows * row_height
+        max_scroll_top = max(0.0, total_content_h - viewport_h)
+        scroll_top = min(max(0.0, scroll_top), max_scroll_top)
+        if self._models_collapsed:
+            start = 0
+            end = 0
+        else:
+            rows_scroll_top = max(0.0, scroll_top - header_h)
+            start = max(0, int(rows_scroll_top // row_height) - TREE_OVERSCAN_ROWS)
+            visible_count = max(1, int(math.ceil(viewport_h / row_height)) + TREE_OVERSCAN_ROWS * 2)
+            end = min(total_rows, start + visible_count)
+
+        render_key = (
+            self._tree_revision,
+            tuple(sorted(self._selected_nodes)),
+            self._models_collapsed,
+            self._rename_node,
+            self._rename_buffer,
+            int(round(viewport_h)),
+            int(round(scroll_top)),
+            start,
+            end,
+        )
+
+        if not force and render_key == self._last_render_key:
+            if abs(scroll_top - current_scroll_top) > 0.5:
+                self.container.scroll_top = scroll_top
+            self._last_scroll_top = scroll_top
+            self._last_view_h = viewport_h
+            self._last_ui_scale = self._ui_scale()
+            self._restore_scroll_top = None
+            self._scroll_to_node = None
+            return abs(scroll_top - current_scroll_top) > 0.5
+
+        html = self._build_header_html()
+        if not self._models_collapsed and total_rows > 0:
+            top_spacer = start * row_height
+            bottom_spacer = max(0.0, (total_rows - end) * row_height)
+            html += f'<div class="virtual-spacer" style="height: {top_spacer:.0f}px"></div>'
+            for absolute_index in range(start, end):
+                html += self._build_row_html(self._flat_rows[absolute_index], absolute_index)
+            html += f'<div class="virtual-spacer" style="height: {bottom_spacer:.0f}px"></div>'
+
+        self.container.set_inner_rml(html)
+        if abs(scroll_top - current_scroll_top) > 0.5 or self._restore_scroll_top is not None:
+            self.container.scroll_top = scroll_top
+
+        self._last_render_key = render_key
+        self._last_scroll_top = scroll_top
+        self._last_view_h = viewport_h
+        self._last_ui_scale = self._ui_scale()
+        self._restore_scroll_top = None
+        self._scroll_to_node = None
+
+        self._setup_rename_input()
+        return True
+
+    def _rebuild_tree(self, force=False):
+        if not self.container:
+            return False
 
         scene = lf.get_scene()
         if scene is None or not scene.has_nodes():
+            self._flat_rows = []
+            self._committed_node_order = []
+            self._visible_node_order = []
+            self._root_count = 0
+            self._tree_revision += 1
+            self._last_render_key = None
             self.container.set_inner_rml(
-                '<div class="empty-message">' + tr("scene.no_data_loaded") + '</div>'
-                '<div class="empty-message">' + tr("scene.use_file_menu") + '</div>'
+                '<div class="empty-message">' + _xml_escape(tr("scene.no_data_loaded")) + '</div>'
+                '<div class="empty-message">' + _xml_escape(tr("scene.use_file_menu")) + '</div>'
             )
-            return
-
-        self._selected_nodes = set(lf.get_selected_node_names())
-        self._row_index = 0
-        self._visible_node_order = []
+            return True
 
         nodes = scene.get_nodes()
-        root_count = sum(1 for n in nodes if n.parent_id == -1)
-
-        tree_html = ""
+        self._root_count = sum(1 for n in nodes if n.parent_id == -1)
+        self._selected_nodes = set(lf.get_selected_node_names())
+        rows = []
         for node in nodes:
             if node.parent_id == -1:
-                tree_html += self._build_node_html(scene, node, 0)
+                self._append_rows(scene, node, 0, rows)
 
-        if not nodes:
-            tree_html = '<div class="empty-message">' + tr("scene.no_models_loaded") + '</div>'
-
-        arrow = "\u25BC" if not self._models_collapsed else "\u25B6"
-        header_text = tr("scene.models").format(root_count)
-        collapsed_cls = " collapsed" if self._models_collapsed else ""
-
-        html = (f'<div class="section-header" id="models-header">'
-                f'{arrow} {header_text}</div>'
-                f'<div id="models-content" class="{collapsed_cls}">{tree_html}</div>')
-
-        self.container.set_inner_rml(html)
-        self._committed_node_order = self._visible_node_order
-
-        self._setup_rename_input()
-        self._do_scroll()
-
-    def _build_node_html(self, scene, node, depth):
-        if self._filter_text:
-            filter_lower = self._filter_text.lower()
-            if filter_lower not in node.name.lower():
-                child_html = ""
-                for child_id in node.children:
-                    child = scene.get_node_by_id(child_id)
-                    if child:
-                        child_html += self._build_node_html(scene, child, depth + 1)
-                return child_html
-
-        node_type = _node_type(node)
-        is_selected = node.name in self._selected_nodes
-        has_children = len(node.children) > 0
-
-        parent_is_dataset = self._check_parent_dataset(scene, node)
-        draggable = _can_drag(node_type, parent_is_dataset)
-
-        parity = "even" if self._row_index % 2 == 0 else "odd"
-        selected_cls = " selected" if is_selected else ""
-        self._row_index += 1
-        self._visible_node_order.append(node.name)
-
-        drag_attr = ' drag="drag-drop"' if draggable else ""
-        indent_px = depth * 16
-        indent_style = f' style="padding-left: {indent_px}dp"' if depth > 0 else ""
-        row = f'<div class="tree-row {parity}{selected_cls}" data-node="{node.name}" data-id="{node.id}" data-type="{node_type}"{drag_attr}{indent_style}>'
-        row += '<span class="row-content">'
-
-        if node.visible:
-            row += f'<img class="row-icon icon-vis-on" sprite="icon-visible" data-action="toggle-vis" data-node="{node.name}" />'
-        else:
-            row += f'<img class="row-icon icon-vis-off" sprite="icon-hidden" data-action="toggle-vis" data-node="{node.name}" />'
-
-        row += _type_dot_html(node_type)
-
-        if has_children:
-            collapsed = node.id in self._collapsed_ids
-            arrow = "\u25B6" if collapsed else "\u25BC"
-            row += f'<span class="expand-toggle" data-target="children-{node.id}">{arrow}</span>'
-        else:
-            row += '<span class="leaf-spacer"></span>'
-
-        if self._rename_node and node.name == self._rename_node:
-            row += f'<input class="rename-input" id="rename-input" type="text" value="{node.name}" />'
-        else:
-            label = node.name
-            if node_type == "SPLAT" and node.gaussian_count > 0:
-                label += f"  ({node.gaussian_count:,})"
-            elif node_type == "POINTCLOUD":
-                pc = node.point_cloud()
-                if pc:
-                    label += f"  ({pc.size:,})"
-            elif node_type == "MESH":
-                mesh = node.mesh()
-                if mesh:
-                    label += f"  ({mesh.vertex_count:,}V / {mesh.face_count:,}F)"
-            elif node_type == "KEYFRAME":
-                kf = node.keyframe_data()
-                if kf:
-                    label = tr("scene.keyframe_label").format(index=kf.keyframe_index + 1, time=kf.time)
-            row += f'<span class="node-name">{label}</span>'
-
-        row += '</span></div>'
-
-        if has_children:
-            collapsed = node.id in self._collapsed_ids
-            collapsed_cls = " collapsed" if collapsed else ""
-            row += f'<div class="tree-children{collapsed_cls}" id="children-{node.id}">'
-            for child_id in node.children:
-                child = scene.get_node_by_id(child_id)
-                if child:
-                    row += self._build_node_html(scene, child, depth + 1)
-            row += '</div>'
-
-        return row
+        self._flat_rows = rows
+        self._visible_node_order = [row["name"] for row in rows]
+        self._committed_node_order = list(self._visible_node_order)
+        self._tree_revision += 1
+        self._last_render_key = None
+        return self._render_tree_window(force=True)
 
     def _setup_rename_input(self):
         if not self._rename_node or not self.doc:
@@ -562,17 +694,18 @@ class ScenePanel(RmlPanel):
     def _confirm_rename(self):
         if not self._rename_node or not self.doc:
             return
-        rename_el = self.doc.get_element_by_id("rename-input")
-        if rename_el:
-            new_name = rename_el.get_attribute("value", self._rename_node)
-            if new_name and new_name != self._rename_node:
-                lf.rename_node(self._rename_node, new_name)
+        self._capture_rename_buffer()
+        new_name = self._rename_buffer or self._rename_node
+        if new_name and new_name != self._rename_node:
+            lf.rename_node(self._rename_node, new_name)
         self._rename_node = None
-        self._rebuild_tree()
+        self._rename_buffer = ""
+        self._rebuild_tree(force=True)
 
     def _cancel_rename(self):
         self._rename_node = None
-        self._rebuild_tree()
+        self._rename_buffer = ""
+        self._rebuild_tree(force=True)
 
     # -- Selection --
 
@@ -604,6 +737,7 @@ class ScenePanel(RmlPanel):
             self._selected_nodes = {node_name}
             self._click_anchor = node_name
 
+        self._prev_selected = set(self._selected_nodes)
         self._update_selection_display()
 
     def _get_range(self, a, b):
@@ -617,19 +751,29 @@ class ScenePanel(RmlPanel):
 
     def _update_selection_display(self):
         if not self.container:
-            return
-        rows = self.container.query_selector_all(".tree-row")
-        for row in rows:
-            name = row.get_attribute("data-node")
-            row.set_class("selected", name in self._selected_nodes)
+            return False
+
+        dirty = False
+        for row in self.container.query_selector_all(".tree-row"):
+            node_name = row.get_attribute("data-node", "")
+            selected = node_name in self._selected_nodes
+            if row.is_class_set("selected") != selected:
+                row.set_class("selected", selected)
+                dirty = True
+
+        if self._restore_scroll_top is not None:
+            if abs(self.container.scroll_top - self._restore_scroll_top) > 0.5:
+                self.container.scroll_top = self._restore_scroll_top
+                dirty = True
+            self._restore_scroll_top = None
+
+        self._scroll_to_node = None
+        return dirty
 
     def _do_scroll(self):
-        if not self._scroll_to_node or not self.container:
+        if not self._scroll_to_node:
             return
-        row = self.container.query_selector(f'[data-node="{self._scroll_to_node}"]')
-        if row:
-            row.scroll_into_view(False)
-        self._scroll_to_node = None
+        self._render_tree_window(force=True)
 
     def _check_parent_dataset(self, scene, node):
         if node.parent_id != -1:

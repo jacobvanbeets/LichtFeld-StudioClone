@@ -26,6 +26,11 @@ class SelectionGroupsPanel(RmlPanel):
         self._context_menu_group_id = None
         self._picker_click_handled = False
 
+    @classmethod
+    def poll(cls, context):
+        del context
+        return lf.ui.get_active_tool() == "builtin.select" and lf.get_scene() is not None
+
     def on_load(self, doc):
         self.doc = doc
 

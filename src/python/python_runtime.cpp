@@ -164,6 +164,7 @@ namespace lfs::python {
 
         // Redraw request flag
         std::atomic<bool> g_redraw_requested{false};
+        RedrawWakeupCallback g_redraw_wakeup_callback = nullptr;
     } // namespace
 
     // Bridge API
@@ -197,10 +198,18 @@ namespace lfs::python {
     const PyContext& context() { return g_frame_context; }
 
     // Redraw request mechanism
-    void request_redraw() { g_redraw_requested.store(true, std::memory_order_release); }
+    void request_redraw() {
+        const bool was_requested = g_redraw_requested.exchange(true, std::memory_order_acq_rel);
+        if (!was_requested && g_redraw_wakeup_callback)
+            g_redraw_wakeup_callback();
+    }
 
     bool consume_redraw_request() {
         return g_redraw_requested.exchange(false, std::memory_order_acq_rel);
+    }
+
+    void set_redraw_wakeup_callback(RedrawWakeupCallback cb) {
+        g_redraw_wakeup_callback = cb;
     }
 
     // Operation context (short-lived)

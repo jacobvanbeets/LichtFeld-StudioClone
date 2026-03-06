@@ -679,6 +679,9 @@ namespace lfs::vis::gui {
             hp->prepareDirect(w, h);
             hp->setInput(nullptr);
         };
+        ops.prepare_layout = [](void* host, float w, float h) {
+            static_cast<RmlPanelHost*>(host)->syncDirectLayout(w, h);
+        };
         ops.get_document = [](void* host) -> void* {
             return static_cast<RmlPanelHost*>(host)->getDocument();
         };
@@ -716,6 +719,9 @@ namespace lfs::vis::gui {
         };
         ops.set_forced_height = [](void* host, float h) {
             static_cast<RmlPanelHost*>(host)->setForcedHeight(h);
+        };
+        ops.needs_animation = [](void* host) -> bool {
+            return static_cast<RmlPanelHost*>(host)->needsAnimationFrame();
         };
         lfs::python::set_rml_panel_host_ops(ops);
 
@@ -1032,6 +1038,7 @@ namespace lfs::vis::gui {
         draw_ctx.viewport = &viewport_layout_;
         draw_ctx.scene = scene;
         draw_ctx.ui_hidden = ui_hidden_;
+        draw_ctx.frame_serial = ++panel_frame_serial_;
         draw_ctx.scene_generation = python::get_scene_generation();
         if (auto* sm = ctx.viewer->getSceneManager())
             draw_ctx.has_selection = sm->hasSelectedNode();
@@ -1086,6 +1093,34 @@ namespace lfs::vis::gui {
         screen.work_pos = {mvp_input->WorkPos.x, mvp_input->WorkPos.y};
         screen.work_size = {mvp_input->WorkSize.x, mvp_input->WorkSize.y};
         screen.any_item_active = ImGui::IsAnyItemActive();
+
+        constexpr uint8_t kUiLayoutSettleFrames = 3;
+        const bool python_console_visible = window_states_["python_console"];
+        const bool ui_layout_changed =
+            std::abs(screen.work_pos.x - last_ui_layout_work_pos_.x) > 0.5f ||
+            std::abs(screen.work_pos.y - last_ui_layout_work_pos_.y) > 0.5f ||
+            std::abs(screen.work_size.x - last_ui_layout_work_size_.x) > 0.5f ||
+            std::abs(screen.work_size.y - last_ui_layout_work_size_.y) > 0.5f ||
+            std::abs(panel_layout_.getRightPanelWidth() - last_ui_layout_right_panel_w_) > 0.5f ||
+            std::abs(panel_layout_.getScenePanelRatio() - last_ui_layout_scene_ratio_) > 0.0001f ||
+            std::abs(panel_layout_.getPythonConsoleWidth() - last_ui_layout_python_console_w_) > 0.5f ||
+            show_main_panel_ != last_ui_layout_show_main_panel_ ||
+            ui_hidden_ != last_ui_layout_ui_hidden_ ||
+            python_console_visible != last_ui_layout_python_console_visible_ ||
+            panel_layout_.getActiveTab() != last_ui_layout_active_tab_;
+
+        if (ui_layout_changed) {
+            ui_layout_settle_frames_ = kUiLayoutSettleFrames;
+            last_ui_layout_work_pos_ = screen.work_pos;
+            last_ui_layout_work_size_ = screen.work_size;
+            last_ui_layout_right_panel_w_ = panel_layout_.getRightPanelWidth();
+            last_ui_layout_scene_ratio_ = panel_layout_.getScenePanelRatio();
+            last_ui_layout_python_console_w_ = panel_layout_.getPythonConsoleWidth();
+            last_ui_layout_show_main_panel_ = show_main_panel_;
+            last_ui_layout_ui_hidden_ = ui_hidden_;
+            last_ui_layout_python_console_visible_ = python_console_visible;
+            last_ui_layout_active_tab_ = panel_layout_.getActiveTab();
+        }
 
         if (show_main_panel_ && !ui_hidden_) {
             const float sbh = PanelLayoutManager::STATUS_BAR_HEIGHT * current_ui_scale_;
@@ -1206,6 +1241,9 @@ namespace lfs::vis::gui {
             glBindTexture(GL_TEXTURE_2D, 0);
             while (glGetError() != GL_NO_ERROR) {}
         }
+
+        if (!ui_layout_changed && ui_layout_settle_frames_ > 0)
+            --ui_layout_settle_frames_;
     }
 
     void GuiManager::renderSelectionOverlays(const UIContext& ctx) {
@@ -1743,6 +1781,12 @@ namespace lfs::vis::gui {
         if (startup_overlay_.needsAnimationFrame())
             return true;
         if (video_extractor_dialog_ && video_extractor_dialog_->isVideoPlaying())
+            return true;
+        if (ui_layout_settle_frames_ > 0)
+            return true;
+        if (rml_right_panel_.needsAnimationFrame())
+            return true;
+        if (PanelRegistry::instance().needsAnimationFrame())
             return true;
         return false;
     }

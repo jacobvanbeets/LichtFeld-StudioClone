@@ -153,9 +153,11 @@ namespace lfs::python {
 
     class PyDataModelHandle {
     public:
-        PyDataModelHandle(Rml::DataModelHandle handle, std::string model_name)
+        PyDataModelHandle(Rml::DataModelHandle handle, std::string model_name,
+                          Rml::Context* context = nullptr)
             : handle_(handle),
-              model_name_(std::move(model_name)) {}
+              model_name_(std::move(model_name)),
+              context_(context) {}
 
         void dirty(const std::string& name);
         void dirty_all();
@@ -165,13 +167,16 @@ namespace lfs::python {
     private:
         Rml::DataModelHandle handle_;
         std::string model_name_;
+        Rml::Context* context_ = nullptr;
     };
 
     class PyDataModelConstructor {
     public:
-        PyDataModelConstructor(Rml::DataModelConstructor ctor, std::string model_name)
+        PyDataModelConstructor(Rml::DataModelConstructor ctor, std::string model_name,
+                               Rml::Context* context = nullptr)
             : ctor_(std::move(ctor)),
-              model_name_(std::move(model_name)) {}
+              model_name_(std::move(model_name)),
+              context_(context) {}
 
         void bind(const std::string& name, nb::callable getter, nb::object setter);
         void bind_func(const std::string& name, nb::callable getter);
@@ -183,6 +188,7 @@ namespace lfs::python {
     private:
         Rml::DataModelConstructor ctor_;
         std::string model_name_;
+        Rml::Context* context_ = nullptr;
         std::vector<nb::object> prevent_gc_;
     };
 
@@ -209,6 +215,9 @@ namespace lfs::python {
     private:
         std::unordered_map<std::string, Rml::ElementDocument*> documents_;
     };
+
+    bool consume_document_dirty(Rml::ElementDocument* doc);
+    bool is_document_dirty(Rml::ElementDocument* doc);
 
     void register_rml_bindings(nb::module_& m);
     void dirty_all_data_models();

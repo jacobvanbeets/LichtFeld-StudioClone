@@ -22,10 +22,11 @@ namespace lfs::vis::gui {
     public:
         RmlPythonPanelAdapter(void* manager, nb::object panel_instance,
                               const std::string& context_name, const std::string& rml_path,
-                              int height_mode = 0);
+                              bool has_poll = false, int height_mode = 0);
         ~RmlPythonPanelAdapter() override;
 
         void draw(const PanelDrawContext& ctx) override;
+        bool poll(const PanelDrawContext& ctx) override;
         void preload(const PanelDrawContext& ctx) override;
         void preloadDirect(float w, float h, const PanelDrawContext& ctx,
                            float clip_y_min, float clip_y_max,
@@ -39,12 +40,15 @@ namespace lfs::vis::gui {
         void setInput(const PanelInputState* input) override;
         void setForcedHeight(float h) override;
         bool wantsKeyboard() const override;
+        bool needsAnimationFrame() const override;
         void setForeground(bool fg);
 
     private:
         bool ensureHost();
         void cachePythonCapabilities();
         void bindModelIfNeeded();
+        Rml::ElementDocument* ensureDocumentInitialized();
+        void syncDirectLayout(float w, float h);
         Rml::ElementDocument* prepareForRender(const PanelDrawContext* ctx);
 
         void* host_ = nullptr;
@@ -58,9 +62,11 @@ namespace lfs::vis::gui {
         bool bind_model_checked_ = false;
         bool has_draw_imgui_ = false;
         bool draw_imgui_checked_ = false;
+        bool has_poll_ = false;
         int height_mode_ = 0;
         bool foreground_ = false;
         uint64_t last_scene_gen_ = 0;
+        uint64_t last_prepare_frame_ = 0;
         bool content_dirty_ = false;
     };
 

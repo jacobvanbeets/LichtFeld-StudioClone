@@ -196,6 +196,10 @@ namespace lfs::vis::gui {
         return cursor_request_;
     }
 
+    bool RmlRightPanel::needsAnimationFrame() const {
+        return render_needed_ || input_dirty_ || splitter_dragging_ || resize_dragging_;
+    }
+
     void RmlRightPanel::processInput(const RightPanelLayout& layout, const PanelInputState& input) {
         wants_input_ = false;
         cursor_request_ = CursorRequest::None;

@@ -38,6 +38,7 @@ namespace lfs::vis::gui {
                   float pos_x, float pos_y);
         void drawDirect(float x, float y, float w, float h);
         void prepareDirect(float w, float h);
+        void syncDirectLayout(float w, float h);
         bool ensureContext();
         bool ensureDocumentLoaded();
 
@@ -59,6 +60,9 @@ namespace lfs::vis::gui {
             clip_y_min_ = y_min;
             clip_y_max_ = y_max;
         }
+        bool needsAnimationFrame() const {
+            return render_needed_ || content_dirty_ || animation_active_;
+        }
 
         Rml::ElementDocument* getDocument() { return document_; }
         Rml::Context* getContext() { return rml_context_; }
@@ -73,6 +77,10 @@ namespace lfs::vis::gui {
         std::string generateThemeRCSS() const;
         bool loadDocument();
         void cacheContentElements();
+        float computeScrollHeightCap() const;
+        float computeContentHeight() const;
+        float clampScrollTop(float scroll_top) const;
+        void restoreScrollTop(float scroll_top);
         void resolveDirectRenderHeight(float requested_h, int& ph, float& display_h) const;
         void renderIfDirty(int pw, int ph, float& display_h);
 
@@ -108,6 +116,8 @@ namespace lfs::vis::gui {
         bool animation_active_ = false;
         int last_fbo_w_ = 0;
         int last_fbo_h_ = 0;
+        int last_layout_w_ = 0;
+        int last_layout_h_ = 0;
         int last_forwarded_mx_ = -1;
         int last_forwarded_my_ = -1;
         bool last_hovered_ = false;

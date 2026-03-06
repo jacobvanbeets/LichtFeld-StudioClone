@@ -47,6 +47,7 @@ namespace lfs::vis::gui {
                     const std::string& active_tab);
 
         bool wantsInput() const { return wants_input_; }
+        bool needsAnimationFrame() const;
         CursorRequest getCursorRequest() const;
 
         std::function<void(const std::string&)> on_tab_changed;

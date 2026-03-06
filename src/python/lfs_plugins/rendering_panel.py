@@ -235,8 +235,9 @@ class RenderingPanel(RmlPanel):
     def on_update(self, doc):
         s = lf.get_render_settings()
         if not s:
-            return
+            return False
 
+        dirty = False
         for prop_id in COLOR_PROPS:
             val = getattr(s, prop_id)
             key = (prop_id, int(val[0] * 255), int(val[1] * 255), int(val[2] * 255))
@@ -246,6 +247,8 @@ class RenderingPanel(RmlPanel):
             swatch = doc.get_element_by_id(f"swatch-{prop_id}")
             if swatch:
                 swatch.set_property("background-color", f"rgb({key[1]},{key[2]},{key[3]})")
+                dirty = True
+        return dirty
 
     def on_scene_changed(self, doc):
         if self._handle:
@@ -363,4 +366,3 @@ class RenderingPanel(RmlPanel):
                 setattr(s, prop_name, float(val))
         for prop_name in mapping.values():
             handle.dirty(prop_name)
-

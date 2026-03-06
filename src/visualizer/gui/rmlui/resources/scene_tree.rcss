@@ -54,11 +54,13 @@ body {
 .tree-row {
     display: block;
     width: auto;
+    height: 20dp;
     box-sizing: border-box;
     padding: 1dp 4dp;
     border-left-width: 2dp;
     border-left-color: rgba(0, 0, 0, 0);
     cursor: pointer;
+    overflow: hidden;
 }
 
 .tree-row:hover {
@@ -94,8 +96,11 @@ body {
 }
 
 .row-content {
-    display: inline;
+    display: flex;
+    align-items: center;
+    height: 100%;
     white-space: nowrap;
+    min-width: 0;
 }
 
 /* Expand/collapse toggle — inline before name */
@@ -181,8 +186,11 @@ body {
 
 
 .node-name {
-    display: inline;
+    display: block;
     color: #cdd6f4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 
@@ -216,6 +224,7 @@ body {
 /* Scene tree overrides section-header to block display with different padding */
 .section-header {
     display: block;
+    min-height: 24dp;
     padding: 4dp 6dp;
     font-size: 11dp;
 }

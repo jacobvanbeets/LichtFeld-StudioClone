@@ -104,6 +104,15 @@ class TransformControlsPanel(RmlPanel):
 
         self._focus_active = False
 
+    @classmethod
+    def poll(cls, context):
+        del context
+        active_tool = lf.ui.get_active_tool()
+        if active_tool not in ("builtin.translate", "builtin.rotate", "builtin.scale"):
+            return False
+        selected = lf.get_selected_node_names() or []
+        return len(selected) > 0
+
     def on_bind_model(self, ctx):
         model = ctx.create_data_model("transform_controls")
         if model is None:
@@ -160,6 +169,7 @@ class TransformControlsPanel(RmlPanel):
                 el.add_event_listener("blur", self._on_input_blur)
 
     def on_update(self, doc):
+        dirty = False
         self._active_tool = lf.ui.get_active_tool()
         self._selected = lf.get_selected_node_names() or []
 
@@ -171,13 +181,14 @@ class TransformControlsPanel(RmlPanel):
             wrap = doc.get_element_by_id("transform-wrap")
             if wrap:
                 wrap.set_class("hidden", not visible)
+            dirty = True
 
         if not visible:
             if self._state.editing_active:
                 self._commit_single_edit()
             if self._state.multi_editing_active:
                 self._commit_multi_edit()
-            return
+            return dirty
 
         if len(self._selected) == 1:
             self._update_single_node()
@@ -186,6 +197,7 @@ class TransformControlsPanel(RmlPanel):
 
         self._process_step_repeat()
         self._dirty_all()
+        return True
 
     def _tool_label(self):
         labels = {

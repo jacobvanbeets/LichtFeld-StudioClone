@@ -93,6 +93,8 @@ namespace lfs::python {
     // UI redraw request mechanism
     LFS_PYTHON_RUNTIME_API void request_redraw();
     LFS_PYTHON_RUNTIME_API bool consume_redraw_request();
+    using RedrawWakeupCallback = void (*)();
+    LFS_PYTHON_RUNTIME_API void set_redraw_wakeup_callback(RedrawWakeupCallback cb);
 
     using CleanupCallback = void (*)();
     using EnsureInitializedCallback = void (*)();
@@ -572,6 +574,7 @@ namespace lfs::python {
         void (*draw)(void* host, const void* draw_ctx);
         void (*draw_direct)(void* host, float x, float y, float w, float h);
         void (*prepare_direct)(void* host, float w, float h);
+        void (*prepare_layout)(void* host, float w, float h);
         void* (*get_document)(void* host);
         bool (*is_loaded)(void* host);
         void (*set_height_mode)(void* host, int mode);
@@ -584,6 +587,7 @@ namespace lfs::python {
         void (*set_input_clip_y)(void* host, float y_min, float y_max);
         void (*set_input)(void* host, const void* input);
         void (*set_forced_height)(void* host, float h);
+        bool (*needs_animation)(void* host);
     };
 
     LFS_PYTHON_RUNTIME_API void set_rml_panel_host_ops(const RmlPanelHostOps& ops);

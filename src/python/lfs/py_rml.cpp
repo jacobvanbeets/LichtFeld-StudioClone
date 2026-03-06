@@ -11,6 +11,7 @@
 #include <cassert>
 #include <cmath>
 #include <nanobind/stl/optional.h>
+#include <unordered_set>
 
 namespace lfs::python {
 
@@ -18,9 +19,20 @@ namespace lfs::python {
 
     namespace {
         std::unordered_map<Rml::ElementDocument*, std::vector<Rml::ElementPtr>> s_held_elements;
+        std::unordered_set<Rml::ElementDocument*> s_dirty_documents;
         std::map<std::string, DataModelArrayStorage> s_model_storage;
         std::unordered_map<std::string, Rml::DataModelHandle> s_active_handles;
         bool s_string_array_type_registered = false;
+
+        void mark_document_dirty(Rml::Element* element) {
+            if (!element)
+                return;
+            if (auto* doc = element->GetOwnerDocument()) {
+                s_dirty_documents.insert(doc);
+                request_redraw();
+            }
+        }
+
     } // namespace
 
     Rml::ElementPtr extractHeldElement(Rml::ElementDocument* doc, Rml::Element* raw) {
@@ -44,6 +56,14 @@ namespace lfs::python {
 
     void clearHeldElements(Rml::ElementDocument* doc) {
         s_held_elements.erase(doc);
+    }
+
+    bool consume_document_dirty(Rml::ElementDocument* doc) {
+        return s_dirty_documents.erase(doc) > 0;
+    }
+
+    bool is_document_dirty(Rml::ElementDocument* doc) {
+        return doc && s_dirty_documents.contains(doc);
     }
 
     nb::object variant_to_python(const Rml::Variant& v) {
@@ -81,7 +101,7 @@ namespace lfs::python {
         if (!ctor)
             return nb::none();
         register_builtin_transforms(ctor);
-        return nb::cast(PyDataModelConstructor(std::move(ctor), name));
+        return nb::cast(PyDataModelConstructor(std::move(ctor), name, ctx_));
     }
 
     bool PyRmlContext::remove_data_model(const std::string& name) {
@@ -165,6 +185,7 @@ namespace lfs::python {
             return nb::none();
         Rml::Element* raw = new_elem.get();
         elem_->AppendChild(std::move(new_elem));
+        mark_document_dirty(elem_);
         return nb::cast(PyRmlElement(raw));
     }
 
@@ -178,6 +199,7 @@ namespace lfs::python {
         }
         Rml::Element* raw = held.get();
         elem_->AppendChild(std::move(held));
+        mark_document_dirty(elem_);
         return nb::cast(PyRmlElement(raw));
     }
 
@@ -189,6 +211,7 @@ namespace lfs::python {
             return nb::none();
         Rml::Element* raw = new_elem.get();
         elem_->InsertBefore(std::move(new_elem), ref_child.raw());
+        mark_document_dirty(elem_);
         return nb::cast(PyRmlElement(raw));
     }
 
@@ -202,21 +225,30 @@ namespace lfs::python {
         }
         Rml::Element* raw = held.get();
         elem_->InsertBefore(std::move(held), ref_child.raw());
+        mark_document_dirty(elem_);
         return nb::cast(PyRmlElement(raw));
     }
 
     void PyRmlElement::remove_child(PyRmlElement& child) {
         elem_->RemoveChild(child.raw());
+        mark_document_dirty(elem_);
     }
 
-    void PyRmlElement::set_inner_rml(const std::string& rml) { elem_->SetInnerRML(rml); }
+    void PyRmlElement::set_inner_rml(const std::string& rml) {
+        elem_->SetInnerRML(rml);
+        mark_document_dirty(elem_);
+    }
 
     std::string PyRmlElement::get_inner_rml() { return elem_->GetInnerRML(); }
 
-    void PyRmlElement::set_text(const std::string& text) { elem_->SetInnerRML(text); }
+    void PyRmlElement::set_text(const std::string& text) {
+        elem_->SetInnerRML(text);
+        mark_document_dirty(elem_);
+    }
 
     void PyRmlElement::set_attribute(const std::string& name, const std::string& value) {
         elem_->SetAttribute(name, value);
+        mark_document_dirty(elem_);
     }
 
     std::string PyRmlElement::get_attribute(const std::string& name,
@@ -230,10 +262,14 @@ namespace lfs::python {
 
     void PyRmlElement::remove_attribute(const std::string& name) {
         elem_->RemoveAttribute(name);
+        mark_document_dirty(elem_);
     }
 
     void PyRmlElement::set_class(const std::string& name, bool active) {
+        if (elem_->IsClassSet(name) == active)
+            return;
         elem_->SetClass(name, active);
+        mark_document_dirty(elem_);
     }
 
     bool PyRmlElement::is_class_set(const std::string& name) {
@@ -242,6 +278,7 @@ namespace lfs::python {
 
     void PyRmlElement::set_class_names(const std::string& names) {
         elem_->SetClassNames(names);
+        mark_document_dirty(elem_);
     }
 
     std::string PyRmlElement::get_class_names() {
@@ -249,11 +286,15 @@ namespace lfs::python {
     }
 
     bool PyRmlElement::set_property(const std::string& name, const std::string& value) {
-        return elem_->SetProperty(name, value);
+        const bool changed = elem_->SetProperty(name, value);
+        if (changed)
+            mark_document_dirty(elem_);
+        return changed;
     }
 
     void PyRmlElement::remove_property(const std::string& name) {
         elem_->RemoveProperty(name);
+        mark_document_dirty(elem_);
     }
 
     void PyRmlElement::add_event_listener(const std::string& event, nb::callable callback) {
@@ -267,8 +308,14 @@ namespace lfs::python {
 
     float PyRmlElement::scroll_left() { return elem_->GetScrollLeft(); }
     float PyRmlElement::scroll_top() { return elem_->GetScrollTop(); }
-    void PyRmlElement::set_scroll_left(float v) { elem_->SetScrollLeft(v); }
-    void PyRmlElement::set_scroll_top(float v) { elem_->SetScrollTop(v); }
+    void PyRmlElement::set_scroll_left(float v) {
+        elem_->SetScrollLeft(v);
+        mark_document_dirty(elem_);
+    }
+    void PyRmlElement::set_scroll_top(float v) {
+        elem_->SetScrollTop(v);
+        mark_document_dirty(elem_);
+    }
     float PyRmlElement::scroll_width() { return elem_->GetScrollWidth(); }
     float PyRmlElement::scroll_height() { return elem_->GetScrollHeight(); }
     float PyRmlElement::client_width() { return elem_->GetClientWidth(); }
@@ -300,10 +347,22 @@ namespace lfs::python {
         return nb::cast(PyRmlElement(raw));
     }
 
-    void PyRmlDocument::show() { doc_->Show(); }
-    void PyRmlDocument::hide() { doc_->Hide(); }
+    void PyRmlDocument::show() {
+        doc_->Show();
+        s_dirty_documents.insert(doc_);
+        request_redraw();
+    }
+    void PyRmlDocument::hide() {
+        doc_->Hide();
+        s_dirty_documents.insert(doc_);
+        request_redraw();
+    }
     std::string PyRmlDocument::title() { return doc_->GetTitle(); }
-    void PyRmlDocument::set_title(const std::string& t) { doc_->SetTitle(t); }
+    void PyRmlDocument::set_title(const std::string& t) {
+        doc_->SetTitle(t);
+        s_dirty_documents.insert(doc_);
+        request_redraw();
+    }
 
     nb::object PyRmlDocument::create_data_model(const std::string& name) {
         auto* ctx = doc_->GetContext();
@@ -312,7 +371,7 @@ namespace lfs::python {
         if (!ctor)
             return nb::none();
         register_builtin_transforms(ctor);
-        return nb::cast(PyDataModelConstructor(std::move(ctor), name));
+        return nb::cast(PyDataModelConstructor(std::move(ctor), name, ctx));
     }
 
     bool PyRmlDocument::remove_data_model(const std::string& name) {
@@ -442,7 +501,7 @@ namespace lfs::python {
     PyDataModelHandle PyDataModelConstructor::get_handle() {
         auto handle = ctor_.GetModelHandle();
         s_active_handles[model_name_] = handle;
-        return PyDataModelHandle(handle, model_name_);
+        return PyDataModelHandle(handle, model_name_, context_);
     }
 
     void register_builtin_transforms(Rml::DataModelConstructor& ctor) {

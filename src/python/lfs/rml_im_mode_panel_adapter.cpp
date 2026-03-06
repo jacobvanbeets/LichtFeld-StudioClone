@@ -45,7 +45,7 @@ namespace lfs::vis::gui {
             ops.set_height_mode(host_, 1);
     }
 
-    void RmlImModePanelAdapter::drawLayout() {
+    void RmlImModePanelAdapter::drawLayout(const PanelDrawContext* ctx) {
         const auto& ops = lfs::python::get_rml_panel_host_ops();
         if (ops.ensure_document && !ops.ensure_document(host_))
             return;
@@ -55,6 +55,10 @@ namespace lfs::vis::gui {
             return;
 
         if (!lfs::python::can_acquire_gil())
+            return;
+
+        const uint64_t frame_serial = ctx ? ctx->frame_serial : 0;
+        if (frame_serial != 0 && last_layout_frame_ == frame_serial)
             return;
 
         if (lfs::python::bridge().prepare_ui)
@@ -82,6 +86,8 @@ namespace lfs::vis::gui {
 
         if (ops.mark_content_dirty)
             ops.mark_content_dirty(host_);
+        if (frame_serial != 0)
+            last_layout_frame_ = frame_serial;
     }
 
     void RmlImModePanelAdapter::draw(const PanelDrawContext& ctx) {
@@ -92,7 +98,7 @@ namespace lfs::vis::gui {
         const auto& ops = lfs::python::get_rml_panel_host_ops();
 
         const lfs::python::SceneContextGuard scene_guard(ctx.scene);
-        drawLayout();
+        drawLayout(&ctx);
 
         ops.draw(host_, &ctx);
     }
@@ -114,7 +120,7 @@ namespace lfs::vis::gui {
             ops.set_input(host_, input);
 
         const lfs::python::SceneContextGuard scene_guard(ctx.scene);
-        drawLayout();
+        drawLayout(&ctx);
         ops.prepare_direct(host_, w, h);
 
         if (ops.set_input)
@@ -132,7 +138,7 @@ namespace lfs::vis::gui {
         const auto& ops = lfs::python::get_rml_panel_host_ops();
 
         const lfs::python::SceneContextGuard scene_guard(ctx.scene);
-        drawLayout();
+        drawLayout(&ctx);
 
         ops.draw_direct(host_, x, y, w, h);
     }
@@ -166,6 +172,13 @@ namespace lfs::vis::gui {
             if (ops.set_forced_height)
                 ops.set_forced_height(host_, h);
         }
+    }
+
+    bool RmlImModePanelAdapter::needsAnimationFrame() const {
+        if (!host_)
+            return false;
+        const auto& ops = lfs::python::get_rml_panel_host_ops();
+        return ops.needs_animation ? ops.needs_animation(host_) : false;
     }
 
     bool RmlImModePanelAdapter::poll(const PanelDrawContext& ctx) {

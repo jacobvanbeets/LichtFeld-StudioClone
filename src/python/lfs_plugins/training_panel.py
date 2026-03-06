@@ -256,6 +256,8 @@ class TrainingPanel(RmlPanel):
         self._step_repeat_start = 0.0
         self._step_repeat_last = 0.0
         self._text_bufs = {}
+        self._last_checkpoint_saved_visible = False
+        self._last_loss_signature = None
 
     def on_bind_model(self, ctx):
         model = ctx.create_data_model("training")
@@ -604,7 +606,7 @@ class TrainingPanel(RmlPanel):
         if not self._handle:
             return False
 
-        changed = False
+        dirty = False
         state = AppState.trainer_state.value
         if state != self._last_state:
             self._last_state = state
@@ -612,7 +614,7 @@ class TrainingPanel(RmlPanel):
                 _rate_tracker.clear()
             self._sync_text_bufs()
             self._handle.dirty_all()
-            changed = True
+            dirty = True
         else:
             it = AppState.iteration.value
             if it != self._last_iteration:
@@ -620,27 +622,37 @@ class TrainingPanel(RmlPanel):
                 self._handle.dirty("status_iteration")
                 self._handle.dirty("progress_text")
                 self._handle.dirty("show_progress")
-                changed = True
+                dirty = True
 
             ng = AppState.num_gaussians.value
             if ng != self._last_num_gaussians:
                 self._last_num_gaussians = ng
                 self._handle.dirty("status_gaussians")
-                changed = True
+                dirty = True
 
-            self._handle.dirty("show_checkpoint_saved")
+            checkpoint_visible = (
+                self._checkpoint_saved_time > 0.0 and
+                time.time() - self._checkpoint_saved_time < 2.0
+            )
+            if checkpoint_visible != self._last_checkpoint_saved_visible:
+                self._last_checkpoint_saved_visible = checkpoint_visible
+                self._handle.dirty("show_checkpoint_saved")
+                dirty = True
 
         if state == "ready" and AppState.iteration.value == 0:
             params = lf.optimization_params()
             if params and params.has_params():
-                self._try_auto_scale_steps(params)
+                if self._try_auto_scale_steps(params):
+                    self._sync_text_bufs()
+                    self._handle.dirty_all()
+                    dirty = True
 
         self._update_step_repeat()
-        self._update_progress(doc)
-        self._update_save_steps(doc)
-        self._update_color_swatch(doc)
-        self._update_loss_graph()
-        return changed
+        dirty |= self._update_progress(doc)
+        dirty |= self._update_save_steps(doc)
+        dirty |= self._update_color_swatch(doc)
+        dirty |= self._update_loss_graph()
+        return dirty
 
     def _update_progress(self, doc):
         it = AppState.iteration.value
@@ -651,16 +663,18 @@ class TrainingPanel(RmlPanel):
             prog = doc.get_element_by_id("training-progress")
             if prog:
                 prog.set_attribute("value", str(frac))
+            return True
+        return False
 
     def _update_save_steps(self, doc):
         params = lf.optimization_params()
         if not params or not params.has_params():
-            return
+            return False
 
         state = AppState.trainer_state.value
         can_edit = state == "ready" and AppState.iteration.value == 0
         if not can_edit:
-            return
+            return False
 
         steps = list(params.save_steps)
         if steps != self._last_save_steps:
@@ -669,19 +683,22 @@ class TrainingPanel(RmlPanel):
             self._handle.dirty("no_save_steps")
             self._handle.dirty("has_save_steps")
             self._handle.dirty("save_steps_display")
+            return True
+        return False
 
     def _update_color_swatch(self, doc):
         params = lf.optimization_params()
         if not params or not params.has_params():
-            return
+            return False
         c = tuple(params.bg_color)
         if c == self._last_bg_color:
-            return
+            return False
         self._last_bg_color = c
         swatch = doc.get_element_by_id("swatch-bg_color")
         if swatch:
             r, g, b = int(c[0] * 255), int(c[1] * 255), int(c[2] * 255)
             swatch.set_property("background-color", f"rgb({r},{g},{b})")
+        return True
 
     def on_scene_changed(self, doc):
         if self._handle:
@@ -694,16 +711,23 @@ class TrainingPanel(RmlPanel):
 
     def _update_loss_graph(self):
         if not self._loss_graph_el:
-            return
+            return False
         loss_data = lf.loss_buffer()
         if not loss_data:
+            if self._last_loss_signature is None:
+                return False
+            self._last_loss_signature = None
             lf.push_loss_to_element(self._loss_graph_el, [])
             if self._loss_label_el:
                 self._loss_label_el.set_inner_rml("")
             for el in self._tick_els:
                 if el:
                     el.set_inner_rml("")
-            return
+            return True
+        signature = (len(loss_data), float(loss_data[-1]))
+        if signature == self._last_loss_signature:
+            return False
+        self._last_loss_signature = signature
         data_min, data_max = lf.push_loss_to_element(self._loss_graph_el, loss_data)
         if self._loss_label_el:
             self._loss_label_el.set_inner_rml(f"{tr('status.loss')}: {loss_data[-1]:.4f}")
@@ -714,6 +738,7 @@ class TrainingPanel(RmlPanel):
         for el, val in zip(self._tick_els, tick_values):
             if el:
                 el.set_inner_rml(fmt % val)
+        return True
 
     def _on_picker_change(self, handle, event, args):
         params = lf.optimization_params()
@@ -1102,9 +1127,10 @@ class TrainingPanel(RmlPanel):
     def _try_auto_scale_steps(self, params):
         scene = lf.get_scene()
         if scene is None:
-            return
+            return False
         camera_count = scene.active_camera_count
         if camera_count == 0 or camera_count == self._auto_scaled_for_cameras:
-            return
+            return False
         self._auto_scaled_for_cameras = camera_count
         params.auto_scale_steps(camera_count)
+        return True

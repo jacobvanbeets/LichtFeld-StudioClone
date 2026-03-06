@@ -209,6 +209,7 @@ namespace lfs::python {
         int height_mode = 0;
         float initial_width = 0;
         float initial_height = 0;
+        bool has_poll = false;
 
         try {
             idname = nb::hasattr(panel_class, "idname")
@@ -234,6 +235,7 @@ namespace lfs::python {
                 initial_width = nb::cast<float>(panel_class.attr("initial_width"));
             if (nb::hasattr(panel_class, "initial_height"))
                 initial_height = nb::cast<float>(panel_class.attr("initial_height"));
+            has_poll = nb::hasattr(panel_class, "poll");
         } catch (const std::exception& e) {
             LOG_ERROR("register_rml_panel: failed to extract attributes: {}", e.what());
             return;
@@ -253,7 +255,7 @@ namespace lfs::python {
         }
 
         auto adapter = std::make_shared<gui::RmlPythonPanelAdapter>(
-            rml_manager, std::move(instance), idname, rml_template, height_mode);
+            rml_manager, std::move(instance), idname, rml_template, has_poll, height_mode);
 
         const auto gui_space = to_gui_space(space);
         if (gui_space == gui::PanelSpace::Floating)
