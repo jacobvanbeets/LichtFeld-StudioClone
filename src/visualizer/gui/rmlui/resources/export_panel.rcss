@@ -77,10 +77,14 @@
     min-height: 20dp;
 }
 
+.ep-model-row .setting-label {
+    flex: 1;
+    overflow: hidden;
+}
+
 .ep-model-name {
     font-size: 10dp;
     color: #cdd6f4;
-    flex: 1;
 }
 
 .ep-model-count {
@@ -114,4 +118,27 @@
 .ep-action-btn {
     flex: 1;
     text-align: center;
+}
+
+/* ── Progress section ──────────────────────────────── */
+
+@keyframes ep-pulse {
+    from { background-color: #89b4fa; }
+    to   { background-color: #b4d0fb; }
+}
+
+.ep-progress-wrap {
+    position: relative;
+    margin: 6dp 0;
+}
+
+.ep-progress fill {
+    animation: ep-pulse 1.2s quadratic-in-out infinite alternate;
+}
+
+.ep-stage-text {
+    display: block;
+    font-size: 10dp;
+    color: #a6adc8;
+    margin-bottom: 6dp;
 }

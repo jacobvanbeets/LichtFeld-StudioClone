@@ -51,6 +51,9 @@ class ExportPanel(RmlPanel):
         self._handle = None
         self._last_node_key = None
         self._last_lang = ""
+        self._exporting = False
+        self._last_progress = -1.0
+        self._cached_export_state = {}
 
     # ── Data model ────────────────────────────────────────────
 
@@ -77,8 +80,15 @@ class ExportPanel(RmlPanel):
             self._set_sh_degree,
         )
 
+        model.bind_func("show_form", lambda: not self._exporting)
+        model.bind_func("show_progress", lambda: self._exporting)
+        model.bind_func("progress_title", self._get_progress_title)
+        model.bind_func("progress_pct", self._get_progress_pct)
+        model.bind_func("progress_stage", self._get_progress_stage)
+
         model.bind_event("do_export", self._on_export)
         model.bind_event("do_cancel", self._on_cancel)
+        model.bind_event("do_cancel_export", self._on_cancel_export)
 
         self._handle = model.get_handle()
 
@@ -99,6 +109,9 @@ class ExportPanel(RmlPanel):
     def on_load(self, doc):
         super().on_load(doc)
         self._doc = doc
+        self._exporting = False
+        self._last_progress = -1.0
+        self._cached_export_state = {}
         self._selection_seeded = False
         self._last_node_key = None
         self._last_lang = lf.ui.get_current_language()
@@ -124,6 +137,14 @@ class ExportPanel(RmlPanel):
         self._update_export_state(doc)
 
     def on_update(self, doc):
+        if self._exporting:
+            return self._update_export_progress(doc)
+
+        if self._last_progress >= 0.0:
+            self._last_progress = -1.0
+            self._dirty_model("show_form", "show_progress")
+            return True
+
         dirty = False
         current_lang = lf.ui.get_current_language()
         if current_lang != self._last_lang:
@@ -324,13 +345,19 @@ class ExportPanel(RmlPanel):
             self._rebuild_models(self._doc, self._get_splat_nodes())
             self._update_export_state(self._doc)
 
-    def _on_export(self, _ev):
+    def _on_export(self, _handle, _ev, _args):
         if not self._selected_nodes:
             return
         self._do_export()
 
-    def _on_cancel(self, _ev):
+    def _on_cancel(self, _handle, _ev, _args):
+        if self._exporting:
+            lf.ui.cancel_export()
         lf.ui.set_panel_enabled("lfs.export", False)
+
+    def _on_cancel_export(self, _handle, _ev, _args):
+        if self._exporting:
+            lf.ui.cancel_export()
 
     # ── Export logic ──────────────────────────────────────────
 
@@ -377,5 +404,39 @@ class ExportPanel(RmlPanel):
 
         if path:
             lf.export_scene(int(self._format), path, selected_nodes, self._export_sh_degree)
-            lf.ui.set_panel_enabled("lfs.export", False)
+            self._exporting = True
+            self._last_progress = -1.0
+            self._dirty_model("show_form", "show_progress", "progress_title",
+                              "progress_pct", "progress_stage")
+
+    # ── Progress helpers ─────────────────────────────────────
+
+    def _get_progress_title(self):
+        fmt = self._cached_export_state.get("format", "file")
+        return lf.ui.tr("progress.exporting").replace("%s", fmt)
+
+    def _get_progress_pct(self):
+        return f"{self._cached_export_state.get('progress', 0.0) * 100:.0f}%"
+
+    def _get_progress_stage(self):
+        return self._cached_export_state.get("stage", "")
+
+    def _update_export_progress(self, doc):
+        state = lf.ui.get_export_state()
+        self._cached_export_state = state
+        if not state.get("active", False):
+            self._exporting = False
             self._selection_seeded = False
+            lf.ui.set_panel_enabled("lfs.export", False)
+            return True
+
+        progress = state.get("progress", 0.0)
+        if progress != self._last_progress:
+            self._last_progress = progress
+            prog = doc.get_element_by_id("export-progress")
+            if prog:
+                prog.set_attribute("value", str(progress))
+            self._dirty_model("progress_pct", "progress_stage")
+            return True
+
+        return False
