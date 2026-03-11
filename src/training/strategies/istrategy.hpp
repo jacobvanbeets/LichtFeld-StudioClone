@@ -27,6 +27,8 @@ namespace lfs::training {
 
         virtual void initialize(const lfs::core::param::OptimizationParameters& optimParams) = 0;
 
+        virtual void pre_step(int /*iter*/, RenderOutput& /*render_output*/) {}
+
         virtual void post_backward(int iter, RenderOutput& render_output) = 0;
 
         virtual void step(int iter) = 0;

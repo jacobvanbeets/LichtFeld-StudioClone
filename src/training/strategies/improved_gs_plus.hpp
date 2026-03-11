@@ -30,6 +30,8 @@ namespace lfs::training {
 
         void initialize(const lfs::core::param::OptimizationParameters& optimParams) override;
 
+        void pre_step(int iter, RenderOutput& render_output) override;
+
         void post_backward(int iter, RenderOutput& render_output) override;
 
         void step(int iter) override;
@@ -111,6 +113,11 @@ namespace lfs::training {
         std::unique_ptr<ExponentialLR> _scheduler;
         lfs::core::SplatData* _splat_data;
         std::unique_ptr<const lfs::core::param::OptimizationParameters> _params;
+
+        // Pre-computed edge scores for non-blocking densification
+        lfs::core::Tensor _precomputed_grads;
+        lfs::core::Tensor _precomputed_scores;
+        bool _precompute_valid = false;
 
         // Free slot tracking - bool tensor [capacity], true = slot is free for reuse
         lfs::core::Tensor _free_mask;

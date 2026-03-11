@@ -459,6 +459,26 @@ namespace lfs::training {
         }
     }
 
+    void ImprovedGSPlus::pre_step(int iter, RenderOutput& render_output) {
+        if (iter > _params->stop_refine)
+            return;
+        if (!is_refining(iter))
+            return;
+
+        if (!_edges_initialized) {
+            assert(_views && "set_views() must be called before training");
+            get_all_edges();
+            _edges_initialized = true;
+        }
+
+        const lfs::core::Tensor numer = _splat_data->_densification_info[1];
+        const lfs::core::Tensor denom = _splat_data->_densification_info[0];
+        _precomputed_grads = numer / denom.clamp_min(1.0f);
+
+        _precomputed_scores = compute_gaussian_score(_precomputed_grads);
+        _precompute_valid = true;
+    }
+
     void ImprovedGSPlus::post_backward(int iter, RenderOutput& render_output) {
 
         if (iter % _params->sh_degree_interval == 0) {
@@ -470,29 +490,22 @@ namespace lfs::training {
         }
 
         if (is_refining(iter)) {
-            if (!_edges_initialized) {
-                assert(_views && "set_views() must be called before training");
-                get_all_edges();
-                _edges_initialized = true;
-            }
+            assert(_precompute_valid);
 
-            const lfs::core::Tensor numer = _splat_data->_densification_info[1];
-            const lfs::core::Tensor denom = _splat_data->_densification_info[0];
-            const lfs::core::Tensor grads = numer / denom.clamp_min(1.0f);
-
-            // strategy core
-            const lfs::core::Tensor gaussian_scores = compute_gaussian_score(grads);
-            densify_with_score(gaussian_scores, grads, get_current_budget());
+            densify_with_score(_precomputed_scores, _precomputed_grads, get_current_budget());
             opacity_prune(iter);
 
             lfs::core::Tensor::trim_memory_pool();
 
-            // refine reset stats
             _splat_data->_densification_info = lfs::core::Tensor::zeros(
                 {2, static_cast<size_t>(_splat_data->size())},
                 _splat_data->means().device());
 
             this->_current_step++;
+
+            _precomputed_scores = lfs::core::Tensor();
+            _precomputed_grads = lfs::core::Tensor();
+            _precompute_valid = false;
         }
 
         if (((iter % _params->reset_every) == 0) && (iter < _params->stop_refine) && (iter > 0)) {
@@ -500,9 +513,7 @@ namespace lfs::training {
         }
 
         if (iter == _params->stop_refine) {
-            // Erase densification info at the end of refinement. Saves memory and processing time.
             _splat_data->_densification_info = lfs::core::Tensor::empty({0});
-            // all_edges not needed
             this->_all_edges = lfs::core::Tensor::empty({0});
 
             lfs::core::CudaMemoryPool::instance().trim_cached_memory();

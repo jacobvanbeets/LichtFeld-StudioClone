@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "edge_rasterizer.hpp"
+#include "core/cuda/memory_arena.hpp"
 #include "core/logger.hpp"
 #include "core/path_utils.hpp"
 #include "core/tensor/internal/tensor_serialization.hpp"
@@ -110,6 +111,10 @@ namespace lfs::training {
         if (!forward_ctx.success) {
             return std::unexpected(std::string(forward_ctx.error_message));
         }
+
+        // Release arena frame — edge rasterization has no backward pass
+        auto& arena = core::GlobalArenaManager::instance().get_arena();
+        arena.end_frame(forward_ctx.frame_id);
 
         // Prepare render output
         RenderOutput render_output;
