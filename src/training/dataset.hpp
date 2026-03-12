@@ -238,6 +238,14 @@ namespace lfs::training {
             return batch;
         }
 
+        /// Get camera pointer by dataset index (no image loading)
+        lfs::core::Camera* get_camera_ptr(size_t index) const {
+            if (index >= indices_.size()) {
+                throw std::out_of_range("Dataset index out of range");
+            }
+            return cameras_[indices_[index]].get();
+        }
+
         size_t size() const { return indices_.size(); }
 
         const std::vector<std::shared_ptr<lfs::core::Camera>>& get_cameras() const { return cameras_; }

@@ -164,6 +164,7 @@ namespace lfs::core {
         Stats stats_;
         bool enabled_{true}; // Can disable for A/B testing
         std::atomic<bool> shutdown_{false};
+        size_t pinned_alloc_fail_count_{0}; // Rate-limit allocation failure logs
     };
 
 } // namespace lfs::core

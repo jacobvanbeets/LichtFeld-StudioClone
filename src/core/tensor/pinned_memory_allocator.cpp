@@ -175,15 +175,23 @@ namespace lfs::core {
         cudaError_t err = cudaHostAlloc(&ptr, rounded_size, cudaHostAllocDefault);
 
         if (err != cudaSuccess) {
-            LOG_ERROR("cudaHostAlloc failed for {} bytes: {}",
-                      rounded_size, cudaGetErrorString(err));
+            // Rate-limit these messages to avoid flooding the log when many
+            // images are being processed (e.g. 4000+ edge precomputations).
+            ++pinned_alloc_fail_count_;
+            if (pinned_alloc_fail_count_ <= 3 || (pinned_alloc_fail_count_ % 100) == 0) {
+                LOG_ERROR("cudaHostAlloc failed for {} bytes: {} (occurrence #{})",
+                          rounded_size, cudaGetErrorString(err), pinned_alloc_fail_count_);
+            }
             // Fall back to regular malloc as last resort
             ptr = std::malloc(rounded_size);
             if (!ptr) {
                 LOG_ERROR("Fallback malloc also failed for {} bytes", rounded_size);
                 return nullptr;
             }
-            LOG_WARN("Falling back to regular malloc for {} bytes", rounded_size);
+            if (pinned_alloc_fail_count_ <= 3 || (pinned_alloc_fail_count_ % 100) == 0) {
+                LOG_WARN("Falling back to regular malloc for {} bytes (occurrence #{})",
+                         rounded_size, pinned_alloc_fail_count_);
+            }
         }
 
         allocated_blocks_[ptr] = rounded_size;

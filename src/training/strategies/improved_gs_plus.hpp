@@ -72,7 +72,7 @@ namespace lfs::training {
         // Helper Functions
         inline const int64_t get_current_budget() const noexcept { return _budget_schedule[_current_step + 1]; }
         inline const unsigned global_seed() const noexcept { return _current_step; }                             // for camera sampling
-        const std::pair<std::vector<CameraExample>, std::vector<int>> random_cam_sample(const int N = 10) const; // N minimum
+        const std::pair<std::vector<lfs::core::Camera*>, std::vector<int>> random_cam_sample(const int N = 10) const; // N minimum
 
         std::vector<int64_t> get_count_array();
         void get_all_edges();
@@ -103,7 +103,7 @@ namespace lfs::training {
         bool _edges_initialized = false;
 
         std::vector<int64_t> _budget_schedule;
-        lfs::core::Tensor _all_edges;
+        std::vector<lfs::core::Tensor> _all_edges;
 
         // Pointers to external data
         std::shared_ptr<CameraDataset> _views;

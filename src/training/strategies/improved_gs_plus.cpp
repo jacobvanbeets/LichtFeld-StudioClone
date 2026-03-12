@@ -10,6 +10,7 @@
 #include "optimizer/adam_optimizer.hpp"
 
 #include "core/tensor/internal/memory_pool.hpp"
+#include "core/pinned_memory_allocator.hpp"
 
 #include "kernels/densification_kernels.hpp"
 #include "kernels/image_kernels.hpp"
@@ -57,7 +58,7 @@ namespace lfs::training {
             const int height = input_data.shape()[1];
             const int channels = input_data.shape()[0];
 
-            const float* d_input = static_cast<float*>(input_data.clone().data_ptr());
+            const float* d_input = static_cast<const float*>(input_data.data_ptr());
 
             // Raw grayscale output memory in CUDA
             float* d_output_grayscale;
@@ -167,28 +168,32 @@ namespace lfs::training {
     }
 
     void ImprovedGSPlus::get_all_edges() {
-
         const size_t num_views = _views->size();
 
-        // Prepare tensor size: [Views, H, W]
-        lfs::core::Tensor image_sample = _views->get(0).data.image;
-        lfs::core::TensorShape all_egdes_shape = lfs::core::TensorShape({num_views, image_sample.shape()[1], image_sample.shape()[2]});
+        // Store per-view edge maps individually on CPU to avoid a single
+        // multi-GB contiguous allocation that exceeds pinned-memory limits.
+        _all_edges.clear();
+        _all_edges.reserve(num_views);
 
-        this->_all_edges = lfs::core::Tensor::zeros(all_egdes_shape, lfs::core::Device::CUDA, lfs::core::DataType::Float32);
+        // Reclaim all cached CUDA memory before the loop — VRAM is typically
+        // near-full from the preceding training iterations.
+        lfs::core::Tensor::trim_memory_pool();
+        lfs::core::CudaMemoryPool::instance().trim_cached_memory();
 
-        lfs::core::Tensor d_indices = lfs::core::Tensor::arange(0, num_views, 1).to(lfs::core::DataType::Int32);
-
-        // Iterate over the views, get edges and emplace it into _all_edges
-        for (int i = 0; i < num_views; i++) {
-            lfs::core::Tensor idx = d_indices.slice(0, i, i + 1);
-
-            const CameraExample cam_img = _views->get(i);
-            const lfs::core::Tensor image = cam_img.data.image;
-
-            lfs::core::Tensor laplacian = apply_canny_filter(image).unsqueeze(0);
-
-            // Applies median normalization
-            this->_all_edges.index_put_(idx, median_normalization(laplacian));
+        for (size_t i = 0; i < num_views; i++) {
+            {
+                const CameraExample cam_img = _views->get(i);
+                lfs::core::Tensor laplacian = apply_canny_filter(cam_img.data.image);
+                _all_edges.push_back(median_normalization(laplacian).cpu());
+            }
+            // Periodically release CUDA intermediates and pinned host memory.
+            // Trimming every iteration is expensive (CUDA sync); every 50 is
+            // enough to keep VRAM in check while being much faster.
+            if (i % 50 == 0) {
+                lfs::core::Tensor::trim_memory_pool();
+                lfs::core::CudaMemoryPool::instance().trim_cached_memory();
+                lfs::core::PinnedMemoryAllocator::instance().empty_cache();
+            }
         }
     }
 
@@ -220,18 +225,27 @@ namespace lfs::training {
         this->_edges_initialized = false;
 
         this->_budget_schedule = get_count_array();
+
+        // Precompute edge maps NOW, before the PipelinedImageLoader starts
+        // filling VRAM during training.  At this point VRAM has room for the
+        // per-image Canny processing; by the time pre_step() runs (iter 500)
+        // the pipelined loader's cache makes VRAM too tight.
+        if (_views && _views->size() > 0) {
+            get_all_edges();
+            _edges_initialized = true;
+        }
     }
 
     const lfs::core::Tensor ImprovedGSPlus::compute_gaussian_score(const lfs::core::Tensor& gradients) {
         const int64_t current_gaussian_count = _splat_data->size();
 
         auto [cam_list, cam_idx] = random_cam_sample();
-        const int num_views = cam_list.size();
+        const int num_views = static_cast<int>(cam_list.size());
 
         // Indices
         const lfs::core::Tensor d_indices = lfs::core::Tensor::arange(0, num_views, 1).to(lfs::core::DataType::Int32);
 
-        // Initialize tensor in which storees gaussian importance in device
+        // Initialize tensor in which stores gaussian importance in device
         lfs::core::TensorShape scores_shape = lfs::core::TensorShape(
             {static_cast<unsigned long>(num_views),
              static_cast<unsigned long>(current_gaussian_count)});
@@ -240,11 +254,9 @@ namespace lfs::training {
                                                                      lfs::core::Device::CUDA,
                                                                      lfs::core::DataType::Float32);
         for (int view = 0; view < num_views; view++) {
-            // Retrieves camera for render
-            const CameraExample cam = cam_list[view];
-            lfs::core::Camera* my_viewpoint_cam = cam.data.camera;
+            lfs::core::Camera* my_viewpoint_cam = cam_list[view];
 
-            const lfs::core::Tensor pixel_weights = _all_edges[cam_idx[view]];
+            const lfs::core::Tensor pixel_weights = _all_edges[cam_idx[view]].to(lfs::core::Device::CUDA);
 
             lfs::core::Tensor bg;
             // Rendering for edge_scores
@@ -514,7 +526,8 @@ namespace lfs::training {
 
         if (iter == _params->stop_refine) {
             _splat_data->_densification_info = lfs::core::Tensor::empty({0});
-            this->_all_edges = lfs::core::Tensor::empty({0});
+            this->_all_edges.clear();
+            this->_all_edges.shrink_to_fit();
 
             lfs::core::CudaMemoryPool::instance().trim_cached_memory();
         }
@@ -553,22 +566,24 @@ namespace lfs::training {
         }
     }
 
-    const std::pair<std::vector<CameraExample>, std::vector<int>> ImprovedGSPlus::random_cam_sample(const int N) const {
-        const int num_cam_dataset = _views->size();
+    const std::pair<std::vector<lfs::core::Camera*>, std::vector<int>> ImprovedGSPlus::random_cam_sample(const int N) const {
+        const int num_cam_dataset = static_cast<int>(_views->size());
         int num_samples = 0;
 
         // Minimum sample is 10 or all cameras if lower. Otherwise 8% of camera dataset
         if (num_cam_dataset < N) {
             num_samples = num_cam_dataset;
         } else {
-            const int min_cam_dataset = 0.08 * num_cam_dataset;
+            const int min_cam_dataset = static_cast<int>(0.08 * num_cam_dataset);
             num_samples = std::max(N, min_cam_dataset);
         }
 
-        // Create vector for CameraExample and Camera idx
-        std::vector<CameraExample> samples;
+        // Return only Camera pointers and indices — no image loading needed.
+        // Image dimensions were already set by get_all_edges() which called
+        // _views->get(i) for every view during initialization.
+        std::vector<lfs::core::Camera*> cameras;
         std::vector<int> indices;
-        samples.reserve(num_samples);
+        cameras.reserve(num_samples);
         indices.reserve(num_samples);
 
         std::vector<int> all_indices(num_cam_dataset);
@@ -579,13 +594,13 @@ namespace lfs::training {
 
         std::shuffle(all_indices.begin(), all_indices.end(), rng);
 
-        // Select the first num_samples
+        // Select the first num_samples — only camera pointers, no GPU image loading
         for (int i = 0; i < num_samples; ++i) {
-            samples.push_back(_views->get(all_indices[i]));
+            cameras.push_back(_views->get_camera_ptr(all_indices[i]));
             indices.push_back(all_indices[i]);
         }
 
-        return {samples, indices};
+        return {cameras, indices};
     }
 
     // From ImprovedGS but not used
