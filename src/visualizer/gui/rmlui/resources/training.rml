@@ -346,11 +346,15 @@
             <button class="num-step-btn" data-event-mousedown="num_step('sh_degree_interval', -1)">-</button>
             <button class="num-step-btn" data-event-mousedown="num_step('sh_degree_interval', 1)">+</button>
           </div>
-          <div class="setting-row" data-if="dep_igs">
+          <div class="setting-row" data-if="dep_adc_or_igs">
             <span class="prop-label">{{label_prune_opacity}}</span>
             <input type="text" class="number-input" data-value="prune_opacity_str" />
             <button class="num-step-btn" data-event-mousedown="num_step('prune_opacity', -1)">-</button>
             <button class="num-step-btn" data-event-mousedown="num_step('prune_opacity', 1)">+</button>
+          </div>
+          <div class="setting-row" data-if="dep_adc_or_igs">
+            <span class="prop-label">{{label_revised_opacity}}</span>
+            <input type="checkbox" data-checked="revised_opacity" />
           </div>
         </div>
       </div>
@@ -474,12 +478,6 @@
           <button class="num-step-btn" data-event-mousedown="num_step('min_opacity', 1)">+</button>
         </div>
         <div class="setting-row">
-          <span class="prop-label">{{label_prune_opacity}}</span>
-          <input type="text" class="number-input" data-value="prune_opacity_str" />
-          <button class="num-step-btn" data-event-mousedown="num_step('prune_opacity', -1)">-</button>
-          <button class="num-step-btn" data-event-mousedown="num_step('prune_opacity', 1)">+</button>
-        </div>
-        <div class="setting-row">
           <span class="prop-label">{{label_grow_scale3d}}</span>
           <input type="text" class="number-input" data-value="grow_scale3d_str" />
           <button class="num-step-btn" data-event-mousedown="num_step('grow_scale3d', -1)">-</button>
@@ -508,10 +506,6 @@
           <input type="text" class="number-input" data-value="pause_refine_after_reset_str" />
           <button class="num-step-btn" data-event-mousedown="num_step('pause_refine_after_reset', -1)">-</button>
           <button class="num-step-btn" data-event-mousedown="num_step('pause_refine_after_reset', 1)">+</button>
-        </div>
-        <div class="setting-row">
-          <span class="prop-label">{{label_revised_opacity}}</span>
-          <input type="checkbox" data-checked="revised_opacity" />
         </div>
       </div>
     </div>

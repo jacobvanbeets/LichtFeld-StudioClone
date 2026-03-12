@@ -387,6 +387,8 @@ class TrainingPanel(Panel):
                          lambda: p() is not None and p().has_params() and p().strategy == "adc")
         model.bind_func("dep_igs",
                          lambda: p() is not None and p().has_params() and p().strategy == "igs+")
+        model.bind_func("dep_adc_or_igs",
+                         lambda: p() is not None and p().has_params() and p().strategy in ("adc", "igs+"))
         model.bind_func("dep_sparsity",
                          lambda: p() is not None and p().has_params() and p().enable_sparsity)
         model.bind_func("dep_random",
@@ -910,6 +912,8 @@ class TrainingPanel(Panel):
         params = lf.optimization_params()
         if not params or not params.has_params():
             return
+        if not hasattr(params, prop):
+            return
         setattr(params, prop, val)
         rs = lf.get_render_settings()
         if rs and prop in RENDER_SYNC:
@@ -1015,6 +1019,9 @@ class TrainingPanel(Panel):
 
         if prop == "steps_scaler":
             params.apply_step_scaling(val)
+            if self._handle:
+                self._sync_text_bufs()
+                self._handle.dirty_all()
         elif prop in DIRECT_SET_PROPS:
             setattr(params, prop, val)
         else:
