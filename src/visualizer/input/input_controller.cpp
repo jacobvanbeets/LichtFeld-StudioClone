@@ -161,6 +161,20 @@ namespace lfs::vis {
             }
         }
 
+        bool isViewportMovementAction(const input::Action action) {
+            switch (action) {
+            case input::Action::CAMERA_MOVE_FORWARD:
+            case input::Action::CAMERA_MOVE_BACKWARD:
+            case input::Action::CAMERA_MOVE_LEFT:
+            case input::Action::CAMERA_MOVE_RIGHT:
+            case input::Action::CAMERA_MOVE_UP:
+            case input::Action::CAMERA_MOVE_DOWN:
+                return true;
+            default:
+                return false;
+            }
+        }
+
         bool handleSelectionModeShortcut(const input::Action action, gui::GuiManager* gui) {
             if (!gui)
                 return false;
@@ -251,6 +265,7 @@ namespace lfs::vis {
 
         internal::WindowFocusLost::when([this](const auto&) {
             drag_mode_ = DragMode::None;
+            viewport_keyboard_focus_ = false;
             std::fill(std::begin(keys_movement_), std::end(keys_movement_), false);
             hovered_camera_id_ = -1;
 
@@ -312,6 +327,7 @@ namespace lfs::vis {
     }
 
     void InputController::onWindowFocusLost() {
+        viewport_keyboard_focus_ = false;
         if (current_cursor_ != CursorType::Default) {
             SDL_SetCursor(SDL_GetDefaultCursor());
             current_cursor_ = CursorType::Default;
@@ -367,8 +383,14 @@ namespace lfs::vis {
     // Core handlers
     void InputController::handleMouseButton(int button, int action, double x, double y) {
         auto* gui = services().guiOrNull();
+        const bool in_viewport = isInViewport(x, y);
         const bool over_gui = isPointerOverBlockingUi(x, y) ||
                               ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+        const bool over_gizmo = gui && gui->gizmo().isPositionInViewportGizmo(x, y);
+
+        if (action == input::ACTION_PRESS) {
+            viewport_keyboard_focus_ = in_viewport && !over_gui && !over_gizmo;
+        }
 
         // Consume all mouse events while pie menu is open
         if (gui && gui->gizmo().isPieMenuOpen()) {
@@ -442,8 +464,6 @@ namespace lfs::vis {
             LOG_TRACE("Ended splitter drag");
             return;
         }
-
-        const bool over_gizmo = gui && gui->gizmo().isPositionInViewportGizmo(x, y);
 
         // Single binding lookup with current tool mode
         const int mods = getModifierKeys();
@@ -1004,6 +1024,11 @@ namespace lfs::vis {
 
         const auto tool_mode = getCurrentToolMode();
         const auto bound_action = bindings_.getActionForKey(tool_mode, key, mods);
+        const bool allow_viewport_movement =
+            viewport_keyboard_focus_ &&
+            isViewportMovementAction(bound_action) &&
+            !wants_text_input &&
+            !(gui && gui->isModalWindowOpen());
 
         // Global shortcuts bypass ImGui keyboard capture (except text input)
         if (action == input::ACTION_PRESS && !wants_text_input) {
@@ -1026,7 +1051,8 @@ namespace lfs::vis {
 
         const bool is_always_active = isAlwaysActiveKeyAction(bound_action);
 
-        if (imgui_wants_keyboard && (!is_always_active || wants_text_input))
+        if (imgui_wants_keyboard && !allow_viewport_movement &&
+            (!is_always_active || wants_text_input))
             return;
 
         // Only speed controls support key repeat
@@ -1629,7 +1655,15 @@ namespace lfs::vis {
         }
 
         const auto& focus = gui::guiFocusState();
-        if (focus.want_text_input || focus.want_capture_keyboard)
+        if (focus.want_text_input)
+            return false;
+
+        if (viewport_keyboard_focus_) {
+            auto* gui = services().guiOrNull();
+            return !(gui && gui->isModalWindowOpen());
+        }
+
+        if (focus.want_capture_keyboard)
             return false;
 
         return !focus.any_item_active;
