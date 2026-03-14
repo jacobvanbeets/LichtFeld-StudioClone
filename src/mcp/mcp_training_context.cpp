@@ -45,6 +45,22 @@ namespace lfs::mcp {
             return static_cast<int64_t>(bool_mask.sum_scalar());
         }
 
+        std::expected<int64_t, std::string> count_visible_model_gaussians(const core::Scene& scene) {
+            int64_t total = 0;
+            bool has_model = false;
+            for (const auto* node : scene.getVisibleNodes()) {
+                if (!node)
+                    continue;
+                has_model = true;
+                total += static_cast<int64_t>(node->gaussian_count);
+            }
+
+            if (!has_model)
+                return std::unexpected("No model loaded");
+
+            return total;
+        }
+
         core::Tensor& reset_cuda_bool_scratch(core::Tensor& buffer, const size_t size) {
             const bool needs_realloc = !buffer.is_valid() ||
                                        buffer.device() != core::Device::CUDA ||
@@ -595,15 +611,21 @@ namespace lfs::mcp {
                     return TrainingContext::instance().start_training();
                 },
             .render_capture =
-                [](int camera_index, int width, int height) {
-                    return TrainingContext::instance().render_to_base64(camera_index, width, height);
+                [](std::optional<int> camera_index, int width, int height)
+                -> std::expected<std::string, std::string> {
+                    if (!camera_index) {
+                        return std::unexpected(
+                            "camera_index is required in the training runtime; "
+                            "live viewport capture is only available in the GUI runtime");
+                    }
+                    return TrainingContext::instance().render_to_base64(*camera_index, width, height);
                 },
             .gaussian_count =
                 []() -> std::expected<int64_t, std::string> {
                 auto scene = TrainingContext::instance().scene();
                 if (!scene)
                     return std::unexpected("No scene loaded");
-                return scene->getTotalGaussianCount();
+                return count_visible_model_gaussians(*scene);
             }});
 
         auto& registry = ToolRegistry::instance();

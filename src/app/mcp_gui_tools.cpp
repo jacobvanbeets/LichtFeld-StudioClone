@@ -73,6 +73,31 @@ namespace lfs::app {
 
         using TransformComponents = vis::cap::TransformComponents;
 
+        const core::SceneNode* find_first_visible_splat_node(const core::Scene& scene) {
+            for (const auto* node : scene.getNodes()) {
+                if (node->type == core::NodeType::SPLAT && node->model &&
+                    static_cast<bool>(node->visible))
+                    return node;
+            }
+            return nullptr;
+        }
+
+        std::expected<int64_t, std::string> count_visible_model_gaussians(const core::Scene& scene) {
+            int64_t total = 0;
+            bool has_model = false;
+            for (const auto* node : scene.getVisibleNodes()) {
+                if (!node)
+                    continue;
+                has_model = true;
+                total += static_cast<int64_t>(node->gaussian_count);
+            }
+
+            if (!has_model)
+                return std::unexpected("No model loaded");
+
+            return total;
+        }
+
         std::expected<std::string, std::string> render_scene_to_base64(
             core::Scene& scene,
             int camera_index = 0,
@@ -80,6 +105,11 @@ namespace lfs::app {
             int height = 0) {
 
             auto* model = scene.getTrainingModel();
+            if (!model) {
+                const auto* node = find_first_visible_splat_node(scene);
+                if (node)
+                    model = node->model.get();
+            }
             if (!model)
                 return std::unexpected("No model to render");
 
@@ -1245,6 +1275,11 @@ namespace lfs::app {
                     if (!training_name.empty())
                         requested.push_back(training_name);
                 }
+                if (requested.empty()) {
+                    const auto* node = find_first_visible_splat_node(scene);
+                    if (node)
+                        requested.push_back(node->name);
+                }
             }
 
             if (requested.empty())
@@ -1421,6 +1456,10 @@ namespace lfs::app {
                 if (node && node->model)
                     return training_name;
             }
+
+            const auto* fallback = find_first_visible_splat_node(scene);
+            if (fallback)
+                return fallback->name;
 
             return std::unexpected("No gaussian node specified and no suitable selected/training node is available");
         }
@@ -1697,18 +1736,17 @@ namespace lfs::app {
                     });
                 },
             .render_capture =
-                [viewer](int camera_index, int width, int height) {
+                [viewer](std::optional<int> camera_index, int width, int height) {
                     return post_and_wait(viewer, [viewer, camera_index, width, height]() {
-                        return render_scene_to_base64(viewer->getScene(), camera_index, width, height);
+                        if (camera_index)
+                            return render_scene_to_base64(viewer->getScene(), *camera_index, width, height);
+                        return capture_live_viewport_to_base64(viewer, width, height);
                     });
                 },
             .gaussian_count =
                 [viewer]() -> std::expected<int64_t, std::string> {
                 return post_and_wait(viewer, [viewer]() -> std::expected<int64_t, std::string> {
-                    auto& scene = viewer->getScene();
-                    if (!scene.getTrainingModel())
-                        return std::unexpected("No model loaded");
-                    return scene.getTotalGaussianCount();
+                    return count_visible_model_gaussians(viewer->getScene());
                 });
             }});
 
