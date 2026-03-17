@@ -78,6 +78,25 @@ namespace lfs::vis {
             return effective_params;
         }
 
+        [[nodiscard]] glm::mat4 findVisiblePointCloudTransform(
+            const lfs::core::Scene& scene,
+            const lfs::core::PointCloud* point_cloud) {
+            if (!point_cloud)
+                return glm::mat4(1.0f);
+
+            for (const auto* node : scene.getNodes()) {
+                if (!node || node->type != lfs::core::NodeType::POINTCLOUD || !node->point_cloud)
+                    continue;
+                if (node->point_cloud.get() != point_cloud)
+                    continue;
+                if (!scene.isNodeEffectivelyVisible(node->id))
+                    continue;
+                return scene.getWorldTransform(node->id);
+            }
+
+            return glm::mat4(1.0f);
+        }
+
     } // namespace
 
     using namespace lfs::core::events;
@@ -884,7 +903,11 @@ namespace lfs::vis {
             return false;
 
         const auto* const model = scene_manager ? scene_manager->getModelForRendering() : nullptr;
-        if (!model || model->size() == 0)
+        const auto* const point_cloud =
+            (scene_manager && (!model || model->size() == 0))
+                ? scene_manager->getScene().getVisiblePointCloud()
+                : nullptr;
+        if ((!model || model->size() == 0) && (!point_cloud || point_cloud->size() == 0))
             return false;
 
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -908,10 +931,24 @@ namespace lfs::vis {
             .ring_width = 0.0f,
             .show_center_markers = false};
 
-        if (const auto result = engine_->renderGaussians(*model, request)) {
-            engine_->presentToScreen(*result, {0, 0}, {width, height});
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            return true;
+        if (model && model->size() > 0) {
+            if (const auto result = engine_->renderGaussians(*model, request)) {
+                engine_->presentToScreen(*result, {0, 0}, {width, height});
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                return true;
+            }
+        } else if (point_cloud && point_cloud->size() > 0) {
+            const auto point_cloud_transform =
+                findVisiblePointCloudTransform(scene_manager->getScene(), point_cloud);
+            const std::vector<glm::mat4> point_cloud_transforms = {point_cloud_transform};
+            auto point_cloud_request = request;
+            point_cloud_request.model_transforms = &point_cloud_transforms;
+
+            if (const auto result = engine_->renderPointCloud(*point_cloud, point_cloud_request)) {
+                engine_->presentToScreen(*result, {0, 0}, {width, height});
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                return true;
+            }
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

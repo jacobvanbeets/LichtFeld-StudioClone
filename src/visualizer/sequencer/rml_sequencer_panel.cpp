@@ -8,6 +8,7 @@
 #include "sequencer/rml_sequencer_panel.hpp"
 #include "core/events.hpp"
 #include "core/logger.hpp"
+#include "gui/rmlui/rml_panel_host.hpp"
 #include "gui/rmlui/rml_theme.hpp"
 #include "gui/rmlui/rml_tooltip.hpp"
 #include "gui/rmlui/rmlui_manager.hpp"
@@ -640,6 +641,7 @@ namespace lfs::vis {
 
         if (!hovered_) {
             tooltip_.clear();
+            gui::RmlPanelHost::setFrameTooltip({}, nullptr);
             if (last_hovered_)
                 rml_context_->ProcessMouseLeave();
             last_hovered_ = false;
@@ -672,7 +674,7 @@ namespace lfs::vis {
         tooltip_.clear();
         auto* hover = rml_context_->GetHoverElement();
         if (hover) {
-            tooltip_ = gui::resolveRmlTooltip(hover);
+            gui::RmlPanelHost::setFrameTooltip(gui::resolveRmlTooltip(hover), hover);
 
             if (input.mouse_clicked[1]) {
                 for (auto* el = hover; el; el = el->GetParentNode()) {
@@ -691,6 +693,8 @@ namespace lfs::vis {
                     }
                 }
             }
+        } else {
+            gui::RmlPanelHost::setFrameTooltip({}, nullptr);
         }
 
         auto* const focused = rml_context_->GetFocusElement();

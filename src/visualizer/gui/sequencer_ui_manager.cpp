@@ -228,15 +228,8 @@ namespace lfs::vis::gui {
         panel_->render(viewport.pos.x, viewport.size.x,
                        viewport.pos.y + viewport.size.y - strip_offset, input);
 
-        if (panel_->isHovered()) {
+        if (panel_->isHovered())
             guiFocusState().want_capture_mouse = true;
-            auto tip = panel_->consumeTooltip();
-            if (!tip.empty()) {
-                timeline_tooltip_active_ = true;
-                timeline_tooltip_pos_ = {input.mouse_x, input.mouse_y};
-                timeline_tooltip_text_ = std::move(tip);
-            }
-        }
         if (panel_->wantsKeyboard())
             guiFocusState().want_capture_keyboard = true;
 
