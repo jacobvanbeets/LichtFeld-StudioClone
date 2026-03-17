@@ -986,10 +986,14 @@ namespace lfs::python {
             if (key >= lfs::vis::input::KEY_0 && key <= lfs::vis::input::KEY_9) {
                 return std::string("KEY_") + static_cast<char>('0' + (key - lfs::vis::input::KEY_0));
             }
+            if (key >= lfs::vis::input::KEY_KP_0 && key <= lfs::vis::input::KEY_KP_9) {
+                return std::string("KEY_") + static_cast<char>('0' + (key - lfs::vis::input::KEY_KP_0));
+            }
             switch (key) {
             case lfs::vis::input::KEY_SPACE: return "SPACE";
             case lfs::vis::input::KEY_ESCAPE: return "ESC";
             case lfs::vis::input::KEY_ENTER: return "RET";
+            case lfs::vis::input::KEY_KP_ENTER: return "RET";
             case lfs::vis::input::KEY_TAB: return "TAB";
             case lfs::vis::input::KEY_BACKSPACE: return "BACK_SPACE";
             case lfs::vis::input::KEY_DELETE: return "DEL";
@@ -5006,7 +5010,23 @@ namespace lfs::python {
         key.attr("F10") = lfs::vis::input::KEY_F10;
         key.attr("F11") = lfs::vis::input::KEY_F11;
         key.attr("F12") = lfs::vis::input::KEY_F12;
+        key.attr("KP_0") = lfs::vis::input::KEY_KP_0;
+        key.attr("KP_1") = lfs::vis::input::KEY_KP_1;
+        key.attr("KP_2") = lfs::vis::input::KEY_KP_2;
+        key.attr("KP_3") = lfs::vis::input::KEY_KP_3;
+        key.attr("KP_4") = lfs::vis::input::KEY_KP_4;
+        key.attr("KP_5") = lfs::vis::input::KEY_KP_5;
+        key.attr("KP_6") = lfs::vis::input::KEY_KP_6;
+        key.attr("KP_7") = lfs::vis::input::KEY_KP_7;
+        key.attr("KP_8") = lfs::vis::input::KEY_KP_8;
+        key.attr("KP_9") = lfs::vis::input::KEY_KP_9;
+        key.attr("KP_DECIMAL") = lfs::vis::input::KEY_KP_DECIMAL;
+        key.attr("KP_DIVIDE") = lfs::vis::input::KEY_KP_DIVIDE;
+        key.attr("KP_MULTIPLY") = lfs::vis::input::KEY_KP_MULTIPLY;
+        key.attr("KP_SUBTRACT") = lfs::vis::input::KEY_KP_SUBTRACT;
+        key.attr("KP_ADD") = lfs::vis::input::KEY_KP_ADD;
         key.attr("KP_ENTER") = lfs::vis::input::KEY_KP_ENTER;
+        key.attr("KP_EQUAL") = lfs::vis::input::KEY_KP_EQUAL;
 
         auto mouse = m.def_submodule("mouse", "Mouse buttons");
         mouse.attr("LEFT") = static_cast<int>(lfs::vis::input::AppMouseButton::LEFT);
