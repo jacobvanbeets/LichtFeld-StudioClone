@@ -162,7 +162,11 @@ namespace lfs::vis::gui {
             film_strip_.invalidateAll();
         }
 
-        if (ui_state_.show_camera_path) {
+        const bool actively_following =
+            ui_state_.follow_playback && controller_.isPlaying() &&
+            controller_.timeline().realKeyframeCount() > 0;
+
+        if (ui_state_.show_camera_path && !actively_following) {
             renderCameraPath(viewport);
             renderKeyframeGizmo(ctx, viewport);
         }
