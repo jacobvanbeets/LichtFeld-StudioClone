@@ -4,7 +4,7 @@
     "file": "File",
     "file.new_project": "Nuovo Progetto",
     "file.import_dataset": "Importa Dataset",
-    "file.import_ply": "Importa PLY, SOG, SPZ",
+    "file.import_ply": "Importa PLY, SOG, SPZ, USD",
     "file.import_mesh": "Importa Mesh",
     "file.import_checkpoint": "Importa Checkpoint",
     "file.import_config": "Importa Configurazione",
@@ -321,6 +321,7 @@
     "format.ply_standard": "PLY (Standard)",
     "format.sog_supersplat": "SOG (SuperSplat)",
     "format.spz_niantic": "SPZ (Niantic)",
+    "format.usd_openusd": "USD (OpenUSD)",
     "format.html_viewer": "Visualizzatore HTML",
     "select_models": "Seleziona Modelli:",
     "all": "Tutti",
@@ -828,10 +829,10 @@
     "supported_by": "Supportato da",
     "click_to_continue": "Clicca ovunque per continuare",
     "drop_files_title": "Trascina i file qui per iniziare",
-    "drop_files_subtitle": "PLY, SOG, dataset COLMAP o file di progetto",
+    "drop_files_subtitle": "PLY, SOG, SPZ, USD, dataset COLMAP o file di progetto",
     "drop_files_hint": "Oppure usa File > Importa Dataset / Importa PLY",
     "drop_to_import": "Rilascia per Importare",
-    "drop_to_import_subtitle": "PLY, SOG, dataset COLMAP o Progetto"
+    "drop_to_import_subtitle": "PLY, SOG, SPZ, USD, dataset COLMAP o Progetto"
   },
   "axis": {
     "x": "X:",
@@ -1070,7 +1071,7 @@
   },
   "file_association": {
     "title": "Imposta come applicazione predefinita",
-    "message": "Vuoi impostare LichtFeld Studio come applicazione predefinita per i file splat (.ply, .sog, .spz)?",
+    "message": "Vuoi impostare LichtFeld Studio come applicazione predefinita per i file splat (.ply, .sog, .spz, .usd, .usda, .usdc, .usdz)?",
     "yes": "Sì",
     "not_now": "Non ora",
     "dont_ask": "Non chiedere più",

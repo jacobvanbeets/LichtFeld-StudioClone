@@ -195,13 +195,13 @@ namespace lfs::core {
             DatasetConfig dataset;
             OptimizationParameters optimization;
 
-            // Viewer mode: splat files to load (.ply, .sog, .resume)
+            // Viewer mode: splat files to load (.ply, .sog, .spz, .usd, .usda, .usdc, .usdz, .resume)
             std::vector<std::filesystem::path> view_paths;
 
             // COLMAP sparse folder for camera-only import (no images required)
             std::optional<std::filesystem::path> import_cameras_path = std::nullopt;
 
-            // Optional splat file for initialization (.ply, .sog, .spz, .resume)
+            // Optional splat file for initialization (.ply, .sog, .spz, .usd, .usda, .usdc, .usdz, .resume)
             std::optional<std::string> init_path = std::nullopt;
 
             // Checkpoint to resume training from
@@ -217,7 +217,10 @@ namespace lfs::core {
         enum class OutputFormat { PLY,
                                   SOG,
                                   SPZ,
-                                  HTML };
+                                  HTML,
+                                  USD,
+                                  USDA,
+                                  USDC };
 
         // Parameters for the convert command
         struct LFS_CORE_API ConvertParameters {
