@@ -89,11 +89,16 @@ namespace lfs::vis::gui {
             return result;
         }
 
-        void applyFrameInputCapture() {
+        void applyFrameInputCapture(RmlRightPanel* right_panel = nullptr) {
+            const bool panel_hosts_want_keyboard = RmlPanelHost::consumeFrameWantsKeyboard();
+            const bool panel_hosts_want_text_input = RmlPanelHost::consumeFrameWantsTextInput();
+            if ((panel_hosts_want_keyboard || panel_hosts_want_text_input) && right_panel)
+                right_panel->blurFocus();
+
             auto& focus = guiFocusState();
-            if (RmlPanelHost::consumeFrameWantsKeyboard())
+            if (panel_hosts_want_keyboard)
                 focus.want_capture_keyboard = true;
-            if (RmlPanelHost::consumeFrameWantsTextInput())
+            if (panel_hosts_want_text_input)
                 focus.want_text_input = true;
         }
 
@@ -543,6 +548,7 @@ namespace lfs::vis::gui {
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // Enable Docking
         io.ConfigWindowsMoveFromTitleBarOnly = true;
+        io.ConfigDragClickToInputText = true;
         loadImGuiSettings();
 
         // Platform/Renderer initialization
@@ -1177,7 +1183,7 @@ namespace lfs::vis::gui {
         panel_layout_.renderRightPanel(ctx, draw_ctx, show_main_panel_, ui_hidden_,
                                        window_states_, focus_panel_name_, panel_input, screen);
 
-        applyFrameInputCapture();
+        applyFrameInputCapture(&rml_right_panel_);
 
         auto apply_cursor = [](CursorRequest req) {
             switch (req) {
@@ -1208,7 +1214,7 @@ namespace lfs::vis::gui {
         floating_input.bg_draw_list = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
         reg.draw_panels(PanelSpace::Floating, draw_ctx, &floating_input);
 
-        applyFrameInputCapture();
+        applyFrameInputCapture(&rml_right_panel_);
 
         gizmo_manager_.updateToolState(ctx, ui_hidden_);
         gizmo_manager_.updateCropFlash();

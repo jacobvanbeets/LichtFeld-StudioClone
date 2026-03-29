@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from . import rml_widgets as w
 from .rml_keys import KI_ESCAPE
 
 
@@ -135,6 +136,7 @@ class ScrubFieldController:
         input_el.set_class_names("scrub-field-input")
         input_el.set_attribute("type", "text")
         input_el.set_attribute("data-prop", prop)
+        w.bind_select_all_on_focus(input_el)
 
         row.insert_before(field, range_input)
         row.remove_child(range_input)
@@ -274,6 +276,7 @@ class ScrubFieldController:
         text = self._format_value(state.spec, state.edit_value_before)
         state.input_el.set_attribute("value", text)
         state.input_el.focus()
+        state.input_el.select()
 
     def _exit_edit(self, state: _ScrubFieldState) -> None:
         state.editing = False

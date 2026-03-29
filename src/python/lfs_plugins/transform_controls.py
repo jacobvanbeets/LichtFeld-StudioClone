@@ -513,6 +513,9 @@ class TransformControlsPanel(Panel):
         if self._focus_active:
             return
         self._focus_active = True
+        target = event.current_target()
+        if target is not None:
+            target.select()
         self._begin_edit()
 
     def _on_input_blur(self, event):

@@ -8,6 +8,7 @@ import time
 
 import lichtfeld as lf
 
+from . import rml_widgets as w
 from .scrub_fields import ScrubFieldController, ScrubFieldSpec
 from .types import Panel
 from .ui.state import AppState
@@ -796,8 +797,11 @@ class TrainingPanel(Panel):
             body.add_event_listener("click", self._on_body_click)
             body.add_event_listener("mouseup", self._on_step_mouseup)
         for el in doc.query_selector_all("input.number-input"):
+            w.bind_select_all_on_focus(el)
             el.add_event_listener("change", self._on_number_input_change)
             el.add_event_listener("blur", self._on_number_input_blur)
+        for el in doc.query_selector_all("input.color-hex"):
+            w.bind_select_all_on_focus(el)
         self._loss_graph_el = doc.get_element_by_id("loss-graph-el")
         self._scrub_fields.mount(doc)
         self._sync_section_states()

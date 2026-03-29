@@ -28,6 +28,27 @@ def find_ancestor_with_attribute(element, attribute, stop=None):
     return None
 
 
+def _select_all_text(element):
+    if element is None:
+        return False
+    try:
+        return bool(element.select())
+    except Exception:
+        return False
+
+
+def bind_select_all_on_focus(element):
+    """Select all text when the given input element receives focus."""
+    if element is None:
+        return None
+    if element.get_attribute("data-select-all-bound", "") == "1":
+        return element
+
+    element.set_attribute("data-select-all-bound", "1")
+    element.add_event_listener("focus", lambda _event, el=element: _select_all_text(el))
+    return element
+
+
 def _section_duration(height_px, duration):
     if duration is not None:
         return max(0.08, float(duration))
@@ -302,6 +323,7 @@ def color_swatch(container, id, r=0, g=0, b=0, data_prop=""):
     hex_input.set_attribute("type", "text")
     if data_prop:
         hex_input.set_attribute("data-prop", data_prop)
+    bind_select_all_on_focus(hex_input)
 
     return row
 
@@ -362,6 +384,7 @@ def number_input(container, id, label="", value="", data_prop="",
         inp.set_attribute("data-max", str(max_val))
     if value != "":
         inp.set_attribute("value", str(value))
+    bind_select_all_on_focus(inp)
 
     return row
 

@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdarg>
 #include <glad/glad.h>
+#include <imgui_internal.h>
 #include <implot.h>
 #include <imgui.h>
 
@@ -24,6 +25,8 @@ namespace lfs::vis::gui::widgets {
     using namespace lfs::core::events;
 
     namespace {
+        constexpr float CLICK_THRESHOLD_SQ = 5.0f * 5.0f;
+
         struct WidgetIcons {
             unsigned int reset = 0;
             bool initialized = false;
@@ -54,13 +57,100 @@ namespace lfs::vis::gui::widgets {
         ImVec4 getIconTint() {
             return theme().isLightTheme() ? ImVec4{0.2f, 0.2f, 0.2f, 0.9f} : ImVec4{1.0f, 1.0f, 1.0f, 0.9f};
         }
+
+        void handleActiveTextInputShortcut() {
+            if (!ImGui::IsItemActive())
+                return;
+
+            ImGuiContext& g = *GImGui;
+            const ImGuiID id = ImGui::GetItemID();
+            if (id == 0 || g.ActiveId != id || g.InputTextState.ID != id)
+                return;
+
+            const ImGuiIO& io = ImGui::GetIO();
+            const bool primary_shortcut_pressed = io.KeyCtrl || (io.ConfigMacOSXBehaviors && io.KeySuper);
+            if (!primary_shortcut_pressed || !ImGui::IsKeyPressed(ImGuiKey_A, false))
+                return;
+
+            g.InputTextState.SelectAll();
+        }
+
+        void handleSliderClickToInput() {
+            if (!ImGui::IsItemDeactivated())
+                return;
+            if (!ImGui::IsItemHovered())
+                return;
+            if (ImGui::GetIO().MouseDragMaxDistanceSqr[0] > CLICK_THRESHOLD_SQ)
+                return;
+
+            ImGuiContext& g = *GImGui;
+            const ImGuiID id = ImGui::GetItemID();
+            g.TempInputId = id;
+            ImGui::SetActiveID(id, g.CurrentWindow);
+        }
     } // namespace
+
+    bool InputText(const char* label, char* buf, const std::size_t buf_size, const ImGuiInputTextFlags flags,
+                   ImGuiInputTextCallback callback, void* user_data) {
+        const bool changed = ImGui::InputText(label, buf, buf_size, flags, callback, user_data);
+        handleActiveTextInputShortcut();
+        return changed;
+    }
+
+    bool InputTextWithHint(const char* label, const char* hint, char* buf, const std::size_t buf_size,
+                           const ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data) {
+        const bool changed = ImGui::InputTextWithHint(label, hint, buf, buf_size, flags, callback, user_data);
+        handleActiveTextInputShortcut();
+        return changed;
+    }
+
+    bool InputFloat(const char* label, float* v, const float step, const float step_fast,
+                    const char* format, const ImGuiInputTextFlags flags) {
+        const bool changed = ImGui::InputFloat(label, v, step, step_fast, format, flags);
+        handleActiveTextInputShortcut();
+        return changed;
+    }
+
+    bool InputInt(const char* label, int* v, const int step, const int step_fast,
+                  const ImGuiInputTextFlags flags) {
+        const bool changed = ImGui::InputInt(label, v, step, step_fast, flags);
+        handleActiveTextInputShortcut();
+        return changed;
+    }
+
+    bool SliderFloat(const char* label, float* v, const float min, const float max,
+                     const char* format, const ImGuiSliderFlags flags) {
+        const bool changed = ImGui::SliderFloat(label, v, min, max, format, flags);
+        handleSliderClickToInput();
+        return changed;
+    }
+
+    bool SliderInt(const char* label, int* v, const int min, const int max,
+                   const char* format, const ImGuiSliderFlags flags) {
+        const bool changed = ImGui::SliderInt(label, v, min, max, format, flags);
+        handleSliderClickToInput();
+        return changed;
+    }
+
+    bool SliderFloat2(const char* label, float v[2], const float min, const float max,
+                      const char* format, const ImGuiSliderFlags flags) {
+        const bool changed = ImGui::SliderFloat2(label, v, min, max, format, flags);
+        handleSliderClickToInput();
+        return changed;
+    }
+
+    bool SliderFloat3(const char* label, float v[3], const float min, const float max,
+                      const char* format, const ImGuiSliderFlags flags) {
+        const bool changed = ImGui::SliderFloat3(label, v, min, max, format, flags);
+        handleSliderClickToInput();
+        return changed;
+    }
 
     bool SliderWithReset(const char* label, float* v, float min, float max, float reset_value,
                          const char* tooltip, const char* format) {
         ensureIconsLoaded();
 
-        bool changed = ImGui::SliderFloat(label, v, min, max, format);
+        bool changed = SliderFloat(label, v, min, max, format);
         bool slider_hovered = ImGui::IsItemHovered();
 
         ImGui::SameLine();
@@ -554,7 +644,7 @@ namespace lfs::vis::gui::widgets {
 
         bool changed = false;
         constexpr auto FLAGS = ImGuiInputTextFlags_CharsDecimal | ImGuiInputTextFlags_AutoSelectAll;
-        if (ImGui::InputText("##input", buf, BUF_SIZE, FLAGS)) {
+        if (InputText("##input", buf, BUF_SIZE, FLAGS)) {
             int parsed = 0;
             bool has_digits = false;
             bool negative = false;

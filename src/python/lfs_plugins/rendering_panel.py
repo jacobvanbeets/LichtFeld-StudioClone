@@ -6,6 +6,7 @@ import math
 
 import lichtfeld as lf
 
+from . import rml_widgets as w
 from .scrub_fields import ScrubFieldController, ScrubFieldSpec
 from .types import Panel
 
@@ -210,6 +211,8 @@ class RenderingPanel(Panel):
         body = doc.get_element_by_id("body")
         if body:
             body.add_event_listener("click", self._on_body_click)
+        for el in doc.query_selector_all("input.color-hex"):
+            w.bind_select_all_on_focus(el)
         self._scrub_fields.mount(doc)
         self._sync_section_states()
 

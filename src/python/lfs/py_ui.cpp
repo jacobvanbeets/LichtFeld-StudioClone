@@ -2040,27 +2040,27 @@ namespace lfs::python {
     // Sliders
     std::tuple<bool, float> PyUILayout::slider_float(const std::string& label, float value, float min, float max) {
         float v = value;
-        bool changed = ImGui::SliderFloat(label.c_str(), &v, min, max);
+        bool changed = lfs::vis::gui::widgets::SliderFloat(label.c_str(), &v, min, max);
         return {changed, v};
     }
 
     std::tuple<bool, int> PyUILayout::slider_int(const std::string& label, int value, int min, int max) {
         int v = value;
-        bool changed = ImGui::SliderInt(label.c_str(), &v, min, max);
+        bool changed = lfs::vis::gui::widgets::SliderInt(label.c_str(), &v, min, max);
         return {changed, v};
     }
 
     std::tuple<bool, std::tuple<float, float>> PyUILayout::slider_float2(
         const std::string& label, std::tuple<float, float> value, float min, float max) {
         float v[2] = {std::get<0>(value), std::get<1>(value)};
-        bool changed = ImGui::SliderFloat2(label.c_str(), v, min, max);
+        bool changed = lfs::vis::gui::widgets::SliderFloat2(label.c_str(), v, min, max);
         return {changed, {v[0], v[1]}};
     }
 
     std::tuple<bool, std::tuple<float, float, float>> PyUILayout::slider_float3(
         const std::string& label, std::tuple<float, float, float> value, float min, float max) {
         float v[3] = {std::get<0>(value), std::get<1>(value), std::get<2>(value)};
-        bool changed = ImGui::SliderFloat3(label.c_str(), v, min, max);
+        bool changed = lfs::vis::gui::widgets::SliderFloat3(label.c_str(), v, min, max);
         return {changed, {v[0], v[1], v[2]}};
     }
 
@@ -2084,7 +2084,7 @@ namespace lfs::python {
         char buffer[INPUT_TEXT_BUFFER_SIZE];
         std::strncpy(buffer, value.c_str(), sizeof(buffer) - 1);
         buffer[sizeof(buffer) - 1] = '\0';
-        bool changed = ImGui::InputText(label.c_str(), buffer, sizeof(buffer));
+        bool changed = vis::gui::widgets::InputText(label.c_str(), buffer, sizeof(buffer));
         return {changed, std::string(buffer)};
     }
 
@@ -2093,20 +2093,20 @@ namespace lfs::python {
         char buffer[INPUT_TEXT_BUFFER_SIZE];
         std::strncpy(buffer, value.c_str(), sizeof(buffer) - 1);
         buffer[sizeof(buffer) - 1] = '\0';
-        bool changed = ImGui::InputTextWithHint(label.c_str(), hint.c_str(), buffer, sizeof(buffer));
+        bool changed = vis::gui::widgets::InputTextWithHint(label.c_str(), hint.c_str(), buffer, sizeof(buffer));
         return {changed, std::string(buffer)};
     }
 
     std::tuple<bool, float> PyUILayout::input_float(const std::string& label, float value, float step, float step_fast,
                                                     const std::string& format) {
         float v = value;
-        const bool changed = ImGui::InputFloat(label.c_str(), &v, step, step_fast, format.c_str());
+        const bool changed = vis::gui::widgets::InputFloat(label.c_str(), &v, step, step_fast, format.c_str());
         return {changed, v};
     }
 
     std::tuple<bool, int> PyUILayout::input_int(const std::string& label, int value, int step, int step_fast) {
         int v = value;
-        const bool changed = ImGui::InputInt(label.c_str(), &v, step, step_fast);
+        const bool changed = vis::gui::widgets::InputInt(label.c_str(), &v, step, step_fast);
         return {changed, v};
     }
 
@@ -2139,7 +2139,7 @@ namespace lfs::python {
 
         const float input_width = std::max(avail - buttons_total - spacing, 60.0f);
         ImGui::SetNextItemWidth(input_width);
-        if (ImGui::InputFloat("##val", &v, 0.0f, 0.0f, "%.3f")) {
+        if (vis::gui::widgets::InputFloat("##val", &v, 0.0f, 0.0f, "%.3f")) {
             changed = true;
         }
 
@@ -2188,7 +2188,7 @@ namespace lfs::python {
         const float input_width = available - button_width - ImGui::GetStyle().ItemSpacing.x;
 
         ImGui::SetNextItemWidth(input_width);
-        bool changed = ImGui::InputText(label.c_str(), buffer, sizeof(buffer));
+        bool changed = vis::gui::widgets::InputText(label.c_str(), buffer, sizeof(buffer));
 
         ImGui::SameLine();
         const std::string btn_id = "...##" + label + "_browse";
@@ -2510,8 +2510,9 @@ namespace lfs::python {
         char buffer[256];
         std::strncpy(buffer, value.c_str(), sizeof(buffer) - 1);
         buffer[sizeof(buffer) - 1] = '\0';
-        const bool entered = ImGui::InputText(label.c_str(), buffer, sizeof(buffer),
-                                              ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+        const bool entered = vis::gui::widgets::InputText(
+            label.c_str(), buffer, sizeof(buffer),
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
         return {entered, std::string(buffer)};
     }
 
@@ -3605,7 +3606,8 @@ namespace lfs::python {
                                  {0, 0}, {u1, v1}, t, {0, 0, 0, 0});
                 },
                 nb::arg("texture"), nb::arg("size"), nb::arg("tint") = nb::none(), "Draw a DynamicTexture with automatic UV scaling")
-            .def("image_tensor", [](PyUILayout& /*self*/, const std::string& label, PyTensor& tensor, std::tuple<float, float> size, nb::object tint) {
+            .def(
+                "image_tensor", [](PyUILayout& /*self*/, const std::string& label, PyTensor& tensor, std::tuple<float, float> size, nb::object tint) {
                     PyDynamicTexture* tex_ptr = nullptr;
                     {
                         std::lock_guard lock(g_dynamic_textures_mutex);

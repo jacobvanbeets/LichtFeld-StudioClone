@@ -343,6 +343,19 @@ namespace lfs::vis::gui {
         return cursor_request_;
     }
 
+    void RmlRightPanel::blurFocus() {
+        if (!rml_context_)
+            return;
+
+        auto* const focused = rml_context_->GetFocusElement();
+        if (!focused)
+            return;
+
+        focused->Blur();
+        wants_keyboard_ = false;
+        input_dirty_ = true;
+    }
+
     bool RmlRightPanel::needsAnimationFrame() const {
         return render_needed_ || input_dirty_ || splitter_dragging_ || resize_dragging_;
     }
