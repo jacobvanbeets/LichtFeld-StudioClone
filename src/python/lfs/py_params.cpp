@@ -230,7 +230,7 @@ namespace lfs::python {
                        "Load PPISP weights from a sidecar and freeze PPISP learning during training")
             .int_prop(&OptimizationParameters::ppisp_controller_activation_step,
                       "ppisp_controller_activation_step", "Controller Step", -1, -1, 100000,
-                      "Iteration to start controller distillation (negative = default schedule)")
+                      "Iteration to start controller distillation (negative = final 5000 planned steps)")
             .float_prop(&OptimizationParameters::ppisp_controller_lr,
                         "ppisp_controller_lr", "Controller LR", 2e-3f, 1e-5f, 1e-1f,
                         "Learning rate for PPISP controller")
@@ -266,7 +266,7 @@ namespace lfs::python {
                        "Enable sparsity optimization")
             .int_prop(&OptimizationParameters::sparsify_steps,
                       "sparsify_steps", "Sparsify Steps", 15000, 1000, 50000,
-                      "Iteration to run sparsification")
+                      "Number of sparsification steps to run after regular training")
             .float_prop(&OptimizationParameters::prune_ratio,
                         "prune_ratio", "Prune Ratio", 0.6f, 0.0f, 1.0f,
                         "Target pruning ratio for sparsification")
