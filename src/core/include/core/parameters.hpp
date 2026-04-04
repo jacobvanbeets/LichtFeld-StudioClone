@@ -176,6 +176,9 @@ namespace lfs::core {
             float init_rho = 0.0005f;
             float prune_ratio = 0.6f;
 
+            // Memory management
+            bool enable_managed_overflow = false; // Spill VRAM overflow to system RAM via cudaMallocManaged
+
             std::string config_file = "";
 
             void scale_steps(float ratio);

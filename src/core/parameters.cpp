@@ -157,6 +157,7 @@ namespace lfs::core {
             opt_json["sparsify_steps"] = sparsify_steps;
             opt_json["init_rho"] = init_rho;
             opt_json["prune_ratio"] = prune_ratio;
+            opt_json["enable_managed_overflow"] = enable_managed_overflow;
             opt_json["bg_modulation"] = bg_modulation;
 
             static constexpr const char* BG_MODE_NAMES[] = {"solid_color", "modulation", "image", "random"};
@@ -438,6 +439,9 @@ namespace lfs::core {
             }
             if (json.contains("prune_ratio")) {
                 params.prune_ratio = json["prune_ratio"];
+            }
+            if (json.contains("enable_managed_overflow")) {
+                params.enable_managed_overflow = json["enable_managed_overflow"];
             }
             if (json.contains("bg_modulation")) {
                 params.bg_modulation = json["bg_modulation"];

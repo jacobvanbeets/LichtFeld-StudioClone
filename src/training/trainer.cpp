@@ -1479,6 +1479,10 @@ namespace lfs::training {
 
             initialized_ = true;
 
+            // Propagate managed overflow setting to the memory arena
+            lfs::core::GlobalArenaManager::instance().get_arena().set_managed_overflow(
+                params_.optimization.enable_managed_overflow);
+
             if (memory_breakdown_enabled_ && !memory_breakdown_logged_init_) {
                 const auto snapshot = capture_vram_snapshot(true);
                 log_vram_snapshot("after_trainer_initialize", snapshot);
@@ -1645,6 +1649,11 @@ namespace lfs::training {
 
         // Update params first
         params_ = params;
+
+        // Sync managed overflow setting with the arena
+        if (auto* arena = lfs::core::GlobalArenaManager::instance().try_get_arena()) {
+            arena->set_managed_overflow(params_.optimization.enable_managed_overflow);
+        }
 
         // Load/reload background image if needed
         if (bg_mode_is_image && bg_image_path_changed &&

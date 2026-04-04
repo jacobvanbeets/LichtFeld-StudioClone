@@ -792,6 +792,7 @@ namespace lichtfeld::Strings {
         inline constexpr const char* SPARSIFY_STEPS = "training_params.sparsify_steps";
         inline constexpr const char* INIT_RHO = "training_params.init_rho";
         inline constexpr const char* PRUNE_RATIO = "training_params.prune_ratio";
+        inline constexpr const char* MANAGED_OVERFLOW = "training_params.managed_overflow";
         inline constexpr const char* PPISP = "training_params.ppisp";
         inline constexpr const char* PPISP_CONTROLLER = "training_params.ppisp_controller";
         inline constexpr const char* PPISP_SETTINGS = "training_params.ppisp_settings";

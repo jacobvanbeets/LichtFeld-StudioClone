@@ -80,6 +80,7 @@ LOCALE_KEYS = {
     "undistort": "training_params.undistort",
     "mip_filter": "training_params.mip_filter",
     "ppisp": "training_params.ppisp",
+    "managed_overflow": "training_params.managed_overflow",
     "ppisp_controller": "training_params.ppisp_controller",
     "ppisp_freeze_from_sidecar": "training_params.ppisp_freeze_from_sidecar",
     "ppisp_sidecar_path": "training_params.ppisp_sidecar_path",
@@ -177,7 +178,7 @@ PARAM_BOOL_PROPS = [
     "use_bilateral_grid", "invert_masks", "use_alpha_as_mask",
     "enable_sparsity", "gut", "undistort", "mip_filter",
     "ppisp", "ppisp_use_controller", "ppisp_freeze_from_sidecar", "ppisp_freeze_gaussians",
-    "random", "revised_opacity",
+    "random", "revised_opacity", "enable_managed_overflow",
 ]
 
 DATASET_BOOL_PROPS = ["use_cpu_cache", "use_fs_cache"]

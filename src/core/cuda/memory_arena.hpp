@@ -27,6 +27,7 @@ namespace lfs::core {
             size_t alignment = 256;
             bool enable_profiling = false;
             size_t log_interval = 1000; // Log every N frames
+            bool allow_managed_overflow = false; // Spill to system RAM via cudaMallocManaged
         };
 
         struct BufferHandle {
@@ -72,6 +73,11 @@ namespace lfs::core {
             bool is_mapped = false;
         };
 
+        struct ManagedAlloc {
+            void* ptr = nullptr;
+            size_t size = 0;
+        };
+
         struct Arena {
             // VMM specific
             CUdeviceptr d_ptr = 0;             // Virtual base address
@@ -87,6 +93,10 @@ namespace lfs::core {
             size_t capacity = 0;             // Same as committed_size for compatibility
             uint64_t generation = 0;
             int device = -1;
+
+            // Managed memory spillovers (system RAM fallback)
+            std::vector<ManagedAlloc> managed_spillovers;
+            std::atomic<size_t> managed_bytes{0};
 
             // Statistics
             std::atomic<size_t> peak_usage{0};
@@ -146,6 +156,8 @@ namespace lfs::core {
 
         bool is_under_memory_pressure() const;
         float get_memory_pressure() const;
+        void set_managed_overflow(bool enabled);
+        bool is_managed_overflow_active() const;
 
         bool is_rendering_active() const;
         void set_rendering_active(bool active);
@@ -160,6 +172,8 @@ namespace lfs::core {
         void decommit_unused_memory(Arena& arena);
         bool is_vmm_supported(int device) const;
         void empty_cuda_cache();
+        char* allocate_managed_fallback(Arena& arena, size_t size, uint64_t frame_id);
+        void free_managed_allocations(Arena& arena);
     };
 
     class GlobalArenaManager {

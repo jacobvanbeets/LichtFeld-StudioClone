@@ -45,6 +45,9 @@ namespace lfs::core {
                 continue;
             auto& arena = *arena_ptr;
 
+            // Free managed memory spillovers
+            free_managed_allocations(arena);
+
             // Unmap and release all physical memory
             std::lock_guard<std::mutex> chunk_lock(arena.chunks_mutex);
             for (auto& chunk : arena.chunks) {
@@ -387,6 +390,7 @@ namespace lfs::core {
 
         for (auto& [device, arena] : device_arenas_) {
             if (arena) {
+                free_managed_allocations(*arena);
                 decommit_unused_memory(*arena);
                 arena->offset.store(0, std::memory_order_release);
                 cudaSetDevice(device);
@@ -817,6 +821,11 @@ namespace lfs::core {
             growth_amount = new_committed - arena.committed_size;
 
             if (growth_amount == 0) {
+                if (config_.allow_managed_overflow) {
+                    LOG_WARN("Capacity limit reached (%zu MB), falling back to managed memory",
+                             config_.max_physical >> 20);
+                    return allocate_managed_fallback(arena, aligned_size, frame_id);
+                }
                 LOG_ERROR("Capacity limit reached: max=%zu MB, requested=%zu MB",
                           config_.max_physical >> 20, aligned_size >> 20);
                 return nullptr;
@@ -845,6 +854,11 @@ namespace lfs::core {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     continue;
                 } else {
+                    if (config_.allow_managed_overflow) {
+                        LOG_WARN("VRAM growth failed after %d attempts, falling back to managed memory",
+                                 MAX_RETRIES);
+                        return allocate_managed_fallback(arena, aligned_size, frame_id);
+                    }
                     LOG_ERROR("Out of memory after %d attempts: requested=%zu MB, usage=%zu MB, committed=%zu MB, max=%zu MB",
                               MAX_RETRIES, size >> 20, current_offset >> 20, arena.committed_size >> 20, config_.max_physical >> 20);
                     return nullptr;
@@ -852,6 +866,11 @@ namespace lfs::core {
             }
 
             // Growth succeeded, retry allocation
+        }
+
+        // Last resort: managed memory spill to system RAM
+        if (config_.allow_managed_overflow) {
+            return allocate_managed_fallback(arena, aligned_size, frame_id);
         }
 
         LOG_ERROR("Allocation loop exhausted");
@@ -997,6 +1016,18 @@ namespace lfs::core {
         LOG_INFO("Arena stats: committed=%zu MB, peak=%zu MB (%.1f%%), frames=%zu, reallocs=%zu, runtime=%lds",
                  stats.capacity >> 20, stats.peak_usage >> 20, utilization,
                  stats.frame_count, stats.reallocation_count, seconds);
+
+        // Report managed memory spillovers
+        std::lock_guard<std::mutex> lock2(arena_mutex_);
+        for (const auto& [device, arena_ptr] : device_arenas_) {
+            if (arena_ptr) {
+                size_t managed = arena_ptr->managed_bytes.load(std::memory_order_relaxed);
+                if (managed > 0) {
+                    LOG_WARN("Arena device %d: %zu MB spilled to managed memory (system RAM)",
+                             device, managed >> 20);
+                }
+            }
+        }
     }
 
     bool RasterizerMemoryArena::is_under_memory_pressure() const {
@@ -1049,6 +1080,71 @@ namespace lfs::core {
     void GlobalArenaManager::reset() {
         std::lock_guard<std::mutex> lock(init_mutex_);
         arena_.reset();
+    }
+
+    void RasterizerMemoryArena::set_managed_overflow(bool enabled) {
+        config_.allow_managed_overflow = enabled;
+        if (enabled) {
+            LOG_INFO("Managed memory overflow enabled - VRAM overflow will spill to system RAM");
+        } else {
+            LOG_INFO("Managed memory overflow disabled");
+        }
+    }
+
+    bool RasterizerMemoryArena::is_managed_overflow_active() const {
+        return config_.allow_managed_overflow;
+    }
+
+    char* RasterizerMemoryArena::allocate_managed_fallback(Arena& arena, size_t size, uint64_t frame_id) {
+        char* managed_ptr = nullptr;
+        cudaError_t err = cudaMallocManaged(&managed_ptr, size, cudaMemAttachGlobal);
+        if (err != cudaSuccess) {
+            LOG_ERROR("Managed memory fallback failed: %s (requested %zu MB)",
+                      cudaGetErrorString(err), size >> 20);
+            return nullptr;
+        }
+
+        // Hint the runtime to prefer CPU residency to avoid evicting other VRAM
+        cudaMemAdvise(managed_ptr, size, cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId);
+
+        // Allow GPU read access so kernels can fault pages in as needed
+        cudaMemAdvise(managed_ptr, size, cudaMemAdviseSetAccessedBy, arena.device);
+
+        LOG_WARN("Spilled %zu MB to managed memory (system RAM) for frame %lu",
+                 size >> 20, frame_id);
+
+        // Track the managed allocation
+        {
+            std::lock_guard<std::mutex> lock(arena.chunks_mutex);
+            arena.managed_spillovers.push_back({managed_ptr, size});
+        }
+        arena.managed_bytes.fetch_add(size, std::memory_order_relaxed);
+
+        // Record in frame context
+        BufferHandle handle;
+        handle.ptr = managed_ptr;
+        handle.size = size;
+        handle.generation = arena.generation;
+        handle.device = arena.device;
+        record_allocation(frame_id, handle);
+
+        return managed_ptr;
+    }
+
+    void RasterizerMemoryArena::free_managed_allocations(Arena& arena) {
+        std::lock_guard<std::mutex> lock(arena.chunks_mutex);
+        size_t freed = 0;
+        for (auto& alloc : arena.managed_spillovers) {
+            if (alloc.ptr) {
+                cudaFree(alloc.ptr);
+                freed += alloc.size;
+            }
+        }
+        arena.managed_spillovers.clear();
+        arena.managed_bytes.store(0, std::memory_order_release);
+        if (freed > 0) {
+            LOG_DEBUG("Freed %zu MB of managed memory spillovers", freed >> 20);
+        }
     }
 
     bool RasterizerMemoryArena::is_rendering_active() const {

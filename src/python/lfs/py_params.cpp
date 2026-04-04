@@ -273,6 +273,9 @@ namespace lfs::python {
             .float_prop(&OptimizationParameters::init_rho,
                         "init_rho", "Init Rho", 0.001f, 0.0f, 0.01f,
                         "Initial rho for sparsity optimization")
+            .bool_prop(&OptimizationParameters::enable_managed_overflow,
+                       "enable_managed_overflow", "VRAM Overflow", false,
+                       "Spill VRAM overflow to system RAM using CUDA managed memory")
             .int_prop(&OptimizationParameters::tile_mode,
                       "tile_mode", "Tile Mode", 1, 1, 4,
                       "Tile mode (1, 2, or 4)")
@@ -1236,6 +1239,11 @@ namespace lfs::python {
                 [](PyOptimizationParams& self) { return self.params().undistort; },
                 [](PyOptimizationParams&, bool v) { modify_params([v](auto& p) { p.undistort = v; }); },
                 "Undistort images on-the-fly before training")
+            .def_prop_rw(
+                "enable_managed_overflow",
+                [](PyOptimizationParams& self) { return self.params().enable_managed_overflow; },
+                [](PyOptimizationParams&, bool v) { modify_params([v](auto& p) { p.enable_managed_overflow = v; }); },
+                "Spill VRAM overflow to system RAM using CUDA managed memory")
             .def_prop_rw(
                 "revised_opacity",
                 [](PyOptimizationParams& self) { return self.params().revised_opacity; },
