@@ -23,31 +23,25 @@ namespace lfs::vis::gui {
             float r = 0.0f;
             float g = 0.0f;
             float b = 0.0f;
-            float a = 1.0f;
             if (is_chw) {
                 const int hw = width * height;
                 const int idx = y * width + x;
                 r = input[idx];
                 g = input[hw + idx];
                 b = input[2 * hw + idx];
-                if (channels == 4) {
-                    a = input[3 * hw + idx];
-                }
             } else {
                 const int base = (y * width + x) * channels;
                 r = input[base];
                 g = input[base + 1];
                 b = input[base + 2];
-                if (channels == 4) {
-                    a = input[base + 3];
-                }
             }
 
             uchar4 pixel{};
             pixel.x = static_cast<unsigned char>(fminf(fmaxf(r, 0.0f), 1.0f) * 255.0f + 0.5f);
             pixel.y = static_cast<unsigned char>(fminf(fmaxf(g, 0.0f), 1.0f) * 255.0f + 0.5f);
             pixel.z = static_cast<unsigned char>(fminf(fmaxf(b, 0.0f), 1.0f) * 255.0f + 0.5f);
-            pixel.w = static_cast<unsigned char>(fminf(fmaxf(a, 0.0f), 1.0f) * 255.0f + 0.5f);
+            // Scene alpha is compositing data, not an ImGui fade mask.
+            pixel.w = 255;
             output[y * width + x] = pixel;
         }
     } // namespace
