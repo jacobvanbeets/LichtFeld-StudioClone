@@ -41,6 +41,7 @@ namespace lfs::vis {
                createSwapchain(framebuffer_width, framebuffer_height) &&
                createImageViews() &&
                createRenderPass() &&
+               createDepthStencilResources() &&
                createFramebuffers() &&
                createCommandPool() &&
                createCommandBuffers() &&
@@ -171,8 +172,11 @@ namespace lfs::vis {
         render_pass_info.framebuffer = swapchain_framebuffers_[image_index];
         render_pass_info.renderArea.offset = {0, 0};
         render_pass_info.renderArea.extent = swapchain_extent_;
-        render_pass_info.clearValueCount = 1;
-        render_pass_info.pClearValues = &clear_value;
+        std::array<VkClearValue, 2> clear_values{};
+        clear_values[0] = clear_value;
+        clear_values[1].depthStencil = {1.0f, 0};
+        render_pass_info.clearValueCount = static_cast<uint32_t>(clear_values.size());
+        render_pass_info.pClearValues = clear_values.data();
         vkCmdBeginRenderPass(command_buffers_[image_index], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 
         frame.image_index = image_index;
@@ -451,6 +455,37 @@ namespace lfs::vis {
         return extent;
     }
 
+    VkFormat VulkanContext::chooseDepthStencilFormat() const {
+        constexpr std::array<VkFormat, 3> formats{
+            VK_FORMAT_D32_SFLOAT_S8_UINT,
+            VK_FORMAT_D24_UNORM_S8_UINT,
+            VK_FORMAT_D16_UNORM_S8_UINT,
+        };
+
+        for (const VkFormat format : formats) {
+            VkFormatProperties properties{};
+            vkGetPhysicalDeviceFormatProperties(physical_device_, format, &properties);
+            if ((properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) {
+                return format;
+            }
+        }
+        return VK_FORMAT_UNDEFINED;
+    }
+
+    uint32_t VulkanContext::findMemoryType(const uint32_t type_filter, const VkMemoryPropertyFlags properties) const {
+        VkPhysicalDeviceMemoryProperties memory_properties{};
+        vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties);
+
+        for (uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i) {
+            const bool supported = (type_filter & (1u << i)) != 0;
+            const bool matches = (memory_properties.memoryTypes[i].propertyFlags & properties) == properties;
+            if (supported && matches) {
+                return i;
+            }
+        }
+        return std::numeric_limits<uint32_t>::max();
+    }
+
     bool VulkanContext::createSwapchain(const int framebuffer_width, const int framebuffer_height) {
         const SwapchainSupport support = querySwapchainSupport(physical_device_);
         if (support.formats.empty() || support.present_modes.empty()) {
@@ -545,27 +580,60 @@ namespace lfs::vis {
         color_attachment_ref.attachment = 0;
         color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+        depth_stencil_format_ = chooseDepthStencilFormat();
+        if (depth_stencil_format_ == VK_FORMAT_UNDEFINED) {
+            return fail("No supported Vulkan depth/stencil format found");
+        }
+
+        VkAttachmentDescription depth_stencil_attachment{};
+        depth_stencil_attachment.format = depth_stencil_format_;
+        depth_stencil_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depth_stencil_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth_stencil_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth_stencil_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth_stencil_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth_stencil_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depth_stencil_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference depth_stencil_attachment_ref{};
+        depth_stencil_attachment_ref.attachment = 1;
+        depth_stencil_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
         VkSubpassDescription subpass{};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &color_attachment_ref;
+        subpass.pDepthStencilAttachment = &depth_stencil_attachment_ref;
 
-        VkSubpassDependency dependency{};
-        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.srcAccessMask = 0;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        std::array<VkSubpassDependency, 2> dependencies{};
+        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[0].dstSubpass = 0;
+        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[0].srcAccessMask = 0;
+        dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+        dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[1].dstSubpass = 0;
+        dependencies[1].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependencies[1].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependencies[1].srcAccessMask = 0;
+        dependencies[1].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+        const std::array<VkAttachmentDescription, 2> attachments{color_attachment, depth_stencil_attachment};
 
         VkRenderPassCreateInfo create_info{};
         create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        create_info.attachmentCount = 1;
-        create_info.pAttachments = &color_attachment;
+        create_info.attachmentCount = static_cast<uint32_t>(attachments.size());
+        create_info.pAttachments = attachments.data();
         create_info.subpassCount = 1;
         create_info.pSubpasses = &subpass;
-        create_info.dependencyCount = 1;
-        create_info.pDependencies = &dependency;
+        create_info.dependencyCount = static_cast<uint32_t>(dependencies.size());
+        create_info.pDependencies = dependencies.data();
 
         const VkResult result = vkCreateRenderPass(device_, &create_info, nullptr, &render_pass_);
         if (result != VK_SUCCESS) {
@@ -574,16 +642,81 @@ namespace lfs::vis {
         return true;
     }
 
+    bool VulkanContext::createDepthStencilResources() {
+        if (depth_stencil_format_ == VK_FORMAT_UNDEFINED) {
+            return fail("Depth/stencil format must be selected before creating depth resources");
+        }
+
+        VkImageCreateInfo image_info{};
+        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image_info.imageType = VK_IMAGE_TYPE_2D;
+        image_info.extent.width = swapchain_extent_.width;
+        image_info.extent.height = swapchain_extent_.height;
+        image_info.extent.depth = 1;
+        image_info.mipLevels = 1;
+        image_info.arrayLayers = 1;
+        image_info.format = depth_stencil_format_;
+        image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        image_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+        image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkResult result = vkCreateImage(device_, &image_info, nullptr, &depth_stencil_image_);
+        if (result != VK_SUCCESS) {
+            return fail(std::format("vkCreateImage(depth/stencil) failed: {}", static_cast<int>(result)));
+        }
+
+        VkMemoryRequirements memory_requirements{};
+        vkGetImageMemoryRequirements(device_, depth_stencil_image_, &memory_requirements);
+
+        VkMemoryAllocateInfo allocate_info{};
+        allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocate_info.allocationSize = memory_requirements.size;
+        allocate_info.memoryTypeIndex = findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (allocate_info.memoryTypeIndex == std::numeric_limits<uint32_t>::max()) {
+            return fail("Could not find Vulkan device-local memory for depth/stencil image");
+        }
+
+        result = vkAllocateMemory(device_, &allocate_info, nullptr, &depth_stencil_memory_);
+        if (result != VK_SUCCESS) {
+            return fail(std::format("vkAllocateMemory(depth/stencil) failed: {}", static_cast<int>(result)));
+        }
+
+        result = vkBindImageMemory(device_, depth_stencil_image_, depth_stencil_memory_, 0);
+        if (result != VK_SUCCESS) {
+            return fail(std::format("vkBindImageMemory(depth/stencil) failed: {}", static_cast<int>(result)));
+        }
+
+        VkImageViewCreateInfo view_info{};
+        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view_info.image = depth_stencil_image_;
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view_info.format = depth_stencil_format_;
+        view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        view_info.subresourceRange.baseMipLevel = 0;
+        view_info.subresourceRange.levelCount = 1;
+        view_info.subresourceRange.baseArrayLayer = 0;
+        view_info.subresourceRange.layerCount = 1;
+
+        result = vkCreateImageView(device_, &view_info, nullptr, &depth_stencil_image_view_);
+        if (result != VK_SUCCESS) {
+            return fail(std::format("vkCreateImageView(depth/stencil) failed: {}", static_cast<int>(result)));
+        }
+
+        return true;
+    }
+
     bool VulkanContext::createFramebuffers() {
         swapchain_framebuffers_.resize(swapchain_image_views_.size());
         for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
-            const VkImageView attachments[] = {swapchain_image_views_[i]};
+            const std::array<VkImageView, 2> attachments{swapchain_image_views_[i], depth_stencil_image_view_};
 
             VkFramebufferCreateInfo create_info{};
             create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
             create_info.renderPass = render_pass_;
-            create_info.attachmentCount = 1;
-            create_info.pAttachments = attachments;
+            create_info.attachmentCount = static_cast<uint32_t>(attachments.size());
+            create_info.pAttachments = attachments.data();
             create_info.width = swapchain_extent_.width;
             create_info.height = swapchain_extent_.height;
             create_info.layers = 1;
@@ -658,6 +791,19 @@ namespace lfs::vis {
             vkDestroyFramebuffer(device_, framebuffer, nullptr);
         }
         swapchain_framebuffers_.clear();
+        if (depth_stencil_image_view_ != VK_NULL_HANDLE) {
+            vkDestroyImageView(device_, depth_stencil_image_view_, nullptr);
+            depth_stencil_image_view_ = VK_NULL_HANDLE;
+        }
+        if (depth_stencil_image_ != VK_NULL_HANDLE) {
+            vkDestroyImage(device_, depth_stencil_image_, nullptr);
+            depth_stencil_image_ = VK_NULL_HANDLE;
+        }
+        if (depth_stencil_memory_ != VK_NULL_HANDLE) {
+            vkFreeMemory(device_, depth_stencil_memory_, nullptr);
+            depth_stencil_memory_ = VK_NULL_HANDLE;
+        }
+        depth_stencil_format_ = VK_FORMAT_UNDEFINED;
         if (render_pass_ != VK_NULL_HANDLE) {
             vkDestroyRenderPass(device_, render_pass_, nullptr);
             render_pass_ = VK_NULL_HANDLE;
@@ -684,6 +830,7 @@ namespace lfs::vis {
         return createSwapchain(framebuffer_width_, framebuffer_height_) &&
                createImageViews() &&
                createRenderPass() &&
+               createDepthStencilResources() &&
                createFramebuffers() &&
                createCommandBuffers();
     }

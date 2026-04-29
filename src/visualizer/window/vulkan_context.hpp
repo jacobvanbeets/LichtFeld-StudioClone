@@ -52,6 +52,7 @@ namespace lfs::vis {
         [[nodiscard]] uint32_t presentQueueFamily() const { return present_queue_family_; }
         [[nodiscard]] VkRenderPass renderPass() const { return render_pass_; }
         [[nodiscard]] VkFormat swapchainFormat() const { return swapchain_format_; }
+        [[nodiscard]] VkFormat depthStencilFormat() const { return depth_stencil_format_; }
         [[nodiscard]] VkExtent2D swapchainExtent() const { return swapchain_extent_; }
         [[nodiscard]] uint32_t minImageCount() const { return min_image_count_; }
         [[nodiscard]] uint32_t imageCount() const { return static_cast<uint32_t>(swapchain_images_.size()); }
@@ -83,6 +84,7 @@ namespace lfs::vis {
         bool createSwapchain(int framebuffer_width, int framebuffer_height);
         bool createImageViews();
         bool createRenderPass();
+        bool createDepthStencilResources();
         bool createFramebuffers();
         bool createCommandPool();
         bool createCommandBuffers();
@@ -99,6 +101,8 @@ namespace lfs::vis {
         [[nodiscard]] VkExtent2D chooseSwapchainExtent(const VkSurfaceCapabilitiesKHR& capabilities,
                                                        int framebuffer_width,
                                                        int framebuffer_height) const;
+        [[nodiscard]] VkFormat chooseDepthStencilFormat() const;
+        [[nodiscard]] uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) const;
 
         VkInstance instance_ = VK_NULL_HANDLE;
         VkSurfaceKHR surface_ = VK_NULL_HANDLE;
@@ -116,6 +120,10 @@ namespace lfs::vis {
         std::vector<VkImage> swapchain_images_;
         std::vector<VkImageView> swapchain_image_views_;
         VkRenderPass render_pass_ = VK_NULL_HANDLE;
+        VkFormat depth_stencil_format_ = VK_FORMAT_UNDEFINED;
+        VkImage depth_stencil_image_ = VK_NULL_HANDLE;
+        VkDeviceMemory depth_stencil_memory_ = VK_NULL_HANDLE;
+        VkImageView depth_stencil_image_view_ = VK_NULL_HANDLE;
         std::vector<VkFramebuffer> swapchain_framebuffers_;
 
         VkCommandPool command_pool_ = VK_NULL_HANDLE;
