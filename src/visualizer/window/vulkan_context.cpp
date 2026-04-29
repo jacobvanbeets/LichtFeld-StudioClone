@@ -202,6 +202,9 @@ namespace lfs::vis {
         frame.image_index = image_index;
         frame.command_buffer = command_buffers_[image_index];
         frame.framebuffer = swapchain_framebuffers_[image_index];
+        frame.swapchain_image = (swapchain_image_usage_ & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
+                                    ? swapchain_images_[image_index]
+                                    : VK_NULL_HANDLE;
         frame.extent = swapchain_extent_;
         frame_active_ = true;
         return true;
@@ -501,9 +504,23 @@ namespace lfs::vis {
     }
 
     VkSurfaceFormatKHR VulkanContext::chooseSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats) const {
+        constexpr std::array preferred_formats{
+            VK_FORMAT_B8G8R8A8_UNORM,
+            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_FORMAT_A8B8G8R8_UNORM_PACK32,
+        };
+
+        for (const VkFormat preferred_format : preferred_formats) {
+            for (const auto& format : formats) {
+                if (format.format == preferred_format &&
+                    format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+                    return format;
+                }
+            }
+        }
+
         for (const auto& format : formats) {
-            if (format.format == VK_FORMAT_B8G8R8A8_SRGB &&
-                format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            if (format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
                 return format;
             }
         }
@@ -596,6 +613,9 @@ namespace lfs::vis {
         create_info.imageExtent = extent;
         create_info.imageArrayLayers = 1;
         create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        if ((support.capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0) {
+            create_info.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        }
         create_info.imageSharingMode = shared_queues ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
         create_info.queueFamilyIndexCount = shared_queues ? static_cast<uint32_t>(queue_indices.size()) : 0u;
         create_info.pQueueFamilyIndices = shared_queues ? queue_indices.data() : nullptr;
@@ -615,6 +635,7 @@ namespace lfs::vis {
         vkGetSwapchainImagesKHR(device_, swapchain_, &image_count, swapchain_images_.data());
         swapchain_format_ = surface_format.format;
         swapchain_extent_ = extent;
+        swapchain_image_usage_ = create_info.imageUsage;
         return true;
     }
 
@@ -668,9 +689,9 @@ namespace lfs::vis {
         depth_stencil_attachment.format = depth_stencil_format_;
         depth_stencil_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
         depth_stencil_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        depth_stencil_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth_stencil_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         depth_stencil_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        depth_stencil_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth_stencil_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
         depth_stencil_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         depth_stencil_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
@@ -684,7 +705,7 @@ namespace lfs::vis {
         subpass.pColorAttachments = &color_attachment_ref;
         subpass.pDepthStencilAttachment = &depth_stencil_attachment_ref;
 
-        std::array<VkSubpassDependency, 2> dependencies{};
+        std::array<VkSubpassDependency, 4> dependencies{};
         dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
         dependencies[0].dstSubpass = 0;
         dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -702,6 +723,29 @@ namespace lfs::vis {
         dependencies[1].srcAccessMask = 0;
         dependencies[1].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+        dependencies[2].srcSubpass = 0;
+        dependencies[2].dstSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[2].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[2].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                       VK_PIPELINE_STAGE_TRANSFER_BIT |
+                                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependencies[2].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependencies[2].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+                                        VK_ACCESS_TRANSFER_READ_BIT |
+                                        VK_ACCESS_SHADER_READ_BIT;
+        dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+        dependencies[3].srcSubpass = 0;
+        dependencies[3].dstSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[3].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependencies[3].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependencies[3].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dependencies[3].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dependencies[3].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
         const std::array<VkAttachmentDescription, 2> attachments{color_attachment, depth_stencil_attachment};
 
@@ -897,6 +941,7 @@ namespace lfs::vis {
             vkDestroySwapchainKHR(device_, swapchain_, nullptr);
             swapchain_ = VK_NULL_HANDLE;
         }
+        swapchain_image_usage_ = 0;
     }
 
     bool VulkanContext::recreateSwapchain() {

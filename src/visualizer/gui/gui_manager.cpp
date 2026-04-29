@@ -2776,7 +2776,7 @@ namespace lfs::vis::gui {
 
             VulkanContext::Frame frame{};
             if (vulkan_context && vulkan_context->beginFrame(clear_value, frame)) {
-                if (rmlui_manager_.beginVulkanFrame(frame.command_buffer, frame.extent)) {
+                if (rmlui_manager_.beginVulkanFrame(frame.command_buffer, frame.extent, frame.framebuffer, frame.swapchain_image)) {
                     rmlui_manager_.renderQueuedVulkanContexts(false);
                     imgui_vulkan_backend_.renderDrawData(ImGui::GetDrawData(), frame.command_buffer);
                     rmlui_manager_.renderQueuedVulkanContexts(true);

@@ -63,8 +63,11 @@ public:
 
 	bool InitializeExternal(const ExternalContext& context);
 	void ShutdownExternal();
-	void BeginExternalFrame(VkCommandBuffer command_buffer, VkExtent2D extent);
+	void BeginExternalFrame(VkCommandBuffer command_buffer, VkExtent2D extent, VkFramebuffer framebuffer, VkImage swapchain_image);
 	void EndExternalFrame();
+	void ResetContextRenderState();
+	void SetContextOffset(float offset_x, float offset_y);
+	void SetContextClipRect(float x1, float y1, float x2, float y2);
 
 	void BeginFrame();
 	void EndFrame();
@@ -93,6 +96,21 @@ public:
 	void EnableScissorRegion(bool enable) override;
 	/// Called by RmlUi when it wants to change the scissor region.
 	void SetScissorRegion(Rml::Rectanglei region) override;
+
+	/// Called by RmlUi when it wants to enable or disable the clip mask.
+	void EnableClipMask(bool enable) override;
+	/// Called by RmlUi when it wants to set or modify the contents of the clip mask.
+	void RenderToClipMask(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation) override;
+
+	/// Called by RmlUi when it wants to render to an offscreen layer.
+	Rml::LayerHandle PushLayer() override;
+	/// Called by RmlUi when it wants to composite one layer onto another.
+	void CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
+		Rml::Span<const Rml::CompiledFilterHandle> filters) override;
+	/// Called by RmlUi when it wants to remove the current layer.
+	void PopLayer() override;
+	/// Called by RmlUi when it wants to capture the current layer as a texture.
+	Rml::TextureHandle SaveLayerAsTexture() override;
 
 	/// Called by RmlUi when it wants to set the current transform matrix to a new matrix.
 	void SetTransform(const Rml::Matrix4f* transform) override;
@@ -133,6 +151,16 @@ private:
 		VkBuffer m_p_vk_buffer;
 		VmaAllocation m_p_vma_allocation;
 	};
+
+	struct render_layer_t {
+		texture_data_t m_color{};
+		texture_data_t m_depth_stencil{};
+		VkFramebuffer m_p_framebuffer = VK_NULL_HANDLE;
+		VkImageLayout m_color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		VkImageLayout m_depth_stencil_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	};
+
+	enum class active_render_target_t { None, Swapchain, Layer };
 
 	class UploadResourceManager {
 	public:
@@ -289,6 +317,7 @@ private:
 		void SetDescriptorSet(uint32_t binding_index, VkSampler p_sampler, VkImageLayout layout, VkImageView p_view, VkDescriptorType descriptor_type,
 			VkDescriptorSet p_set) noexcept;
 
+		void Free_Allocation(VmaVirtualAllocation allocation) noexcept;
 		void Free_GeometryHandle(geometry_handle_t* p_valid_geometry_handle) noexcept;
 		void Free_GeometryHandle_ShaderDataOnly(geometry_handle_t* p_valid_geometry_handle) noexcept;
 
@@ -482,6 +511,9 @@ private:
 	void CreateSamplers() noexcept;
 	void Create_Pipelines() noexcept;
 	void CreateRenderPass() noexcept;
+	void CreateAuxiliaryRenderPasses() noexcept;
+	VkRenderPass CreateRenderPassWithOps(VkAttachmentLoadOp color_load_op, VkAttachmentLoadOp depth_load_op, VkImageLayout color_initial_layout,
+		VkImageLayout color_final_layout, VkImageLayout depth_initial_layout, VkImageLayout depth_final_layout) noexcept;
 
 	void CreateSwapchainFrameBuffers(const VkExtent2D& real_render_image_size) noexcept;
 
@@ -507,10 +539,29 @@ private:
 	void DestroySwapchainImageViews() noexcept;
 	void DestroySwapchainFrameBuffers() noexcept;
 	void DestroyRenderPass() noexcept;
+	void DestroyAuxiliaryRenderPasses() noexcept;
+	void DestroyRenderLayers() noexcept;
+	void DestroyRenderLayer(render_layer_t& layer) noexcept;
 	void Destroy_Pipelines() noexcept;
 	void DestroyDescriptorSets() noexcept;
 	void DestroyPipelineLayout() noexcept;
 	void DestroySamplers() noexcept;
+	void FreeTransientShaderAllocations() noexcept;
+
+	void EnsureRenderLayer(Rml::LayerHandle layer_handle);
+	render_layer_t* GetRenderLayer(Rml::LayerHandle layer_handle);
+	const render_layer_t* GetRenderLayer(Rml::LayerHandle layer_handle) const;
+	void BeginLayerRenderPass(Rml::LayerHandle layer_handle, bool clear);
+	void BeginSwapchainLoadRenderPass();
+	void EndActiveRenderPass();
+	bool CopySwapchainToLayer(Rml::LayerHandle destination);
+	void TransitionImageLayout(VkImage image, VkImageAspectFlags aspect_mask, VkImageLayout old_layout, VkImageLayout new_layout);
+	VkImageAspectFlags DepthStencilAspectMask() const noexcept;
+	void ApplyTransformState();
+	VkRect2D ContextClipScissor() const noexcept;
+	VkRect2D IntersectContextClip(VkRect2D scissor) const noexcept;
+	void ResetDynamicRenderState();
+	void RenderFullscreenTexture(texture_data_t& texture, Rml::BlendMode blend_mode);
 
 	void Wait() noexcept;
 
@@ -525,6 +576,8 @@ private:
 private:
 	bool m_is_transform_enabled;
 	bool m_is_apply_to_regular_geometry_stencil;
+	bool m_is_clip_mask_enabled;
+	bool m_is_transformed_scissor_enabled;
 	bool m_is_use_scissor_specified;
 	bool m_is_use_stencil_pipeline;
 	bool m_external_context = false;
@@ -558,6 +611,9 @@ private:
 	VkPipeline m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_without_textures;
 	VkDescriptorSet m_p_descriptor_set;
 	VkRenderPass m_p_render_pass;
+	VkRenderPass m_p_swapchain_load_render_pass;
+	VkRenderPass m_p_layer_clear_render_pass;
+	VkRenderPass m_p_layer_load_render_pass;
 	VkSampler m_p_sampler_linear;
 	VkRect2D m_scissor;
 
@@ -574,7 +630,13 @@ private:
 #endif
 
 	VkSurfaceFormatKHR m_swapchain_format;
+	VkFormat m_depth_stencil_format = VK_FORMAT_UNDEFINED;
 	shader_vertex_user_data_t m_user_data_for_vertex_shader;
+	Rml::Matrix4f m_context_transform;
+	Rml::Matrix4f m_rml_transform;
+	Rml::Vector2f m_context_offset;
+	VkRect2D m_context_clip_scissor{};
+	bool m_context_clip_enabled = false;
 	texture_data_t m_texture_depthstencil;
 
 	Rml::Matrix4f m_projection;
@@ -586,6 +648,13 @@ private:
 	Rml::Vector<VkImageView> m_swapchain_image_views;
 	Rml::Vector<VkShaderModule> m_shaders;
 	Rml::Array<Rml::Vector<texture_data_t*>, kSwapchainBackBufferCount> m_pending_for_deletion_textures_by_frames;
+	Rml::Vector<render_layer_t> m_render_layers;
+	Rml::Vector<VmaVirtualAllocation> m_transient_shader_allocations;
+	VkFramebuffer m_external_framebuffer = VK_NULL_HANDLE;
+	VkImage m_external_swapchain_image = VK_NULL_HANDLE;
+	active_render_target_t m_active_render_target = active_render_target_t::None;
+	Rml::LayerHandle m_active_layer = 0;
+	int m_render_layer_stack_size = 0;
 
 	// vma handles that thing, so there's no need for frame splitting
 	Rml::Vector<geometry_handle_t*> m_pending_for_deletion_geometries;

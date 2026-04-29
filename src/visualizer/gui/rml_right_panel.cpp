@@ -582,7 +582,13 @@ namespace lfs::vis::gui {
             if (rml_manager_->getVulkanRenderInterface()) {
                 rml_manager_->queueVulkanContext(rml_context_,
                                                  layout.pos.x - screen_x,
-                                                 layout.pos.y - screen_y);
+                                                 layout.pos.y - screen_y,
+                                                 false,
+                                                 true,
+                                                 layout.pos.x - screen_x,
+                                                 layout.pos.y - screen_y,
+                                                 layout.pos.x - screen_x + static_cast<float>(w),
+                                                 layout.pos.y - screen_y + static_cast<float>(h));
                 last_fbo_w_ = w;
                 last_fbo_h_ = h;
                 last_scene_h_ = layout.scene_h;
@@ -622,7 +628,13 @@ namespace lfs::vis::gui {
         if (rml_manager_->getVulkanRenderInterface()) {
             rml_manager_->queueVulkanContext(rml_context_,
                                              layout.pos.x - screen_x,
-                                             layout.pos.y - screen_y);
+                                             layout.pos.y - screen_y,
+                                             false,
+                                             true,
+                                             layout.pos.x - screen_x,
+                                             layout.pos.y - screen_y,
+                                             layout.pos.x - screen_x + static_cast<float>(w),
+                                             layout.pos.y - screen_y + static_cast<float>(h));
             return;
         }
 

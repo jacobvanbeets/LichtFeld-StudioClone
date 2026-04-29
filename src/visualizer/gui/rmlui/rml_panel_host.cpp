@@ -664,11 +664,24 @@ namespace lfs::vis::gui {
             const auto* vp = ImGui::GetMainViewport();
             const float screen_x = vp ? vp->Pos.x : 0.0f;
             const float screen_y = vp ? vp->Pos.y : 0.0f;
+            const ImVec2 clip_min = ImGui::GetWindowDrawList()->GetClipRectMin();
+            const ImVec2 clip_max = ImGui::GetWindowDrawList()->GetClipRectMax();
+            const float clip_x1 = std::max(clip_min.x, panel_screen_pos.x);
+            const float clip_y1 = std::max(clip_min.y, panel_screen_pos.y);
+            const float clip_x2 = std::min(clip_max.x, panel_screen_pos.x + avail_w);
+            const float clip_y2 = std::min(clip_max.y, panel_screen_pos.y + display_h);
             ImGui::Dummy(ImVec2(avail_w, display_h));
+            if (clip_x2 <= clip_x1 || clip_y2 <= clip_y1)
+                return;
             manager_->queueVulkanContext(rml_context_,
                                          panel_screen_pos.x - screen_x,
                                          panel_screen_pos.y - screen_y,
-                                         foreground_);
+                                         foreground_,
+                                         true,
+                                         clip_x1 - screen_x,
+                                         clip_y1 - screen_y,
+                                         clip_x2 - screen_x,
+                                         clip_y2 - screen_y);
             return;
         }
 
@@ -845,7 +858,10 @@ namespace lfs::vis::gui {
         const auto popover_shadow = collectVisibleColorPickerPopupShadow(screen_x, screen_y);
 
         if (vulkan_render) {
-            manager_->queueVulkanContext(rml_context_, screen_x, screen_y, foreground_);
+            manager_->queueVulkanContext(rml_context_, screen_x, screen_y, foreground_,
+                                         true,
+                                         screen_clip_x1, screen_clip_y1,
+                                         screen_clip_x2, screen_clip_y2);
             return;
         }
 

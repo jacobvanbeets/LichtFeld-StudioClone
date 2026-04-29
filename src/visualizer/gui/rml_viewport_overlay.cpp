@@ -419,7 +419,12 @@ namespace lfs::vis::gui {
                 rml_manager_->queueVulkanContext(rml_context_,
                                                  vp_pos_.x - screen_origin_.x,
                                                  vp_pos_.y - screen_origin_.y,
-                                                 true);
+                                                 true,
+                                                 true,
+                                                 vp_pos_.x - screen_origin_.x,
+                                                 vp_pos_.y - screen_origin_.y,
+                                                 vp_pos_.x - screen_origin_.x + vp_size_.x,
+                                                 vp_pos_.y - screen_origin_.y + vp_size_.y);
             }
             return;
         }
@@ -436,7 +441,12 @@ namespace lfs::vis::gui {
             rml_manager_->queueVulkanContext(rml_context_,
                                              vp_pos_.x - screen_origin_.x,
                                              vp_pos_.y - screen_origin_.y,
-                                             true);
+                                             true,
+                                             true,
+                                             vp_pos_.x - screen_origin_.x,
+                                             vp_pos_.y - screen_origin_.y,
+                                             vp_pos_.x - screen_origin_.x + vp_size_.x,
+                                             vp_pos_.y - screen_origin_.y + vp_size_.y);
             animation_active_ = (rml_context_->GetNextUpdateDelay() == 0);
             render_needed_ = false;
             last_render_w_ = w;

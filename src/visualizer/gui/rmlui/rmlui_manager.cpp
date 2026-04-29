@@ -311,7 +311,12 @@ namespace lfs::vis::gui {
     void RmlUIManager::queueVulkanContext(Rml::Context* const context,
                                           const float offset_x,
                                           const float offset_y,
-                                          const bool foreground) {
+                                          const bool foreground,
+                                          const bool clip_enabled,
+                                          const float clip_x1,
+                                          const float clip_y1,
+                                          const float clip_x2,
+                                          const float clip_y2) {
         if (!context || !vulkan_render_interface_)
             return;
         auto& queue = foreground ? vulkan_foreground_queue_ : vulkan_queue_;
@@ -319,6 +324,11 @@ namespace lfs::vis::gui {
             .context = context,
             .offset_x = offset_x,
             .offset_y = offset_y,
+            .clip_enabled = clip_enabled,
+            .clip_x1 = clip_x1,
+            .clip_y1 = clip_y1,
+            .clip_x2 = clip_x2,
+            .clip_y2 = clip_y2,
         });
     }
 
@@ -328,10 +338,13 @@ namespace lfs::vis::gui {
     }
 
 #ifdef LFS_VULKAN_VIEWER_ENABLED
-    bool RmlUIManager::beginVulkanFrame(const VkCommandBuffer command_buffer, const VkExtent2D extent) {
-        if (!vulkan_render_interface_ || command_buffer == VK_NULL_HANDLE)
+    bool RmlUIManager::beginVulkanFrame(const VkCommandBuffer command_buffer,
+                                        const VkExtent2D extent,
+                                        const VkFramebuffer framebuffer,
+                                        const VkImage swapchain_image) {
+        if (!vulkan_render_interface_ || command_buffer == VK_NULL_HANDLE || framebuffer == VK_NULL_HANDLE)
             return false;
-        vulkan_render_interface_->BeginExternalFrame(command_buffer, extent);
+        vulkan_render_interface_->BeginExternalFrame(command_buffer, extent, framebuffer, swapchain_image);
         vulkan_frame_active_ = true;
         return true;
     }
@@ -347,17 +360,19 @@ namespace lfs::vis::gui {
             if (!command.context)
                 continue;
 
-            if (command.offset_x != 0.0f || command.offset_y != 0.0f) {
-                const Rml::Matrix4f transform =
-                    Rml::Matrix4f::Translate(command.offset_x, command.offset_y, 0.0f);
-                vulkan_render_interface_->SetTransform(&transform);
-            } else {
-                vulkan_render_interface_->SetTransform(nullptr);
+            vulkan_render_interface_->ResetContextRenderState();
+            if (command.clip_enabled) {
+                vulkan_render_interface_->SetContextClipRect(command.clip_x1,
+                                                             command.clip_y1,
+                                                             command.clip_x2,
+                                                             command.clip_y2);
             }
+            vulkan_render_interface_->SetContextOffset(command.offset_x, command.offset_y);
             command.context->Render();
+            vulkan_render_interface_->ResetContextRenderState();
         }
 
-        vulkan_render_interface_->SetTransform(nullptr);
+        vulkan_render_interface_->ResetContextRenderState();
         queue.clear();
     }
 

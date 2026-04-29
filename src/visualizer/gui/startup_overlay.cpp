@@ -229,6 +229,10 @@ namespace lfs::vis::gui {
         last_theme_signature_ = theme_signature;
         has_theme_signature_ = true;
 
+        if (auto* body = document_->GetElementById("body")) {
+            body->SetClass("vulkan-compat", rml_manager_ && rml_manager_->getVulkanRenderInterface() != nullptr);
+        }
+
         const bool is_light = t.isLightTheme();
         const auto logo_path = lfs::vis::getAssetPath(
             is_light ? "lichtfeld-splash-logo-dark.png" : "lichtfeld-splash-logo.png");
@@ -378,7 +382,12 @@ namespace lfs::vis::gui {
                 rml_manager_->queueVulkanContext(rml_context_,
                                                  viewport.pos.x - screen_x,
                                                  viewport.pos.y - screen_y,
-                                                 true);
+                                                 true,
+                                                 true,
+                                                 viewport.pos.x - screen_x,
+                                                 viewport.pos.y - screen_y,
+                                                 viewport.pos.x - screen_x + viewport.size.x,
+                                                 viewport.pos.y - screen_y + viewport.size.y);
             } else {
                 fbo_.ensure(ctx_w, ctx_h);
                 if (!fbo_.valid())

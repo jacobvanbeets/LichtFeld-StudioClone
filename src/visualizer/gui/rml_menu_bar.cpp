@@ -573,7 +573,10 @@ namespace lfs::vis::gui {
         const bool needs_render = render_needed_ || theme_changed || size_changed;
         if (!needs_render) {
             if (rml_manager_->getVulkanRenderInterface())
-                rml_manager_->queueVulkanContext(rml_context_, 0.0f, 0.0f, true);
+                rml_manager_->queueVulkanContext(rml_context_, 0.0f, 0.0f, true,
+                                                 true, 0.0f, 0.0f,
+                                                 static_cast<float>(screen_w),
+                                                 static_cast<float>(ctx_h));
             return;
         }
 
@@ -585,7 +588,10 @@ namespace lfs::vis::gui {
         rml_context_->Update();
 
         if (rml_manager_->getVulkanRenderInterface()) {
-            rml_manager_->queueVulkanContext(rml_context_, 0.0f, 0.0f, true);
+            rml_manager_->queueVulkanContext(rml_context_, 0.0f, 0.0f, true,
+                                             true, 0.0f, 0.0f,
+                                             static_cast<float>(screen_w),
+                                             static_cast<float>(ctx_h));
             last_ctx_w_ = ctx_w;
             last_ctx_h_ = ctx_h;
             render_needed_ = false;

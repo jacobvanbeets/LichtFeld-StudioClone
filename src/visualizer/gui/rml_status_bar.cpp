@@ -615,7 +615,13 @@ namespace lfs::vis::gui {
             rml_context_->Update();
 
             if (vulkan_render) {
-                rml_manager_->queueVulkanContext(rml_context_, blit_rect.x, blit_rect.y);
+                rml_manager_->queueVulkanContext(rml_context_, blit_rect.x, blit_rect.y,
+                                                 false,
+                                                 true,
+                                                 blit_rect.x,
+                                                 blit_rect.y,
+                                                 blit_rect.x + blit_rect.w,
+                                                 blit_rect.y + blit_rect.h);
                 animation_active_ = animation_active_ || (rml_context_->GetNextUpdateDelay() == 0);
                 last_render_w_ = render_w;
                 last_render_h_ = render_h;
@@ -647,7 +653,13 @@ namespace lfs::vis::gui {
         }
 
         if (vulkan_render) {
-            rml_manager_->queueVulkanContext(rml_context_, blit_rect.x, blit_rect.y);
+            rml_manager_->queueVulkanContext(rml_context_, blit_rect.x, blit_rect.y,
+                                             false,
+                                             true,
+                                             blit_rect.x,
+                                             blit_rect.y,
+                                             blit_rect.x + blit_rect.w,
+                                             blit_rect.y + blit_rect.h);
             return;
         }
 

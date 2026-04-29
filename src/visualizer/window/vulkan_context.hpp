@@ -39,6 +39,7 @@ namespace lfs::vis {
             uint32_t image_index = 0;
             VkCommandBuffer command_buffer = VK_NULL_HANDLE;
             VkFramebuffer framebuffer = VK_NULL_HANDLE;
+            VkImage swapchain_image = VK_NULL_HANDLE;
             VkExtent2D extent{};
         };
 
@@ -120,6 +121,7 @@ namespace lfs::vis {
         VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
         VkFormat swapchain_format_ = VK_FORMAT_UNDEFINED;
         VkExtent2D swapchain_extent_{};
+        VkImageUsageFlags swapchain_image_usage_ = 0;
         uint32_t min_image_count_ = 2;
         std::vector<VkImage> swapchain_images_;
         std::vector<VkImageView> swapchain_image_views_;

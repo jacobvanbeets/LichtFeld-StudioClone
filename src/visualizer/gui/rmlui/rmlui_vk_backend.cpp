@@ -13,6 +13,7 @@
 #include <RmlUi/Core/Profiling.h>
 #include <stb_image.h>
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -67,19 +68,26 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkDebugUtilsMessageS
 #endif
 
 RenderInterface_VK::RenderInterface_VK() :
-	m_is_transform_enabled{false}, m_is_apply_to_regular_geometry_stencil{false}, m_is_use_scissor_specified{false}, m_is_use_stencil_pipeline{false},
+	m_is_transform_enabled{false}, m_is_apply_to_regular_geometry_stencil{false}, m_is_clip_mask_enabled{false},
+	m_is_transformed_scissor_enabled{false}, m_is_use_scissor_specified{false}, m_is_use_stencil_pipeline{false},
 	m_width{}, m_height{}, m_queue_index_present{}, m_queue_index_graphics{}, m_queue_index_compute{}, m_semaphore_index{},
 	m_semaphore_index_previous{}, m_image_index{}, m_p_instance{}, m_p_device{}, m_p_physical_device{}, m_p_surface{}, m_p_swapchain{},
 	m_p_allocator{}, m_p_current_command_buffer{}, m_p_descriptor_set_layout_vertex_transform{}, m_p_descriptor_set_layout_texture{},
 	m_p_pipeline_layout{}, m_p_pipeline_with_textures{}, m_p_pipeline_without_textures{},
 	m_p_pipeline_stencil_for_region_where_geometry_will_be_drawn{}, m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_with_textures{},
 	m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_without_textures{}, m_p_descriptor_set{}, m_p_render_pass{},
-	m_p_sampler_linear{}, m_scissor{}, m_scissor_original{}, m_viewport{}, m_p_queue_present{}, m_p_queue_graphics{}, m_p_queue_compute{},
+	m_p_swapchain_load_render_pass{}, m_p_layer_clear_render_pass{}, m_p_layer_load_render_pass{}, m_p_sampler_linear{}, m_scissor{},
+	m_scissor_original{}, m_viewport{}, m_p_queue_present{}, m_p_queue_graphics{}, m_p_queue_compute{},
 #ifdef RMLUI_VK_DEBUG
 	m_debug_messenger{},
 #endif
-	m_swapchain_format{}, m_texture_depthstencil{}, m_pending_for_deletion_textures_by_frames{}
-{}
+	m_swapchain_format{}, m_depth_stencil_format{}, m_texture_depthstencil{}, m_pending_for_deletion_textures_by_frames{}, m_render_layers{},
+	m_external_framebuffer{}, m_external_swapchain_image{}, m_active_render_target{active_render_target_t::None}, m_active_layer{},
+	m_render_layer_stack_size{}
+{
+	m_context_transform = Rml::Matrix4f::Identity();
+	m_rml_transform = Rml::Matrix4f::Identity();
+}
 
 RenderInterface_VK::~RenderInterface_VK() {}
 
@@ -162,32 +170,14 @@ void RenderInterface_VK::RenderGeometry(Rml::CompiledGeometryHandle geometry, Rm
 		"at all or 2. - Somehing is wrong with allocation and somehow it was corrupted by something.");
 
 	shader_vertex_user_data_t* p_data = nullptr;
-
-	if (p_casted_compiled_geometry->m_p_shader_allocation == nullptr)
-	{
-		// it means it was freed in ReleaseCompiledGeometry method
-		bool status = m_memory_pool.Alloc_GeneralBuffer(sizeof(m_user_data_for_vertex_shader), reinterpret_cast<void**>(&p_data),
-			&p_casted_compiled_geometry->m_p_shader, &p_casted_compiled_geometry->m_p_shader_allocation);
-		RMLUI_VK_ASSERTMSG(status, "failed to allocate VkDescriptorBufferInfo for uniform data to shaders");
-	}
-	else
-	{
-		// it means our state is dirty and we need to update data, but it is not right in terms of architecture, for real better experience would
-		// be great to free all "compiled" geometries and "re-build" them in one general way, but here I got only three callings for
-		// font-face-layer textures (load_document example) and that shit. So better to think how to make it right, if it is fine okay, if it is
-		// not okay and like we really expect that ReleaseCompiledGeometry for all objects that needs to be rebuilt so better to implement that,
-		// but still it is a big architectural thing (or at least you need to do something big commits here to implement a such feature), so my
-		// implementation doesn't break anything what we had, but still it looks strange. If I get callings for releasing maybe I need to use it
-		// for all objects not separately????? Otherwise it is better to provide method for resizing (or some kind of "resizing" callback) for
-		// recalculating all geometry IDK, so it means you pass the existed geometry that wasn't pass to ReleaseCompiledGeometry, but from another
-		// hand you need to re-build compiled geometry again so we have two kinds of geometry one is compiled and never changes and one is dynamic
-		// and it goes through pipeline InitializationOfProgram...->Compile->Render->Release->Compile->Render->Release...
-
-		m_memory_pool.Free_GeometryHandle_ShaderDataOnly(p_casted_compiled_geometry);
-		bool status = m_memory_pool.Alloc_GeneralBuffer(sizeof(m_user_data_for_vertex_shader), reinterpret_cast<void**>(&p_data),
-			&p_casted_compiled_geometry->m_p_shader, &p_casted_compiled_geometry->m_p_shader_allocation);
-		RMLUI_VK_ASSERTMSG(status, "failed to allocate VkDescriptorBufferInfo for uniform data to shaders");
-	}
+	VkDescriptorBufferInfo shader_buffer = {};
+	VmaVirtualAllocation shader_allocation = {};
+	// Dynamic uniform offsets are consumed when the recorded command buffer executes, so keep
+	// per-draw transform data alive until the next frame instead of reusing it immediately.
+	bool status = m_memory_pool.Alloc_GeneralBuffer(sizeof(m_user_data_for_vertex_shader), reinterpret_cast<void**>(&p_data),
+		&shader_buffer, &shader_allocation);
+	RMLUI_VK_ASSERTMSG(status, "failed to allocate VkDescriptorBufferInfo for uniform data to shaders");
+	m_transient_shader_allocations.push_back(shader_allocation);
 
 	if (p_data)
 	{
@@ -199,7 +189,7 @@ void RenderInterface_VK::RenderGeometry(Rml::CompiledGeometryHandle geometry, Rm
 		RMLUI_VK_ASSERTMSG(p_data, "you can't reach this zone, it means something bad");
 	}
 
-	const uint32_t pDescriptorOffsets = static_cast<uint32_t>(p_casted_compiled_geometry->m_p_shader.offset);
+	const uint32_t pDescriptorOffsets = static_cast<uint32_t>(shader_buffer.offset);
 
 	VkDescriptorSet p_texture_descriptor_set = nullptr;
 
@@ -272,17 +262,14 @@ void RenderInterface_VK::EnableScissorRegion(bool enable)
 	if (m_p_current_command_buffer == nullptr)
 		return;
 
-	if (m_is_transform_enabled)
-	{
-		m_is_apply_to_regular_geometry_stencil = true;
-	}
-
 	m_is_use_scissor_specified = enable;
 
 	if (m_is_use_scissor_specified == false)
 	{
-		m_is_apply_to_regular_geometry_stencil = false;
-		vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor_original);
+		m_is_transformed_scissor_enabled = false;
+		m_is_apply_to_regular_geometry_stencil = m_is_clip_mask_enabled;
+		m_scissor = ContextClipScissor();
+		vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor);
 	}
 }
 
@@ -302,6 +289,8 @@ void RenderInterface_VK::SetScissorRegion(Rml::Rectanglei region)
 			int indices[6] = {0, 2, 1, 0, 3, 2};
 
 			m_is_use_stencil_pipeline = true;
+				m_scissor = ContextClipScissor();
+				vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor);
 
 #ifdef RMLUI_DEBUG
 			VkDebugUtilsLabelEXT info{};
@@ -340,14 +329,22 @@ void RenderInterface_VK::SetScissorRegion(Rml::Rectanglei region)
 
 			m_is_use_stencil_pipeline = false;
 
-			m_is_apply_to_regular_geometry_stencil = true;
+				m_is_transformed_scissor_enabled = true;
+				m_is_apply_to_regular_geometry_stencil = true;
+				m_scissor = ContextClipScissor();
+				vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor);
 		}
 		else
 		{
+			m_is_transformed_scissor_enabled = false;
+			m_is_apply_to_regular_geometry_stencil = m_is_clip_mask_enabled;
 			m_scissor.extent.width = region.Width();
 			m_scissor.extent.height = region.Height();
-			m_scissor.offset.x = Rml::Math::Clamp(region.Left(), 0, m_width);
-			m_scissor.offset.y = Rml::Math::Clamp(region.Top(), 0, m_height);
+			const int offset_x = static_cast<int>(std::round(m_context_offset.x));
+			const int offset_y = static_cast<int>(std::round(m_context_offset.y));
+			m_scissor.offset.x = Rml::Math::Clamp(region.Left() + offset_x, 0, m_width);
+			m_scissor.offset.y = Rml::Math::Clamp(region.Top() + offset_y, 0, m_height);
+			m_scissor = IntersectContextClip(m_scissor);
 
 #ifdef RMLUI_DEBUG
 			VkDebugUtilsLabelEXT info{};
@@ -364,6 +361,242 @@ void RenderInterface_VK::SetScissorRegion(Rml::Rectanglei region)
 			vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor);
 		}
 	}
+}
+
+void RenderInterface_VK::EnableClipMask(bool enable)
+{
+	m_is_clip_mask_enabled = enable;
+	m_is_apply_to_regular_geometry_stencil = m_is_clip_mask_enabled || m_is_transformed_scissor_enabled;
+}
+
+void RenderInterface_VK::RenderToClipMask(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation)
+{
+	if (m_p_current_command_buffer == nullptr || !geometry)
+		return;
+
+	VkClearDepthStencilValue clear_depth_stencil{};
+	clear_depth_stencil.depth = 1.0f;
+	clear_depth_stencil.stencil = operation == Rml::ClipMaskOperation::SetInverse ? 1 : 0;
+
+	VkClearAttachment clear_attachment = {};
+	clear_attachment.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+	clear_attachment.clearValue.depthStencil = clear_depth_stencil;
+	clear_attachment.colorAttachment = 1;
+
+	VkClearRect clear_rect = {};
+	clear_rect.layerCount = 1;
+	clear_rect.rect.extent.width = m_width;
+	clear_rect.rect.extent.height = m_height;
+
+	// Match RmlUi's legacy compatibility behavior for intersect until the Vulkan renderer has
+	// stencil increment/decrement pipelines for true nested clip-mask intersections.
+	vkCmdClearAttachments(m_p_current_command_buffer, 1, &clear_attachment, 1, &clear_rect);
+
+	m_is_use_stencil_pipeline = true;
+	if (operation == Rml::ClipMaskOperation::SetInverse)
+		vkCmdSetStencilReference(m_p_current_command_buffer, VK_STENCIL_FACE_FRONT_AND_BACK, 0);
+	else
+		vkCmdSetStencilReference(m_p_current_command_buffer, VK_STENCIL_FACE_FRONT_AND_BACK, 1);
+
+	RenderGeometry(geometry, translation, {});
+
+	vkCmdSetStencilReference(m_p_current_command_buffer, VK_STENCIL_FACE_FRONT_AND_BACK, 1);
+	m_is_use_stencil_pipeline = false;
+	m_is_clip_mask_enabled = true;
+	m_is_apply_to_regular_geometry_stencil = true;
+}
+
+Rml::LayerHandle RenderInterface_VK::PushLayer()
+{
+	if (m_p_current_command_buffer == nullptr || m_width <= 0 || m_height <= 0)
+		return {};
+
+	const Rml::LayerHandle layer_handle = static_cast<Rml::LayerHandle>(m_render_layer_stack_size + 1);
+	EnsureRenderLayer(layer_handle);
+
+	EndActiveRenderPass();
+	BeginLayerRenderPass(layer_handle, true);
+
+	m_render_layer_stack_size += 1;
+	m_active_layer = layer_handle;
+	return layer_handle;
+}
+
+void RenderInterface_VK::CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
+	Rml::Span<const Rml::CompiledFilterHandle> filters)
+{
+	if (m_p_current_command_buffer == nullptr)
+		return;
+
+	static bool warned_unsupported_filters = false;
+	if (!filters.empty() && !warned_unsupported_filters)
+	{
+		Rml::Log::Message(Rml::Log::LT_WARNING, "[Vulkan] RmlUi layer filters are not implemented yet; compositing unfiltered layer.");
+		warned_unsupported_filters = true;
+	}
+
+	render_layer_t* source_layer = GetRenderLayer(source);
+	if (!source_layer)
+	{
+		if (CopySwapchainToLayer(destination))
+		{
+			const Rml::LayerHandle top_layer =
+				m_render_layer_stack_size > 0 ? static_cast<Rml::LayerHandle>(m_render_layer_stack_size) : Rml::LayerHandle{};
+			if (top_layer != 0 && destination != top_layer)
+			{
+				EndActiveRenderPass();
+				BeginLayerRenderPass(top_layer, false);
+			}
+			return;
+		}
+
+		static bool warned_base_layer = false;
+		if (!warned_base_layer)
+		{
+			Rml::Log::Message(Rml::Log::LT_WARNING, "[Vulkan] Cannot composite from the swapchain base layer yet.");
+			warned_base_layer = true;
+		}
+		return;
+	}
+
+	EndActiveRenderPass();
+	TransitionImageLayout(source_layer->m_color.m_p_vk_image, VK_IMAGE_ASPECT_COLOR_BIT, source_layer->m_color_layout,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	source_layer->m_color_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	if (destination == 0)
+		BeginSwapchainLoadRenderPass();
+	else
+		BeginLayerRenderPass(destination, false);
+
+	RenderFullscreenTexture(source_layer->m_color, blend_mode);
+
+	const Rml::LayerHandle top_layer = m_render_layer_stack_size > 0 ? static_cast<Rml::LayerHandle>(m_render_layer_stack_size) : Rml::LayerHandle{};
+	if (top_layer != 0 && destination != top_layer)
+	{
+		EndActiveRenderPass();
+		BeginLayerRenderPass(top_layer, false);
+	}
+}
+
+void RenderInterface_VK::PopLayer()
+{
+	if (m_render_layer_stack_size <= 0)
+		return;
+
+	EndActiveRenderPass();
+	m_render_layer_stack_size -= 1;
+	m_active_layer = {};
+
+	if (m_render_layer_stack_size > 0)
+	{
+		const Rml::LayerHandle layer_handle = static_cast<Rml::LayerHandle>(m_render_layer_stack_size);
+		BeginLayerRenderPass(layer_handle, false);
+		m_active_layer = layer_handle;
+	}
+	else
+	{
+		BeginSwapchainLoadRenderPass();
+	}
+}
+
+Rml::TextureHandle RenderInterface_VK::SaveLayerAsTexture()
+{
+	if (m_p_current_command_buffer == nullptr || m_render_layer_stack_size <= 0)
+		return {};
+
+	render_layer_t* source_layer = GetRenderLayer(static_cast<Rml::LayerHandle>(m_render_layer_stack_size));
+	if (!source_layer)
+		return {};
+
+	VkRect2D bounds = m_is_use_scissor_specified ? m_scissor : ContextClipScissor();
+	bounds = IntersectContextClip(bounds);
+	bounds.offset.x = Rml::Math::Clamp(bounds.offset.x, 0, m_width);
+	bounds.offset.y = Rml::Math::Clamp(bounds.offset.y, 0, m_height);
+	if (bounds.offset.x + static_cast<int>(bounds.extent.width) > m_width)
+		bounds.extent.width = static_cast<uint32_t>(m_width - bounds.offset.x);
+	if (bounds.offset.y + static_cast<int>(bounds.extent.height) > m_height)
+		bounds.extent.height = static_cast<uint32_t>(m_height - bounds.offset.y);
+	if (bounds.extent.width == 0 || bounds.extent.height == 0)
+		return {};
+
+	EndActiveRenderPass();
+
+	auto* texture = new texture_data_t{};
+	const VkFormat format = m_swapchain_format.format;
+	const VkExtent3D extent{bounds.extent.width, bounds.extent.height, 1};
+
+	VkImageCreateInfo image_info{};
+	image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	image_info.imageType = VK_IMAGE_TYPE_2D;
+	image_info.format = format;
+	image_info.extent = extent;
+	image_info.mipLevels = 1;
+	image_info.arrayLayers = 1;
+	image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+	image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+	image_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo allocation_info{};
+	allocation_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+	VkResult status = vmaCreateImage(m_p_allocator, &image_info, &allocation_info, &texture->m_p_vk_image, &texture->m_p_vma_allocation, nullptr);
+	RMLUI_VK_ASSERTMSG(status == VK_SUCCESS, "failed to create saved RmlUi layer texture");
+	if (status != VK_SUCCESS)
+	{
+		delete texture;
+		return {};
+	}
+
+	VkImageViewCreateInfo view_info{};
+	view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	view_info.image = texture->m_p_vk_image;
+	view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	view_info.format = format;
+	view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	view_info.subresourceRange.baseMipLevel = 0;
+	view_info.subresourceRange.levelCount = 1;
+	view_info.subresourceRange.baseArrayLayer = 0;
+	view_info.subresourceRange.layerCount = 1;
+	status = vkCreateImageView(m_p_device, &view_info, nullptr, &texture->m_p_vk_image_view);
+	RMLUI_VK_ASSERTMSG(status == VK_SUCCESS, "failed to create saved RmlUi layer texture view");
+	if (status != VK_SUCCESS)
+	{
+		vmaDestroyImage(m_p_allocator, texture->m_p_vk_image, texture->m_p_vma_allocation);
+		delete texture;
+		return {};
+	}
+	texture->m_p_vk_sampler = m_p_sampler_linear;
+
+	TransitionImageLayout(source_layer->m_color.m_p_vk_image, VK_IMAGE_ASPECT_COLOR_BIT, source_layer->m_color_layout,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	source_layer->m_color_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+	TransitionImageLayout(texture->m_p_vk_image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+	VkImageCopy copy_region{};
+	copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copy_region.srcSubresource.mipLevel = 0;
+	copy_region.srcSubresource.baseArrayLayer = 0;
+	copy_region.srcSubresource.layerCount = 1;
+	copy_region.srcOffset = {bounds.offset.x, bounds.offset.y, 0};
+	copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copy_region.dstSubresource.mipLevel = 0;
+	copy_region.dstSubresource.baseArrayLayer = 0;
+	copy_region.dstSubresource.layerCount = 1;
+	copy_region.dstOffset = {0, 0, 0};
+	copy_region.extent = extent;
+
+	vkCmdCopyImage(m_p_current_command_buffer, source_layer->m_color.m_p_vk_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		texture->m_p_vk_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+
+	TransitionImageLayout(texture->m_p_vk_image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	BeginLayerRenderPass(static_cast<Rml::LayerHandle>(m_render_layer_stack_size), false);
+
+	return reinterpret_cast<Rml::TextureHandle>(texture);
 }
 
 // Set to byte packing, or the compiler will expand our struct, which means it won't read correctly from file
@@ -745,14 +978,77 @@ void RenderInterface_VK::ReleaseTexture(Rml::TextureHandle texture_handle)
 
 void RenderInterface_VK::SetTransform(const Rml::Matrix4f* transform)
 {
-	m_is_transform_enabled = !!(transform);
-	m_user_data_for_vertex_shader.m_transform = m_projection * (transform ? *transform : Rml::Matrix4f::Identity());
+	m_is_transform_enabled = (transform != nullptr);
+	m_rml_transform = transform ? *transform : Rml::Matrix4f::Identity();
+	ApplyTransformState();
+}
+
+void RenderInterface_VK::SetContextOffset(float offset_x, float offset_y)
+{
+	m_context_offset = Rml::Vector2f(offset_x, offset_y);
+	m_context_transform = Rml::Matrix4f::Translate(offset_x, offset_y, 0.0f);
+	ApplyTransformState();
+}
+
+void RenderInterface_VK::SetContextClipRect(float x1, float y1, float x2, float y2)
+{
+	if (x2 <= x1 || y2 <= y1)
+	{
+		m_context_clip_enabled = true;
+		m_context_clip_scissor = {};
+		if (m_p_current_command_buffer)
+			vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_context_clip_scissor);
+		return;
+	}
+
+	const int left = Rml::Math::Clamp(static_cast<int>(std::floor(x1)), 0, m_width);
+	const int top = Rml::Math::Clamp(static_cast<int>(std::floor(y1)), 0, m_height);
+	const int right = Rml::Math::Clamp(static_cast<int>(std::ceil(x2)), 0, m_width);
+	const int bottom = Rml::Math::Clamp(static_cast<int>(std::ceil(y2)), 0, m_height);
+
+	m_context_clip_enabled = true;
+	m_context_clip_scissor.offset.x = left;
+	m_context_clip_scissor.offset.y = top;
+	m_context_clip_scissor.extent.width = static_cast<uint32_t>(std::max(0, right - left));
+	m_context_clip_scissor.extent.height = static_cast<uint32_t>(std::max(0, bottom - top));
+	if (m_p_current_command_buffer)
+		vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_context_clip_scissor);
+}
+
+void RenderInterface_VK::ApplyTransformState()
+{
+	m_user_data_for_vertex_shader.m_transform = m_projection * m_context_transform * m_rml_transform;
+}
+
+VkRect2D RenderInterface_VK::ContextClipScissor() const noexcept
+{
+	return m_context_clip_enabled ? m_context_clip_scissor : m_scissor_original;
+}
+
+VkRect2D RenderInterface_VK::IntersectContextClip(VkRect2D scissor) const noexcept
+{
+	if (!m_context_clip_enabled)
+		return scissor;
+
+	const int left = std::max(scissor.offset.x, m_context_clip_scissor.offset.x);
+	const int top = std::max(scissor.offset.y, m_context_clip_scissor.offset.y);
+	const int right = std::min(scissor.offset.x + static_cast<int>(scissor.extent.width),
+							   m_context_clip_scissor.offset.x + static_cast<int>(m_context_clip_scissor.extent.width));
+	const int bottom = std::min(scissor.offset.y + static_cast<int>(scissor.extent.height),
+								m_context_clip_scissor.offset.y + static_cast<int>(m_context_clip_scissor.extent.height));
+
+	scissor.offset.x = left;
+	scissor.offset.y = top;
+	scissor.extent.width = static_cast<uint32_t>(std::max(0, right - left));
+	scissor.extent.height = static_cast<uint32_t>(std::max(0, bottom - top));
+	return scissor;
 }
 
 void RenderInterface_VK::BeginFrame()
 {
 	Wait();
 
+	FreeTransientShaderAllocations();
 	Update_PendingForDeletion_Textures_By_Frames();
 	Update_PendingForDeletion_Geometries();
 
@@ -793,8 +1089,20 @@ void RenderInterface_VK::BeginFrame()
 
 	vkCmdBeginRenderPass(m_p_current_command_buffer, &info_pass, VkSubpassContents::VK_SUBPASS_CONTENTS_INLINE);
 	vkCmdSetViewport(m_p_current_command_buffer, 0, 1, &m_viewport);
+	vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor_original);
+	vkCmdSetStencilReference(m_p_current_command_buffer, VK_STENCIL_FACE_FRONT_AND_BACK, 1);
 
+	m_active_render_target = active_render_target_t::Swapchain;
+	m_active_layer = {};
+	m_render_layer_stack_size = 0;
+	m_is_clip_mask_enabled = false;
+	m_is_transformed_scissor_enabled = false;
+	m_is_use_scissor_specified = false;
+	m_is_use_stencil_pipeline = false;
 	m_is_apply_to_regular_geometry_stencil = false;
+	SetContextOffset(0.0f, 0.0f);
+	SetTransform(nullptr);
+	m_context_clip_enabled = false;
 }
 
 void RenderInterface_VK::EndFrame()
@@ -802,7 +1110,7 @@ void RenderInterface_VK::EndFrame()
 	if (m_p_current_command_buffer == nullptr)
 		return;
 
-	vkCmdEndRenderPass(m_p_current_command_buffer);
+	EndActiveRenderPass();
 
 	auto status = vkEndCommandBuffer(m_p_current_command_buffer);
 
@@ -924,6 +1232,7 @@ bool RenderInterface_VK::InitializeExternal(const ExternalContext& context)
 	m_queue_index_compute = context.graphics_queue_family;
 	m_p_render_pass = context.render_pass;
 	m_swapchain_format.format = context.color_format;
+	m_depth_stencil_format = context.depth_stencil_format;
 	m_width = static_cast<int>(context.extent.width);
 	m_height = static_cast<int>(context.extent.height);
 
@@ -933,6 +1242,7 @@ bool RenderInterface_VK::InitializeExternal(const ExternalContext& context)
 	Initialize_Allocator();
 	Initialize_Resources(physical_device_properties);
 	UpdateViewportState(context.extent);
+	CreateAuxiliaryRenderPasses();
 	Create_Pipelines();
 	return true;
 }
@@ -947,7 +1257,9 @@ void RenderInterface_VK::ShutdownExternal()
 	if (m_p_device)
 		vkDeviceWaitIdle(m_p_device);
 
+	DestroyRenderLayers();
 	Destroy_Pipelines();
+	DestroyAuxiliaryRenderPasses();
 	Destroy_Resources();
 	Destroy_Allocator();
 
@@ -958,12 +1270,14 @@ void RenderInterface_VK::ShutdownExternal()
 	m_p_queue_graphics = VK_NULL_HANDLE;
 	m_p_queue_present = VK_NULL_HANDLE;
 	m_p_queue_compute = VK_NULL_HANDLE;
+	m_external_framebuffer = VK_NULL_HANDLE;
+	m_external_swapchain_image = VK_NULL_HANDLE;
 	m_external_context = false;
 }
 
-void RenderInterface_VK::BeginExternalFrame(VkCommandBuffer command_buffer, VkExtent2D extent)
+void RenderInterface_VK::BeginExternalFrame(VkCommandBuffer command_buffer, VkExtent2D extent, VkFramebuffer framebuffer, VkImage swapchain_image)
 {
-	if (!m_external_context || command_buffer == VK_NULL_HANDLE)
+	if (!m_external_context || command_buffer == VK_NULL_HANDLE || framebuffer == VK_NULL_HANDLE)
 		return;
 
 	if (extent.width != static_cast<uint32_t>(m_width) || extent.height != static_cast<uint32_t>(m_height))
@@ -976,20 +1290,60 @@ void RenderInterface_VK::BeginExternalFrame(VkCommandBuffer command_buffer, VkEx
 	m_semaphore_index_previous = m_semaphore_index;
 	m_semaphore_index = ((m_semaphore_index + 1) % kSwapchainBackBufferCount);
 
+	FreeTransientShaderAllocations();
 	Update_PendingForDeletion_Textures_By_Frames();
 	Update_PendingForDeletion_Geometries();
 
 	m_p_current_command_buffer = command_buffer;
+	m_external_framebuffer = framebuffer;
+	m_external_swapchain_image = swapchain_image;
 	vkCmdSetViewport(m_p_current_command_buffer, 0, 1, &m_viewport);
 	vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor_original);
+	vkCmdSetStencilReference(m_p_current_command_buffer, VK_STENCIL_FACE_FRONT_AND_BACK, 1);
+	m_active_render_target = active_render_target_t::Swapchain;
+	m_active_layer = {};
+	m_render_layer_stack_size = 0;
+	m_is_clip_mask_enabled = false;
+	m_is_transformed_scissor_enabled = false;
+	m_is_use_scissor_specified = false;
+	m_is_use_stencil_pipeline = false;
 	m_is_apply_to_regular_geometry_stencil = false;
+	SetContextOffset(0.0f, 0.0f);
+	SetTransform(nullptr);
+	m_context_clip_enabled = false;
 }
 
 void RenderInterface_VK::EndExternalFrame()
 {
 	if (!m_external_context)
 		return;
+	if (m_active_render_target != active_render_target_t::Swapchain)
+	{
+		EndActiveRenderPass();
+		BeginSwapchainLoadRenderPass();
+	}
+	m_external_framebuffer = VK_NULL_HANDLE;
+	m_external_swapchain_image = VK_NULL_HANDLE;
+	m_active_render_target = active_render_target_t::None;
 	m_p_current_command_buffer = nullptr;
+}
+
+void RenderInterface_VK::ResetContextRenderState()
+{
+	if (m_p_current_command_buffer == nullptr)
+		return;
+
+	m_is_clip_mask_enabled = false;
+	m_is_transformed_scissor_enabled = false;
+	m_is_use_scissor_specified = false;
+	m_is_use_stencil_pipeline = false;
+	m_is_apply_to_regular_geometry_stencil = false;
+	SetContextOffset(0.0f, 0.0f);
+	SetTransform(nullptr);
+	m_context_clip_enabled = false;
+	vkCmdSetViewport(m_p_current_command_buffer, 0, 1, &m_viewport);
+	vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor_original);
+	vkCmdSetStencilReference(m_p_current_command_buffer, VK_STENCIL_FACE_FRONT_AND_BACK, 1);
 }
 
 void RenderInterface_VK::Initialize_Instance(Rml::Vector<const char*> required_extensions) noexcept
@@ -2114,7 +2468,7 @@ void RenderInterface_VK::Create_Pipelines() noexcept
 	info_color_blend_att.colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
 	info_color_blend_att.srcAlphaBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
 	info_color_blend_att.dstAlphaBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-	info_color_blend_att.alphaBlendOp = VkBlendOp::VK_BLEND_OP_SUBTRACT;
+	info_color_blend_att.alphaBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
 
 	VkPipelineColorBlendStateCreateInfo info_color_blend_state = {};
 	info_color_blend_state.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -2155,7 +2509,11 @@ void RenderInterface_VK::Create_Pipelines() noexcept
 	info_multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 	info_multisample.flags = 0;
 
-	Rml::Array<VkDynamicState, 2> dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+	Rml::Array<VkDynamicState, 3> dynamicStateEnables = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+		VK_DYNAMIC_STATE_STENCIL_REFERENCE,
+	};
 
 	VkPipelineDynamicStateCreateInfo info_dynamic_state = {};
 	info_dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
@@ -2420,7 +2778,9 @@ void RenderInterface_VK::Create_DepthStencilImage() noexcept
 
 	info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	info.imageType = VK_IMAGE_TYPE_2D;
-	info.format = Get_SupportedDepthFormat();
+	if (m_depth_stencil_format == VK_FORMAT_UNDEFINED)
+		m_depth_stencil_format = Get_SupportedDepthFormat();
+	info.format = m_depth_stencil_format;
 	info.extent = {static_cast<uint32_t>(m_width), static_cast<uint32_t>(m_height), 1};
 	info.mipLevels = 1;
 	info.arrayLayers = 1;
@@ -2457,17 +2817,14 @@ void RenderInterface_VK::Create_DepthStencilImageViews() noexcept
 	info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	info.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	info.image = m_texture_depthstencil.m_p_vk_image;
-	info.format = Get_SupportedDepthFormat();
+	if (m_depth_stencil_format == VK_FORMAT_UNDEFINED)
+		m_depth_stencil_format = Get_SupportedDepthFormat();
+	info.format = m_depth_stencil_format;
 	info.subresourceRange.baseMipLevel = 0;
 	info.subresourceRange.levelCount = 1;
 	info.subresourceRange.baseArrayLayer = 0;
 	info.subresourceRange.layerCount = 1;
-	info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-	if (Get_SupportedDepthFormat() >= VK_FORMAT_D16_UNORM_S8_UINT)
-	{
-		info.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-	}
+	info.subresourceRange.aspectMask = DepthStencilAspectMask();
 
 	VkImageView p_image_view = {};
 
@@ -2569,8 +2926,16 @@ void RenderInterface_VK::Destroy_Textures() noexcept
 	}
 }
 
+void RenderInterface_VK::FreeTransientShaderAllocations() noexcept
+{
+	for (VmaVirtualAllocation allocation : m_transient_shader_allocations)
+		m_memory_pool.Free_Allocation(allocation);
+	m_transient_shader_allocations.clear();
+}
+
 void RenderInterface_VK::Destroy_Geometries() noexcept
 {
+	FreeTransientShaderAllocations();
 	Update_PendingForDeletion_Geometries();
 	m_memory_pool.Shutdown();
 }
@@ -2596,6 +2961,7 @@ void RenderInterface_VK::Destroy_Texture(const texture_data_t& texture) noexcept
 
 void RenderInterface_VK::DestroyResourcesDependentOnSize() noexcept
 {
+	DestroyRenderLayers();
 	Destroy_Pipelines();
 	DestroySwapchainFrameBuffers();
 	DestroyRenderPass();
@@ -2635,10 +3001,32 @@ void RenderInterface_VK::DestroyRenderPass() noexcept
 {
 	RMLUI_VK_ASSERTMSG(m_p_device, "you must have a valid VkDevice here");
 
+	DestroyAuxiliaryRenderPasses();
 	if (m_p_render_pass)
 	{
 		vkDestroyRenderPass(m_p_device, m_p_render_pass, nullptr);
 		m_p_render_pass = nullptr;
+	}
+}
+
+void RenderInterface_VK::DestroyAuxiliaryRenderPasses() noexcept
+{
+	if (!m_p_device)
+		return;
+	if (m_p_swapchain_load_render_pass)
+	{
+		vkDestroyRenderPass(m_p_device, m_p_swapchain_load_render_pass, nullptr);
+		m_p_swapchain_load_render_pass = VK_NULL_HANDLE;
+	}
+	if (m_p_layer_clear_render_pass)
+	{
+		vkDestroyRenderPass(m_p_device, m_p_layer_clear_render_pass, nullptr);
+		m_p_layer_clear_render_pass = VK_NULL_HANDLE;
+	}
+	if (m_p_layer_load_render_pass)
+	{
+		vkDestroyRenderPass(m_p_device, m_p_layer_load_render_pass, nullptr);
+		m_p_layer_load_render_pass = VK_NULL_HANDLE;
 	}
 }
 
@@ -2663,29 +3051,44 @@ void RenderInterface_VK::DestroySamplers() noexcept
 	vkDestroySampler(m_p_device, m_p_sampler_linear, nullptr);
 }
 
-void RenderInterface_VK::CreateRenderPass() noexcept
+VkImageAspectFlags RenderInterface_VK::DepthStencilAspectMask() const noexcept
+{
+	switch (m_depth_stencil_format)
+	{
+	case VK_FORMAT_D16_UNORM_S8_UINT:
+	case VK_FORMAT_D24_UNORM_S8_UINT:
+	case VK_FORMAT_D32_SFLOAT_S8_UINT: return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+	default: return VK_IMAGE_ASPECT_DEPTH_BIT;
+	}
+}
+
+VkRenderPass RenderInterface_VK::CreateRenderPassWithOps(VkAttachmentLoadOp color_load_op, VkAttachmentLoadOp depth_load_op,
+	VkImageLayout color_initial_layout, VkImageLayout color_final_layout, VkImageLayout depth_initial_layout,
+	VkImageLayout depth_final_layout) noexcept
 {
 	RMLUI_VK_ASSERTMSG(m_p_device, "you must have a valid VkDevice here");
+	if (m_depth_stencil_format == VK_FORMAT_UNDEFINED)
+		m_depth_stencil_format = Get_SupportedDepthFormat();
 
 	Rml::Array<VkAttachmentDescription, 2> attachments = {};
 
 	attachments[0].format = m_swapchain_format.format;
 	attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-	attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachments[0].loadOp = color_load_op;
 	attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	attachments[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	attachments[0].initialLayout = color_initial_layout;
+	attachments[0].finalLayout = color_final_layout;
 
-	attachments[1].format = Get_SupportedDepthFormat();
+	attachments[1].format = m_depth_stencil_format;
 	attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
-	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachments[1].loadOp = depth_load_op;
 	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachments[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	attachments[1].finalLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	attachments[1].stencilLoadOp = depth_load_op;
+	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+	attachments[1].initialLayout = depth_initial_layout;
+	attachments[1].finalLayout = depth_final_layout;
 
 	RMLUI_VK_ASSERTMSG(attachments[1].format != VkFormat::VK_FORMAT_UNDEFINED,
 		"can't obtain depth format, your device doesn't support depth/stencil operations");
@@ -2698,7 +3101,7 @@ void RenderInterface_VK::CreateRenderPass() noexcept
 
 	// depth stencil
 	color_references[1].attachment = 1;
-	color_references[1].layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	color_references[1].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 	VkSubpassDescription subpass = {};
 
@@ -2713,7 +3116,7 @@ void RenderInterface_VK::CreateRenderPass() noexcept
 	subpass.preserveAttachmentCount = 0;
 	subpass.pPreserveAttachments = nullptr;
 
-	Rml::Array<VkSubpassDependency, 2> dependencies = {};
+	Rml::Array<VkSubpassDependency, 4> dependencies = {};
 
 	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
 	dependencies[0].dstSubpass = 0;
@@ -2731,6 +3134,23 @@ void RenderInterface_VK::CreateRenderPass() noexcept
 	dependencies[1].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
+	dependencies[2].srcSubpass = 0;
+	dependencies[2].dstSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[2].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[2].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+	dependencies[2].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[2].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT |
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[2].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	dependencies[3].srcSubpass = 0;
+	dependencies[3].dstSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[3].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	dependencies[3].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	dependencies[3].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[3].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[3].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
 	VkRenderPassCreateInfo info = {};
 
 	info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -2742,9 +3162,373 @@ void RenderInterface_VK::CreateRenderPass() noexcept
 	info.dependencyCount = static_cast<uint32_t>(dependencies.size());
 	info.pDependencies = dependencies.data();
 
-	VkResult status = vkCreateRenderPass(m_p_device, &info, nullptr, &m_p_render_pass);
+	VkRenderPass render_pass = VK_NULL_HANDLE;
+	VkResult status = vkCreateRenderPass(m_p_device, &info, nullptr, &render_pass);
 
 	RMLUI_VK_ASSERTMSG(status == VK_SUCCESS, "failed to vkCreateRenderPass");
+	return status == VK_SUCCESS ? render_pass : VK_NULL_HANDLE;
+}
+
+void RenderInterface_VK::CreateAuxiliaryRenderPasses() noexcept
+{
+	if (m_p_swapchain_load_render_pass || m_p_layer_clear_render_pass || m_p_layer_load_render_pass)
+		return;
+
+	m_p_swapchain_load_render_pass = CreateRenderPassWithOps(VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_LOAD,
+		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+	m_p_layer_clear_render_pass = CreateRenderPassWithOps(VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+	m_p_layer_load_render_pass = CreateRenderPassWithOps(VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_LOAD_OP_LOAD,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+}
+
+void RenderInterface_VK::CreateRenderPass() noexcept
+{
+	if (m_depth_stencil_format == VK_FORMAT_UNDEFINED)
+		m_depth_stencil_format = Get_SupportedDepthFormat();
+	m_p_render_pass = CreateRenderPassWithOps(VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+	CreateAuxiliaryRenderPasses();
+}
+
+void RenderInterface_VK::EnsureRenderLayer(Rml::LayerHandle layer_handle)
+{
+	if (layer_handle == 0)
+		return;
+
+	const size_t index = static_cast<size_t>(layer_handle - 1);
+	if (index >= m_render_layers.size())
+		m_render_layers.resize(index + 1);
+
+	render_layer_t& layer = m_render_layers[index];
+	if (layer.m_p_framebuffer)
+		return;
+
+	VkExtent3D extent{};
+	extent.width = static_cast<uint32_t>(m_width);
+	extent.height = static_cast<uint32_t>(m_height);
+	extent.depth = 1;
+
+	VkImageCreateInfo color_info{};
+	color_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	color_info.imageType = VK_IMAGE_TYPE_2D;
+	color_info.format = m_swapchain_format.format;
+	color_info.extent = extent;
+	color_info.mipLevels = 1;
+	color_info.arrayLayers = 1;
+	color_info.samples = VK_SAMPLE_COUNT_1_BIT;
+	color_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+	color_info.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	color_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VmaAllocationCreateInfo allocation_info{};
+	allocation_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+	VkResult status = vmaCreateImage(m_p_allocator, &color_info, &allocation_info, &layer.m_color.m_p_vk_image,
+		&layer.m_color.m_p_vma_allocation, nullptr);
+	RMLUI_VK_ASSERTMSG(status == VK_SUCCESS, "failed to create RmlUi Vulkan layer color image");
+
+	VkImageViewCreateInfo color_view_info{};
+	color_view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	color_view_info.image = layer.m_color.m_p_vk_image;
+	color_view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	color_view_info.format = m_swapchain_format.format;
+	color_view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	color_view_info.subresourceRange.baseMipLevel = 0;
+	color_view_info.subresourceRange.levelCount = 1;
+	color_view_info.subresourceRange.baseArrayLayer = 0;
+	color_view_info.subresourceRange.layerCount = 1;
+	status = vkCreateImageView(m_p_device, &color_view_info, nullptr, &layer.m_color.m_p_vk_image_view);
+	RMLUI_VK_ASSERTMSG(status == VK_SUCCESS, "failed to create RmlUi Vulkan layer color image view");
+	layer.m_color.m_p_vk_sampler = m_p_sampler_linear;
+	layer.m_color_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	VkImageCreateInfo depth_info{};
+	depth_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	depth_info.imageType = VK_IMAGE_TYPE_2D;
+	depth_info.format = m_depth_stencil_format;
+	depth_info.extent = extent;
+	depth_info.mipLevels = 1;
+	depth_info.arrayLayers = 1;
+	depth_info.samples = VK_SAMPLE_COUNT_1_BIT;
+	depth_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+	depth_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	depth_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	status = vmaCreateImage(m_p_allocator, &depth_info, &allocation_info, &layer.m_depth_stencil.m_p_vk_image,
+		&layer.m_depth_stencil.m_p_vma_allocation, nullptr);
+	RMLUI_VK_ASSERTMSG(status == VK_SUCCESS, "failed to create RmlUi Vulkan layer depth/stencil image");
+
+	VkImageViewCreateInfo depth_view_info{};
+	depth_view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	depth_view_info.image = layer.m_depth_stencil.m_p_vk_image;
+	depth_view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	depth_view_info.format = m_depth_stencil_format;
+	depth_view_info.subresourceRange.aspectMask = DepthStencilAspectMask();
+	depth_view_info.subresourceRange.baseMipLevel = 0;
+	depth_view_info.subresourceRange.levelCount = 1;
+	depth_view_info.subresourceRange.baseArrayLayer = 0;
+	depth_view_info.subresourceRange.layerCount = 1;
+	status = vkCreateImageView(m_p_device, &depth_view_info, nullptr, &layer.m_depth_stencil.m_p_vk_image_view);
+	RMLUI_VK_ASSERTMSG(status == VK_SUCCESS, "failed to create RmlUi Vulkan layer depth/stencil image view");
+	layer.m_depth_stencil_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	Rml::Array<VkImageView, 2> attachments = {layer.m_color.m_p_vk_image_view, layer.m_depth_stencil.m_p_vk_image_view};
+	VkFramebufferCreateInfo framebuffer_info{};
+	framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	framebuffer_info.renderPass = m_p_layer_clear_render_pass;
+	framebuffer_info.attachmentCount = static_cast<uint32_t>(attachments.size());
+	framebuffer_info.pAttachments = attachments.data();
+	framebuffer_info.width = static_cast<uint32_t>(m_width);
+	framebuffer_info.height = static_cast<uint32_t>(m_height);
+	framebuffer_info.layers = 1;
+	status = vkCreateFramebuffer(m_p_device, &framebuffer_info, nullptr, &layer.m_p_framebuffer);
+	RMLUI_VK_ASSERTMSG(status == VK_SUCCESS, "failed to create RmlUi Vulkan layer framebuffer");
+}
+
+RenderInterface_VK::render_layer_t* RenderInterface_VK::GetRenderLayer(Rml::LayerHandle layer_handle)
+{
+	if (layer_handle == 0)
+		return nullptr;
+	const size_t index = static_cast<size_t>(layer_handle - 1);
+	return index < m_render_layers.size() ? &m_render_layers[index] : nullptr;
+}
+
+const RenderInterface_VK::render_layer_t* RenderInterface_VK::GetRenderLayer(Rml::LayerHandle layer_handle) const
+{
+	if (layer_handle == 0)
+		return nullptr;
+	const size_t index = static_cast<size_t>(layer_handle - 1);
+	return index < m_render_layers.size() ? &m_render_layers[index] : nullptr;
+}
+
+void RenderInterface_VK::TransitionImageLayout(VkImage image, VkImageAspectFlags aspect_mask, VkImageLayout old_layout, VkImageLayout new_layout)
+{
+	if (!m_p_current_command_buffer || !image || old_layout == new_layout)
+		return;
+
+	auto stage_and_access = [](VkImageLayout layout, bool source) {
+		struct Result {
+			VkPipelineStageFlags stage;
+			VkAccessFlags access;
+		};
+		switch (layout)
+		{
+		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+			return Result{VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+				source ? VkAccessFlags(VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)
+					   : VkAccessFlags(VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)};
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+			return Result{VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+				source ? VkAccessFlags(VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+					   : VkAccessFlags(VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)};
+		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+			return Result{VK_PIPELINE_STAGE_TRANSFER_BIT,
+				source ? VkAccessFlags(VK_ACCESS_TRANSFER_READ_BIT) : VkAccessFlags(VK_ACCESS_TRANSFER_READ_BIT)};
+		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+			return Result{VK_PIPELINE_STAGE_TRANSFER_BIT, source ? VK_ACCESS_TRANSFER_WRITE_BIT : VK_ACCESS_TRANSFER_WRITE_BIT};
+		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+			return Result{VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, source ? VK_ACCESS_SHADER_READ_BIT : VK_ACCESS_SHADER_READ_BIT};
+		default:
+			return Result{source ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VkAccessFlags(0)};
+		}
+	};
+
+	const auto src = stage_and_access(old_layout, true);
+	const auto dst = stage_and_access(new_layout, false);
+
+	VkImageMemoryBarrier barrier{};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = old_layout;
+	barrier.newLayout = new_layout;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = image;
+	barrier.subresourceRange.aspectMask = aspect_mask;
+	barrier.subresourceRange.baseMipLevel = 0;
+	barrier.subresourceRange.levelCount = 1;
+	barrier.subresourceRange.baseArrayLayer = 0;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.srcAccessMask = src.access;
+	barrier.dstAccessMask = dst.access;
+
+	vkCmdPipelineBarrier(m_p_current_command_buffer, src.stage, dst.stage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+}
+
+void RenderInterface_VK::ResetDynamicRenderState()
+{
+	if (!m_p_current_command_buffer)
+		return;
+	vkCmdSetViewport(m_p_current_command_buffer, 0, 1, &m_viewport);
+	VkRect2D scissor = (m_is_use_scissor_specified && !m_is_transformed_scissor_enabled) ? m_scissor : ContextClipScissor();
+	scissor = IntersectContextClip(scissor);
+	vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &scissor);
+	vkCmdSetStencilReference(m_p_current_command_buffer, VK_STENCIL_FACE_FRONT_AND_BACK, 1);
+}
+
+void RenderInterface_VK::BeginLayerRenderPass(Rml::LayerHandle layer_handle, bool clear)
+{
+	render_layer_t* layer = GetRenderLayer(layer_handle);
+	if (!layer || !layer->m_p_framebuffer)
+		return;
+
+	TransitionImageLayout(layer->m_color.m_p_vk_image, VK_IMAGE_ASPECT_COLOR_BIT, layer->m_color_layout,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	layer->m_color_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	TransitionImageLayout(layer->m_depth_stencil.m_p_vk_image, DepthStencilAspectMask(), layer->m_depth_stencil_layout,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+	layer->m_depth_stencil_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkClearValue clear_values[2]{};
+	clear_values[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+	clear_values[1].depthStencil = {1.0f, 0};
+
+	VkRenderPassBeginInfo pass_info{};
+	pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	pass_info.renderPass = clear ? m_p_layer_clear_render_pass : m_p_layer_load_render_pass;
+	pass_info.framebuffer = layer->m_p_framebuffer;
+	pass_info.renderArea.offset = {0, 0};
+	pass_info.renderArea.extent = {static_cast<uint32_t>(m_width), static_cast<uint32_t>(m_height)};
+	pass_info.clearValueCount = 2;
+	pass_info.pClearValues = clear_values;
+	vkCmdBeginRenderPass(m_p_current_command_buffer, &pass_info, VK_SUBPASS_CONTENTS_INLINE);
+
+	m_active_render_target = active_render_target_t::Layer;
+	m_active_layer = layer_handle;
+	ResetDynamicRenderState();
+}
+
+void RenderInterface_VK::BeginSwapchainLoadRenderPass()
+{
+	if (!m_p_current_command_buffer || !m_p_swapchain_load_render_pass)
+		return;
+
+	VkFramebuffer framebuffer = m_external_context ? m_external_framebuffer : m_swapchain_frame_buffers[m_image_index];
+	if (!framebuffer)
+		return;
+
+	VkClearValue clear_values[2]{};
+	clear_values[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+	clear_values[1].depthStencil = {1.0f, 0};
+
+	VkRenderPassBeginInfo pass_info{};
+	pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	pass_info.renderPass = m_p_swapchain_load_render_pass;
+	pass_info.framebuffer = framebuffer;
+	pass_info.renderArea.offset = {0, 0};
+	pass_info.renderArea.extent = {static_cast<uint32_t>(m_width), static_cast<uint32_t>(m_height)};
+	pass_info.clearValueCount = 2;
+	pass_info.pClearValues = clear_values;
+	vkCmdBeginRenderPass(m_p_current_command_buffer, &pass_info, VK_SUBPASS_CONTENTS_INLINE);
+
+	m_active_render_target = active_render_target_t::Swapchain;
+	m_active_layer = {};
+	ResetDynamicRenderState();
+}
+
+void RenderInterface_VK::EndActiveRenderPass()
+{
+	if (!m_p_current_command_buffer || m_active_render_target == active_render_target_t::None)
+		return;
+	vkCmdEndRenderPass(m_p_current_command_buffer);
+	m_active_render_target = active_render_target_t::None;
+	m_active_layer = {};
+}
+
+bool RenderInterface_VK::CopySwapchainToLayer(Rml::LayerHandle destination)
+{
+	if (!m_external_context || !m_external_swapchain_image || destination == 0)
+		return false;
+
+	render_layer_t* destination_layer = GetRenderLayer(destination);
+	if (!destination_layer || !destination_layer->m_p_framebuffer)
+		return false;
+
+	EndActiveRenderPass();
+
+	TransitionImageLayout(m_external_swapchain_image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	TransitionImageLayout(destination_layer->m_color.m_p_vk_image, VK_IMAGE_ASPECT_COLOR_BIT, destination_layer->m_color_layout,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	destination_layer->m_color_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+	VkImageCopy copy_region{};
+	copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copy_region.srcSubresource.mipLevel = 0;
+	copy_region.srcSubresource.baseArrayLayer = 0;
+	copy_region.srcSubresource.layerCount = 1;
+	copy_region.dstSubresource = copy_region.srcSubresource;
+	copy_region.extent = {static_cast<uint32_t>(m_width), static_cast<uint32_t>(m_height), 1};
+
+	vkCmdCopyImage(m_p_current_command_buffer, m_external_swapchain_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		destination_layer->m_color.m_p_vk_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+
+	TransitionImageLayout(m_external_swapchain_image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	TransitionImageLayout(destination_layer->m_color.m_p_vk_image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	destination_layer->m_color_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	BeginLayerRenderPass(destination, false);
+	return true;
+}
+
+void RenderInterface_VK::RenderFullscreenTexture(texture_data_t& texture, Rml::BlendMode blend_mode)
+{
+	(void)blend_mode;
+
+	Rml::Vertex vertices[4];
+	vertices[0].position = {0.0f, 0.0f};
+	vertices[0].tex_coord = {0.0f, 0.0f};
+	vertices[1].position = {static_cast<float>(m_width), 0.0f};
+	vertices[1].tex_coord = {1.0f, 0.0f};
+	vertices[2].position = {static_cast<float>(m_width), static_cast<float>(m_height)};
+	vertices[2].tex_coord = {1.0f, 1.0f};
+	vertices[3].position = {0.0f, static_cast<float>(m_height)};
+	vertices[3].tex_coord = {0.0f, 1.0f};
+	for (Rml::Vertex& vertex : vertices)
+		vertex.colour = Rml::ColourbPremultiplied(255, 255, 255, 255);
+
+	int indices[6] = {0, 1, 2, 0, 2, 3};
+
+	const bool transform_enabled = m_is_transform_enabled;
+	const Rml::Matrix4f transform = m_user_data_for_vertex_shader.m_transform;
+	SetTransform(nullptr);
+	if (Rml::CompiledGeometryHandle handle = CompileGeometry({vertices, 4}, {indices, 6}))
+	{
+		RenderGeometry(handle, {}, reinterpret_cast<Rml::TextureHandle>(&texture));
+		ReleaseGeometry(handle);
+	}
+	m_is_transform_enabled = transform_enabled;
+	m_user_data_for_vertex_shader.m_transform = transform;
+}
+
+void RenderInterface_VK::DestroyRenderLayer(render_layer_t& layer) noexcept
+{
+	if (m_p_device && layer.m_p_framebuffer)
+		vkDestroyFramebuffer(m_p_device, layer.m_p_framebuffer, nullptr);
+	layer.m_p_framebuffer = VK_NULL_HANDLE;
+
+	if (layer.m_color.m_p_vma_allocation)
+		Destroy_Texture(layer.m_color);
+	if (layer.m_depth_stencil.m_p_vma_allocation)
+		Destroy_Texture(layer.m_depth_stencil);
+	layer = {};
+}
+
+void RenderInterface_VK::DestroyRenderLayers() noexcept
+{
+	for (render_layer_t& layer : m_render_layers)
+		DestroyRenderLayer(layer);
+	m_render_layers.clear();
+	m_render_layer_stack_size = 0;
+	m_active_layer = {};
 }
 
 void RenderInterface_VK::Wait() noexcept
@@ -3148,6 +3932,12 @@ void RenderInterface_VK::MemoryPool::SetDescriptorSet(uint32_t binding_index, Vk
 	vkUpdateDescriptorSets(m_p_device, 1, &info_write, 0, nullptr);
 }
 
+void RenderInterface_VK::MemoryPool::Free_Allocation(VmaVirtualAllocation allocation) noexcept
+{
+	if (allocation)
+		vmaVirtualFree(m_p_block, allocation);
+}
+
 void RenderInterface_VK::MemoryPool::Free_GeometryHandle(geometry_handle_t* p_valid_geometry_handle) noexcept
 {
 	RMLUI_VK_ASSERTMSG(p_valid_geometry_handle,
@@ -3164,9 +3954,9 @@ void RenderInterface_VK::MemoryPool::Free_GeometryHandle(geometry_handle_t* p_va
 
 	RMLUI_VK_ASSERTMSG(m_p_block, "you have to allocate the virtual block before do this operation...");
 
-	vmaVirtualFree(m_p_block, p_valid_geometry_handle->m_p_vertex_allocation);
-	vmaVirtualFree(m_p_block, p_valid_geometry_handle->m_p_index_allocation);
-	vmaVirtualFree(m_p_block, p_valid_geometry_handle->m_p_shader_allocation);
+	Free_Allocation(p_valid_geometry_handle->m_p_vertex_allocation);
+	Free_Allocation(p_valid_geometry_handle->m_p_index_allocation);
+	Free_Allocation(p_valid_geometry_handle->m_p_shader_allocation);
 
 	p_valid_geometry_handle->m_p_vertex_allocation = nullptr;
 	p_valid_geometry_handle->m_p_shader_allocation = nullptr;
@@ -3184,7 +3974,7 @@ void RenderInterface_VK::MemoryPool::Free_GeometryHandle_ShaderDataOnly(geometry
 		"you must have a VALID pointer of VmaAllocation for shader operations (like uniforms and etc)");
 	RMLUI_VK_ASSERTMSG(m_p_block, "you have to allocate the virtual block before do this operation...");
 
-	vmaVirtualFree(m_p_block, p_valid_geometry_handle->m_p_shader_allocation);
+	Free_Allocation(p_valid_geometry_handle->m_p_shader_allocation);
 	p_valid_geometry_handle->m_p_shader_allocation = nullptr;
 }
 

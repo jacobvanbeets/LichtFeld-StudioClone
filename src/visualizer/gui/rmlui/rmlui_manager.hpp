@@ -67,10 +67,15 @@ namespace lfs::vis::gui {
         void queueVulkanContext(Rml::Context* context,
                                 float offset_x = 0.0f,
                                 float offset_y = 0.0f,
-                                bool foreground = false);
+                                bool foreground = false,
+                                bool clip_enabled = false,
+                                float clip_x1 = 0.0f,
+                                float clip_y1 = 0.0f,
+                                float clip_x2 = 0.0f,
+                                float clip_y2 = 0.0f);
         void clearVulkanQueue();
 #ifdef LFS_VULKAN_VIEWER_ENABLED
-        [[nodiscard]] bool beginVulkanFrame(VkCommandBuffer command_buffer, VkExtent2D extent);
+        [[nodiscard]] bool beginVulkanFrame(VkCommandBuffer command_buffer, VkExtent2D extent, VkFramebuffer framebuffer, VkImage swapchain_image);
         void renderQueuedVulkanContexts(bool foreground);
         void endVulkanFrame();
 #endif
@@ -84,6 +89,11 @@ namespace lfs::vis::gui {
             Rml::Context* context = nullptr;
             float offset_x = 0.0f;
             float offset_y = 0.0f;
+            bool clip_enabled = false;
+            float clip_x1 = 0.0f;
+            float clip_y1 = 0.0f;
+            float clip_x2 = 0.0f;
+            float clip_y2 = 0.0f;
         };
 
         bool initWithRenderInterface(SDL_Window* window,
