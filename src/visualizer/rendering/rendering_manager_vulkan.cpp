@@ -18,6 +18,7 @@
 #include <cmath>
 #include <shared_mutex>
 #include <string>
+#include <vector>
 
 namespace lfs::vis {
 
@@ -31,6 +32,58 @@ namespace lfs::vis {
                 }
             }
             return lock;
+        }
+
+        [[nodiscard]] std::vector<ViewportInteractionPanel> buildVulkanInteractionPanels(
+            const Viewport& primary_viewport,
+            const SplitViewService& split_view_service,
+            const RenderSettings& settings,
+            const glm::vec2& screen_viewport_pos,
+            const glm::vec2& screen_viewport_size) {
+            std::vector<ViewportInteractionPanel> panels;
+            if (screen_viewport_size.x <= 0.0f || screen_viewport_size.y <= 0.0f) {
+                return panels;
+            }
+
+            const int full_screen_width = std::max(static_cast<int>(std::lround(screen_viewport_size.x)), 1);
+            const int full_screen_height = std::max(static_cast<int>(std::lround(screen_viewport_size.y)), 1);
+            const auto make_panel = [&](const SplitViewPanelId panel_id,
+                                        const Viewport* const viewport,
+                                        const float offset_x,
+                                        const float width) {
+                panels.push_back({
+                    .panel = panel_id,
+                    .viewport_data =
+                        {.rotation = viewport->getRotationMatrix(),
+                         .translation = viewport->getTranslation(),
+                         .size = {
+                             std::max(static_cast<int>(std::lround(width)), 1),
+                             full_screen_height,
+                         },
+                         .focal_length_mm = settings.focal_length_mm,
+                         .orthographic = settings.orthographic,
+                         .ortho_scale = settings.ortho_scale},
+                    .viewport_pos = {screen_viewport_pos.x + offset_x, screen_viewport_pos.y},
+                    .viewport_size = {width, screen_viewport_size.y},
+                });
+            };
+
+            const auto layouts = split_view_service.panelLayouts(settings, full_screen_width);
+            if (!layouts || full_screen_width <= 1) {
+                make_panel(SplitViewPanelId::Left, &primary_viewport, 0.0f, screen_viewport_size.x);
+                return panels;
+            }
+
+            panels.reserve(layouts->size());
+            make_panel(SplitViewPanelId::Left,
+                       &primary_viewport,
+                       static_cast<float>((*layouts)[0].x),
+                       static_cast<float>((*layouts)[0].width));
+            make_panel(SplitViewPanelId::Right,
+                       &split_view_service.secondaryViewport(),
+                       static_cast<float>((*layouts)[1].x),
+                       static_cast<float>((*layouts)[1].width));
+            return panels;
         }
     } // namespace
 
@@ -68,6 +121,22 @@ namespace lfs::vis {
                     .size = vulkan_viewport_image_size_,
                     .flip_y = vulkan_viewport_image_flip_y_};
         }
+
+        glm::vec2 screen_viewport_pos(0.0f, 0.0f);
+        glm::vec2 screen_viewport_size(
+            static_cast<float>(context.viewport.windowSize.x),
+            static_cast<float>(context.viewport.windowSize.y));
+        if (context.viewport_region) {
+            screen_viewport_pos = {context.viewport_region->x, context.viewport_region->y};
+            screen_viewport_size = {context.viewport_region->width, context.viewport_region->height};
+        }
+        const auto interaction_panels = buildVulkanInteractionPanels(
+            context.viewport,
+            split_view_service_,
+            settings_,
+            screen_viewport_pos,
+            screen_viewport_size);
+        viewport_interaction_context_.updatePickContext(interaction_panels);
 
         const auto resize_result = frame_lifecycle_service_.handleViewportResize(current_size);
         if (resize_result.dirty) {
