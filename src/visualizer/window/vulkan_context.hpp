@@ -35,6 +35,13 @@ namespace lfs::vis {
         [[nodiscard]] const std::string& lastError() const { return last_error_; }
 
 #ifdef LFS_VULKAN_VIEWER_ENABLED
+        struct Frame {
+            uint32_t image_index = 0;
+            VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+            VkFramebuffer framebuffer = VK_NULL_HANDLE;
+            VkExtent2D extent{};
+        };
+
         [[nodiscard]] VkInstance instance() const { return instance_; }
         [[nodiscard]] VkPhysicalDevice physicalDevice() const { return physical_device_; }
         [[nodiscard]] VkDevice device() const { return device_; }
@@ -43,8 +50,14 @@ namespace lfs::vis {
         [[nodiscard]] VkQueue presentQueue() const { return present_queue_; }
         [[nodiscard]] uint32_t graphicsQueueFamily() const { return graphics_queue_family_; }
         [[nodiscard]] uint32_t presentQueueFamily() const { return present_queue_family_; }
+        [[nodiscard]] VkRenderPass renderPass() const { return render_pass_; }
         [[nodiscard]] VkFormat swapchainFormat() const { return swapchain_format_; }
         [[nodiscard]] VkExtent2D swapchainExtent() const { return swapchain_extent_; }
+        [[nodiscard]] uint32_t minImageCount() const { return min_image_count_; }
+        [[nodiscard]] uint32_t imageCount() const { return static_cast<uint32_t>(swapchain_images_.size()); }
+
+        [[nodiscard]] bool beginFrame(const VkClearValue& clear_value, Frame& frame);
+        [[nodiscard]] bool endFrame();
 #endif
 
     private:
@@ -69,6 +82,8 @@ namespace lfs::vis {
         bool createDevice();
         bool createSwapchain(int framebuffer_width, int framebuffer_height);
         bool createImageViews();
+        bool createRenderPass();
+        bool createFramebuffers();
         bool createCommandPool();
         bool createCommandBuffers();
         bool createSyncObjects();
@@ -97,10 +112,11 @@ namespace lfs::vis {
         VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
         VkFormat swapchain_format_ = VK_FORMAT_UNDEFINED;
         VkExtent2D swapchain_extent_{};
-        VkImageUsageFlags swapchain_image_usage_ = 0;
+        uint32_t min_image_count_ = 2;
         std::vector<VkImage> swapchain_images_;
         std::vector<VkImageView> swapchain_image_views_;
-        std::vector<VkImageLayout> swapchain_image_layouts_;
+        VkRenderPass render_pass_ = VK_NULL_HANDLE;
+        std::vector<VkFramebuffer> swapchain_framebuffers_;
 
         VkCommandPool command_pool_ = VK_NULL_HANDLE;
         std::vector<VkCommandBuffer> command_buffers_;
@@ -109,6 +125,9 @@ namespace lfs::vis {
         VkFence in_flight_ = VK_NULL_HANDLE;
 
         bool framebuffer_resized_ = false;
+        bool frame_active_ = false;
+        bool frame_suboptimal_ = false;
+        uint32_t active_image_index_ = 0;
         int framebuffer_width_ = 0;
         int framebuffer_height_ = 0;
 #endif

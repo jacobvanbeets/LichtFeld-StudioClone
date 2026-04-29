@@ -48,6 +48,7 @@ namespace lfs::vis {
 
         SDL_Window* getWindow() const { return window_; }
         SDL_GLContext getGLContext() const { return gl_context_; }
+        VulkanContext* getVulkanContext() const { return vulkan_context_.get(); }
         glm::ivec2 getWindowSize() const { return window_size_; }
         glm::ivec2 getFramebufferSize() const { return framebuffer_size_; }
         bool isFullscreen() const { return is_fullscreen_; }

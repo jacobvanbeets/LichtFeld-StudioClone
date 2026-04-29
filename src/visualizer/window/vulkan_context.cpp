@@ -40,6 +40,8 @@ namespace lfs::vis {
                createDevice() &&
                createSwapchain(framebuffer_width, framebuffer_height) &&
                createImageViews() &&
+               createRenderPass() &&
+               createFramebuffers() &&
                createCommandPool() &&
                createCommandBuffers() &&
                createSyncObjects();
@@ -104,6 +106,28 @@ namespace lfs::vis {
 
     bool VulkanContext::presentBootstrapFrame(const float r, const float g, const float b, const float a) {
 #ifdef LFS_VULKAN_VIEWER_ENABLED
+        VkClearValue clear_value{};
+        clear_value.color = VkClearColorValue{{r, g, b, a}};
+
+        Frame frame{};
+        if (!beginFrame(clear_value, frame)) {
+            return false;
+        }
+        return endFrame();
+#else
+        (void)r;
+        (void)g;
+        (void)b;
+        (void)a;
+        return false;
+#endif
+    }
+
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+    bool VulkanContext::beginFrame(const VkClearValue& clear_value, Frame& frame) {
+        if (frame_active_) {
+            return fail("beginFrame called while another Vulkan frame is active");
+        }
         if (device_ == VK_NULL_HANDLE || swapchain_ == VK_NULL_HANDLE || framebuffer_width_ <= 0 || framebuffer_height_ <= 0) {
             return true;
         }
@@ -127,6 +151,9 @@ namespace lfs::vis {
             return fail(std::format("vkAcquireNextImageKHR failed: {}", static_cast<int>(result)));
         }
 
+        frame_suboptimal_ = (result == VK_SUBOPTIMAL_KHR);
+        active_image_index_ = image_index;
+
         vkResetFences(device_, 1, &in_flight_);
         vkResetCommandBuffer(command_buffers_[image_index], 0);
 
@@ -138,86 +165,51 @@ namespace lfs::vis {
             return fail(std::format("vkBeginCommandBuffer failed: {}", static_cast<int>(result)));
         }
 
-        VkImageSubresourceRange color_range{};
-        color_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        color_range.baseMipLevel = 0;
-        color_range.levelCount = 1;
-        color_range.baseArrayLayer = 0;
-        color_range.layerCount = 1;
+        VkRenderPassBeginInfo render_pass_info{};
+        render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        render_pass_info.renderPass = render_pass_;
+        render_pass_info.framebuffer = swapchain_framebuffers_[image_index];
+        render_pass_info.renderArea.offset = {0, 0};
+        render_pass_info.renderArea.extent = swapchain_extent_;
+        render_pass_info.clearValueCount = 1;
+        render_pass_info.pClearValues = &clear_value;
+        vkCmdBeginRenderPass(command_buffers_[image_index], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        const bool use_transfer_clear = (swapchain_image_usage_ & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0;
-        if (use_transfer_clear) {
-            VkImageMemoryBarrier to_transfer{};
-            to_transfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            to_transfer.srcAccessMask = 0;
-            to_transfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            to_transfer.oldLayout = swapchain_image_layouts_[image_index];
-            to_transfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            to_transfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_transfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_transfer.image = swapchain_images_[image_index];
-            to_transfer.subresourceRange = color_range;
-            vkCmdPipelineBarrier(command_buffers_[image_index],
-                                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 0, 0, nullptr, 0, nullptr, 1, &to_transfer);
+        frame.image_index = image_index;
+        frame.command_buffer = command_buffers_[image_index];
+        frame.framebuffer = swapchain_framebuffers_[image_index];
+        frame.extent = swapchain_extent_;
+        frame_active_ = true;
+        return true;
+    }
 
-            const VkClearColorValue clear_color{{r, g, b, a}};
-            vkCmdClearColorImage(command_buffers_[image_index],
-                                 swapchain_images_[image_index],
-                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                 &clear_color,
-                                 1,
-                                 &color_range);
-
-            VkImageMemoryBarrier to_present{};
-            to_present.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            to_present.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            to_present.dstAccessMask = 0;
-            to_present.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            to_present.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_present.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_present.image = swapchain_images_[image_index];
-            to_present.subresourceRange = color_range;
-            vkCmdPipelineBarrier(command_buffers_[image_index],
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                 0, 0, nullptr, 0, nullptr, 1, &to_present);
-        } else {
-            VkImageMemoryBarrier to_present{};
-            to_present.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            to_present.srcAccessMask = 0;
-            to_present.dstAccessMask = 0;
-            to_present.oldLayout = swapchain_image_layouts_[image_index];
-            to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            to_present.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_present.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_present.image = swapchain_images_[image_index];
-            to_present.subresourceRange = color_range;
-            vkCmdPipelineBarrier(command_buffers_[image_index],
-                                 VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                 VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                                 0, 0, nullptr, 0, nullptr, 1, &to_present);
+    bool VulkanContext::endFrame() {
+        if (!frame_active_) {
+            return true;
         }
 
-        result = vkEndCommandBuffer(command_buffers_[image_index]);
+        VkCommandBuffer command_buffer = command_buffers_[active_image_index_];
+        vkCmdEndRenderPass(command_buffer);
+
+        VkResult result = vkEndCommandBuffer(command_buffer);
         if (result != VK_SUCCESS) {
+            frame_active_ = false;
             return fail(std::format("vkEndCommandBuffer failed: {}", static_cast<int>(result)));
         }
 
-        const VkPipelineStageFlags wait_stage = use_transfer_clear ? VK_PIPELINE_STAGE_TRANSFER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        const VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submit_info{};
         submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submit_info.waitSemaphoreCount = 1;
         submit_info.pWaitSemaphores = &image_available_;
         submit_info.pWaitDstStageMask = &wait_stage;
         submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &command_buffers_[image_index];
+        submit_info.pCommandBuffers = &command_buffer;
         submit_info.signalSemaphoreCount = 1;
         submit_info.pSignalSemaphores = &render_finished_;
         result = vkQueueSubmit(graphics_queue_, 1, &submit_info, in_flight_);
         if (result != VK_SUCCESS) {
+            frame_active_ = false;
             return fail(std::format("vkQueueSubmit failed: {}", static_cast<int>(result)));
         }
 
@@ -227,28 +219,22 @@ namespace lfs::vis {
         present_info.pWaitSemaphores = &render_finished_;
         present_info.swapchainCount = 1;
         present_info.pSwapchains = &swapchain_;
-        present_info.pImageIndices = &image_index;
+        present_info.pImageIndices = &active_image_index_;
         result = vkQueuePresentKHR(present_queue_, &present_info);
-        swapchain_image_layouts_[image_index] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        frame_active_ = false;
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || frame_suboptimal_) {
+            frame_suboptimal_ = false;
             return recreateSwapchain();
         }
+        frame_suboptimal_ = false;
         if (result != VK_SUCCESS) {
             return fail(std::format("vkQueuePresentKHR failed: {}", static_cast<int>(result)));
         }
 
         return true;
-#else
-        (void)r;
-        (void)g;
-        (void)b;
-        (void)a;
-        return false;
-#endif
     }
 
-#ifdef LFS_VULKAN_VIEWER_ENABLED
     bool VulkanContext::createInstance() {
         uint32_t extension_count = 0;
         const char* const* extensions = SDL_Vulkan_GetInstanceExtensions(&extension_count);
@@ -475,20 +461,15 @@ namespace lfs::vis {
         const VkPresentModeKHR present_mode = choosePresentMode(support.present_modes);
         const VkExtent2D extent = chooseSwapchainExtent(support.capabilities, framebuffer_width, framebuffer_height);
 
-        VkImageUsageFlags image_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         if ((support.capabilities.supportedUsageFlags & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == 0) {
             return fail("Vulkan swapchain does not support color attachment usage");
-        }
-        if ((support.capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) != 0) {
-            image_usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        } else {
-            LOG_WARN("Vulkan swapchain does not support transfer clears; bootstrap frame will skip the clear pass");
         }
 
         uint32_t image_count = support.capabilities.minImageCount + 1;
         if (support.capabilities.maxImageCount > 0 && image_count > support.capabilities.maxImageCount) {
             image_count = support.capabilities.maxImageCount;
         }
+        min_image_count_ = std::max(2u, support.capabilities.minImageCount);
 
         const std::array<uint32_t, 2> queue_indices{graphics_queue_family_, present_queue_family_};
         const bool shared_queues = graphics_queue_family_ != present_queue_family_;
@@ -500,7 +481,7 @@ namespace lfs::vis {
         create_info.imageColorSpace = surface_format.colorSpace;
         create_info.imageExtent = extent;
         create_info.imageArrayLayers = 1;
-        create_info.imageUsage = image_usage;
+        create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         create_info.imageSharingMode = shared_queues ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE;
         create_info.queueFamilyIndexCount = shared_queues ? static_cast<uint32_t>(queue_indices.size()) : 0u;
         create_info.pQueueFamilyIndices = shared_queues ? queue_indices.data() : nullptr;
@@ -518,10 +499,8 @@ namespace lfs::vis {
         vkGetSwapchainImagesKHR(device_, swapchain_, &image_count, nullptr);
         swapchain_images_.resize(image_count);
         vkGetSwapchainImagesKHR(device_, swapchain_, &image_count, swapchain_images_.data());
-        swapchain_image_layouts_.assign(image_count, VK_IMAGE_LAYOUT_UNDEFINED);
         swapchain_format_ = surface_format.format;
         swapchain_extent_ = extent;
-        swapchain_image_usage_ = image_usage;
         return true;
     }
 
@@ -546,6 +525,72 @@ namespace lfs::vis {
             const VkResult result = vkCreateImageView(device_, &create_info, nullptr, &swapchain_image_views_[i]);
             if (result != VK_SUCCESS) {
                 return fail(std::format("vkCreateImageView failed: {}", static_cast<int>(result)));
+            }
+        }
+        return true;
+    }
+
+    bool VulkanContext::createRenderPass() {
+        VkAttachmentDescription color_attachment{};
+        color_attachment.format = swapchain_format_;
+        color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        VkAttachmentReference color_attachment_ref{};
+        color_attachment_ref.attachment = 0;
+        color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription subpass{};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &color_attachment_ref;
+
+        VkSubpassDependency dependency{};
+        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass = 0;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask = 0;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        VkRenderPassCreateInfo create_info{};
+        create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        create_info.attachmentCount = 1;
+        create_info.pAttachments = &color_attachment;
+        create_info.subpassCount = 1;
+        create_info.pSubpasses = &subpass;
+        create_info.dependencyCount = 1;
+        create_info.pDependencies = &dependency;
+
+        const VkResult result = vkCreateRenderPass(device_, &create_info, nullptr, &render_pass_);
+        if (result != VK_SUCCESS) {
+            return fail(std::format("vkCreateRenderPass failed: {}", static_cast<int>(result)));
+        }
+        return true;
+    }
+
+    bool VulkanContext::createFramebuffers() {
+        swapchain_framebuffers_.resize(swapchain_image_views_.size());
+        for (size_t i = 0; i < swapchain_image_views_.size(); ++i) {
+            const VkImageView attachments[] = {swapchain_image_views_[i]};
+
+            VkFramebufferCreateInfo create_info{};
+            create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            create_info.renderPass = render_pass_;
+            create_info.attachmentCount = 1;
+            create_info.pAttachments = attachments;
+            create_info.width = swapchain_extent_.width;
+            create_info.height = swapchain_extent_.height;
+            create_info.layers = 1;
+
+            const VkResult result = vkCreateFramebuffer(device_, &create_info, nullptr, &swapchain_framebuffers_[i]);
+            if (result != VK_SUCCESS) {
+                return fail(std::format("vkCreateFramebuffer failed: {}", static_cast<int>(result)));
             }
         }
         return true;
@@ -609,18 +654,24 @@ namespace lfs::vis {
             vkFreeCommandBuffers(device_, command_pool_, static_cast<uint32_t>(command_buffers_.size()), command_buffers_.data());
             command_buffers_.clear();
         }
+        for (const VkFramebuffer framebuffer : swapchain_framebuffers_) {
+            vkDestroyFramebuffer(device_, framebuffer, nullptr);
+        }
+        swapchain_framebuffers_.clear();
+        if (render_pass_ != VK_NULL_HANDLE) {
+            vkDestroyRenderPass(device_, render_pass_, nullptr);
+            render_pass_ = VK_NULL_HANDLE;
+        }
         for (const VkImageView view : swapchain_image_views_) {
             vkDestroyImageView(device_, view, nullptr);
         }
         swapchain_image_views_.clear();
         swapchain_images_.clear();
-        swapchain_image_layouts_.clear();
 
         if (swapchain_ != VK_NULL_HANDLE) {
             vkDestroySwapchainKHR(device_, swapchain_, nullptr);
             swapchain_ = VK_NULL_HANDLE;
         }
-        swapchain_image_usage_ = 0;
     }
 
     bool VulkanContext::recreateSwapchain() {
@@ -632,6 +683,8 @@ namespace lfs::vis {
         destroySwapchain();
         return createSwapchain(framebuffer_width_, framebuffer_height_) &&
                createImageViews() &&
+               createRenderPass() &&
+               createFramebuffers() &&
                createCommandBuffers();
     }
 #endif
