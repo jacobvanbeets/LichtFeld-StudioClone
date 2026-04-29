@@ -25,6 +25,11 @@ namespace lfs::vis {
     class SceneManager;
     class RenderingManager;
 
+    enum class GraphicsBackend {
+        OpenGL,
+        Vulkan,
+    };
+
     struct LFS_VIS_API ViewerOptions {
         std::string title = "LichtFeld Studio";
         int width = 1280;
@@ -33,6 +38,7 @@ namespace lfs::vis {
         bool enable_cuda_interop = true;
         bool show_startup_overlay = true;
         bool gut = false;
+        GraphicsBackend graphics_backend = GraphicsBackend::OpenGL;
         int monitor_x = 0; // Monitor hint for window placement
         int monitor_y = 0;
         int monitor_width = 0;

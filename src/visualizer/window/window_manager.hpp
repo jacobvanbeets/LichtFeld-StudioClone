@@ -6,8 +6,10 @@
 
 #include "input/frame_input_buffer.hpp"
 #include "input/input_router.hpp"
+#include "visualizer/visualizer.hpp"
 #include <filesystem>
 #include <glm/glm.hpp>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -19,12 +21,14 @@ union SDL_Event;
 namespace lfs::vis {
 
     class InputController;
+    class VulkanContext;
 
     class WindowManager {
     public:
         WindowManager(const std::string& title, int width, int height,
                       int monitor_x = 0, int monitor_y = 0,
-                      int monitor_width = 0, int monitor_height = 0);
+                      int monitor_width = 0, int monitor_height = 0,
+                      GraphicsBackend graphics_backend = GraphicsBackend::OpenGL);
         ~WindowManager();
 
         WindowManager(const WindowManager&) = delete;
@@ -48,6 +52,9 @@ namespace lfs::vis {
         glm::ivec2 getFramebufferSize() const { return framebuffer_size_; }
         bool isFullscreen() const { return is_fullscreen_; }
         void toggleFullscreen();
+        GraphicsBackend graphicsBackend() const { return graphics_backend_; }
+        bool isOpenGL() const { return graphics_backend_ == GraphicsBackend::OpenGL; }
+        bool isVulkan() const { return graphics_backend_ == GraphicsBackend::Vulkan; }
 
         void setCallbackHandler(void* handler) { callback_handler_ = handler; }
         void setInputController(InputController* ic);
@@ -59,6 +66,8 @@ namespace lfs::vis {
 
         SDL_Window* window_ = nullptr;
         SDL_GLContext gl_context_ = nullptr;
+        std::unique_ptr<VulkanContext> vulkan_context_;
+        GraphicsBackend graphics_backend_ = GraphicsBackend::OpenGL;
         std::string title_;
         glm::ivec2 window_size_;
         glm::ivec2 framebuffer_size_;

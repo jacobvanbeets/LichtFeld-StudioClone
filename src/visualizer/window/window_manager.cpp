@@ -7,6 +7,7 @@
 #include "core/logger.hpp"
 #include "input/input_controller.hpp"
 #include "input/sdl_key_mapping.hpp"
+#include "vulkan_context.hpp"
 #include "vulkan_loader_probe.hpp"
 #include <SDL3/SDL.h>
 #include <cstdlib>
@@ -120,8 +121,10 @@ namespace lfs::vis {
 
     WindowManager::WindowManager(const std::string& title, const int width, const int height,
                                  const int monitor_x, const int monitor_y,
-                                 const int monitor_width, const int monitor_height)
-        : title_(title),
+                                 const int monitor_width, const int monitor_height,
+                                 const GraphicsBackend graphics_backend)
+        : graphics_backend_(graphics_backend),
+          title_(title),
           window_size_(width, height),
           framebuffer_size_(width, height),
           monitor_pos_(monitor_x, monitor_y),
@@ -129,6 +132,7 @@ namespace lfs::vis {
     }
 
     WindowManager::~WindowManager() {
+        vulkan_context_.reset();
         if (gl_context_) {
             SDL_GL_DestroyContext(gl_context_);
         }
@@ -170,18 +174,21 @@ namespace lfs::vis {
             }
         }
 
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+        if (isOpenGL()) {
+            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+            SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+        }
 
         window_ = SDL_CreateWindow(
             title_.c_str(),
             window_size_.x,
             window_size_.y,
-            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
+            (isVulkan() ? SDL_WINDOW_VULKAN : SDL_WINDOW_OPENGL) |
+                SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
 
         if (!window_) {
             std::cerr << "Failed to create SDL window: " << SDL_GetError() << std::endl;
@@ -194,6 +201,33 @@ namespace lfs::vis {
             const int xpos = monitor_pos_.x + (monitor_size_.x - window_size_.x) / 2;
             const int ypos = monitor_pos_.y + (monitor_size_.y - window_size_.y) / 2;
             SDL_SetWindowPosition(window_, xpos, ypos);
+        }
+
+        if (isVulkan()) {
+            int fb_w = 0;
+            int fb_h = 0;
+            SDL_GetWindowSizeInPixels(window_, &fb_w, &fb_h);
+            framebuffer_size_ = glm::ivec2(fb_w, fb_h);
+
+            vulkan_context_ = std::make_unique<VulkanContext>();
+            if (!vulkan_context_->init(window_, framebuffer_size_.x, framebuffer_size_.y)) {
+                std::cerr << "Failed to initialize Vulkan context: " << vulkan_context_->lastError() << std::endl;
+                vulkan_context_.reset();
+                SDL_DestroyWindow(window_);
+                window_ = nullptr;
+                SDL_Quit();
+                return false;
+            }
+            if (!vulkan_context_->presentBootstrapFrame(0.11f, 0.11f, 0.14f, 1.0f)) {
+                std::cerr << "Failed to present Vulkan bootstrap frame: " << vulkan_context_->lastError() << std::endl;
+                vulkan_context_.reset();
+                SDL_DestroyWindow(window_);
+                window_ = nullptr;
+                SDL_Quit();
+                return false;
+            }
+            LOG_INFO("Vulkan window context initialized");
+            return true;
         }
 
         gl_context_ = SDL_GL_CreateContext(window_);
@@ -241,11 +275,21 @@ namespace lfs::vis {
         SDL_GetWindowSizeInPixels(window_, &fbW, &fbH);
         window_size_ = glm::ivec2(winW, winH);
         framebuffer_size_ = glm::ivec2(fbW, fbH);
-        glViewport(0, 0, fbW, fbH);
+        if (isOpenGL()) {
+            glViewport(0, 0, fbW, fbH);
+        } else if (vulkan_context_) {
+            vulkan_context_->notifyFramebufferResized(fbW, fbH);
+        }
     }
 
     void WindowManager::swapBuffers() {
-        SDL_GL_SwapWindow(window_);
+        if (isOpenGL()) {
+            SDL_GL_SwapWindow(window_);
+        } else if (vulkan_context_) {
+            if (!vulkan_context_->presentBootstrapFrame(0.11f, 0.11f, 0.14f, 1.0f)) {
+                LOG_WARN("Vulkan bootstrap present failed: {}", vulkan_context_->lastError());
+            }
+        }
     }
 
     void WindowManager::pollEvents() {
