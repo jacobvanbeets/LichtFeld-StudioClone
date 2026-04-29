@@ -28,6 +28,7 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
 
         # Window management
         window/window_manager.cpp
+        window/vulkan_loader_probe.cpp
 
         # Rendering
         rendering/camera_interaction_service.cpp
@@ -248,6 +249,14 @@ target_link_libraries(lfs_visualizer
         vterm
 )
 
+if(ENABLE_VULKAN_VIEWER)
+    target_link_libraries(lfs_visualizer
+            PRIVATE
+            Vulkan::Vulkan
+            GPUOpen::VulkanMemoryAllocator
+            volk::volk_headers)
+endif()
+
 # RmlUI: on Linux, lfs_visualizer is STATIC and gets linked into both the
 # exe and the Python .so, which would duplicate librmlui.a globals and cause
 # crashes.  Wrap the static libraries in a small shared library so there is
@@ -454,7 +463,7 @@ if (WIN32)
             Shell32     # SHChangeNotify (file association)
             dxgi        # DXGI per-process VRAM query
     )
-elseif (UNIX AND NOT APPLE)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(lfs_visualizer PRIVATE
             GL
             GLU

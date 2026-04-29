@@ -187,7 +187,7 @@ namespace lfs::vis::gui::widgets {
                 return;
 
             const ImGuiIO& io = ImGui::GetIO();
-            const bool primary_shortcut_pressed = io.KeyCtrl || (io.ConfigMacOSXBehaviors && io.KeySuper);
+            const bool primary_shortcut_pressed = io.KeyCtrl;
             if (!primary_shortcut_pressed || !ImGui::IsKeyPressed(ImGuiKey_A, false))
                 return;
 

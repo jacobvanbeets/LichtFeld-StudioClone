@@ -7,6 +7,7 @@
 #include "core/logger.hpp"
 #include "input/input_controller.hpp"
 #include "input/sdl_key_mapping.hpp"
+#include "vulkan_loader_probe.hpp"
 #include <SDL3/SDL.h>
 #include <cstdlib>
 #include <cstring>
@@ -158,6 +159,15 @@ namespace lfs::vis {
 
         if (const char* const video_driver = SDL_GetCurrentVideoDriver(); video_driver) {
             LOG_INFO("SDL video driver: {}", video_driver);
+        }
+
+        const auto vulkan_info = probeVulkanLoader();
+        if (vulkan_info.enabled) {
+            if (vulkan_info.loader_available) {
+                LOG_INFO("Vulkan loader available: API {}", formatVulkanApiVersion(vulkan_info.api_version));
+            } else {
+                LOG_WARN("Vulkan viewer dependency is enabled, but the loader probe failed: {}", vulkan_info.error);
+            }
         }
 
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);

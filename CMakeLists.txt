@@ -98,6 +98,7 @@ file(WRITE "${CMAKE_BINARY_DIR}/include/git_version.h"
 get_filename_component(PROJ_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 
 option(ENABLE_CUDA_GL_INTEROP "Enable CUDA-OpenGL interoperability" ON)
+option(ENABLE_VULKAN_VIEWER "Resolve and link Vulkan viewer dependencies" ON)
 option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_UNICODE_TEST_ONLY "Build only Unicode path test (no CUDA)" OFF)
 option(ENABLE_ALLOCATION_PROFILING "Enable tensor allocation profiling" OFF)
@@ -109,7 +110,7 @@ option(ENABLE_CUDA_DEBUG_SYNC "Enable synchronous CUDA kernel checking (slow)" O
 option(ENABLE_TENSOR_OP_TRACING "Enable tensor operation tracing" OFF)
 
 # Add -rdynamic for backtrace symbol resolution
-if(UNIX AND NOT APPLE)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 endif()
 
@@ -287,6 +288,11 @@ find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(glad REQUIRED)
+if(ENABLE_VULKAN_VIEWER)
+    find_package(Vulkan REQUIRED)
+    find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+    find_package(volk CONFIG REQUIRED)
+endif()
 find_package(SDL3 REQUIRED)
 lfs_validate_linux_sdl_video_backends()
 find_package(glm REQUIRED)
@@ -350,6 +356,12 @@ else()
     message(STATUS "CUDA-OpenGL interop support: DISABLED (by user option)")
     set(CUDA_GL_INTEROP_FOUND FALSE)
     set(CUDA_GL_INTEROP_ENABLED 0)
+endif()
+
+if(ENABLE_VULKAN_VIEWER)
+    set(LFS_VULKAN_VIEWER_ENABLED 1)
+else()
+    set(LFS_VULKAN_VIEWER_ENABLED 0)
 endif()
 
 # Create configuration header (static options)
@@ -470,6 +482,32 @@ target_link_libraries(${PROJECT_NAME}
         glad::glad
         SDL3::SDL3
 )
+
+if(ENABLE_VULKAN_VIEWER)
+    target_link_libraries(${PROJECT_NAME}
+            PRIVATE
+            Vulkan::Vulkan
+            GPUOpen::VulkanMemoryAllocator
+            volk::volk_headers)
+
+    if(BUILD_PORTABLE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        get_filename_component(_lfs_vulkan_loader_realpath "${Vulkan_LIBRARY}" REALPATH)
+        get_filename_component(_lfs_vulkan_loader_realname "${_lfs_vulkan_loader_realpath}" NAME)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/lib"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${_lfs_vulkan_loader_realpath}"
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/lib/${_lfs_vulkan_loader_realname}"
+                COMMAND ${CMAKE_COMMAND} -E create_symlink
+                    "${_lfs_vulkan_loader_realname}"
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/lib/libvulkan.so.1"
+                COMMAND ${CMAKE_COMMAND} -E create_symlink
+                    "libvulkan.so.1"
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/lib/libvulkan.so"
+                COMMENT "Copying Vulkan loader to portable runtime directory")
+    endif()
+endif()
 
 # The app embeds Python and loads the nanobind module at runtime for panels,
 # menus, and operators. Keep the runtime artifact in lockstep with the app.
@@ -801,7 +839,7 @@ if(UNIX)
 
     if(BUILD_PORTABLE)
         set_target_properties(${PROJECT_NAME} PROPERTIES
-                INSTALL_RPATH "$ORIGIN:$ORIGIN/lib"
+                INSTALL_RPATH "$ORIGIN:$ORIGIN/lib:$ORIGIN/../lib"
                 BUILD_WITH_INSTALL_RPATH TRUE
                 INSTALL_RPATH_USE_LINK_PATH FALSE
         )
@@ -938,6 +976,11 @@ message(STATUS "Build Configuration:")
 message(STATUS "  CUDA Version: ${CUDAToolkit_VERSION}")
 message(STATUS "  CUDA Archs: ${CMAKE_CUDA_ARCHITECTURES}")
 message(STATUS "  OpenGL Found: ${OPENGL_FOUND}")
+message(STATUS "  Vulkan Viewer Dependencies: ${ENABLE_VULKAN_VIEWER}")
+if(ENABLE_VULKAN_VIEWER)
+    message(STATUS "  Vulkan Found: ${Vulkan_FOUND}")
+    message(STATUS "  Vulkan Include Dirs: ${Vulkan_INCLUDE_DIRS}")
+endif()
 message(STATUS "  FreeType Found: ${FREETYPE_FOUND}")
 message(STATUS "  WebP Found: ${WebP_FOUND}")
 message(STATUS "  LibArchive Found: ${LibArchive_FOUND}")
@@ -1072,7 +1115,25 @@ if(BUILD_PORTABLE)
             [[.*libnvimgcodec.*]] [[.*libnvjpeg_ext.*]])
 
     # Search directories for runtime dependencies (quoted for paths with spaces on Windows)
-    set(_SEARCH_DIRS_STR "\"${CMAKE_BINARY_DIR}\" \"${CMAKE_BINARY_DIR}/Release\" \"${CMAKE_BINARY_DIR}/external/nvImageCodec\" \"${CUDAToolkit_BIN_DIR}\" \"${CUDAToolkit_LIBRARY_DIR}\"")
+    set(_RUNTIME_SEARCH_DIRS
+            "${CMAKE_BINARY_DIR}"
+            "${CMAKE_BINARY_DIR}/Release"
+            "${CMAKE_BINARY_DIR}/lib"
+            "${CMAKE_BINARY_DIR}/external/nvImageCodec"
+            "${CUDAToolkit_BIN_DIR}"
+            "${CUDAToolkit_LIBRARY_DIR}")
+    if(DEFINED VCPKG_TARGET_TRIPLET)
+        list(APPEND _RUNTIME_SEARCH_DIRS
+                "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/bin"
+                "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib"
+                "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/bin"
+                "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib")
+    endif()
+
+    set(_SEARCH_DIRS_STR "")
+    foreach(_runtime_search_dir IN LISTS _RUNTIME_SEARCH_DIRS)
+        string(APPEND _SEARCH_DIRS_STR " \"${_runtime_search_dir}\"")
+    endforeach()
 
     # Helper: bundle runtime dependencies for a target.
     # On Windows DLLs must live beside the exe (bin/); on Linux they go in lib/.
@@ -1105,7 +1166,7 @@ if(BUILD_PORTABLE)
         bundle_runtime_deps("$<TARGET_FILE:nvjpeg_ext>" TRUE)
     endif()
 
-    if(UNIX AND NOT APPLE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         configure_file(
                 "${CMAKE_SOURCE_DIR}/cmake/templates/run_lichtfeld.sh.in"
                 "${CMAKE_BINARY_DIR}/run_lichtfeld.sh"
