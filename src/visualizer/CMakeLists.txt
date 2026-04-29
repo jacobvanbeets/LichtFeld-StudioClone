@@ -252,6 +252,9 @@ target_link_libraries(lfs_visualizer
 )
 
 if(ENABLE_VULKAN_VIEWER)
+    target_sources(lfs_visualizer
+            PRIVATE
+            gui/rmlui/rmlui_vk_backend.cpp)
     target_link_libraries(lfs_visualizer
             PRIVATE
             Vulkan::Vulkan
