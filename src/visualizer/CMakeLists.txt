@@ -255,12 +255,16 @@ target_link_libraries(lfs_visualizer
 if(ENABLE_VULKAN_VIEWER)
     target_sources(lfs_visualizer
             PRIVATE
+            gui/vulkan_scene_cuda_upload.cu
             gui/rmlui/rmlui_vk_backend.cpp)
     target_link_libraries(lfs_visualizer
             PRIVATE
             Vulkan::Vulkan
             GPUOpen::VulkanMemoryAllocator
             volk::volk_headers)
+    if(WIN32)
+        target_compile_definitions(lfs_visualizer PRIVATE VK_USE_PLATFORM_WIN32_KHR)
+    endif()
 endif()
 
 # RmlUI: on Linux, lfs_visualizer is STATIC and gets linked into both the

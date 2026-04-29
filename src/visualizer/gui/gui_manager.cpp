@@ -35,6 +35,7 @@
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/file_association.hpp"
 #include "gui/utils/native_file_dialog.hpp"
+#include "gui/vulkan_scene_cuda_upload.hpp"
 #include <implot.h>
 
 #include "gui/gui_focus_state.hpp"
@@ -72,6 +73,9 @@
 #include <imgui_impl_sdl3.h>
 #ifdef LFS_VULKAN_VIEWER_ENABLED
 #include <imgui_impl_vulkan.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #endif
 #include <imgui_internal.h>
 #include <iterator>
@@ -164,6 +168,8 @@ namespace lfs::vis::gui {
                 physical_device_ = context.physicalDevice();
                 graphics_queue_ = context.graphicsQueue();
                 graphics_queue_family_ = context.graphicsQueueFamily();
+                external_memory_interop_available_ = context.externalMemoryInteropEnabled();
+                use_dedicated_external_memory_ = context.externalMemoryDedicatedAllocationEnabled();
                 if (device_ == VK_NULL_HANDLE || physical_device_ == VK_NULL_HANDLE ||
                     graphics_queue_ == VK_NULL_HANDLE) {
                     LOG_ERROR("Vulkan scene texture requires an initialized Vulkan context");
@@ -216,6 +222,7 @@ namespace lfs::vis::gui {
                     vkDestroyCommandPool(device_, command_pool_, nullptr);
                     command_pool_ = VK_NULL_HANDLE;
                 }
+                destroyCudaUploadBuffer();
 #endif
                 initialized_ = false;
             }
@@ -225,8 +232,38 @@ namespace lfs::vis::gui {
                 if (!initialized_) {
                     return false;
                 }
+                if (uploadWithCudaInterop(image, size)) {
+                    return true;
+                }
+                return uploadWithStaging(image, size);
+#else
+                (void)image;
+                (void)size;
+                return false;
+#endif
+            }
+
+            [[nodiscard]] ImTextureID textureId() const {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+                return reinterpret_cast<ImTextureID>(descriptor_set_);
+#else
+                return 0;
+#endif
+            }
+
+            [[nodiscard]] bool valid() const {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+                return descriptor_set_ != VK_NULL_HANDLE && image_view_ != VK_NULL_HANDLE;
+#else
+                return false;
+#endif
+            }
+
+        private:
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+            bool uploadWithStaging(const lfs::core::Tensor& image, const glm::ivec2 size) {
                 auto rgba = tensorToRgba8(image, size);
-                if (!rgba || !ensureImageResources(size)) {
+                if (!rgba || !ensureImageResources(size, false)) {
                     return false;
                 }
 
@@ -284,31 +321,92 @@ namespace lfs::vis::gui {
                 vkDestroyBuffer(device_, staging_buffer, nullptr);
                 vkFreeMemory(device_, staging_memory, nullptr);
                 return submitted;
-#else
-                (void)image;
-                (void)size;
-                return false;
-#endif
             }
 
-            [[nodiscard]] ImTextureID textureId() const {
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-                return reinterpret_cast<ImTextureID>(descriptor_set_);
-#else
-                return 0;
-#endif
+            bool uploadWithCudaInterop(const lfs::core::Tensor& image, const glm::ivec2 size) {
+                if (!external_memory_interop_available_ || cuda_interop_disabled_) {
+                    return false;
+                }
+                if (!image.is_valid() || image.device() != lfs::core::Device::CUDA ||
+                    image.dtype() != lfs::core::DataType::Float32 || image.ndim() != 3 ||
+                    size.x <= 0 || size.y <= 0) {
+                    return false;
+                }
+
+                const auto layout = lfs::rendering::detectImageLayout(image);
+                if (layout == lfs::rendering::ImageLayout::Unknown) {
+                    return false;
+                }
+                const int width = lfs::rendering::imageWidth(image, layout);
+                const int height = lfs::rendering::imageHeight(image, layout);
+                const int channels = lfs::rendering::imageChannels(image, layout);
+                if (width != size.x || height != size.y || (channels != 3 && channels != 4)) {
+                    return false;
+                }
+
+                if (!ensureImageResources(size, true)) {
+                    cuda_interop_disabled_ = true;
+                    return false;
+                }
+                const size_t upload_size = static_cast<size_t>(width) * static_cast<size_t>(height) * sizeof(uchar4);
+                if (!ensureCudaUploadBuffer(upload_size)) {
+                    cuda_interop_disabled_ = true;
+                    return false;
+                }
+
+                lfs::core::Tensor formatted = image.is_contiguous() ? image : image.contiguous();
+                const float* const src = formatted.ptr<float>();
+                if (!src || !cuda_array_) {
+                    return false;
+                }
+
+                vkDeviceWaitIdle(device_);
+                VkCommandBuffer command_buffer = beginSingleTimeCommands();
+                if (command_buffer == VK_NULL_HANDLE) {
+                    return false;
+                }
+                transitionImageLayout(command_buffer, image_layout_, VK_IMAGE_LAYOUT_GENERAL);
+                if (!endSingleTimeCommands(command_buffer)) {
+                    return false;
+                }
+                image_layout_ = VK_IMAGE_LAYOUT_GENERAL;
+
+                cudaStream_t stream = formatted.stream();
+                cudaError_t cuda_status = uploadFloatImageToCudaArray(src,
+                                                                      cuda_upload_buffer_,
+                                                                      cuda_array_,
+                                                                      width,
+                                                                      height,
+                                                                      channels,
+                                                                      layout == lfs::rendering::ImageLayout::CHW,
+                                                                      stream);
+                if (cuda_status != cudaSuccess) {
+                    LOG_WARN("CUDA to Vulkan viewport upload failed: {}", cudaGetErrorString(cuda_status));
+                    cuda_interop_disabled_ = true;
+                    return false;
+                }
+                cuda_status = cudaStreamSynchronize(stream);
+                if (cuda_status != cudaSuccess) {
+                    LOG_WARN("CUDA to Vulkan viewport upload synchronization failed: {}",
+                             cudaGetErrorString(cuda_status));
+                    cuda_interop_disabled_ = true;
+                    return false;
+                }
+
+                command_buffer = beginSingleTimeCommands();
+                if (command_buffer == VK_NULL_HANDLE) {
+                    return false;
+                }
+                transitionImageLayout(command_buffer,
+                                      VK_IMAGE_LAYOUT_GENERAL,
+                                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                const bool submitted = endSingleTimeCommands(command_buffer);
+                if (submitted) {
+                    image_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                }
+                return submitted;
             }
 
-            [[nodiscard]] bool valid() const {
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-                return descriptor_set_ != VK_NULL_HANDLE && image_view_ != VK_NULL_HANDLE;
-#else
-                return false;
-#endif
-            }
-
-        private:
-#ifdef LFS_VULKAN_VIEWER_ENABLED
             [[nodiscard]] uint32_t findMemoryType(const uint32_t type_filter,
                                                   const VkMemoryPropertyFlags properties) const {
                 VkPhysicalDeviceMemoryProperties memory_properties{};
@@ -371,8 +469,17 @@ namespace lfs::vis::gui {
                 return true;
             }
 
-            bool ensureImageResources(const glm::ivec2 size) {
-                if (image_ != VK_NULL_HANDLE && size_ == size) {
+            [[nodiscard]] VkExternalMemoryHandleTypeFlagBits externalMemoryHandleType() const {
+#ifdef _WIN32
+                return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+#else
+                return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+#endif
+            }
+
+            bool ensureImageResources(const glm::ivec2 size, const bool prefer_external_memory) {
+                if (image_ != VK_NULL_HANDLE && size_ == size &&
+                    (!prefer_external_memory || image_external_memory_)) {
                     return true;
                 }
 
@@ -394,6 +501,12 @@ namespace lfs::vis::gui {
                 image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
                 image_info.samples = VK_SAMPLE_COUNT_1_BIT;
                 image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                VkExternalMemoryImageCreateInfo external_image_info{};
+                if (prefer_external_memory) {
+                    external_image_info.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+                    external_image_info.handleTypes = externalMemoryHandleType();
+                    image_info.pNext = &external_image_info;
+                }
                 if (vkCreateImage(device_, &image_info, nullptr, &image_) != VK_SUCCESS) {
                     LOG_ERROR("Failed to create Vulkan scene texture image");
                     return false;
@@ -407,6 +520,18 @@ namespace lfs::vis::gui {
                 alloc_info.allocationSize = requirements.size;
                 alloc_info.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits,
                                                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                VkExportMemoryAllocateInfo export_info{};
+                VkMemoryDedicatedAllocateInfo dedicated_info{};
+                if (prefer_external_memory) {
+                    export_info.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+                    export_info.handleTypes = externalMemoryHandleType();
+                    alloc_info.pNext = &export_info;
+                    if (use_dedicated_external_memory_) {
+                        dedicated_info.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+                        dedicated_info.image = image_;
+                        export_info.pNext = &dedicated_info;
+                    }
+                }
                 if (alloc_info.memoryTypeIndex == std::numeric_limits<uint32_t>::max()) {
                     LOG_ERROR("No suitable Vulkan device-local memory type for scene texture");
                     destroyImageResources();
@@ -420,6 +545,12 @@ namespace lfs::vis::gui {
                 }
                 if (vkBindImageMemory(device_, image_, image_memory_, 0) != VK_SUCCESS) {
                     LOG_ERROR("Failed to bind Vulkan scene texture memory");
+                    destroyImageResources();
+                    return false;
+                }
+                image_memory_size_ = alloc_info.allocationSize;
+
+                if (prefer_external_memory && !importCudaExternalMemory()) {
                     destroyImageResources();
                     return false;
                 }
@@ -445,10 +576,12 @@ namespace lfs::vis::gui {
                     image_view_,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
                 image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+                image_external_memory_ = prefer_external_memory;
                 return descriptor_set_ != VK_NULL_HANDLE;
             }
 
             void destroyImageResources() {
+                destroyCudaImageInterop();
                 if (descriptor_set_ != VK_NULL_HANDLE) {
                     ImGui_ImplVulkan_RemoveTexture(descriptor_set_);
                     descriptor_set_ = VK_NULL_HANDLE;
@@ -466,7 +599,149 @@ namespace lfs::vis::gui {
                     image_memory_ = VK_NULL_HANDLE;
                 }
                 image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+                image_external_memory_ = false;
+                image_memory_size_ = 0;
                 size_ = {0, 0};
+            }
+
+            bool importCudaExternalMemory() {
+                if (image_memory_ == VK_NULL_HANDLE || image_memory_size_ == 0 || size_.x <= 0 || size_.y <= 0) {
+                    return false;
+                }
+
+                cudaExternalMemoryHandleDesc handle_desc{};
+#ifdef _WIN32
+                auto get_memory_handle = reinterpret_cast<PFN_vkGetMemoryWin32HandleKHR>(
+                    vkGetDeviceProcAddr(device_, "vkGetMemoryWin32HandleKHR"));
+                if (!get_memory_handle) {
+                    LOG_WARN("Vulkan win32 external memory export entry point is unavailable");
+                    return false;
+                }
+
+                VkMemoryGetWin32HandleInfoKHR handle_info{};
+                handle_info.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
+                handle_info.memory = image_memory_;
+                handle_info.handleType = externalMemoryHandleType();
+                HANDLE handle = nullptr;
+                const VkResult handle_result = get_memory_handle(device_, &handle_info, &handle);
+                if (handle_result != VK_SUCCESS || !handle) {
+                    LOG_WARN("Failed to export Vulkan scene texture memory handle: {}",
+                             static_cast<int>(handle_result));
+                    return false;
+                }
+
+                handle_desc.type = cudaExternalMemoryHandleTypeOpaqueWin32;
+                handle_desc.handle.win32.handle = handle;
+                handle_desc.size = image_memory_size_;
+                if (use_dedicated_external_memory_) {
+                    handle_desc.flags = cudaExternalMemoryDedicated;
+                }
+                const cudaError_t import_status = cudaImportExternalMemory(&cuda_external_memory_, &handle_desc);
+                CloseHandle(handle);
+                if (import_status != cudaSuccess) {
+                    LOG_WARN("Failed to import Vulkan scene texture memory into CUDA: {}",
+                             cudaGetErrorString(import_status));
+                    return false;
+                }
+#else
+                auto get_memory_fd = reinterpret_cast<PFN_vkGetMemoryFdKHR>(
+                    vkGetDeviceProcAddr(device_, "vkGetMemoryFdKHR"));
+                if (!get_memory_fd) {
+                    LOG_WARN("Vulkan fd external memory export entry point is unavailable");
+                    return false;
+                }
+
+                VkMemoryGetFdInfoKHR fd_info{};
+                fd_info.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
+                fd_info.memory = image_memory_;
+                fd_info.handleType = externalMemoryHandleType();
+                int fd = -1;
+                const VkResult fd_result = get_memory_fd(device_, &fd_info, &fd);
+                if (fd_result != VK_SUCCESS || fd < 0) {
+                    LOG_WARN("Failed to export Vulkan scene texture memory fd: {}", static_cast<int>(fd_result));
+                    return false;
+                }
+
+                handle_desc.type = cudaExternalMemoryHandleTypeOpaqueFd;
+                handle_desc.handle.fd = fd;
+                handle_desc.size = image_memory_size_;
+                if (use_dedicated_external_memory_) {
+                    handle_desc.flags = cudaExternalMemoryDedicated;
+                }
+                const cudaError_t import_status = cudaImportExternalMemory(&cuda_external_memory_, &handle_desc);
+                if (import_status != cudaSuccess) {
+                    close(fd);
+                    LOG_WARN("Failed to import Vulkan scene texture memory into CUDA: {}",
+                             cudaGetErrorString(import_status));
+                    return false;
+                }
+#endif
+
+                cudaExternalMemoryMipmappedArrayDesc mip_desc{};
+                mip_desc.formatDesc = cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsigned);
+                mip_desc.extent = make_cudaExtent(static_cast<size_t>(size_.x), static_cast<size_t>(size_.y), 0);
+                mip_desc.numLevels = 1;
+                cudaError_t cuda_status = cudaExternalMemoryGetMappedMipmappedArray(&cuda_mipmap_,
+                                                                                    cuda_external_memory_,
+                                                                                    &mip_desc);
+                if (cuda_status != cudaSuccess) {
+                    LOG_WARN("Failed to map Vulkan scene texture memory as a CUDA array: {}",
+                             cudaGetErrorString(cuda_status));
+                    destroyCudaImageInterop();
+                    return false;
+                }
+
+                cuda_status = cudaGetMipmappedArrayLevel(&cuda_array_, cuda_mipmap_, 0);
+                if (cuda_status != cudaSuccess) {
+                    LOG_WARN("Failed to get CUDA scene texture array level: {}", cudaGetErrorString(cuda_status));
+                    destroyCudaImageInterop();
+                    return false;
+                }
+                return true;
+            }
+
+            void destroyCudaImageInterop() {
+                if (cuda_mipmap_ != nullptr || cuda_external_memory_ != nullptr) {
+                    cudaDeviceSynchronize();
+                }
+                if (cuda_mipmap_ != nullptr) {
+                    cudaFreeMipmappedArray(cuda_mipmap_);
+                    cuda_mipmap_ = nullptr;
+                }
+                cuda_array_ = nullptr;
+                if (cuda_external_memory_ != nullptr) {
+                    cudaDestroyExternalMemory(cuda_external_memory_);
+                    cuda_external_memory_ = nullptr;
+                }
+            }
+
+            bool ensureCudaUploadBuffer(const size_t bytes) {
+                if (bytes == 0) {
+                    return false;
+                }
+                if (cuda_upload_buffer_ != nullptr && cuda_upload_buffer_size_ >= bytes) {
+                    return true;
+                }
+                destroyCudaUploadBuffer();
+                const cudaError_t alloc_status = cudaMalloc(&cuda_upload_buffer_, bytes);
+                if (alloc_status != cudaSuccess) {
+                    LOG_WARN("Failed to allocate CUDA viewport upload buffer: {}",
+                             cudaGetErrorString(alloc_status));
+                    cuda_upload_buffer_ = nullptr;
+                    cuda_upload_buffer_size_ = 0;
+                    return false;
+                }
+                cuda_upload_buffer_size_ = bytes;
+                return true;
+            }
+
+            void destroyCudaUploadBuffer() {
+                if (cuda_upload_buffer_ != nullptr) {
+                    cudaDeviceSynchronize();
+                    cudaFree(cuda_upload_buffer_);
+                    cuda_upload_buffer_ = nullptr;
+                    cuda_upload_buffer_size_ = 0;
+                }
             }
 
             VkCommandBuffer beginSingleTimeCommands() {
@@ -537,6 +812,26 @@ namespace lfs::vis::gui {
                     barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
                     barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
                     src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                } else if (old_layout == VK_IMAGE_LAYOUT_GENERAL &&
+                           new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+                    barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+                    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    src_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                } else if (new_layout == VK_IMAGE_LAYOUT_GENERAL) {
+                    barrier.srcAccessMask = old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                                ? VK_ACCESS_SHADER_READ_BIT
+                                                : 0;
+                    barrier.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+                    src_stage = old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                    ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+                                    : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                    dst_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                } else if (old_layout == VK_IMAGE_LAYOUT_GENERAL &&
+                           new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                    barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+                    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                    src_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+                    dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
                 } else if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
                     barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
                     barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -565,11 +860,21 @@ namespace lfs::vis::gui {
             VkCommandPool command_pool_ = VK_NULL_HANDLE;
             VkImage image_ = VK_NULL_HANDLE;
             VkDeviceMemory image_memory_ = VK_NULL_HANDLE;
+            VkDeviceSize image_memory_size_ = 0;
             VkImageView image_view_ = VK_NULL_HANDLE;
             VkSampler sampler_ = VK_NULL_HANDLE;
             VkDescriptorSet descriptor_set_ = VK_NULL_HANDLE;
             VkImageLayout image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
             glm::ivec2 size_{0, 0};
+            cudaExternalMemory_t cuda_external_memory_ = nullptr;
+            cudaMipmappedArray_t cuda_mipmap_ = nullptr;
+            cudaArray_t cuda_array_ = nullptr;
+            void* cuda_upload_buffer_ = nullptr;
+            size_t cuda_upload_buffer_size_ = 0;
+            bool external_memory_interop_available_ = false;
+            bool use_dedicated_external_memory_ = false;
+            bool image_external_memory_ = false;
+            bool cuda_interop_disabled_ = false;
 #endif
             bool initialized_ = false;
     };

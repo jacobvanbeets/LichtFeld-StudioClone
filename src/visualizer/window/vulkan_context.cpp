@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <format>
 #include <limits>
 #include <set>
@@ -18,6 +19,25 @@
 #endif
 
 namespace lfs::vis {
+    namespace {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+        [[nodiscard]] bool extensionAvailable(const std::vector<VkExtensionProperties>& extensions,
+                                               const char* const extension_name) {
+            return std::ranges::any_of(extensions, [extension_name](const VkExtensionProperties& extension) {
+                return std::strcmp(extension.extensionName, extension_name) == 0;
+            });
+        }
+
+        void appendUniqueExtension(std::vector<const char*>& extensions, const char* const extension_name) {
+            const auto existing = std::ranges::find_if(extensions, [extension_name](const char* const enabled) {
+                return std::strcmp(enabled, extension_name) == 0;
+            });
+            if (existing == extensions.end()) {
+                extensions.push_back(extension_name);
+            }
+        }
+#endif
+    } // namespace
 
     VulkanContext::~VulkanContext() {
         shutdown();
@@ -241,9 +261,23 @@ namespace lfs::vis {
 
     bool VulkanContext::createInstance() {
         uint32_t extension_count = 0;
-        const char* const* extensions = SDL_Vulkan_GetInstanceExtensions(&extension_count);
-        if (!extensions || extension_count == 0) {
+        const char* const* sdl_extensions = SDL_Vulkan_GetInstanceExtensions(&extension_count);
+        if (!sdl_extensions || extension_count == 0) {
             return fail(std::format("SDL_Vulkan_GetInstanceExtensions failed: {}", SDL_GetError()));
+        }
+
+        std::vector<const char*> extensions(sdl_extensions, sdl_extensions + extension_count);
+
+        uint32_t available_extension_count = 0;
+        vkEnumerateInstanceExtensionProperties(nullptr, &available_extension_count, nullptr);
+        std::vector<VkExtensionProperties> available_extensions(available_extension_count);
+        if (available_extension_count > 0) {
+            vkEnumerateInstanceExtensionProperties(nullptr, &available_extension_count, available_extensions.data());
+        }
+        instance_external_memory_capabilities_enabled_ =
+            extensionAvailable(available_extensions, VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+        if (instance_external_memory_capabilities_enabled_) {
+            appendUniqueExtension(extensions, VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
         }
 
         VkApplicationInfo app_info{};
@@ -257,8 +291,8 @@ namespace lfs::vis {
         VkInstanceCreateInfo create_info{};
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         create_info.pApplicationInfo = &app_info;
-        create_info.enabledExtensionCount = extension_count;
-        create_info.ppEnabledExtensionNames = extensions;
+        create_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+        create_info.ppEnabledExtensionNames = extensions.data();
 
         const VkResult result = vkCreateInstance(&create_info, nullptr, &instance_);
         if (result != VK_SUCCESS) {
@@ -401,7 +435,44 @@ namespace lfs::vis {
             queue_infos.push_back(queue_info);
         }
 
-        const std::array<const char*, 1> extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        uint32_t available_extension_count = 0;
+        vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &available_extension_count, nullptr);
+        std::vector<VkExtensionProperties> available_extensions(available_extension_count);
+        if (available_extension_count > 0) {
+            vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &available_extension_count,
+                                                available_extensions.data());
+        }
+
+        std::vector<const char*> extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        const bool has_external_memory =
+            instance_external_memory_capabilities_enabled_ &&
+            extensionAvailable(available_extensions, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+#ifdef _WIN32
+        const bool has_platform_external_memory =
+            extensionAvailable(available_extensions, VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+#else
+        const bool has_platform_external_memory =
+            extensionAvailable(available_extensions, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+#endif
+        const bool enable_external_memory = has_external_memory && has_platform_external_memory;
+        if (enable_external_memory) {
+            appendUniqueExtension(extensions, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+#ifdef _WIN32
+            appendUniqueExtension(extensions, VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+#else
+            appendUniqueExtension(extensions, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+#endif
+        }
+
+        const bool enable_dedicated_allocation =
+            enable_external_memory &&
+            extensionAvailable(available_extensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME) &&
+            extensionAvailable(available_extensions, VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
+        if (enable_dedicated_allocation) {
+            appendUniqueExtension(extensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+            appendUniqueExtension(extensions, VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
+        }
+
         const VkPhysicalDeviceFeatures features{};
         VkDeviceCreateInfo create_info{};
         create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -418,6 +489,14 @@ namespace lfs::vis {
 
         vkGetDeviceQueue(device_, graphics_queue_family_, 0, &graphics_queue_);
         vkGetDeviceQueue(device_, present_queue_family_, 0, &present_queue_);
+        external_memory_interop_enabled_ = enable_external_memory;
+        external_memory_dedicated_allocation_enabled_ = enable_dedicated_allocation;
+        if (external_memory_interop_enabled_) {
+            LOG_INFO("Vulkan external memory interop enabled{}",
+                     external_memory_dedicated_allocation_enabled_ ? " with dedicated allocations" : "");
+        } else {
+            LOG_INFO("Vulkan external memory interop unavailable; CUDA viewport upload will use fallback staging");
+        }
         return true;
     }
 

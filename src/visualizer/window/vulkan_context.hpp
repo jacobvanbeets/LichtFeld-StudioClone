@@ -56,6 +56,10 @@ namespace lfs::vis {
         [[nodiscard]] VkExtent2D swapchainExtent() const { return swapchain_extent_; }
         [[nodiscard]] uint32_t minImageCount() const { return min_image_count_; }
         [[nodiscard]] uint32_t imageCount() const { return static_cast<uint32_t>(swapchain_images_.size()); }
+        [[nodiscard]] bool externalMemoryInteropEnabled() const { return external_memory_interop_enabled_; }
+        [[nodiscard]] bool externalMemoryDedicatedAllocationEnabled() const {
+            return external_memory_dedicated_allocation_enabled_;
+        }
 
         [[nodiscard]] bool beginFrame(const VkClearValue& clear_value, Frame& frame);
         [[nodiscard]] bool endFrame();
@@ -135,6 +139,9 @@ namespace lfs::vis {
         bool framebuffer_resized_ = false;
         bool frame_active_ = false;
         bool frame_suboptimal_ = false;
+        bool instance_external_memory_capabilities_enabled_ = false;
+        bool external_memory_interop_enabled_ = false;
+        bool external_memory_dedicated_allocation_enabled_ = false;
         uint32_t active_image_index_ = 0;
         int framebuffer_width_ = 0;
         int framebuffer_height_ = 0;
