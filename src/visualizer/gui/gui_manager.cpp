@@ -2712,8 +2712,9 @@ namespace lfs::vis::gui {
             lfs::python::invoke_python_hooks("viewport_overlay", "draw", true);
             lfs::python::invoke_python_hooks("viewport_overlay", "draw", false);
         }
-        if (!vulkan_gui_)
-            reg.draw_panels(PanelSpace::ViewportOverlay, draw_ctx);
+        if (vulkan_gui_)
+            renderVulkan();
+        reg.draw_panels(PanelSpace::ViewportOverlay, draw_ctx);
 
         rml_viewport_overlay_.render();
 
@@ -2751,7 +2752,6 @@ namespace lfs::vis::gui {
         syncWindowTextInput(viewer_->getWindow());
 
         if (vulkan_gui_) {
-            renderVulkan();
             if (menu_bar_ && !ui_hidden_)
                 rml_menu_bar_.draw(panel_input.screen_w, panel_input.screen_h);
             global_context_menu_->render(panel_input.screen_w, panel_input.screen_h,
