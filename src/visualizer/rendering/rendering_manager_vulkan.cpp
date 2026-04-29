@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <shared_mutex>
+#include <string>
 
 namespace lfs::vis {
 
@@ -152,31 +153,52 @@ namespace lfs::vis {
             .selection_flash_intensity = getSelectionFlashIntensity(),
             .view_panels = {}};
 
-        auto request = buildViewportRenderRequest(frame_ctx, render_size);
-        auto render_result = engine_->renderGaussiansImage(*model, request);
+        std::shared_ptr<lfs::core::Tensor> rendered_image;
+        lfs::rendering::FrameMetadata rendered_metadata{};
+        std::string render_error;
 
-        if (render_result && render_result->image) {
-            render_result->image = applyViewportAppearanceCorrection(
-                std::move(render_result->image),
+        if (settings_.point_cloud_mode) {
+            auto request = buildPointCloudRenderRequest(frame_ctx, render_size, frame_ctx.scene_state.model_transforms);
+            auto render_result = engine_->renderPointCloudImage(*model, request);
+            if (render_result) {
+                rendered_image = std::move(render_result->image);
+                rendered_metadata = std::move(render_result->metadata);
+            } else {
+                render_error = render_result.error();
+            }
+        } else {
+            auto request = buildViewportRenderRequest(frame_ctx, render_size);
+            auto render_result = engine_->renderGaussiansImage(*model, request);
+            if (render_result) {
+                rendered_image = std::move(render_result->image);
+                rendered_metadata = std::move(render_result->metadata);
+            } else {
+                render_error = render_result.error();
+            }
+        }
+
+        if (rendered_image) {
+            rendered_image = applyViewportAppearanceCorrection(
+                std::move(rendered_image),
                 scene_manager,
                 settings_,
                 frame_ctx.current_camera_id);
         }
         render_lock.reset();
 
-        if (!render_result || !render_result->image) {
+        if (!rendered_image) {
             LOG_ERROR("Failed to render Vulkan viewport image: {}",
-                      render_result ? "missing image payload" : render_result.error());
+                      render_error.empty() ? "missing image payload" : render_error);
             vulkan_viewport_image_.reset();
             vulkan_viewport_image_size_ = {0, 0};
             vulkan_viewport_image_flip_y_ = false;
             return {};
         }
 
-        auto viewport_image = std::move(render_result->image);
+        auto viewport_image = std::move(rendered_image);
         vulkan_viewport_image_ = viewport_image;
         vulkan_viewport_image_size_ = render_size;
-        vulkan_viewport_image_flip_y_ = !render_result->metadata.flip_y;
+        vulkan_viewport_image_flip_y_ = !rendered_metadata.flip_y;
         viewport_artifact_service_.updateFromImageOutput(
             std::move(viewport_image), render_size, true);
 
