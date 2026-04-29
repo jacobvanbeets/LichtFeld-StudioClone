@@ -55,6 +55,7 @@
 #include "tools/brush_tool.hpp"
 #include "tools/selection_tool.hpp"
 #include "visualizer_impl.hpp"
+#include "window/vulkan_context.hpp"
 #include <OpenImageIO/imageio.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -68,6 +69,7 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_internal.h>
 #include <iterator>
+#include <stdexcept>
 #include <string_view>
 #include <unordered_set>
 
@@ -506,7 +508,8 @@ namespace lfs::vis::gui {
     void GuiManager::rebuildFonts(float scale) {
         ImGuiIO& io = ImGui::GetIO();
 
-        ImGui_ImplOpenGL3_DestroyDeviceObjects();
+        if (!vulkan_gui_)
+            ImGui_ImplOpenGL3_DestroyDeviceObjects();
         io.Fonts->Clear();
 
         const auto& t = theme();
@@ -627,7 +630,8 @@ namespace lfs::vis::gui {
         if (!io.Fonts->Build()) {
             LOG_ERROR("Font atlas build failed — CJK glyphs may be missing");
         }
-        ImGui_ImplOpenGL3_CreateDeviceObjects();
+        if (!vulkan_gui_)
+            ImGui_ImplOpenGL3_CreateDeviceObjects();
     }
 
     void GuiManager::applyUiScale(float scale) {
@@ -729,55 +733,69 @@ namespace lfs::vis::gui {
             alloc_user_data);
         lfs::python::set_implot_context(ImPlot::GetCurrentContext());
 
-        lfs::python::set_gl_texture_service(
-            [](const unsigned char* data, const int w, const int h, const int channels) -> lfs::python::TextureResult {
-                if (!data || w <= 0 || h <= 0)
+        vulkan_gui_ = viewer_ && viewer_->getWindowManager() && viewer_->getWindowManager()->isVulkan();
+
+        if (vulkan_gui_) {
+            lfs::python::set_gl_texture_service(
+                [](const unsigned char*, int, int, int) -> lfs::python::TextureResult {
                     return {0, 0, 0};
+                },
+                [](uint32_t) {},
+                []() -> int {
+                    constexpr int FALLBACK_MAX_TEXTURE_SIZE = 4096;
+                    return FALLBACK_MAX_TEXTURE_SIZE;
+                });
+        } else {
+            lfs::python::set_gl_texture_service(
+                [](const unsigned char* data, const int w, const int h, const int channels) -> lfs::python::TextureResult {
+                    if (!data || w <= 0 || h <= 0)
+                        return {0, 0, 0};
 
-                GLuint tex = 0;
-                glGenTextures(1, &tex);
-                if (tex == 0)
-                    return {0, 0, 0};
+                    GLuint tex = 0;
+                    glGenTextures(1, &tex);
+                    if (tex == 0)
+                        return {0, 0, 0};
 
-                glBindTexture(GL_TEXTURE_2D, tex);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                    glBindTexture(GL_TEXTURE_2D, tex);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-                GLenum format = GL_RGB;
-                GLenum internal_format = GL_RGB8;
-                if (channels == 1) {
-                    format = GL_RED;
-                    internal_format = GL_R8;
-                } else if (channels == 4) {
-                    format = GL_RGBA;
-                    internal_format = GL_RGBA8;
-                }
+                    GLenum format = GL_RGB;
+                    GLenum internal_format = GL_RGB8;
+                    if (channels == 1) {
+                        format = GL_RED;
+                        internal_format = GL_R8;
+                    } else if (channels == 4) {
+                        format = GL_RGBA;
+                        internal_format = GL_RGBA8;
+                    }
 
-                glTexImage2D(GL_TEXTURE_2D, 0, internal_format, w, h, 0, format, GL_UNSIGNED_BYTE, data);
+                    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, w, h, 0, format, GL_UNSIGNED_BYTE, data);
 
-                if (channels == 1) {
-                    GLint swizzle[] = {GL_RED, GL_RED, GL_RED, GL_ONE};
-                    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzle);
-                }
+                    if (channels == 1) {
+                        GLint swizzle[] = {GL_RED, GL_RED, GL_RED, GL_ONE};
+                        glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzle);
+                    }
 
-                glBindTexture(GL_TEXTURE_2D, 0);
-                return {tex, w, h};
-            },
-            [](const uint32_t tex) {
-                if (tex > 0) {
-                    const auto gl_tex = static_cast<GLuint>(tex);
-                    glDeleteTextures(1, &gl_tex);
-                }
-            },
-            []() -> int {
-                constexpr int FALLBACK_MAX_TEXTURE_SIZE = 4096;
-                GLint sz = 0;
-                glGetIntegerv(GL_MAX_TEXTURE_SIZE, &sz);
-                return sz > 0 ? sz : FALLBACK_MAX_TEXTURE_SIZE;
-            });
+                    glBindTexture(GL_TEXTURE_2D, 0);
+                    return {tex, w, h};
+                },
+                [](const uint32_t tex) {
+                    if (tex > 0) {
+                        const auto gl_tex = static_cast<GLuint>(tex);
+                        glDeleteTextures(1, &gl_tex);
+                    }
+                },
+                []() -> int {
+                    constexpr int FALLBACK_MAX_TEXTURE_SIZE = 4096;
+                    GLint sz = 0;
+                    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &sz);
+                    return sz > 0 ? sz : FALLBACK_MAX_TEXTURE_SIZE;
+                });
+        }
 
         ImGuiIO& io = ImGui::GetIO();
         imgui_ini_path_ = LayoutState::getConfigDir() / "imgui.ini";
@@ -790,8 +808,15 @@ namespace lfs::vis::gui {
         loadImGuiSettings();
 
         // Platform/Renderer initialization
-        ImGui_ImplSDL3_InitForOpenGL(viewer_->getWindow(), SDL_GL_GetCurrentContext());
-        ImGui_ImplOpenGL3_Init("#version 430");
+        if (vulkan_gui_) {
+            auto* vulkan_context = viewer_->getWindowManager()->getVulkanContext();
+            if (!vulkan_context || !imgui_vulkan_backend_.init(viewer_->getWindow(), *vulkan_context)) {
+                throw std::runtime_error("Failed to initialize ImGui Vulkan backend");
+            }
+        } else {
+            ImGui_ImplSDL3_InitForOpenGL(viewer_->getWindow(), SDL_GL_GetCurrentContext());
+            ImGui_ImplOpenGL3_Init("#version 430");
+        }
 
         // Initialize localization system
         auto& loc = lfs::event::LocalizationManager::getInstance();
@@ -855,7 +880,14 @@ namespace lfs::vis::gui {
             }
         });
 
-        rmlui_manager_.init(viewer_->getWindow(), current_ui_scale_);
+        if (vulkan_gui_) {
+            auto* vulkan_context = viewer_->getWindowManager()->getVulkanContext();
+            if (!vulkan_context || !rmlui_manager_.initVulkan(viewer_->getWindow(), *vulkan_context, current_ui_scale_)) {
+                throw std::runtime_error("Failed to initialize RmlUI Vulkan backend");
+            }
+        } else if (!rmlui_manager_.init(viewer_->getWindow(), current_ui_scale_)) {
+            throw std::runtime_error("Failed to initialize RmlUI OpenGL backend");
+        }
         lfs::vis::setThemeChangeCallback([this](const std::string& theme_id) {
             rmlui_manager_.activateTheme(theme_id);
             if (auto* const rendering = viewer_ ? viewer_->getRenderingManager() : nullptr) {
@@ -1258,11 +1290,16 @@ namespace lfs::vis::gui {
 
         if (ImGui::GetCurrentContext()) {
             saveImGuiSettings();
-            ImGui_ImplOpenGL3_Shutdown();
-            ImGui_ImplSDL3_Shutdown();
+            if (vulkan_gui_) {
+                imgui_vulkan_backend_.shutdown();
+            } else {
+                ImGui_ImplOpenGL3_Shutdown();
+                ImGui_ImplSDL3_Shutdown();
+            }
             ImPlot::DestroyContext();
             ImGui::DestroyContext();
         }
+        vulkan_gui_ = false;
     }
 
     void GuiManager::registerNativePanels() {
@@ -1349,7 +1386,65 @@ namespace lfs::vis::gui {
                   PanelSpace::ViewportOverlay, 0);
     }
 
+    void GuiManager::renderVulkan() {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+        auto* window_manager = viewer_ ? viewer_->getWindowManager() : nullptr;
+        auto* vulkan_context = window_manager ? window_manager->getVulkanContext() : nullptr;
+        if (!vulkan_context || !imgui_vulkan_backend_.initialized())
+            return;
+
+        if (pending_ui_scale_ > 0.0f) {
+            applyUiScale(pending_ui_scale_);
+            pending_ui_scale_ = 0.0f;
+        }
+
+        drag_drop_.pollEvents();
+        drag_drop_hovering_ = drag_drop_.isDragHovering();
+
+        if (auto* input_controller = viewer_->getInputController()) {
+            input_controller->getBindings().updateCapture();
+        }
+
+        imgui_vulkan_backend_.newFrame();
+        ImGui::NewFrame();
+
+        {
+            auto& focus = guiFocusState();
+            focus.reset();
+            focus.want_capture_mouse = ImGui::GetIO().WantCaptureMouse;
+            focus.want_capture_keyboard = ImGui::GetIO().WantCaptureKeyboard;
+            focus.want_text_input = ImGui::GetIO().WantTextInput;
+        }
+
+        ImGui::Render();
+
+        const auto& bg = lfs::vis::theme().menu_background();
+        VkClearValue clear_value{};
+        clear_value.color = VkClearColorValue{{bg.x, bg.y, bg.z, 1.0f}};
+
+        VulkanContext::Frame frame{};
+        if (vulkan_context->beginFrame(clear_value, frame)) {
+            imgui_vulkan_backend_.renderDrawData(ImGui::GetDrawData(), frame.command_buffer);
+            if (!vulkan_context->endFrame()) {
+                LOG_WARN("Vulkan GUI frame present failed: {}", vulkan_context->lastError());
+            }
+        } else {
+            LOG_WARN("Vulkan GUI frame begin failed: {}", vulkan_context->lastError());
+        }
+
+        syncWindowTextInput(viewer_->getWindow());
+        persistImGuiSettingsIfNeeded();
+#else
+        LOG_ERROR("Vulkan GUI render requested, but Vulkan viewer dependencies are disabled");
+#endif
+    }
+
     void GuiManager::render() {
+        if (vulkan_gui_) {
+            renderVulkan();
+            return;
+        }
+
         if (auto* ri = rmlui_manager_.getRenderInterface()) {
             auto* sm = viewer_->getSceneManager();
             ri->set_scene_manager(sm);

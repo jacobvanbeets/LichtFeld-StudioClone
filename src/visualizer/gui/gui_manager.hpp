@@ -12,6 +12,7 @@
 #include "gui/async_task_manager.hpp"
 #include "gui/gizmo_manager.hpp"
 #include "gui/global_context_menu.hpp"
+#include "gui/imgui_vulkan_backend.hpp"
 #include "gui/panel_layout.hpp"
 #include "gui/panel_registry.hpp"
 #include "gui/panels/menu_bar.hpp"
@@ -128,6 +129,7 @@ namespace lfs::vis {
             void renderViewportDecorations();
 
         private:
+            void renderVulkan();
             void setupEventHandlers();
             void checkCudaVersionAndNotify();
             void applyDefaultStyle();
@@ -214,6 +216,8 @@ namespace lfs::vis {
 
             // RmlUI integration
             RmlUIManager rmlui_manager_;
+            ImGuiVulkanBackend imgui_vulkan_backend_;
+            bool vulkan_gui_ = false;
             SDL_Cursor* pipette_cursor_ = nullptr;
 
             // Native panel wrapper storage (registered with PanelRegistry)
