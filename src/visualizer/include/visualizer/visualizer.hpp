@@ -38,7 +38,7 @@ namespace lfs::vis {
         bool enable_cuda_interop = true;
         bool show_startup_overlay = true;
         bool gut = false;
-        GraphicsBackend graphics_backend = GraphicsBackend::OpenGL;
+        GraphicsBackend graphics_backend = GraphicsBackend::Vulkan;
         int monitor_x = 0; // Monitor hint for window placement
         int monitor_y = 0;
         int monitor_width = 0;

@@ -47,17 +47,19 @@ namespace lfs::app {
         lfs::vis::GraphicsBackend viewerGraphicsBackendFromEnv() {
             const char* const value = std::getenv("LFS_GRAPHICS_BACKEND");
             if (!value || !*value)
-                return lfs::vis::GraphicsBackend::OpenGL;
+                return lfs::vis::GraphicsBackend::Vulkan;
 
             const std::string_view backend(value);
             if (backend == "vulkan" || backend == "Vulkan" || backend == "VK" || backend == "vk") {
                 LOG_INFO("Viewer graphics backend requested via LFS_GRAPHICS_BACKEND=vulkan");
                 return lfs::vis::GraphicsBackend::Vulkan;
             }
-            if (backend != "opengl" && backend != "OpenGL" && backend != "GL" && backend != "gl") {
-                LOG_WARN("Unknown LFS_GRAPHICS_BACKEND='{}'; using OpenGL", backend);
+            if (backend == "opengl" || backend == "OpenGL" || backend == "GL" || backend == "gl") {
+                LOG_WARN("Viewer graphics backend requested via LFS_GRAPHICS_BACKEND=opengl; Vulkan is the default transition path");
+                return lfs::vis::GraphicsBackend::OpenGL;
             }
-            return lfs::vis::GraphicsBackend::OpenGL;
+            LOG_WARN("Unknown LFS_GRAPHICS_BACKEND='{}'; using Vulkan", backend);
+            return lfs::vis::GraphicsBackend::Vulkan;
         }
 
         int runHeadless(std::unique_ptr<lfs::core::param::TrainingParameters> params) {
