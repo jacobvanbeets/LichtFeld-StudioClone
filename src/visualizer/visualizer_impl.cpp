@@ -1064,12 +1064,28 @@ namespace lfs::vis {
             input_controller_->update(delta_time);
         }
 
+        // Get viewport region from GUI. This accounts for menu/tool/status panels and must be
+        // shared by every graphics backend so camera aspect and render resolution match the viewport.
+        ViewportRegion viewport_region;
+        bool has_viewport_region = false;
+        if (gui_manager_) {
+            auto pos = gui_manager_->getViewportPos();
+            auto size = gui_manager_->getViewportSize();
+
+            viewport_region.x = pos.x;
+            viewport_region.y = pos.y;
+            viewport_region.width = size.x;
+            viewport_region.height = size.y;
+
+            has_viewport_region = true;
+        }
+
         if (window_manager_->isVulkan()) {
             RenderingManager::RenderContext context{
                 .viewport = viewport_,
                 .settings = rendering_manager_->getSettings(),
                 .logical_screen_size = window_manager_->getWindowSize(),
-                .viewport_region = nullptr,
+                .viewport_region = has_viewport_region ? &viewport_region : nullptr,
                 .scene_manager = scene_manager_.get()};
 
             if (gui_manager_) {
@@ -1112,21 +1128,6 @@ namespace lfs::vis {
                 window_manager_->waitEvents(IDLE_WAIT_SEC);
             }
             return;
-        }
-
-        // Get viewport region from GUI
-        ViewportRegion viewport_region;
-        bool has_viewport_region = false;
-        if (gui_manager_) {
-            auto pos = gui_manager_->getViewportPos();
-            auto size = gui_manager_->getViewportSize();
-
-            viewport_region.x = pos.x;
-            viewport_region.y = pos.y;
-            viewport_region.width = size.x;
-            viewport_region.height = size.y;
-
-            has_viewport_region = true;
         }
 
         // viewport_region accounts for toolbar offset - required for all render modes
