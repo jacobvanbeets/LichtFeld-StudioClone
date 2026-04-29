@@ -36,6 +36,9 @@ namespace lfs::vis {
 
         void clearViewportOutput();
         void updateFromFrameResources(const FrameResources& resources, bool viewport_output_updated);
+        void updateFromImageOutput(std::shared_ptr<lfs::core::Tensor> image,
+                                   const glm::ivec2& rendered_size,
+                                   bool viewport_output_updated);
         void storeCapturedImage(std::shared_ptr<lfs::core::Tensor> image);
 
         [[nodiscard]] float sampleLinearDepthAt(int x,

@@ -84,6 +84,7 @@ namespace lfs::vis {
             vulkan_viewport_image_.reset();
             vulkan_viewport_image_size_ = {0, 0};
             vulkan_viewport_image_flip_y_ = false;
+            viewport_artifact_service_.clearViewportOutput();
             markDirty(DirtyFlag::ALL);
         }
 
@@ -110,6 +111,7 @@ namespace lfs::vis {
             vulkan_viewport_image_.reset();
             vulkan_viewport_image_size_ = {0, 0};
             vulkan_viewport_image_flip_y_ = false;
+            viewport_artifact_service_.clearViewportOutput();
             render_lock.reset();
             return {};
         }
@@ -171,9 +173,12 @@ namespace lfs::vis {
             return {};
         }
 
-        vulkan_viewport_image_ = std::move(render_result->image);
+        auto viewport_image = std::move(render_result->image);
+        vulkan_viewport_image_ = viewport_image;
         vulkan_viewport_image_size_ = render_size;
         vulkan_viewport_image_flip_y_ = !render_result->metadata.flip_y;
+        viewport_artifact_service_.updateFromImageOutput(
+            std::move(viewport_image), render_size, true);
 
         if (resize_result.completed) {
             frame_lifecycle_service_.noteResizeCompleted();

@@ -51,7 +51,7 @@ namespace lfs::vis {
     }
 
     bool ViewportArtifactService::hasViewportOutput() const {
-        return hasGpuFrame();
+        return hasGpuFrame() || (captured_image_ && captured_image_->is_valid());
     }
 
     bool ViewportArtifactService::hasOutputArtifacts() const {
@@ -96,9 +96,21 @@ namespace lfs::vis {
         }
     }
 
+    void ViewportArtifactService::updateFromImageOutput(std::shared_ptr<lfs::core::Tensor> image,
+                                                        const glm::ivec2& rendered_size,
+                                                        const bool viewport_output_updated) {
+        metadata_ = {};
+        gpu_frame_.reset();
+        rendered_size_ = rendered_size;
+        if (viewport_output_updated) {
+            invalidateCapture();
+        }
+        storeCapturedImage(std::move(image));
+    }
+
     void ViewportArtifactService::storeCapturedImage(std::shared_ptr<lfs::core::Tensor> image) {
         captured_image_ = std::move(image);
-        captured_artifact_generation_ = artifact_generation_;
+        captured_artifact_generation_ = captured_image_ ? artifact_generation_ : 0;
     }
 
     float ViewportArtifactService::sampleLinearDepthAt(
