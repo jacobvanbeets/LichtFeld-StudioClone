@@ -489,7 +489,8 @@ namespace lfs::vis::gui {
     }
 
     void RmlPanelHost::renderIfDirty(int pw, int ph, float& display_h) {
-        if (manager_ && manager_->shouldDeferFboUpdate(fbo_))
+        const bool vulkan_render = manager_ && manager_->getVulkanRenderInterface();
+        if (!vulkan_render && manager_ && manager_->shouldDeferFboUpdate(fbo_))
             return;
 
         const bool theme_dirty = syncThemeProperties();
@@ -497,9 +498,12 @@ namespace lfs::vis::gui {
         const bool externally_clipped =
             (clip_y_min_ >= 0.0f && clip_y_max_ > clip_y_min_);
 
-        const bool fbo_reallocated = fbo_.ensure(pw, std::min(ph, kMaxFboSize));
-        if (!fbo_.valid())
-            return;
+        bool fbo_reallocated = false;
+        if (!vulkan_render) {
+            fbo_reallocated = fbo_.ensure(pw, std::min(ph, kMaxFboSize));
+            if (!fbo_.valid())
+                return;
+        }
 
         const bool dirty = render_needed_ || content_dirty_ || theme_dirty ||
                            size_dirty || animation_active_ || fbo_reallocated;
@@ -561,9 +565,11 @@ namespace lfs::vis::gui {
                 display_h = static_cast<float>(ph);
             }
 
-            fbo_.ensure(pw, ph);
-            if (!fbo_.valid())
-                return;
+            if (!vulkan_render) {
+                fbo_.ensure(pw, ph);
+                if (!fbo_.valid())
+                    return;
+            }
 
             if (pw != last_layout_w_ || ph != last_layout_h_)
                 updateContextLayout(pw, ph);
@@ -577,6 +583,14 @@ namespace lfs::vis::gui {
         content_dirty_ = false;
         if (height_mode_ != PanelHeightMode::Content)
             last_content_height_ = display_h;
+
+        if (vulkan_render) {
+            animation_active_ = (rml_context_->GetNextUpdateDelay() == 0);
+            last_fbo_w_ = pw;
+            last_fbo_h_ = ph;
+            render_needed_ = false;
+            return;
+        }
 
         auto* render = manager_->getRenderInterface();
         assert(render);
@@ -646,6 +660,18 @@ namespace lfs::vis::gui {
         renderIfDirty(w, h, display_h);
 
         const ImVec2 panel_screen_pos = ImGui::GetCursorScreenPos();
+        if (manager_ && manager_->getVulkanRenderInterface()) {
+            const auto* vp = ImGui::GetMainViewport();
+            const float screen_x = vp ? vp->Pos.x : 0.0f;
+            const float screen_y = vp ? vp->Pos.y : 0.0f;
+            ImGui::Dummy(ImVec2(avail_w, display_h));
+            manager_->queueVulkanContext(rml_context_,
+                                         panel_screen_pos.x - screen_x,
+                                         panel_screen_pos.y - screen_y,
+                                         foreground_);
+            return;
+        }
+
         fbo_.blitAsImage(avail_w, display_h);
         if (auto* vp = ImGui::GetMainViewport()) {
             const auto popup_shadow =
@@ -793,7 +819,8 @@ namespace lfs::vis::gui {
 
     void RmlPanelHost::compositeDirectToScreen(const float x, const float y,
                                                const float w, const float h) const {
-        if (!input_ || !fbo_.valid() || w <= 0.0f || h <= 0.0f)
+        const bool vulkan_render = manager_ && manager_->getVulkanRenderInterface();
+        if (!input_ || (!vulkan_render && !fbo_.valid()) || w <= 0.0f || h <= 0.0f)
             return;
 
         float clip_x1 = x;
@@ -816,6 +843,11 @@ namespace lfs::vis::gui {
         const float screen_clip_x2 = clip_x2 - input_->screen_x;
         const float screen_clip_y2 = clip_y2 - input_->screen_y;
         const auto popover_shadow = collectVisibleColorPickerPopupShadow(screen_x, screen_y);
+
+        if (vulkan_render) {
+            manager_->queueVulkanContext(rml_context_, screen_x, screen_y, foreground_);
+            return;
+        }
 
         if (foreground_) {
             queued_foreground_composites_.push_back({
@@ -867,7 +899,8 @@ namespace lfs::vis::gui {
     bool RmlPanelHost::forwardInput(float panel_x, float panel_y) {
         assert(rml_context_);
 
-        if (!input_ || !fbo_.valid())
+        const bool vulkan_render = manager_ && manager_->getVulkanRenderInterface();
+        if (!input_ || (!vulkan_render && !fbo_.valid()))
             return false;
 
         bool had_input = false;
@@ -934,8 +967,10 @@ namespace lfs::vis::gui {
         float local_x = mouse_x - panel_x;
         float local_y = mouse_y - panel_y;
 
-        const float logical_w = static_cast<float>(fbo_.width());
-        const float logical_h = static_cast<float>(fbo_.height());
+        const float logical_w = vulkan_render ? static_cast<float>(last_fbo_w_)
+                                              : static_cast<float>(fbo_.width());
+        const float logical_h = vulkan_render ? static_cast<float>(last_fbo_h_)
+                                              : static_cast<float>(fbo_.height());
 
         bool hovered = hitTestPanelShape(local_x, local_y, logical_w, logical_h);
 

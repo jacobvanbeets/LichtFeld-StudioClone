@@ -414,8 +414,15 @@ namespace lfs::vis::gui {
 
         const bool needs_render = render_needed_ || animation_active_ || run_document_hooks ||
                                   theme_changed || size_changed;
-        if (!needs_render)
+        if (!needs_render) {
+            if (rml_manager_ && rml_manager_->getVulkanRenderInterface()) {
+                rml_manager_->queueVulkanContext(rml_context_,
+                                                 vp_pos_.x - screen_origin_.x,
+                                                 vp_pos_.y - screen_origin_.y,
+                                                 true);
+            }
             return;
+        }
 
         if (rml_manager_) {
             rml_manager_->trackContextFrame(rml_context_,
@@ -424,6 +431,18 @@ namespace lfs::vis::gui {
         }
         rml_context_->SetDimensions(Rml::Vector2i(w, h));
         rml_context_->Update();
+
+        if (rml_manager_ && rml_manager_->getVulkanRenderInterface()) {
+            rml_manager_->queueVulkanContext(rml_context_,
+                                             vp_pos_.x - screen_origin_.x,
+                                             vp_pos_.y - screen_origin_.y,
+                                             true);
+            animation_active_ = (rml_context_->GetNextUpdateDelay() == 0);
+            render_needed_ = false;
+            last_render_w_ = w;
+            last_render_h_ = h;
+            return;
+        }
 
         fbo_.ensure(w, h);
         if (!fbo_.valid())

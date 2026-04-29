@@ -4,13 +4,18 @@
 
 #include "gui/rmlui/rmlui_vk_backend.hpp"
 #include "gui/rmlui/vulkan/rmlui_shaders_spv.hpp"
+#include "internal/resource_paths.hpp"
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/FileInterface.h>
 #include <RmlUi/Core/Log.h>
 #include <RmlUi/Core/Math.h>
 #include <RmlUi/Core/Platform.h>
 #include <RmlUi/Core/Profiling.h>
+#include <stb_image.h>
 #include <algorithm>
+#include <filesystem>
+#include <string>
+#include <string_view>
 #include <string.h>
 
 // AlignUp(314, 256) = 512
@@ -382,6 +387,88 @@ struct TGAHeader {
 
 Rml::TextureHandle RenderInterface_VK::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source)
 {
+	auto load_with_stbi = [&](const std::string& path) -> Rml::TextureHandle {
+		int width = 0;
+		int height = 0;
+		int channels = 0;
+		unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels, 4);
+		if (!data)
+			return 0;
+
+		texture_dimensions.x = width;
+		texture_dimensions.y = height;
+		const int pixel_count = width * height;
+		for (int i = 0; i < pixel_count; ++i)
+		{
+			unsigned char* p = data + i * 4;
+			const unsigned int alpha = p[3];
+			p[0] = static_cast<unsigned char>((p[0] * alpha + 127) / 255);
+			p[1] = static_cast<unsigned char>((p[1] * alpha + 127) / 255);
+			p[2] = static_cast<unsigned char>((p[2] * alpha + 127) / 255);
+		}
+
+		const size_t image_size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+		const Rml::TextureHandle handle = GenerateTexture({data, image_size}, texture_dimensions);
+		stbi_image_free(data);
+		return handle;
+	};
+
+	if (const Rml::TextureHandle handle = load_with_stbi(source); handle)
+		return handle;
+
+	auto load_asset_fallback = [&](std::string asset_name) -> Rml::TextureHandle {
+		while (asset_name.rfind("../", 0) == 0)
+			asset_name.erase(0, 3);
+		while (asset_name.rfind("./", 0) == 0)
+			asset_name.erase(0, 2);
+		if (asset_name.empty())
+			return 0;
+
+		try
+		{
+			const auto path = lfs::vis::getAssetPath(asset_name);
+			if (std::filesystem::exists(path))
+				return load_with_stbi(path.string());
+		}
+		catch (...)
+		{
+		}
+		return 0;
+	};
+
+	if (const Rml::TextureHandle handle = load_asset_fallback(source); handle)
+		return handle;
+
+	const std::string_view source_view(source);
+	constexpr std::string_view rmlui_icon_segment = "rmlui/icon/";
+	if (const auto pos = source_view.find(rmlui_icon_segment); pos != std::string_view::npos)
+	{
+		if (const Rml::TextureHandle handle =
+				load_asset_fallback("icon/" + std::string(source_view.substr(pos + rmlui_icon_segment.size())));
+			handle)
+			return handle;
+	}
+	constexpr std::string_view icon_segment = "/icon/";
+	if (const auto pos = source_view.find(icon_segment); pos != std::string_view::npos)
+	{
+		if (const Rml::TextureHandle handle =
+				load_asset_fallback("icon/" + std::string(source_view.substr(pos + icon_segment.size())));
+			handle)
+			return handle;
+	}
+
+#ifndef _WIN32
+	if (!source.empty() && source[0] != '/' && source.find("://") == Rml::String::npos)
+	{
+		const std::string absolute_source = "/" + source;
+		if (std::filesystem::exists(absolute_source))
+		{
+			if (const Rml::TextureHandle handle = load_with_stbi(absolute_source); handle)
+				return handle;
+		}
+	}
+#endif
+
 	Rml::FileInterface* file_interface = Rml::GetFileInterface();
 	Rml::FileHandle file_handle = file_interface->Open(source);
 	if (!file_handle)

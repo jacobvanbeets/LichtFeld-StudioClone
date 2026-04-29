@@ -148,6 +148,11 @@ namespace lfs::vis::gui {
             rml_context_->SetDimensions(Rml::Vector2i(w, h));
             rml_context_->Update();
 
+            if (rml_manager_->getVulkanRenderInterface()) {
+                rml_manager_->queueVulkanContext(rml_context_);
+                return;
+            }
+
             fbo_.ensure(w, h);
             if (!fbo_.valid())
                 return;

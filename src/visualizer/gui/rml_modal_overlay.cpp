@@ -437,6 +437,11 @@ namespace lfs::vis::gui {
                 rml_context_->Update();
             }
 
+            if (rml_manager_->getVulkanRenderInterface()) {
+                rml_manager_->queueVulkanContext(rml_context_, 0.0f, 0.0f, true);
+                return;
+            }
+
             fbo_.ensure(w, h);
             if (!fbo_.valid())
                 return;
@@ -455,6 +460,11 @@ namespace lfs::vis::gui {
 
             render_iface->SetTargetFramebuffer(0);
             fbo_.unbind(prev_fbo);
+        }
+
+        if (rml_manager_->getVulkanRenderInterface()) {
+            rml_manager_->queueVulkanContext(rml_context_, 0.0f, 0.0f, true);
+            return;
         }
 
         if (fbo_.valid())

@@ -297,6 +297,11 @@ namespace lfs::vis::gui {
                 ctx_->Update();
             }
 
+            if (mgr_->getVulkanRenderInterface()) {
+                mgr_->queueVulkanContext(ctx_, 0.0f, 0.0f, true);
+                return;
+            }
+
             fbo_.ensure(w, h);
             if (!fbo_.valid())
                 return;
@@ -315,6 +320,11 @@ namespace lfs::vis::gui {
 
             render_iface->SetTargetFramebuffer(0);
             fbo_.unbind(prev_fbo);
+        }
+
+        if (mgr_->getVulkanRenderInterface()) {
+            mgr_->queueVulkanContext(ctx_, 0.0f, 0.0f, true);
+            return;
         }
 
         if (fbo_.valid())

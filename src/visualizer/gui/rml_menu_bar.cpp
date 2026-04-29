@@ -571,8 +571,11 @@ namespace lfs::vis::gui {
 
         const bool size_changed = (ctx_w != last_ctx_w_ || ctx_h != last_ctx_h_);
         const bool needs_render = render_needed_ || theme_changed || size_changed;
-        if (!needs_render)
+        if (!needs_render) {
+            if (rml_manager_->getVulkanRenderInterface())
+                rml_manager_->queueVulkanContext(rml_context_, 0.0f, 0.0f, true);
             return;
+        }
 
         rml_context_->SetDimensions(Rml::Vector2i(ctx_w, ctx_h));
         if (ctx_h != last_document_h_) {
@@ -580,6 +583,14 @@ namespace lfs::vis::gui {
             last_document_h_ = ctx_h;
         }
         rml_context_->Update();
+
+        if (rml_manager_->getVulkanRenderInterface()) {
+            rml_manager_->queueVulkanContext(rml_context_, 0.0f, 0.0f, true);
+            last_ctx_w_ = ctx_w;
+            last_ctx_h_ = ctx_h;
+            render_needed_ = false;
+            return;
+        }
 
         fbo_.ensure(ctx_w, ctx_h);
         if (!fbo_.valid())

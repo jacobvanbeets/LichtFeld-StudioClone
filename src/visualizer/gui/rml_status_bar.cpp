@@ -596,6 +596,7 @@ namespace lfs::vis::gui {
         const bool needs_render = size_changed || theme_changed || had_pending_model_dirty ||
                                   content_changed ||
                                   (animation_active_ && refresh_due);
+        const bool vulkan_render = rml_manager_->getVulkanRenderInterface() != nullptr;
         if (rml_manager_->shouldDeferFboUpdate(fbo_)) {
             if (needs_render)
                 model_dirty_ = true;
@@ -612,6 +613,14 @@ namespace lfs::vis::gui {
                 last_document_h_ = render_h;
             }
             rml_context_->Update();
+
+            if (vulkan_render) {
+                rml_manager_->queueVulkanContext(rml_context_, blit_rect.x, blit_rect.y);
+                animation_active_ = animation_active_ || (rml_context_->GetNextUpdateDelay() == 0);
+                last_render_w_ = render_w;
+                last_render_h_ = render_h;
+                return;
+            }
 
             fbo_.ensure(render_w, render_h);
             if (!fbo_.valid())
@@ -635,6 +644,11 @@ namespace lfs::vis::gui {
             animation_active_ = animation_active_ || (rml_context_->GetNextUpdateDelay() == 0);
             last_render_w_ = render_w;
             last_render_h_ = render_h;
+        }
+
+        if (vulkan_render) {
+            rml_manager_->queueVulkanContext(rml_context_, blit_rect.x, blit_rect.y);
+            return;
         }
 
         if (fbo_.valid())

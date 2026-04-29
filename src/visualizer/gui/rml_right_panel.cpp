@@ -579,6 +579,19 @@ namespace lfs::vis::gui {
             }
             syncTabNavigation();
 
+            if (rml_manager_->getVulkanRenderInterface()) {
+                rml_manager_->queueVulkanContext(rml_context_,
+                                                 layout.pos.x - screen_x,
+                                                 layout.pos.y - screen_y);
+                last_fbo_w_ = w;
+                last_fbo_h_ = h;
+                last_scene_h_ = layout.scene_h;
+                last_splitter_h_ = layout.splitter_h;
+                render_needed_ = false;
+                input_dirty_ = false;
+                return;
+            }
+
             fbo_.ensure(w, h);
             if (!fbo_.valid())
                 return;
@@ -604,6 +617,13 @@ namespace lfs::vis::gui {
             last_splitter_h_ = layout.splitter_h;
             render_needed_ = false;
             input_dirty_ = false;
+        }
+
+        if (rml_manager_->getVulkanRenderInterface()) {
+            rml_manager_->queueVulkanContext(rml_context_,
+                                             layout.pos.x - screen_x,
+                                             layout.pos.y - screen_y);
+            return;
         }
 
         if (fbo_.valid())

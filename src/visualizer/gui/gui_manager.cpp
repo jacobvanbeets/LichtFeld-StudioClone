@@ -2214,21 +2214,6 @@ namespace lfs::vis::gui {
         if (!vulkan_context || !imgui_vulkan_backend_.initialized())
             return;
 
-        if (pending_ui_scale_ > 0.0f) {
-            applyUiScale(pending_ui_scale_);
-            pending_ui_scale_ = 0.0f;
-        }
-
-        drag_drop_.pollEvents();
-        drag_drop_hovering_ = drag_drop_.isDragHovering();
-
-        if (auto* input_controller = viewer_->getInputController()) {
-            input_controller->getBindings().updateCapture();
-        }
-
-        imgui_vulkan_backend_.newFrame();
-        ImGui::NewFrame();
-
         if (vulkan_scene_image_ && vulkan_scene_image_size_.x > 0 && vulkan_scene_image_size_.y > 0) {
             if (!vulkan_scene_texture_) {
                 vulkan_scene_texture_ = std::make_unique<VulkanSceneTexture>();
@@ -2252,10 +2237,17 @@ namespace lfs::vis::gui {
             }
             if (texture_ready && vulkan_scene_texture_->valid()) {
                 ImGuiViewport* const viewport = ImGui::GetMainViewport();
-                const ImVec2 p0 = viewport ? viewport->Pos : ImVec2(0.0f, 0.0f);
-                const ImVec2 size = viewport ? viewport->Size : ImVec2(
-                    static_cast<float>(vulkan_scene_image_size_.x),
-                    static_cast<float>(vulkan_scene_image_size_.y));
+                const bool has_viewport_layout =
+                    viewport_layout_.size.x > 0.0f && viewport_layout_.size.y > 0.0f;
+                const ImVec2 p0 = has_viewport_layout
+                                       ? ImVec2(viewport_layout_.pos.x, viewport_layout_.pos.y)
+                                       : (viewport ? viewport->Pos : ImVec2(0.0f, 0.0f));
+                const ImVec2 size = has_viewport_layout
+                                        ? ImVec2(viewport_layout_.size.x, viewport_layout_.size.y)
+                                        : (viewport ? viewport->Size
+                                                    : ImVec2(
+                                                          static_cast<float>(vulkan_scene_image_size_.x),
+                                                          static_cast<float>(vulkan_scene_image_size_.y)));
                 const ImVec2 p1(p0.x + size.x, p0.y + size.y);
                 const ImVec2 uv0(0.0f, vulkan_scene_image_flip_y_ ? 1.0f : 0.0f);
                 const ImVec2 uv1(1.0f, vulkan_scene_image_flip_y_ ? 0.0f : 1.0f);
@@ -2269,45 +2261,21 @@ namespace lfs::vis::gui {
                     uv1);
             }
         }
-
-        {
-            auto& focus = guiFocusState();
-            focus.reset();
-            focus.want_capture_mouse = ImGui::GetIO().WantCaptureMouse;
-            focus.want_capture_keyboard = ImGui::GetIO().WantCaptureKeyboard;
-            focus.want_text_input = ImGui::GetIO().WantTextInput;
-        }
-
-        ImGui::Render();
-
-        const auto& bg = lfs::vis::theme().menu_background();
-        VkClearValue clear_value{};
-        clear_value.color = VkClearColorValue{{bg.x, bg.y, bg.z, 1.0f}};
-
-        VulkanContext::Frame frame{};
-        if (vulkan_context->beginFrame(clear_value, frame)) {
-            imgui_vulkan_backend_.renderDrawData(ImGui::GetDrawData(), frame.command_buffer);
-            if (!vulkan_context->endFrame()) {
-                LOG_WARN("Vulkan GUI frame present failed: {}", vulkan_context->lastError());
-            }
-        } else {
-            LOG_WARN("Vulkan GUI frame begin failed: {}", vulkan_context->lastError());
-        }
-
-        syncWindowTextInput(viewer_->getWindow());
-        persistImGuiSettingsIfNeeded();
 #else
         LOG_ERROR("Vulkan GUI render requested, but Vulkan viewer dependencies are disabled");
 #endif
     }
 
     void GuiManager::render() {
-        if (vulkan_gui_) {
-            renderVulkan();
+        auto* window_manager = viewer_ ? viewer_->getWindowManager() : nullptr;
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+        auto* vulkan_context = (vulkan_gui_ && window_manager) ? window_manager->getVulkanContext() : nullptr;
+        if (vulkan_gui_ && (!vulkan_context || !imgui_vulkan_backend_.initialized()))
             return;
-        }
+#endif
 
-        if (auto* ri = rmlui_manager_.getRenderInterface()) {
+        if (!vulkan_gui_ && rmlui_manager_.getRenderInterface()) {
+            auto* ri = rmlui_manager_.getRenderInterface();
             auto* sm = viewer_->getSceneManager();
             ri->set_scene_manager(sm);
             ri->process_pending_preview_uploads();
@@ -2340,9 +2308,13 @@ namespace lfs::vis::gui {
         }
 
         // Start frame
-        ImGui_ImplOpenGL3_NewFrame();
-
-        ImGui_ImplSDL3_NewFrame();
+        if (vulkan_gui_) {
+            imgui_vulkan_backend_.newFrame();
+            rmlui_manager_.clearVulkanQueue();
+        } else {
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL3_NewFrame();
+        }
         const auto& sdl_input = viewer_->getWindowManager()->frameInput();
 
         // Check mouse state before ImGui::NewFrame() updates WantCaptureMouse
@@ -2739,7 +2711,8 @@ namespace lfs::vis::gui {
             lfs::python::invoke_python_hooks("viewport_overlay", "draw", true);
             lfs::python::invoke_python_hooks("viewport_overlay", "draw", false);
         }
-        reg.draw_panels(PanelSpace::ViewportOverlay, draw_ctx);
+        if (!vulkan_gui_)
+            reg.draw_panels(PanelSpace::ViewportOverlay, draw_ctx);
 
         rml_viewport_overlay_.render();
 
@@ -2776,7 +2749,59 @@ namespace lfs::vis::gui {
             SDL_SetCursor(cursor);
         syncWindowTextInput(viewer_->getWindow());
 
+        if (vulkan_gui_) {
+            renderVulkan();
+            if (menu_bar_ && !ui_hidden_)
+                rml_menu_bar_.draw(panel_input.screen_w, panel_input.screen_h);
+            global_context_menu_->render(panel_input.screen_w, panel_input.screen_h,
+                                         panel_input.screen_x, panel_input.screen_y);
+            const auto* mvp_modal = ImGui::GetMainViewport();
+            rml_modal_overlay_->render(static_cast<int>(mvp_modal->Size.x),
+                                       static_cast<int>(mvp_modal->Size.y),
+                                       mvp_modal->Pos.x, mvp_modal->Pos.y,
+                                       viewport_layout_.pos.x, viewport_layout_.pos.y,
+                                       viewport_layout_.size.x, viewport_layout_.size.y);
+        }
+
         ImGui::Render();
+
+        if (vulkan_gui_) {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+            guiFocusState().any_item_active |= ImGui::IsAnyItemActive();
+
+            const auto& bg = lfs::vis::theme().menu_background();
+            VkClearValue clear_value{};
+            clear_value.color = VkClearColorValue{{bg.x, bg.y, bg.z, 1.0f}};
+
+            VulkanContext::Frame frame{};
+            if (vulkan_context && vulkan_context->beginFrame(clear_value, frame)) {
+                if (rmlui_manager_.beginVulkanFrame(frame.command_buffer, frame.extent)) {
+                    rmlui_manager_.renderQueuedVulkanContexts(false);
+                    imgui_vulkan_backend_.renderDrawData(ImGui::GetDrawData(), frame.command_buffer);
+                    rmlui_manager_.renderQueuedVulkanContexts(true);
+                    rmlui_manager_.endVulkanFrame();
+                } else {
+                    rmlui_manager_.clearVulkanQueue();
+                    imgui_vulkan_backend_.renderDrawData(ImGui::GetDrawData(), frame.command_buffer);
+                }
+                if (!vulkan_context->endFrame()) {
+                    LOG_WARN("Vulkan GUI frame present failed: {}", vulkan_context->lastError());
+                }
+            } else if (vulkan_context) {
+                rmlui_manager_.clearVulkanQueue();
+                LOG_WARN("Vulkan GUI frame begin failed: {}", vulkan_context->lastError());
+            }
+
+            if (!ui_layout_changed && ui_layout_settle_frames_ > 0)
+                --ui_layout_settle_frames_;
+
+            persistImGuiSettingsIfNeeded();
+            return;
+#else
+            return;
+#endif
+        }
+
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         guiFocusState().any_item_active |= ImGui::IsAnyItemActive();

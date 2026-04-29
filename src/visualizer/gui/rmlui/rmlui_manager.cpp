@@ -27,6 +27,7 @@
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Factory.h>
+#include <RmlUi/Core/Matrix4.h>
 #include <RmlUi/Debugger.h>
 #include <cassert>
 #include <cstdlib>
@@ -205,9 +206,12 @@ namespace lfs::vis::gui {
         owned_render_interface_.reset();
         render_interface_ = nullptr;
         vulkan_render_interface_ = nullptr;
+        vulkan_queue_.clear();
+        vulkan_foreground_queue_.clear();
         text_input_handler_.reset();
         system_interface_.reset();
         resize_deferring_ = false;
+        vulkan_frame_active_ = false;
         initialized_ = false;
 
         LOG_INFO("RmlUI shut down");
@@ -303,6 +307,67 @@ namespace lfs::vis::gui {
         return system_interface_ ? system_interface_->consumeCursorRequest()
                                  : RmlCursorRequest::None;
     }
+
+    void RmlUIManager::queueVulkanContext(Rml::Context* const context,
+                                          const float offset_x,
+                                          const float offset_y,
+                                          const bool foreground) {
+        if (!context || !vulkan_render_interface_)
+            return;
+        auto& queue = foreground ? vulkan_foreground_queue_ : vulkan_queue_;
+        queue.push_back({
+            .context = context,
+            .offset_x = offset_x,
+            .offset_y = offset_y,
+        });
+    }
+
+    void RmlUIManager::clearVulkanQueue() {
+        vulkan_queue_.clear();
+        vulkan_foreground_queue_.clear();
+    }
+
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+    bool RmlUIManager::beginVulkanFrame(const VkCommandBuffer command_buffer, const VkExtent2D extent) {
+        if (!vulkan_render_interface_ || command_buffer == VK_NULL_HANDLE)
+            return false;
+        vulkan_render_interface_->BeginExternalFrame(command_buffer, extent);
+        vulkan_frame_active_ = true;
+        return true;
+    }
+
+    void RmlUIManager::renderQueuedVulkanContexts(const bool foreground) {
+        auto& queue = foreground ? vulkan_foreground_queue_ : vulkan_queue_;
+        if (!vulkan_render_interface_ || !vulkan_frame_active_) {
+            queue.clear();
+            return;
+        }
+
+        for (const auto& command : queue) {
+            if (!command.context)
+                continue;
+
+            if (command.offset_x != 0.0f || command.offset_y != 0.0f) {
+                const Rml::Matrix4f transform =
+                    Rml::Matrix4f::Translate(command.offset_x, command.offset_y, 0.0f);
+                vulkan_render_interface_->SetTransform(&transform);
+            } else {
+                vulkan_render_interface_->SetTransform(nullptr);
+            }
+            command.context->Render();
+        }
+
+        vulkan_render_interface_->SetTransform(nullptr);
+        queue.clear();
+    }
+
+    void RmlUIManager::endVulkanFrame() {
+        if (!vulkan_render_interface_ || !vulkan_frame_active_)
+            return;
+        vulkan_render_interface_->EndExternalFrame();
+        vulkan_frame_active_ = false;
+    }
+#endif
 
     bool RmlUIManager::shouldDeferFboUpdate(const RmlFBO& fbo) const {
         return resize_deferring_ && fbo.valid();

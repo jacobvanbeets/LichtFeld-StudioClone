@@ -4,10 +4,17 @@
 
 #pragma once
 
+#include "config.h"
+
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
+
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+#include <vulkan/vulkan.h>
+#endif
 
 struct SDL_Window;
 class RenderInterface_VK;
@@ -57,11 +64,28 @@ namespace lfs::vis::gui {
         RmlTextInputHandler* getTextInputHandler() const { return text_input_handler_.get(); }
         SDL_Window* getWindow() const { return window_; }
 
+        void queueVulkanContext(Rml::Context* context,
+                                float offset_x = 0.0f,
+                                float offset_y = 0.0f,
+                                bool foreground = false);
+        void clearVulkanQueue();
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+        [[nodiscard]] bool beginVulkanFrame(VkCommandBuffer command_buffer, VkExtent2D extent);
+        void renderQueuedVulkanContexts(bool foreground);
+        void endVulkanFrame();
+#endif
+
         void beginFrameCursorTracking();
         void trackContextFrame(const Rml::Context* context, int window_x, int window_y);
         RmlCursorRequest consumeCursorRequest();
 
     private:
+        struct VulkanContextCommand {
+            Rml::Context* context = nullptr;
+            float offset_x = 0.0f;
+            float offset_y = 0.0f;
+        };
+
         bool initWithRenderInterface(SDL_Window* window,
                                      float dp_ratio,
                                      std::unique_ptr<Rml::RenderInterface> render_interface,
@@ -74,12 +98,15 @@ namespace lfs::vis::gui {
         RenderInterface_VK* vulkan_render_interface_ = nullptr;
         std::unique_ptr<RmlTextInputHandler> text_input_handler_;
         std::unordered_map<std::string, Rml::Context*> contexts_;
+        std::vector<VulkanContextCommand> vulkan_queue_;
+        std::vector<VulkanContextCommand> vulkan_foreground_queue_;
         SDL_Window* window_ = nullptr;
         float dp_ratio_ = 1.0f;
         std::string active_theme_id_;
         bool resize_deferring_ = false;
         bool debugger_enabled_ = false;
         bool debugger_initialized_ = false;
+        bool vulkan_frame_active_ = false;
         bool initialized_ = false;
     };
 

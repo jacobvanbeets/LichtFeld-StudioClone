@@ -348,6 +348,7 @@ namespace lfs::vis::gui {
 
         bool escape_consumed = false;
         const bool defer_fbo_update = rml_manager_->shouldDeferFboUpdate(fbo_);
+        const bool vulkan_render = rml_manager_->getVulkanRenderInterface() != nullptr;
         if (defer_fbo_update && input_) {
             escape_consumed = forwardInput(*input_, viewport.pos.x, viewport.pos.y,
                                            viewport.size.x, viewport.size.y);
@@ -365,32 +366,42 @@ namespace lfs::vis::gui {
             document_->SetProperty("height", std::format("{}px", ctx_h));
             rml_context_->Update();
 
-            fbo_.ensure(ctx_w, ctx_h);
-            if (!fbo_.valid())
-                return;
-
             if (input_) {
                 escape_consumed = forwardInput(*input_, viewport.pos.x, viewport.pos.y,
                                                viewport.size.x, viewport.size.y);
             }
 
-            auto* render = rml_manager_->getRenderInterface();
-            assert(render);
-            render->SetViewport(ctx_w, ctx_h);
+            if (vulkan_render) {
+                const auto* main_viewport = ImGui::GetMainViewport();
+                const float screen_x = main_viewport ? main_viewport->Pos.x : 0.0f;
+                const float screen_y = main_viewport ? main_viewport->Pos.y : 0.0f;
+                rml_manager_->queueVulkanContext(rml_context_,
+                                                 viewport.pos.x - screen_x,
+                                                 viewport.pos.y - screen_y,
+                                                 true);
+            } else {
+                fbo_.ensure(ctx_w, ctx_h);
+                if (!fbo_.valid())
+                    return;
 
-            GLint prev_fbo = 0;
-            fbo_.bind(&prev_fbo);
-            render->SetTargetFramebuffer(fbo_.fbo());
+                auto* render = rml_manager_->getRenderInterface();
+                assert(render);
+                render->SetViewport(ctx_w, ctx_h);
 
-            render->BeginFrame();
-            rml_context_->Render();
-            render->EndFrame();
+                GLint prev_fbo = 0;
+                fbo_.bind(&prev_fbo);
+                render->SetTargetFramebuffer(fbo_.fbo());
 
-            render->SetTargetFramebuffer(0);
-            fbo_.unbind(prev_fbo);
+                render->BeginFrame();
+                rml_context_->Render();
+                render->EndFrame();
+
+                render->SetTargetFramebuffer(0);
+                fbo_.unbind(prev_fbo);
+            }
         }
 
-        if (fbo_.valid()) {
+        if (!vulkan_render && fbo_.valid()) {
             auto* main_viewport = ImGui::GetMainViewport();
             ImGui::SetNextWindowPos(ImVec2(viewport.pos.x, viewport.pos.y));
             ImGui::SetNextWindowSize(ImVec2(viewport.size.x, viewport.size.y));
