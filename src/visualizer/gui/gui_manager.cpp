@@ -142,7 +142,8 @@ namespace lfs::vis::gui {
                         rgba[dst_offset + 0] = src[src_offset + 0];
                         rgba[dst_offset + 1] = src[src_offset + 1];
                         rgba[dst_offset + 2] = src[src_offset + 2];
-                        rgba[dst_offset + 3] = channels == 4 ? src[src_offset + 3] : 255;
+                        // Match the OpenGL viewport presentation: scene alpha is not a UI fade mask.
+                        rgba[dst_offset + 3] = 255;
                     }
                 }
             }

@@ -11,6 +11,7 @@
 #include "scene/scene_manager.hpp"
 #include "training/trainer.hpp"
 #include "training/training_manager.hpp"
+#include "viewport_appearance_correction.hpp"
 #include "viewport_region_utils.hpp"
 #include "viewport_request_builder.hpp"
 #include <algorithm>
@@ -151,6 +152,14 @@ namespace lfs::vis {
 
         auto request = buildViewportRenderRequest(frame_ctx, render_size);
         auto render_result = engine_->renderGaussiansImage(*model, request);
+
+        if (render_result && render_result->image) {
+            render_result->image = applyViewportAppearanceCorrection(
+                std::move(render_result->image),
+                scene_manager,
+                settings_,
+                frame_ctx.current_camera_id);
+        }
         render_lock.reset();
 
         if (!render_result || !render_result->image) {
