@@ -857,19 +857,13 @@ namespace lfs::vis {
                       viewport_.windowSize.x, viewport_.windowSize.y);
         }
 
-        if (window_manager_->isVulkan()) {
-            LOG_ERROR("Vulkan window initialization is available, but the renderer and GUI backends are still OpenGL. "
-                      "Keeping OpenGL as the default until those layers are ported.");
-            return false;
-        }
-
         // Initialize rendering early so we can show a frame before font atlas build
-        if (!rendering_manager_->isInitialized()) {
+        if (!window_manager_->isVulkan() && !rendering_manager_->isInitialized()) {
             rendering_manager_->initialize();
         }
 
         // Render one frame (grid + background) before the expensive GUI/font init
-        {
+        if (!window_manager_->isVulkan()) {
             RenderingManager::RenderContext ctx{
                 .viewport = viewport_,
                 .settings = rendering_manager_->getSettings(),
@@ -1006,6 +1000,32 @@ namespace lfs::vis {
         }
     }
 
+    void VisualizerImpl::processRenderWorkQueue() {
+        std::vector<WorkItem> render_work;
+        {
+            std::lock_guard lock(work_queue_mutex_);
+            render_work.swap(render_work_queue_);
+        }
+        if (render_work.empty())
+            return;
+
+        processing_render_work_ = true;
+        for (size_t i = 0; i < render_work.size(); ++i) {
+            try {
+                if (render_work[i].run)
+                    render_work[i].run();
+            } catch (...) {
+                for (size_t j = i + 1; j < render_work.size(); ++j) {
+                    if (render_work[j].cancel)
+                        render_work[j].cancel();
+                }
+                processing_render_work_ = false;
+                throw;
+            }
+        }
+        processing_render_work_ = false;
+    }
+
     void VisualizerImpl::render() {
 
         auto now = std::chrono::high_resolution_clock::now();
@@ -1044,6 +1064,56 @@ namespace lfs::vis {
             input_controller_->update(delta_time);
         }
 
+        if (window_manager_->isVulkan()) {
+            RenderingManager::RenderContext context{
+                .viewport = viewport_,
+                .settings = rendering_manager_->getSettings(),
+                .logical_screen_size = window_manager_->getWindowSize(),
+                .viewport_region = nullptr,
+                .scene_manager = scene_manager_.get()};
+
+            if (gui_manager_) {
+                rendering_manager_->setCropboxGizmoActive(gui_manager_->gizmo().isCropboxGizmoActive());
+                rendering_manager_->setEllipsoidGizmoActive(gui_manager_->gizmo().isEllipsoidGizmoActive());
+            }
+
+            const auto vulkan_frame = rendering_manager_->renderVulkanFrame(context);
+            if (gui_manager_) {
+                gui_manager_->setVulkanSceneImage(
+                    vulkan_frame.image,
+                    vulkan_frame.size,
+                    vulkan_frame.flip_y);
+            }
+
+            if (gui_manager_)
+                gui_manager_->render();
+
+            processRenderWorkQueue();
+
+            python::flush_signals();
+            gui_frame_rendered_ = true;
+
+            const bool is_training = trainer_manager_ && trainer_manager_->isRunning();
+            const bool needs_render = rendering_manager_ && rendering_manager_->pollDirtyState();
+            const bool continuous_input = input_controller_ && input_controller_->isContinuousInputActive();
+            const bool has_python_animation = python::has_frame_callback();
+            const bool has_python_overlay = python::has_viewport_draw_handlers();
+            const bool has_python_redraw = python::consume_redraw_request();
+            const bool needs_gui_animation = gui_manager_ && gui_manager_->needsAnimationFrame();
+
+            if (needs_render || continuous_input || has_python_animation || has_python_overlay ||
+                has_python_redraw || needs_gui_animation) {
+                window_manager_->pollEvents();
+            } else if (is_training) {
+                constexpr double TRAINING_WAIT_SEC = 0.1;
+                window_manager_->waitEvents(TRAINING_WAIT_SEC);
+            } else {
+                constexpr double IDLE_WAIT_SEC = 0.5;
+                window_manager_->waitEvents(IDLE_WAIT_SEC);
+            }
+            return;
+        }
+
         // Get viewport region from GUI
         ViewportRegion viewport_region;
         bool has_viewport_region = false;
@@ -1080,30 +1150,7 @@ namespace lfs::vis {
         if (resize_done)
             glFinish();
 
-        {
-            std::vector<WorkItem> render_work;
-            {
-                std::lock_guard lock(work_queue_mutex_);
-                render_work.swap(render_work_queue_);
-            }
-            if (!render_work.empty()) {
-                processing_render_work_ = true;
-                for (size_t i = 0; i < render_work.size(); ++i) {
-                    try {
-                        if (render_work[i].run)
-                            render_work[i].run();
-                    } catch (...) {
-                        for (size_t j = i + 1; j < render_work.size(); ++j) {
-                            if (render_work[j].cancel)
-                                render_work[j].cancel();
-                        }
-                        processing_render_work_ = false;
-                        throw;
-                    }
-                }
-                processing_render_work_ = false;
-            }
-        }
+        processRenderWorkQueue();
 
         window_manager_->swapBuffers();
 

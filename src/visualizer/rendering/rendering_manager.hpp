@@ -65,6 +65,12 @@ namespace lfs::vis {
             SceneManager* scene_manager = nullptr;
         };
 
+        struct VulkanFrameResult {
+            std::shared_ptr<const lfs::core::Tensor> image;
+            glm::ivec2 size{0, 0};
+            bool flip_y = false;
+        };
+
         RenderingManager();
         ~RenderingManager();
 
@@ -74,6 +80,7 @@ namespace lfs::vis {
 
         // Main render function
         void renderFrame(const RenderContext& context);
+        VulkanFrameResult renderVulkanFrame(const RenderContext& context);
 
         // Render preview to external texture (for PiP preview)
         bool renderPreviewFrame(SceneManager* scene_manager,
@@ -409,6 +416,9 @@ namespace lfs::vis {
 
         // GT texture cache
         GTTextureCache gt_texture_cache_;
+        std::shared_ptr<const lfs::core::Tensor> vulkan_viewport_image_;
+        glm::ivec2 vulkan_viewport_image_size_{0, 0};
+        bool vulkan_viewport_image_flip_y_ = false;
 
         // Granular dirty tracking
         std::atomic<uint32_t> dirty_mask_{DirtyFlag::ALL};
@@ -440,6 +450,7 @@ namespace lfs::vis {
         bool synced_frustum_allow_fallback_ = true;
 
         bool initialized_ = false;
+        bool raster_initialized_ = false;
 
         ViewportInteractionContext viewport_interaction_context_;
 

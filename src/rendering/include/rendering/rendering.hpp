@@ -408,8 +408,10 @@ namespace lfs::rendering {
 
         // Lifecycle
         virtual Result<void> initialize() = 0;
+        virtual Result<void> initializeRasterOnly() = 0;
         virtual void shutdown() = 0;
         virtual bool isInitialized() const = 0;
+        virtual bool isRasterInitialized() const = 0;
 
         virtual Result<GaussianGpuFrameResult> renderGaussiansGpuFrame(
             const lfs::core::SplatData& splat_data,

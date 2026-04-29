@@ -29,8 +29,10 @@ namespace lfs::rendering {
         ~RenderingEngineImpl() override;
 
         Result<void> initialize() override;
+        Result<void> initializeRasterOnly() override;
         void shutdown() override;
         bool isInitialized() const override;
+        bool isRasterInitialized() const override;
 
         Result<GaussianGpuFrameResult> renderGaussiansGpuFrame(
             const lfs::core::SplatData& splat_data,
@@ -196,6 +198,7 @@ namespace lfs::rendering {
 
         ManagedShader quad_shader_;
         ManagedShader vignette_shader_;
+        bool raster_initialized_ = false;
 
         // Cache the last uploaded frame payload to avoid redundant CUDA->GL uploads
         // when presenting the exact same render result repeatedly (idle cached frames).

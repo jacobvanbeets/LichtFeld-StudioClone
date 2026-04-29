@@ -15,6 +15,7 @@
 #include "core/image_io.hpp"
 #include "core/logger.hpp"
 #include "core/path_utils.hpp"
+#include "core/tensor.hpp"
 #include "gui/bounds_gizmo.hpp"
 #include "gui/editor/python_editor.hpp"
 #include "gui/layout_state.hpp"
@@ -49,6 +50,7 @@
 #include "python/python_runtime.hpp"
 #include "python/ui_hooks.hpp"
 #include "rendering/coordinate_conventions.hpp"
+#include "rendering/image_layout.hpp"
 #include "rendering/rendering_manager.hpp"
 #include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
@@ -63,12 +65,17 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <format>
 #include <fstream>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl3.h>
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+#include <imgui_impl_vulkan.h>
+#endif
 #include <imgui_internal.h>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string_view>
 #include <unordered_set>
@@ -77,6 +84,497 @@ namespace lfs::vis::gui {
 
     namespace {
         const FrameInputBuffer* s_frame_input = nullptr;
+
+        [[nodiscard]] std::optional<std::vector<unsigned char>> tensorToRgba8(
+            const lfs::core::Tensor& image,
+            const glm::ivec2 expected_size) {
+            if (!image.is_valid() || image.ndim() != 3 || expected_size.x <= 0 || expected_size.y <= 0) {
+                return std::nullopt;
+            }
+
+            const auto layout = lfs::rendering::detectImageLayout(image);
+            if (layout == lfs::rendering::ImageLayout::Unknown) {
+                LOG_ERROR("Vulkan scene upload received unsupported tensor shape [{}, {}, {}]",
+                          image.size(0), image.size(1), image.size(2));
+                return std::nullopt;
+            }
+
+            lfs::core::Tensor formatted = (layout == lfs::rendering::ImageLayout::HWC)
+                                              ? image
+                                              : image.permute({1, 2, 0}).contiguous();
+            if (formatted.device() == lfs::core::Device::CUDA) {
+                formatted = formatted.cpu();
+            }
+            if (formatted.dtype() != lfs::core::DataType::UInt8) {
+                formatted = (formatted.clamp(0.0f, 1.0f) * 255.0f).to(lfs::core::DataType::UInt8);
+            }
+            formatted = formatted.contiguous();
+
+            const int height = static_cast<int>(formatted.size(0));
+            const int width = static_cast<int>(formatted.size(1));
+            const int channels = static_cast<int>(formatted.size(2));
+            if (width != expected_size.x || height != expected_size.y || !formatted.ptr<unsigned char>()) {
+                LOG_ERROR("Vulkan scene upload dimension mismatch: {}x{} vs {}x{}",
+                          width, height, expected_size.x, expected_size.y);
+                return std::nullopt;
+            }
+            if (channels != 1 && channels != 3 && channels != 4) {
+                LOG_ERROR("Vulkan scene upload received unsupported channel count {}", channels);
+                return std::nullopt;
+            }
+
+            const unsigned char* const src = formatted.ptr<unsigned char>();
+            std::vector<unsigned char> rgba(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u);
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    const size_t src_offset = (static_cast<size_t>(y) * width + x) * channels;
+                    const size_t dst_offset = (static_cast<size_t>(y) * width + x) * 4u;
+                    if (channels == 1) {
+                        rgba[dst_offset + 0] = src[src_offset];
+                        rgba[dst_offset + 1] = src[src_offset];
+                        rgba[dst_offset + 2] = src[src_offset];
+                        rgba[dst_offset + 3] = 255;
+                    } else {
+                        rgba[dst_offset + 0] = src[src_offset + 0];
+                        rgba[dst_offset + 1] = src[src_offset + 1];
+                        rgba[dst_offset + 2] = src[src_offset + 2];
+                        rgba[dst_offset + 3] = channels == 4 ? src[src_offset + 3] : 255;
+                    }
+                }
+            }
+            return rgba;
+        }
+
+    } // namespace
+
+    class VulkanSceneTexture {
+        public:
+            VulkanSceneTexture() = default;
+            ~VulkanSceneTexture() { shutdown(); }
+
+            VulkanSceneTexture(const VulkanSceneTexture&) = delete;
+            VulkanSceneTexture& operator=(const VulkanSceneTexture&) = delete;
+
+            bool init(lfs::vis::VulkanContext& context) {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+                if (initialized_) {
+                    return true;
+                }
+                device_ = context.device();
+                physical_device_ = context.physicalDevice();
+                graphics_queue_ = context.graphicsQueue();
+                graphics_queue_family_ = context.graphicsQueueFamily();
+                if (device_ == VK_NULL_HANDLE || physical_device_ == VK_NULL_HANDLE ||
+                    graphics_queue_ == VK_NULL_HANDLE) {
+                    LOG_ERROR("Vulkan scene texture requires an initialized Vulkan context");
+                    return false;
+                }
+
+                VkCommandPoolCreateInfo pool_info{};
+                pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+                pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+                pool_info.queueFamilyIndex = graphics_queue_family_;
+                if (vkCreateCommandPool(device_, &pool_info, nullptr, &command_pool_) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to create Vulkan scene texture command pool");
+                    return false;
+                }
+
+                VkSamplerCreateInfo sampler_info{};
+                sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+                sampler_info.magFilter = VK_FILTER_LINEAR;
+                sampler_info.minFilter = VK_FILTER_LINEAR;
+                sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+                sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+                sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+                sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+                sampler_info.maxLod = 1.0f;
+                if (vkCreateSampler(device_, &sampler_info, nullptr, &sampler_) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to create Vulkan scene texture sampler");
+                    shutdown();
+                    return false;
+                }
+
+                initialized_ = true;
+                return true;
+#else
+                (void)context;
+                return false;
+#endif
+            }
+
+            void shutdown() {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+                if (device_ != VK_NULL_HANDLE) {
+                    vkDeviceWaitIdle(device_);
+                }
+                destroyImageResources();
+                if (sampler_ != VK_NULL_HANDLE) {
+                    vkDestroySampler(device_, sampler_, nullptr);
+                    sampler_ = VK_NULL_HANDLE;
+                }
+                if (command_pool_ != VK_NULL_HANDLE) {
+                    vkDestroyCommandPool(device_, command_pool_, nullptr);
+                    command_pool_ = VK_NULL_HANDLE;
+                }
+#endif
+                initialized_ = false;
+            }
+
+            bool upload(const lfs::core::Tensor& image, const glm::ivec2 size) {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+                if (!initialized_) {
+                    return false;
+                }
+                auto rgba = tensorToRgba8(image, size);
+                if (!rgba || !ensureImageResources(size)) {
+                    return false;
+                }
+
+                const VkDeviceSize upload_size = static_cast<VkDeviceSize>(rgba->size());
+                VkBuffer staging_buffer = VK_NULL_HANDLE;
+                VkDeviceMemory staging_memory = VK_NULL_HANDLE;
+                if (!createBuffer(upload_size,
+                                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                  staging_buffer,
+                                  staging_memory)) {
+                    return false;
+                }
+
+                void* mapped = nullptr;
+                const VkResult map_status = vkMapMemory(device_, staging_memory, 0, upload_size, 0, &mapped);
+                if (map_status != VK_SUCCESS || !mapped) {
+                    LOG_ERROR("Failed to map Vulkan scene texture staging buffer");
+                    vkDestroyBuffer(device_, staging_buffer, nullptr);
+                    vkFreeMemory(device_, staging_memory, nullptr);
+                    return false;
+                }
+                std::memcpy(mapped, rgba->data(), rgba->size());
+                vkUnmapMemory(device_, staging_memory);
+
+                VkCommandBuffer command_buffer = beginSingleTimeCommands();
+                if (command_buffer == VK_NULL_HANDLE) {
+                    vkDestroyBuffer(device_, staging_buffer, nullptr);
+                    vkFreeMemory(device_, staging_memory, nullptr);
+                    return false;
+                }
+
+                transitionImageLayout(command_buffer, image_layout_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+                VkBufferImageCopy copy_region{};
+                copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                copy_region.imageSubresource.mipLevel = 0;
+                copy_region.imageSubresource.baseArrayLayer = 0;
+                copy_region.imageSubresource.layerCount = 1;
+                copy_region.imageExtent = {static_cast<uint32_t>(size.x), static_cast<uint32_t>(size.y), 1};
+                vkCmdCopyBufferToImage(command_buffer,
+                                       staging_buffer,
+                                       image_,
+                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                       1,
+                                       &copy_region);
+
+                transitionImageLayout(command_buffer,
+                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+                const bool submitted = endSingleTimeCommands(command_buffer);
+                image_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                vkDestroyBuffer(device_, staging_buffer, nullptr);
+                vkFreeMemory(device_, staging_memory, nullptr);
+                return submitted;
+#else
+                (void)image;
+                (void)size;
+                return false;
+#endif
+            }
+
+            [[nodiscard]] ImTextureID textureId() const {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+                return reinterpret_cast<ImTextureID>(descriptor_set_);
+#else
+                return 0;
+#endif
+            }
+
+            [[nodiscard]] bool valid() const {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+                return descriptor_set_ != VK_NULL_HANDLE && image_view_ != VK_NULL_HANDLE;
+#else
+                return false;
+#endif
+            }
+
+        private:
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+            [[nodiscard]] uint32_t findMemoryType(const uint32_t type_filter,
+                                                  const VkMemoryPropertyFlags properties) const {
+                VkPhysicalDeviceMemoryProperties memory_properties{};
+                vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties);
+
+                for (uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i) {
+                    const bool supported = (type_filter & (1u << i)) != 0;
+                    const bool matches = (memory_properties.memoryTypes[i].propertyFlags & properties) == properties;
+                    if (supported && matches) {
+                        return i;
+                    }
+                }
+                return std::numeric_limits<uint32_t>::max();
+            }
+
+            bool createBuffer(const VkDeviceSize size,
+                              const VkBufferUsageFlags usage,
+                              const VkMemoryPropertyFlags properties,
+                              VkBuffer& buffer,
+                              VkDeviceMemory& memory) {
+                VkBufferCreateInfo buffer_info{};
+                buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+                buffer_info.size = size;
+                buffer_info.usage = usage;
+                buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                if (vkCreateBuffer(device_, &buffer_info, nullptr, &buffer) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to create Vulkan scene staging buffer");
+                    return false;
+                }
+
+                VkMemoryRequirements requirements{};
+                vkGetBufferMemoryRequirements(device_, buffer, &requirements);
+
+                VkMemoryAllocateInfo alloc_info{};
+                alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                alloc_info.allocationSize = requirements.size;
+                alloc_info.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits, properties);
+                if (alloc_info.memoryTypeIndex == std::numeric_limits<uint32_t>::max()) {
+                    LOG_ERROR("No suitable Vulkan memory type for scene staging buffer");
+                    vkDestroyBuffer(device_, buffer, nullptr);
+                    buffer = VK_NULL_HANDLE;
+                    return false;
+                }
+
+                if (vkAllocateMemory(device_, &alloc_info, nullptr, &memory) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to allocate Vulkan scene staging memory");
+                    vkDestroyBuffer(device_, buffer, nullptr);
+                    buffer = VK_NULL_HANDLE;
+                    return false;
+                }
+
+                if (vkBindBufferMemory(device_, buffer, memory, 0) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to bind Vulkan scene staging memory");
+                    vkDestroyBuffer(device_, buffer, nullptr);
+                    vkFreeMemory(device_, memory, nullptr);
+                    buffer = VK_NULL_HANDLE;
+                    memory = VK_NULL_HANDLE;
+                    return false;
+                }
+                return true;
+            }
+
+            bool ensureImageResources(const glm::ivec2 size) {
+                if (image_ != VK_NULL_HANDLE && size_ == size) {
+                    return true;
+                }
+
+                vkDeviceWaitIdle(device_);
+                destroyImageResources();
+                size_ = size;
+
+                VkImageCreateInfo image_info{};
+                image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+                image_info.imageType = VK_IMAGE_TYPE_2D;
+                image_info.extent.width = static_cast<uint32_t>(size.x);
+                image_info.extent.height = static_cast<uint32_t>(size.y);
+                image_info.extent.depth = 1;
+                image_info.mipLevels = 1;
+                image_info.arrayLayers = 1;
+                image_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+                image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+                image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+                image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+                image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+                image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+                if (vkCreateImage(device_, &image_info, nullptr, &image_) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to create Vulkan scene texture image");
+                    return false;
+                }
+
+                VkMemoryRequirements requirements{};
+                vkGetImageMemoryRequirements(device_, image_, &requirements);
+
+                VkMemoryAllocateInfo alloc_info{};
+                alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                alloc_info.allocationSize = requirements.size;
+                alloc_info.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits,
+                                                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                if (alloc_info.memoryTypeIndex == std::numeric_limits<uint32_t>::max()) {
+                    LOG_ERROR("No suitable Vulkan device-local memory type for scene texture");
+                    destroyImageResources();
+                    return false;
+                }
+
+                if (vkAllocateMemory(device_, &alloc_info, nullptr, &image_memory_) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to allocate Vulkan scene texture memory");
+                    destroyImageResources();
+                    return false;
+                }
+                if (vkBindImageMemory(device_, image_, image_memory_, 0) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to bind Vulkan scene texture memory");
+                    destroyImageResources();
+                    return false;
+                }
+
+                VkImageViewCreateInfo view_info{};
+                view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                view_info.image = image_;
+                view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                view_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+                view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                view_info.subresourceRange.baseMipLevel = 0;
+                view_info.subresourceRange.levelCount = 1;
+                view_info.subresourceRange.baseArrayLayer = 0;
+                view_info.subresourceRange.layerCount = 1;
+                if (vkCreateImageView(device_, &view_info, nullptr, &image_view_) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to create Vulkan scene texture image view");
+                    destroyImageResources();
+                    return false;
+                }
+
+                descriptor_set_ = ImGui_ImplVulkan_AddTexture(
+                    sampler_,
+                    image_view_,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+                return descriptor_set_ != VK_NULL_HANDLE;
+            }
+
+            void destroyImageResources() {
+                if (descriptor_set_ != VK_NULL_HANDLE) {
+                    ImGui_ImplVulkan_RemoveTexture(descriptor_set_);
+                    descriptor_set_ = VK_NULL_HANDLE;
+                }
+                if (image_view_ != VK_NULL_HANDLE) {
+                    vkDestroyImageView(device_, image_view_, nullptr);
+                    image_view_ = VK_NULL_HANDLE;
+                }
+                if (image_ != VK_NULL_HANDLE) {
+                    vkDestroyImage(device_, image_, nullptr);
+                    image_ = VK_NULL_HANDLE;
+                }
+                if (image_memory_ != VK_NULL_HANDLE) {
+                    vkFreeMemory(device_, image_memory_, nullptr);
+                    image_memory_ = VK_NULL_HANDLE;
+                }
+                image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+                size_ = {0, 0};
+            }
+
+            VkCommandBuffer beginSingleTimeCommands() {
+                VkCommandBufferAllocateInfo alloc_info{};
+                alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+                alloc_info.commandPool = command_pool_;
+                alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+                alloc_info.commandBufferCount = 1;
+
+                VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+                if (vkAllocateCommandBuffers(device_, &alloc_info, &command_buffer) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to allocate Vulkan scene upload command buffer");
+                    return VK_NULL_HANDLE;
+                }
+
+                VkCommandBufferBeginInfo begin_info{};
+                begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                if (vkBeginCommandBuffer(command_buffer, &begin_info) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to begin Vulkan scene upload command buffer");
+                    vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
+                    return VK_NULL_HANDLE;
+                }
+                return command_buffer;
+            }
+
+            bool endSingleTimeCommands(VkCommandBuffer command_buffer) {
+                if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to end Vulkan scene upload command buffer");
+                    vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
+                    return false;
+                }
+
+                VkSubmitInfo submit_info{};
+                submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                submit_info.commandBufferCount = 1;
+                submit_info.pCommandBuffers = &command_buffer;
+                const VkResult submit_status = vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE);
+                if (submit_status == VK_SUCCESS) {
+                    vkQueueWaitIdle(graphics_queue_);
+                } else {
+                    LOG_ERROR("Failed to submit Vulkan scene upload command buffer: {}", static_cast<int>(submit_status));
+                }
+                vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
+                return submit_status == VK_SUCCESS;
+            }
+
+            void transitionImageLayout(VkCommandBuffer command_buffer,
+                                       const VkImageLayout old_layout,
+                                       const VkImageLayout new_layout) {
+                VkImageMemoryBarrier barrier{};
+                barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                barrier.oldLayout = old_layout;
+                barrier.newLayout = new_layout;
+                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.image = image_;
+                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                barrier.subresourceRange.baseMipLevel = 0;
+                barrier.subresourceRange.levelCount = 1;
+                barrier.subresourceRange.baseArrayLayer = 0;
+                barrier.subresourceRange.layerCount = 1;
+
+                VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                if (old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
+                    new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+                    barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                } else if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                    src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+                    dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+                } else {
+                    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                }
+
+                vkCmdPipelineBarrier(command_buffer,
+                                     src_stage,
+                                     dst_stage,
+                                     0,
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &barrier);
+            }
+
+            VkDevice device_ = VK_NULL_HANDLE;
+            VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
+            VkQueue graphics_queue_ = VK_NULL_HANDLE;
+            uint32_t graphics_queue_family_ = 0;
+            VkCommandPool command_pool_ = VK_NULL_HANDLE;
+            VkImage image_ = VK_NULL_HANDLE;
+            VkDeviceMemory image_memory_ = VK_NULL_HANDLE;
+            VkImageView image_view_ = VK_NULL_HANDLE;
+            VkSampler sampler_ = VK_NULL_HANDLE;
+            VkDescriptorSet descriptor_set_ = VK_NULL_HANDLE;
+            VkImageLayout image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+            glm::ivec2 size_{0, 0};
+#endif
+            bool initialized_ = false;
+    };
+
+    namespace {
 
         [[nodiscard]] bool isTransformGizmoOverOrUsing() {
             return isBoundsGizmoHovered() ||
@@ -1287,6 +1785,9 @@ namespace lfs::vis::gui {
         sequencer_ui_.destroyGLResources();
         drag_drop_.shutdown();
         destroyCustomCursors();
+        vulkan_scene_uploaded_image_.reset();
+        vulkan_scene_image_.reset();
+        vulkan_scene_texture_.reset();
 
         if (ImGui::GetCurrentContext()) {
             saveImGuiSettings();
@@ -1386,6 +1887,18 @@ namespace lfs::vis::gui {
                   PanelSpace::ViewportOverlay, 0);
     }
 
+    void GuiManager::setVulkanSceneImage(std::shared_ptr<const lfs::core::Tensor> image,
+                                         const glm::ivec2 size,
+                                         const bool flip_y) {
+        vulkan_scene_image_ = std::move(image);
+        vulkan_scene_image_size_ = size;
+        vulkan_scene_image_flip_y_ = flip_y;
+        if (!vulkan_scene_image_) {
+            vulkan_scene_uploaded_image_.reset();
+            vulkan_scene_uploaded_size_ = {0, 0};
+        }
+    }
+
     void GuiManager::renderVulkan() {
 #ifdef LFS_VULKAN_VIEWER_ENABLED
         auto* window_manager = viewer_ ? viewer_->getWindowManager() : nullptr;
@@ -1407,6 +1920,43 @@ namespace lfs::vis::gui {
 
         imgui_vulkan_backend_.newFrame();
         ImGui::NewFrame();
+
+        if (vulkan_scene_image_ && vulkan_scene_image_size_.x > 0 && vulkan_scene_image_size_.y > 0) {
+            if (!vulkan_scene_texture_) {
+                vulkan_scene_texture_ = std::make_unique<VulkanSceneTexture>();
+            }
+            bool texture_ready = vulkan_scene_texture_->init(*vulkan_context);
+            const bool needs_upload =
+                texture_ready &&
+                (vulkan_scene_uploaded_image_.get() != vulkan_scene_image_.get() ||
+                 vulkan_scene_uploaded_size_ != vulkan_scene_image_size_ ||
+                 !vulkan_scene_texture_->valid());
+            if (needs_upload) {
+                texture_ready = vulkan_scene_texture_->upload(*vulkan_scene_image_, vulkan_scene_image_size_);
+                if (texture_ready) {
+                    vulkan_scene_uploaded_image_ = vulkan_scene_image_;
+                    vulkan_scene_uploaded_size_ = vulkan_scene_image_size_;
+                }
+            }
+            if (texture_ready && vulkan_scene_texture_->valid()) {
+                ImGuiViewport* const viewport = ImGui::GetMainViewport();
+                const ImVec2 p0 = viewport ? viewport->Pos : ImVec2(0.0f, 0.0f);
+                const ImVec2 size = viewport ? viewport->Size : ImVec2(
+                    static_cast<float>(vulkan_scene_image_size_.x),
+                    static_cast<float>(vulkan_scene_image_size_.y));
+                const ImVec2 p1(p0.x + size.x, p0.y + size.y);
+                const ImVec2 uv0(0.0f, vulkan_scene_image_flip_y_ ? 1.0f : 0.0f);
+                const ImVec2 uv1(1.0f, vulkan_scene_image_flip_y_ ? 0.0f : 1.0f);
+                ImDrawList* const draw_list = viewport ? ImGui::GetBackgroundDrawList(viewport)
+                                                       : ImGui::GetBackgroundDrawList();
+                draw_list->AddImage(
+                    vulkan_scene_texture_->textureId(),
+                    p0,
+                    p1,
+                    uv0,
+                    uv1);
+            }
+        }
 
         {
             auto& focus = guiFocusState();

@@ -41,10 +41,16 @@
 
 struct SDL_Cursor;
 
+namespace lfs::core {
+    class Tensor;
+}
+
 namespace lfs::vis {
     class VisualizerImpl;
 
     namespace gui {
+        class VulkanSceneTexture;
+
         struct GuiHitTestResult {
             bool blocks_pointer = false;
             bool takes_keyboard_focus = false;
@@ -123,6 +129,9 @@ namespace lfs::vis {
 
             // Drag-drop state for overlays
             [[nodiscard]] bool isDragHovering() const { return drag_drop_hovering_; }
+            void setVulkanSceneImage(std::shared_ptr<const lfs::core::Tensor> image,
+                                     glm::ivec2 size,
+                                     bool flip_y);
 
             // Used by native panel wrappers
             void renderSelectionOverlays(const UIContext& ctx);
@@ -217,6 +226,12 @@ namespace lfs::vis {
             // RmlUI integration
             RmlUIManager rmlui_manager_;
             ImGuiVulkanBackend imgui_vulkan_backend_;
+            std::unique_ptr<VulkanSceneTexture> vulkan_scene_texture_;
+            std::shared_ptr<const lfs::core::Tensor> vulkan_scene_image_;
+            std::shared_ptr<const lfs::core::Tensor> vulkan_scene_uploaded_image_;
+            glm::ivec2 vulkan_scene_image_size_{0, 0};
+            glm::ivec2 vulkan_scene_uploaded_size_{0, 0};
+            bool vulkan_scene_image_flip_y_ = false;
             bool vulkan_gui_ = false;
             SDL_Cursor* pipette_cursor_ = nullptr;
 

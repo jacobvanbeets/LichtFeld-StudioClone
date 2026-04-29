@@ -98,6 +98,7 @@ namespace lfs::vis {
         }
 
         initialized_ = true;
+        raster_initialized_ = true;
         LOG_INFO("Rendering engine initialized successfully");
     }
 

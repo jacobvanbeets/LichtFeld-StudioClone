@@ -53,10 +53,23 @@
         "svg"
       ]
     },
-    "sdl3",
+    {
+      "name": "sdl3",
+      "features": [
+        "vulkan"
+      ]
+    },
     "spdlog",
     "tbb",
     "vulkan",
+    {
+      "name": "vulkan-loader",
+      "features": [
+        "xcb",
+        "xlib"
+      ],
+      "platform": "linux"
+    },
     "vulkan-memory-allocator",
     "volk",
     "usd"

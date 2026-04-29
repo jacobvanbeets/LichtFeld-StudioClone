@@ -30,6 +30,7 @@
 #include "visualizer/gui/video_widget_interface.hpp"
 #include "visualizer/gui/windows/video_extractor_dialog.hpp"
 #include <cstdlib>
+#include <string_view>
 #include <cuda_runtime.h>
 #include <rasterization_api.h>
 
@@ -42,6 +43,22 @@ namespace lfs::app {
     namespace {
 
         bool checkCudaDriverVersion();
+
+        lfs::vis::GraphicsBackend viewerGraphicsBackendFromEnv() {
+            const char* const value = std::getenv("LFS_GRAPHICS_BACKEND");
+            if (!value || !*value)
+                return lfs::vis::GraphicsBackend::OpenGL;
+
+            const std::string_view backend(value);
+            if (backend == "vulkan" || backend == "Vulkan" || backend == "VK" || backend == "vk") {
+                LOG_INFO("Viewer graphics backend requested via LFS_GRAPHICS_BACKEND=vulkan");
+                return lfs::vis::GraphicsBackend::Vulkan;
+            }
+            if (backend != "opengl" && backend != "OpenGL" && backend != "GL" && backend != "gl") {
+                LOG_WARN("Unknown LFS_GRAPHICS_BACKEND='{}'; using OpenGL", backend);
+            }
+            return lfs::vis::GraphicsBackend::OpenGL;
+        }
 
         int runHeadless(std::unique_ptr<lfs::core::param::TrainingParameters> params) {
             if (params->dataset.data_path.empty() && !params->resume_checkpoint) {
@@ -253,6 +270,7 @@ namespace lfs::app {
                 return std::make_unique<lfs::io::video::VideoEncoder>();
             });
 
+            const auto graphics_backend = viewerGraphicsBackendFromEnv();
             auto viewer = vis::Visualizer::create({
                 .title = "LichtFeld Studio",
                 .width = 1280,
@@ -261,6 +279,7 @@ namespace lfs::app {
                 .enable_cuda_interop = true,
                 .show_startup_overlay = !disable_splash,
                 .gut = params->optimization.gut,
+                .graphics_backend = graphics_backend,
             });
 
             viewer->setParameters(*params);

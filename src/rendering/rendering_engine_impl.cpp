@@ -434,6 +434,7 @@ namespace lfs::rendering {
         LOG_INFO("Initializing rendering engine...");
 
         pipeline_.setRenderTargetPool(&render_target_pool_);
+        raster_initialized_ = true;
         mesh_renderer_.setRenderTargetPool(&render_target_pool_);
         screen_renderer_ = std::make_shared<ScreenQuadRenderer>(getPreferredFrameBufferMode());
 
@@ -516,9 +517,21 @@ namespace lfs::rendering {
         return {};
     }
 
+    Result<void> RenderingEngineImpl::initializeRasterOnly() {
+        if (raster_initialized_) {
+            return {};
+        }
+
+        pipeline_.setRenderTargetPool(&render_target_pool_);
+        raster_initialized_ = true;
+        LOG_INFO("Rendering raster pipeline initialized successfully");
+        return {};
+    }
+
     void RenderingEngineImpl::shutdown() {
         LOG_DEBUG("Shutting down rendering engine");
         quad_shader_ = ManagedShader();
+        raster_initialized_ = false;
         invalidatePresentUploadCache();
         if (hovered_depth_id_device_) {
             cudaFree(hovered_depth_id_device_);
@@ -543,6 +556,10 @@ namespace lfs::rendering {
 
     bool RenderingEngineImpl::isInitialized() const {
         return quad_shader_.valid() && screen_renderer_;
+    }
+
+    bool RenderingEngineImpl::isRasterInitialized() const {
+        return raster_initialized_;
     }
 
     Result<void> RenderingEngineImpl::initializeShaders() {
@@ -570,7 +587,7 @@ namespace lfs::rendering {
         const lfs::core::SplatData& splat_data,
         const ViewportRenderRequest& request) {
 
-        if (!isInitialized()) {
+        if (!isRasterInitialized()) {
             LOG_ERROR("Rendering engine not initialized");
             return std::unexpected("Rendering engine not initialized");
         }
@@ -605,7 +622,7 @@ namespace lfs::rendering {
         const lfs::core::SplatData& splat_data,
         const std::array<ViewportRenderRequest, 2>& requests) {
 
-        if (!isInitialized()) {
+        if (!isRasterInitialized()) {
             LOG_ERROR("Rendering engine not initialized");
             return std::unexpected("Rendering engine not initialized");
         }
