@@ -813,6 +813,98 @@ void RenderInterface_VK::Shutdown()
 	Destroy_Instance();
 }
 
+bool RenderInterface_VK::InitializeExternal(const ExternalContext& context)
+{
+	RMLUI_ZoneScopedN("Vulkan - InitializeExternal");
+
+	if (!context.instance || !context.physical_device || !context.device || !context.graphics_queue || !context.render_pass ||
+		context.color_format == VK_FORMAT_UNDEFINED || context.depth_stencil_format == VK_FORMAT_UNDEFINED ||
+		context.extent.width == 0 || context.extent.height == 0)
+	{
+		Rml::Log::Message(Rml::Log::LT_ERROR, "[Vulkan] Invalid external context for RmlUi renderer.");
+		return false;
+	}
+
+	m_external_context = true;
+	m_p_instance = context.instance;
+	m_p_physical_device = context.physical_device;
+	m_p_device = context.device;
+	m_p_queue_graphics = context.graphics_queue;
+	m_p_queue_present = context.graphics_queue;
+	m_p_queue_compute = context.graphics_queue;
+	m_queue_index_graphics = context.graphics_queue_family;
+	m_queue_index_present = context.graphics_queue_family;
+	m_queue_index_compute = context.graphics_queue_family;
+	m_p_render_pass = context.render_pass;
+	m_swapchain_format.format = context.color_format;
+	m_width = static_cast<int>(context.extent.width);
+	m_height = static_cast<int>(context.extent.height);
+
+	VkPhysicalDeviceProperties physical_device_properties = {};
+	vkGetPhysicalDeviceProperties(m_p_physical_device, &physical_device_properties);
+
+	Initialize_Allocator();
+	Initialize_Resources(physical_device_properties);
+	UpdateViewportState(context.extent);
+	Create_Pipelines();
+	return true;
+}
+
+void RenderInterface_VK::ShutdownExternal()
+{
+	RMLUI_ZoneScopedN("Vulkan - ShutdownExternal");
+
+	if (!m_external_context)
+		return;
+
+	if (m_p_device)
+		vkDeviceWaitIdle(m_p_device);
+
+	Destroy_Pipelines();
+	Destroy_Resources();
+	Destroy_Allocator();
+
+	m_p_render_pass = VK_NULL_HANDLE;
+	m_p_instance = VK_NULL_HANDLE;
+	m_p_physical_device = VK_NULL_HANDLE;
+	m_p_device = VK_NULL_HANDLE;
+	m_p_queue_graphics = VK_NULL_HANDLE;
+	m_p_queue_present = VK_NULL_HANDLE;
+	m_p_queue_compute = VK_NULL_HANDLE;
+	m_external_context = false;
+}
+
+void RenderInterface_VK::BeginExternalFrame(VkCommandBuffer command_buffer, VkExtent2D extent)
+{
+	if (!m_external_context || command_buffer == VK_NULL_HANDLE)
+		return;
+
+	if (extent.width != static_cast<uint32_t>(m_width) || extent.height != static_cast<uint32_t>(m_height))
+	{
+		m_width = static_cast<int>(extent.width);
+		m_height = static_cast<int>(extent.height);
+		UpdateViewportState(extent);
+	}
+
+	m_semaphore_index_previous = m_semaphore_index;
+	m_semaphore_index = ((m_semaphore_index + 1) % kSwapchainBackBufferCount);
+
+	Update_PendingForDeletion_Textures_By_Frames();
+	Update_PendingForDeletion_Geometries();
+
+	m_p_current_command_buffer = command_buffer;
+	vkCmdSetViewport(m_p_current_command_buffer, 0, 1, &m_viewport);
+	vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor_original);
+	m_is_apply_to_regular_geometry_stencil = false;
+}
+
+void RenderInterface_VK::EndExternalFrame()
+{
+	if (!m_external_context)
+		return;
+	m_p_current_command_buffer = nullptr;
+}
+
 void RenderInterface_VK::Initialize_Instance(Rml::Vector<const char*> required_extensions) noexcept
 {
 	uint32_t required_version = GetRequiredVersionAndValidateMachine();
@@ -2299,7 +2391,7 @@ void RenderInterface_VK::Create_DepthStencilImageViews() noexcept
 	m_texture_depthstencil.m_p_vk_image_view = p_image_view;
 }
 
-void RenderInterface_VK::CreateResourcesDependentOnSize(const VkExtent2D& real_render_image_size) noexcept
+void RenderInterface_VK::UpdateViewportState(const VkExtent2D& real_render_image_size) noexcept
 {
 	m_viewport.height = static_cast<float>(real_render_image_size.height);
 	m_viewport.width = static_cast<float>(real_render_image_size.width);
@@ -2325,6 +2417,11 @@ void RenderInterface_VK::CreateResourcesDependentOnSize(const VkExtent2D& real_r
 	m_projection = correction_matrix * m_projection;
 
 	SetTransform(nullptr);
+}
+
+void RenderInterface_VK::CreateResourcesDependentOnSize(const VkExtent2D& real_render_image_size) noexcept
+{
+	UpdateViewportState(real_render_image_size);
 
 	CreateRenderPass();
 	CreateSwapchainFrameBuffers(real_render_image_size);

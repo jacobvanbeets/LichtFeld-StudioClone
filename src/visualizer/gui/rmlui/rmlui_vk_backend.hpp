@@ -46,8 +46,25 @@ public:
 
 	using CreateSurfaceCallback = bool (*)(VkInstance instance, VkSurfaceKHR* out_surface);
 
+	struct ExternalContext {
+		VkInstance instance = VK_NULL_HANDLE;
+		VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+		VkDevice device = VK_NULL_HANDLE;
+		VkQueue graphics_queue = VK_NULL_HANDLE;
+		uint32_t graphics_queue_family = 0;
+		VkRenderPass render_pass = VK_NULL_HANDLE;
+		VkFormat color_format = VK_FORMAT_UNDEFINED;
+		VkFormat depth_stencil_format = VK_FORMAT_UNDEFINED;
+		VkExtent2D extent{};
+	};
+
 	bool Initialize(Rml::Vector<const char*> required_extensions, CreateSurfaceCallback create_surface_callback);
 	void Shutdown();
+
+	bool InitializeExternal(const ExternalContext& context);
+	void ShutdownExternal();
+	void BeginExternalFrame(VkCommandBuffer command_buffer, VkExtent2D extent);
+	void EndExternalFrame();
 
 	void BeginFrame();
 	void EndFrame();
@@ -475,6 +492,7 @@ private:
 	void Create_DepthStencilImage() noexcept;
 	void Create_DepthStencilImageViews() noexcept;
 
+	void UpdateViewportState(const VkExtent2D& real_render_image_size) noexcept;
 	void CreateResourcesDependentOnSize(const VkExtent2D& real_render_image_size) noexcept;
 
 	buffer_data_t CreateResource_StagingBuffer(VkDeviceSize size, VkBufferUsageFlags flags) noexcept;
@@ -509,6 +527,7 @@ private:
 	bool m_is_apply_to_regular_geometry_stencil;
 	bool m_is_use_scissor_specified;
 	bool m_is_use_stencil_pipeline;
+	bool m_external_context = false;
 
 	int m_width;
 	int m_height;
