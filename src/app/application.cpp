@@ -240,7 +240,7 @@ namespace lfs::app {
 
         int runGui(std::unique_ptr<lfs::core::param::TrainingParameters> params) {
             if (params->optimization.no_interop) {
-                LOG_INFO("CUDA-GL interop disabled");
+                LOG_INFO("GPU display interop disabled");
                 lfs::rendering::disableInterop();
             }
 
@@ -276,7 +276,7 @@ namespace lfs::app {
                 .width = 1280,
                 .height = 720,
                 .antialiasing = false,
-                .enable_cuda_interop = true,
+                .enable_cuda_interop = !params->optimization.no_interop,
                 .show_startup_overlay = !disable_splash,
                 .gut = params->optimization.gut,
                 .graphics_backend = graphics_backend,

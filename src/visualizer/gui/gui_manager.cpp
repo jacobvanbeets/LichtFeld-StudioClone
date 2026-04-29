@@ -227,18 +227,21 @@ namespace lfs::vis::gui {
                 initialized_ = false;
             }
 
-            bool upload(const lfs::core::Tensor& image, const glm::ivec2 size) {
+            bool upload(const lfs::core::Tensor& image,
+                        const glm::ivec2 size,
+                        const bool enable_cuda_interop) {
 #ifdef LFS_VULKAN_VIEWER_ENABLED
                 if (!initialized_) {
                     return false;
                 }
-                if (uploadWithCudaInterop(image, size)) {
+                if (enable_cuda_interop && uploadWithCudaInterop(image, size)) {
                     return true;
                 }
                 return uploadWithStaging(image, size);
 #else
                 (void)image;
                 (void)size;
+                (void)enable_cuda_interop;
                 return false;
 #endif
             }
@@ -2237,7 +2240,11 @@ namespace lfs::vis::gui {
                  vulkan_scene_uploaded_size_ != vulkan_scene_image_size_ ||
                  !vulkan_scene_texture_->valid());
             if (needs_upload) {
-                texture_ready = vulkan_scene_texture_->upload(*vulkan_scene_image_, vulkan_scene_image_size_);
+                const bool enable_cuda_interop = viewer_ && viewer_->options_.enable_cuda_interop;
+                texture_ready = vulkan_scene_texture_->upload(
+                    *vulkan_scene_image_,
+                    vulkan_scene_image_size_,
+                    enable_cuda_interop);
                 if (texture_ready) {
                     vulkan_scene_uploaded_image_ = vulkan_scene_image_;
                     vulkan_scene_uploaded_size_ = vulkan_scene_image_size_;
