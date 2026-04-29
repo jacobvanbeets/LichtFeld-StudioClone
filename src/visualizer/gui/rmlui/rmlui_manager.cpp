@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gui/rmlui/rmlui_manager.hpp"
+#include "config.h"
 #include "core/logger.hpp"
 #include "gui/rmlui/elements/chromaticity_element.hpp"
 #include "gui/rmlui/elements/color_picker_element.hpp"
@@ -17,6 +18,11 @@
 #include "gui/rmlui/rmlui_system_interface.hpp"
 #include "internal/resource_paths.hpp"
 #include "python/python_runtime.hpp"
+
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+#include "gui/rmlui/rmlui_vk_backend.hpp"
+#include "window/vulkan_context.hpp"
+#endif
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/ElementInstancer.h>
@@ -46,24 +52,76 @@ namespace lfs::vis::gui {
     }
 
     bool RmlUIManager::init(SDL_Window* window, float dp_ratio) {
+        auto render_interface = std::make_unique<RmlRenderInterface>();
+        auto* gl_render_interface = render_interface.get();
+        return initWithRenderInterface(window, dp_ratio, std::move(render_interface), gl_render_interface, nullptr);
+    }
+
+    bool RmlUIManager::initVulkan(SDL_Window* window, lfs::vis::VulkanContext& vulkan_context, float dp_ratio) {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+        auto render_interface = std::make_unique<RenderInterface_VK>();
+        RenderInterface_VK::ExternalContext context{};
+        context.instance = vulkan_context.instance();
+        context.physical_device = vulkan_context.physicalDevice();
+        context.device = vulkan_context.device();
+        context.graphics_queue = vulkan_context.graphicsQueue();
+        context.graphics_queue_family = vulkan_context.graphicsQueueFamily();
+        context.render_pass = vulkan_context.renderPass();
+        context.color_format = vulkan_context.swapchainFormat();
+        context.depth_stencil_format = vulkan_context.depthStencilFormat();
+        context.extent = vulkan_context.swapchainExtent();
+
+        auto* vulkan_render_interface = render_interface.get();
+        if (!vulkan_render_interface->InitializeExternal(context)) {
+            LOG_ERROR("Failed to initialize RmlUI Vulkan render interface");
+            return false;
+        }
+
+        return initWithRenderInterface(window, dp_ratio, std::move(render_interface), nullptr, vulkan_render_interface);
+#else
+        (void)window;
+        (void)vulkan_context;
+        (void)dp_ratio;
+        LOG_ERROR("RmlUI Vulkan initialization requested, but Vulkan viewer dependencies are disabled");
+        return false;
+#endif
+    }
+
+    bool RmlUIManager::initWithRenderInterface(SDL_Window* window,
+                                               float dp_ratio,
+                                               std::unique_ptr<Rml::RenderInterface> render_interface,
+                                               RmlRenderInterface* gl_render_interface,
+                                               RenderInterface_VK* vulkan_render_interface) {
         assert(!initialized_);
         assert(window);
         assert(dp_ratio >= 1.0f);
+        assert(render_interface);
 
         dp_ratio_ = dp_ratio;
         window_ = window;
         debugger_enabled_ = envFlagEnabled("LFS_RML_DEBUGGER");
 
         system_interface_ = std::make_unique<RmlSystemInterface>(window);
-        render_interface_ = std::make_unique<RmlRenderInterface>();
+        owned_render_interface_ = std::move(render_interface);
+        render_interface_ = gl_render_interface;
+        vulkan_render_interface_ = vulkan_render_interface;
         text_input_handler_ = std::make_unique<RmlTextInputHandler>();
 
         Rml::SetSystemInterface(system_interface_.get());
-        Rml::SetRenderInterface(render_interface_.get());
+        Rml::SetRenderInterface(owned_render_interface_.get());
         Rml::SetTextInputHandler(text_input_handler_.get());
 
         if (!Rml::Initialise()) {
             LOG_ERROR("Failed to initialize RmlUI");
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+            if (vulkan_render_interface_)
+                vulkan_render_interface_->ShutdownExternal();
+#endif
+            owned_render_interface_.reset();
+            render_interface_ = nullptr;
+            vulkan_render_interface_ = nullptr;
+            text_input_handler_.reset();
+            system_interface_.reset();
             return false;
         }
 
@@ -140,7 +198,13 @@ namespace lfs::vis::gui {
         if (Rml::GetTextInputHandler() == text_input_handler_.get())
             Rml::SetTextInputHandler(nullptr);
         Rml::Shutdown();
-        render_interface_.reset();
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+        if (vulkan_render_interface_)
+            vulkan_render_interface_->ShutdownExternal();
+#endif
+        owned_render_interface_.reset();
+        render_interface_ = nullptr;
+        vulkan_render_interface_ = nullptr;
         text_input_handler_.reset();
         system_interface_.reset();
         resize_deferring_ = false;

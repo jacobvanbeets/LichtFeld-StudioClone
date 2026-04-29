@@ -10,9 +10,15 @@
 #include <unordered_map>
 
 struct SDL_Window;
+class RenderInterface_VK;
 
 namespace Rml {
     class Context;
+    class RenderInterface;
+}
+
+namespace lfs::vis {
+    class VulkanContext;
 }
 
 namespace lfs::vis::gui {
@@ -29,6 +35,7 @@ namespace lfs::vis::gui {
         ~RmlUIManager();
 
         bool init(SDL_Window* window, float dp_ratio = 1.0f);
+        bool initVulkan(SDL_Window* window, lfs::vis::VulkanContext& vulkan_context, float dp_ratio = 1.0f);
         void shutdown();
         [[nodiscard]] bool isInitialized() const { return initialized_; }
 
@@ -45,7 +52,8 @@ namespace lfs::vis::gui {
         void activateTheme(const std::string& theme_id);
         const std::string& activeThemeId() const { return active_theme_id_; }
 
-        RmlRenderInterface* getRenderInterface() const { return render_interface_.get(); }
+        RmlRenderInterface* getRenderInterface() const { return render_interface_; }
+        RenderInterface_VK* getVulkanRenderInterface() const { return vulkan_render_interface_; }
         RmlTextInputHandler* getTextInputHandler() const { return text_input_handler_.get(); }
         SDL_Window* getWindow() const { return window_; }
 
@@ -54,8 +62,16 @@ namespace lfs::vis::gui {
         RmlCursorRequest consumeCursorRequest();
 
     private:
+        bool initWithRenderInterface(SDL_Window* window,
+                                     float dp_ratio,
+                                     std::unique_ptr<Rml::RenderInterface> render_interface,
+                                     RmlRenderInterface* gl_render_interface,
+                                     RenderInterface_VK* vulkan_render_interface);
+
         std::unique_ptr<RmlSystemInterface> system_interface_;
-        std::unique_ptr<RmlRenderInterface> render_interface_;
+        std::unique_ptr<Rml::RenderInterface> owned_render_interface_;
+        RmlRenderInterface* render_interface_ = nullptr;
+        RenderInterface_VK* vulkan_render_interface_ = nullptr;
         std::unique_ptr<RmlTextInputHandler> text_input_handler_;
         std::unordered_map<std::string, Rml::Context*> contexts_;
         SDL_Window* window_ = nullptr;
