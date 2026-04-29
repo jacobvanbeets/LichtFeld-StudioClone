@@ -3319,17 +3319,10 @@ namespace lfs::vis::gui {
     }
 
     bool GuiManager::isPositionInViewport(double x, double y) const {
-        const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
-
-        // Convert to window-relative coordinates
-        float rel_x = static_cast<float>(x) - main_viewport->WorkPos.x;
-        float rel_y = static_cast<float>(y) - main_viewport->WorkPos.y;
-
-        // Check if within viewport bounds
-        return (rel_x >= viewport_layout_.pos.x &&
-                rel_x < viewport_layout_.pos.x + viewport_layout_.size.x &&
-                rel_y >= viewport_layout_.pos.y &&
-                rel_y < viewport_layout_.pos.y + viewport_layout_.size.y);
+        return (x >= viewport_layout_.pos.x &&
+                x < viewport_layout_.pos.x + viewport_layout_.size.x &&
+                y >= viewport_layout_.pos.y &&
+                y < viewport_layout_.pos.y + viewport_layout_.size.y);
     }
 
     bool GuiManager::isPositionOverFloatingPanel(const double x, const double y) const {
