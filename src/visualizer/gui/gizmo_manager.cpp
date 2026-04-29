@@ -2,10 +2,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-// clang-format off
-#include <glad/glad.h>
-// clang-format on
-
 #include "gui/gizmo_manager.hpp"
 #include "core/events.hpp"
 #include "core/logger.hpp"
@@ -36,10 +32,13 @@
 #include "visualizer/scene_coordinate_utils.hpp"
 #include "visualizer_impl.hpp"
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <glm/gtc/matrix_transform.hpp>
+#include <optional>
 #include <unordered_set>
+#include <vector>
 
 namespace lfs::vis::gui {
 
@@ -74,6 +73,182 @@ namespace lfs::vis::gui {
 
         [[nodiscard]] int panelGizmoId(const int base, const SplitViewPanelId panel) {
             return base + (panel == SplitViewPanelId::Right ? 1 : 0);
+        }
+
+        struct ImGuiViewportGizmoMarker {
+            int encoded_axis = -1;
+            int axis = 0;
+            bool negative = false;
+            glm::vec2 screen_pos{0.0f};
+            float radius = 0.0f;
+            float depth = 0.0f;
+            bool visible = false;
+        };
+
+        struct ImGuiViewportGizmoLayout {
+            glm::vec2 top_left{0.0f};
+            glm::vec2 center{0.0f};
+            float size = 0.0f;
+            std::array<ImGuiViewportGizmoMarker, 6> markers{};
+        };
+
+        constexpr std::array<glm::vec3, 3> VIEWPORT_GIZMO_AXIS_COLORS = {
+            glm::vec3{0.89f, 0.15f, 0.21f},
+            glm::vec3{0.54f, 0.86f, 0.20f},
+            glm::vec3{0.17f, 0.48f, 0.87f}};
+        constexpr float VIEWPORT_GIZMO_SPHERE_RADIUS = 0.198f;
+        constexpr float VIEWPORT_GIZMO_LABEL_DISTANCE = 0.63f;
+        constexpr float VIEWPORT_GIZMO_HOVER_SCALE = 1.2f;
+        constexpr float VIEWPORT_GIZMO_HOVER_BRIGHTNESS = 1.3f;
+        constexpr float VIEWPORT_GIZMO_HIT_RADIUS_SCALE = 2.5f;
+
+        [[nodiscard]] ImU32 viewportGizmoAxisColor(const int axis, const float alpha, const float brightness = 1.0f) {
+            const glm::vec3 c = glm::clamp(VIEWPORT_GIZMO_AXIS_COLORS[static_cast<size_t>(axis)] * brightness,
+                                           glm::vec3(0.0f), glm::vec3(1.0f));
+            return IM_COL32(static_cast<int>(c.r * 255.0f),
+                            static_cast<int>(c.g * 255.0f),
+                            static_cast<int>(c.b * 255.0f),
+                            static_cast<int>(std::clamp(alpha, 0.0f, 1.0f) * 255.0f));
+        }
+
+        [[nodiscard]] std::optional<ImGuiViewportGizmoLayout> buildImGuiViewportGizmoLayout(
+            const ViewportGizmoPanelTarget& panel,
+            const float size,
+            const float margin_x,
+            const float margin_y) {
+            if (!panel.valid() || size <= 0.0f) {
+                return std::nullopt;
+            }
+
+            ImGuiViewportGizmoLayout layout;
+            layout.size = size;
+            layout.top_left = {
+                panel.pos.x + panel.size.x - size - margin_x,
+                panel.pos.y + margin_y,
+            };
+            layout.center = layout.top_left + glm::vec2(size * 0.5f);
+
+            constexpr float GIZMO_DISTANCE = 2.8f;
+            constexpr float GIZMO_FOV = 38.0f;
+            glm::mat4 view = lfs::rendering::makeViewMatrix(panel.viewport->getRotationMatrix(), glm::vec3(0.0f));
+            view[3][2] = -GIZMO_DISTANCE;
+            const glm::mat4 proj = glm::perspective(glm::radians(GIZMO_FOV), 1.0f, 0.1f, 10.0f);
+            const glm::vec3 origin_cam_space = glm::vec3(view * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+            const float ref_dist = std::max(glm::length(origin_cam_space), 0.001f);
+
+            const auto project_marker = [&](const int axis, const bool negative) {
+                ImGuiViewportGizmoMarker marker;
+                marker.axis = axis;
+                marker.negative = negative;
+                marker.encoded_axis = axis + (negative ? 3 : 0);
+
+                glm::vec3 position(0.0f);
+                position[axis] = negative ? -VIEWPORT_GIZMO_LABEL_DISTANCE : VIEWPORT_GIZMO_LABEL_DISTANCE;
+
+                const glm::vec4 clip = proj * view * glm::vec4(position, 1.0f);
+                if (clip.w <= 0.0f) {
+                    return marker;
+                }
+
+                const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                const float local_x = (ndc.x * 0.5f + 0.5f) * size;
+                const float local_y = (1.0f - (ndc.y * 0.5f + 0.5f)) * size;
+                const glm::vec3 cam_space = glm::vec3(view * glm::vec4(position, 1.0f));
+                const float scale_factor = glm::length(cam_space) / ref_dist;
+
+                marker.screen_pos = layout.top_left + glm::vec2(local_x, local_y);
+                marker.radius = VIEWPORT_GIZMO_SPHERE_RADIUS * scale_factor * size * 0.5f;
+                marker.depth = clip.z / clip.w;
+                marker.visible = true;
+                return marker;
+            };
+
+            for (int axis = 0; axis < 3; ++axis) {
+                layout.markers[static_cast<size_t>(axis)] = project_marker(axis, false);
+                layout.markers[static_cast<size_t>(axis + 3)] = project_marker(axis, true);
+            }
+            return layout;
+        }
+
+        [[nodiscard]] int hitTestImGuiViewportGizmo(
+            const ImGuiViewportGizmoLayout& layout,
+            const glm::vec2& mouse_pos) {
+            for (const auto& marker : layout.markers) {
+                if (!marker.visible) {
+                    continue;
+                }
+                const glm::vec2 delta = mouse_pos - marker.screen_pos;
+                const float radius = marker.radius * VIEWPORT_GIZMO_HIT_RADIUS_SCALE;
+                if (glm::dot(delta, delta) <= radius * radius) {
+                    return marker.encoded_axis;
+                }
+            }
+            return -1;
+        }
+
+        void drawImGuiViewportGizmo(
+            const ImGuiViewportGizmoLayout& layout,
+            ImDrawList* const draw_list,
+            const int hovered_axis) {
+            if (!draw_list) {
+                return;
+            }
+
+            const auto& t = theme();
+            const ImVec2 top_left(layout.top_left.x, layout.top_left.y);
+            const ImVec2 bottom_right(layout.top_left.x + layout.size, layout.top_left.y + layout.size);
+            draw_list->PushClipRect(top_left, bottom_right, true);
+
+            const ImVec2 center(layout.center.x, layout.center.y);
+            draw_list->AddCircleFilled(center, layout.size * 0.46f,
+                                       toU32WithAlpha(t.overlay.background, 0.24f), 40);
+            draw_list->AddCircle(center, layout.size * 0.46f,
+                                 toU32WithAlpha(t.overlay.text_dim, 0.30f), 40, 1.0f);
+
+            std::vector<const ImGuiViewportGizmoMarker*> draw_order;
+            draw_order.reserve(layout.markers.size());
+            for (const auto& marker : layout.markers) {
+                if (marker.visible) {
+                    draw_order.push_back(&marker);
+                }
+            }
+            std::sort(draw_order.begin(), draw_order.end(),
+                      [](const auto* a, const auto* b) {
+                          return a->depth > b->depth;
+                      });
+
+            for (const auto& marker : layout.markers) {
+                if (!marker.visible || marker.negative) {
+                    continue;
+                }
+                const ImVec2 p(marker.screen_pos.x, marker.screen_pos.y);
+                draw_list->AddLine(center, p, viewportGizmoAxisColor(marker.axis, 0.72f), 3.0f);
+            }
+
+            for (const auto* const marker_ptr : draw_order) {
+                const auto& marker = *marker_ptr;
+                const bool hovered = hovered_axis == marker.encoded_axis;
+                const float radius = marker.radius * (hovered ? VIEWPORT_GIZMO_HOVER_SCALE : 1.0f);
+                const float brightness = hovered ? VIEWPORT_GIZMO_HOVER_BRIGHTNESS : 1.0f;
+                const ImU32 color = viewportGizmoAxisColor(marker.axis, marker.negative ? 0.88f : 1.0f, brightness);
+                const ImVec2 p(marker.screen_pos.x, marker.screen_pos.y);
+
+                if (marker.negative) {
+                    draw_list->AddCircle(p, radius, color, 24, hovered ? 3.0f : 2.0f);
+                    draw_list->AddCircleFilled(p, std::max(radius - 5.0f, 2.0f),
+                                               viewportGizmoAxisColor(marker.axis, 0.18f, brightness), 20);
+                } else {
+                    draw_list->AddCircleFilled(p, radius, color, 24);
+                    draw_list->AddCircle(p, radius, toU32WithAlpha(t.palette.background, 0.55f), 24, 1.0f);
+
+                    const char label[2] = {static_cast<char>('X' + marker.axis), '\0'};
+                    const ImVec2 text_size = ImGui::CalcTextSize(label);
+                    draw_list->AddText(ImVec2(p.x - text_size.x * 0.5f, p.y - text_size.y * 0.5f),
+                                       IM_COL32(255, 255, 255, 245), label);
+                }
+            }
+
+            draw_list->PopClipRect();
         }
 
         [[nodiscard]] std::vector<ViewportGizmoPanelTarget> collectViewportGizmoPanels(
@@ -1516,9 +1691,13 @@ namespace lfs::vis::gui {
         if (!rendering_manager)
             return;
 
-        auto* const engine = rendering_manager->getRenderingEngine();
-        if (!engine)
-            return;
+        const bool use_imgui_gizmo = viewer_->getWindowManager() && viewer_->getWindowManager()->isVulkan();
+        lfs::rendering::RenderingEngine* engine = nullptr;
+        if (!use_imgui_gizmo) {
+            engine = rendering_manager->getRenderingEngine();
+            if (!engine)
+                return;
+        }
 
         const glm::vec2 vp_pos(viewport.pos.x, viewport.pos.y);
         const glm::vec2 vp_size(viewport.size.x, viewport.size.y);
@@ -1555,8 +1734,15 @@ namespace lfs::vis::gui {
                     continue;
                 }
 
-                hovered_axis = engine->hitTestViewportGizmo(glm::vec2(mouse_x, mouse_y),
-                                                            panel.pos, panel.size);
+                if (use_imgui_gizmo) {
+                    if (const auto layout = buildImGuiViewportGizmoLayout(
+                            panel, VIEWPORT_GIZMO_SIZE, VIEWPORT_GIZMO_MARGIN_X, VIEWPORT_GIZMO_MARGIN_Y)) {
+                        hovered_axis = hitTestImGuiViewportGizmo(*layout, glm::vec2(mouse_x, mouse_y));
+                    }
+                } else {
+                    hovered_axis = engine->hitTestViewportGizmo(glm::vec2(mouse_x, mouse_y),
+                                                                panel.pos, panel.size);
+                }
                 hovered_panel = &panel;
                 break;
             }
@@ -1583,7 +1769,7 @@ namespace lfs::vis::gui {
                     viewport_gizmo_dragging_ = true;
                     viewport_gizmo_active_panel_ = hovered_panel->panel;
                     active_viewport.camera.startRotateAroundCenter(capture_mouse_pos, time);
-                    if (SDL_Window* const window = SDL_GL_GetCurrentWindow()) {
+                    if (SDL_Window* const window = viewer_->getWindow()) {
                         float fx, fy;
                         SDL_GetMouseState(&fx, &fy);
                         gizmo_drag_start_cursor_ = {fx, fy};
@@ -1620,7 +1806,7 @@ namespace lfs::vis::gui {
                     }
                     viewport_gizmo_dragging_ = false;
 
-                    if (SDL_Window* const window = SDL_GL_GetCurrentWindow()) {
+                    if (SDL_Window* const window = viewer_->getWindow()) {
                         SDL_SetWindowRelativeMouseMode(window, false);
                         SDL_WarpMouseInWindow(window,
                                               static_cast<float>(gizmo_drag_start_cursor_.x),
@@ -1633,15 +1819,27 @@ namespace lfs::vis::gui {
         for (const auto& panel : panels) {
             const int panel_hover_axis =
                 hovered_panel && hovered_panel->panel == panel.panel ? hovered_axis : -1;
-            engine->setViewportGizmoHover(panel_hover_axis);
-            if (auto result = engine->renderViewportGizmo(panel.viewport->getRotationMatrix(),
-                                                          panel.pos,
-                                                          panel.size);
-                !result) {
-                LOG_WARN("Failed to render viewport gizmo: {}", result.error());
+            if (use_imgui_gizmo) {
+                if (const auto layout = buildImGuiViewportGizmoLayout(
+                        panel, VIEWPORT_GIZMO_SIZE, VIEWPORT_GIZMO_MARGIN_X, VIEWPORT_GIZMO_MARGIN_Y)) {
+                    drawImGuiViewportGizmo(
+                        *layout,
+                        ImGui::GetBackgroundDrawList(ImGui::GetMainViewport()),
+                        panel_hover_axis);
+                }
+            } else {
+                engine->setViewportGizmoHover(panel_hover_axis);
+                if (auto result = engine->renderViewportGizmo(panel.viewport->getRotationMatrix(),
+                                                              panel.pos,
+                                                              panel.size);
+                    !result) {
+                    LOG_WARN("Failed to render viewport gizmo: {}", result.error());
+                }
             }
         }
-        engine->setViewportGizmoHover(-1);
+        if (engine) {
+            engine->setViewportGizmoHover(-1);
+        }
 
         if (viewport_gizmo_dragging_) {
             if (const auto* const active_panel = find_panel(viewport_gizmo_active_panel_)) {

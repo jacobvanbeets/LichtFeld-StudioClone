@@ -152,12 +152,6 @@ namespace lfs::vis::gui::native_panels {
     }
 
     bool ViewportGizmoPanel::poll(const PanelDrawContext& ctx) {
-        if (ctx.ui && ctx.ui->viewer) {
-            if (auto* const window_manager = ctx.ui->viewer->getWindowManager();
-                window_manager && window_manager->isVulkan()) {
-                return false;
-            }
-        }
         return !ctx.ui_hidden && ctx.viewport &&
                ctx.viewport->size.x > 0 && ctx.viewport->size.y > 0;
     }
