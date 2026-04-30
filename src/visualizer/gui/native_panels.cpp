@@ -33,6 +33,8 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
+#include <limits>
+#include <utility>
 
 namespace lfs::vis::gui::native_panels {
 
@@ -137,6 +139,13 @@ namespace lfs::vis::gui::native_panels {
             return panels;
         }
 
+        [[nodiscard]] glm::vec2 renderToPanelScreen(const GuidePanelTarget& panel,
+                                                    const glm::vec2& projected) {
+            const float sx = panel.size.x / static_cast<float>(std::max(panel.render_size.x, 1));
+            const float sy = panel.size.y / static_cast<float>(std::max(panel.render_size.y, 1));
+            return glm::vec2(panel.pos.x + projected.x * sx, panel.pos.y + projected.y * sy);
+        }
+
         [[nodiscard]] std::optional<glm::vec2> projectToScreen(
             const GuidePanelTarget& panel,
             const RenderSettings& settings,
@@ -152,9 +161,68 @@ namespace lfs::vis::gui::native_panels {
             if (!projected) {
                 return std::nullopt;
             }
-            const float sx = panel.size.x / static_cast<float>(std::max(panel.render_size.x, 1));
-            const float sy = panel.size.y / static_cast<float>(std::max(panel.render_size.y, 1));
-            return glm::vec2(panel.pos.x + projected->x * sx, panel.pos.y + projected->y * sy);
+            return renderToPanelScreen(panel, *projected);
+        }
+
+        [[nodiscard]] std::optional<std::pair<glm::vec2, glm::vec2>> projectSegmentToScreenClipped(
+            const GuidePanelTarget& panel,
+            const RenderSettings& settings,
+            const glm::vec3& world_a,
+            const glm::vec3& world_b) {
+            constexpr float MIN_VIEW_Z = -1e-4f;
+            const glm::mat3 rotation = panel.viewport->getRotationMatrix();
+            const glm::vec3 translation = panel.viewport->getTranslation();
+            glm::vec3 view_a = glm::transpose(rotation) * (world_a - translation);
+            glm::vec3 view_b = glm::transpose(rotation) * (world_b - translation);
+
+            if (view_a.z >= MIN_VIEW_Z && view_b.z >= MIN_VIEW_Z) {
+                return std::nullopt;
+            }
+
+            const auto clip_to_near = [&](glm::vec3& inside, glm::vec3& outside) {
+                const float denom = outside.z - inside.z;
+                if (std::abs(denom) <= 1e-8f) {
+                    return;
+                }
+                const float t = (MIN_VIEW_Z - inside.z) / denom;
+                outside = glm::mix(inside, outside, std::clamp(t, 0.0f, 1.0f));
+                outside.z = MIN_VIEW_Z;
+            };
+            if (view_a.z >= MIN_VIEW_Z) {
+                clip_to_near(view_b, view_a);
+            }
+            if (view_b.z >= MIN_VIEW_Z) {
+                clip_to_near(view_a, view_b);
+            }
+
+            const auto project_view = [&](const glm::vec3& view) -> std::optional<glm::vec2> {
+                const float width = static_cast<float>(std::max(panel.render_size.x, 1));
+                const float height = static_cast<float>(std::max(panel.render_size.y, 1));
+                const float cx = width * 0.5f;
+                const float cy = height * 0.5f;
+                if (settings.orthographic) {
+                    if (!std::isfinite(settings.ortho_scale) || settings.ortho_scale <= 0.0f) {
+                        return std::nullopt;
+                    }
+                    return glm::vec2(cx + view.x * settings.ortho_scale,
+                                     cy - view.y * settings.ortho_scale);
+                }
+                const auto [fx, fy] = lfs::rendering::computePixelFocalLengths(
+                    panel.render_size, settings.focal_length_mm);
+                const float depth = -view.z;
+                if (depth <= 0.0f) {
+                    return std::nullopt;
+                }
+                return glm::vec2(cx + view.x * fx / depth,
+                                 cy - view.y * fy / depth);
+            };
+
+            const auto pa = project_view(view_a);
+            const auto pb = project_view(view_b);
+            if (!pa || !pb) {
+                return std::nullopt;
+            }
+            return std::pair(renderToPanelScreen(panel, *pa), renderToPanelScreen(panel, *pb));
         }
 
         void addProjectedLine(LineRenderer& lines,
@@ -168,6 +236,18 @@ namespace lfs::vis::gui::native_panels {
             const auto pb = projectToScreen(panel, settings, b);
             if (pa && pb) {
                 lines.addLine(*pa, *pb, color, thickness);
+            }
+        }
+
+        void addProjectedLineClipped(LineRenderer& lines,
+                                     const GuidePanelTarget& panel,
+                                     const RenderSettings& settings,
+                                     const glm::vec3& a,
+                                     const glm::vec3& b,
+                                     const glm::vec4& color,
+                                     const float thickness) {
+            if (const auto projected = projectSegmentToScreenClipped(panel, settings, a, b)) {
+                lines.addLine(projected->first, projected->second, color, thickness);
             }
         }
 
@@ -488,26 +568,21 @@ namespace lfs::vis::gui::native_panels {
                 return;
             }
 
-            const int plane = rendering_manager.getGridPlaneForPanel(panel.panel);
-            const glm::vec3 camera_pos = panel.viewport->getTranslation();
-            const float distance = glm::length(camera_pos - panel.viewport->camera.getPivot());
-            const float ortho_extent = settings.orthographic
-                                           ? std::max(panel.size.x, panel.size.y) /
-                                                 std::max(settings.ortho_scale, 1e-3f)
-                                           : 0.0f;
-            const float extent = std::clamp(std::max({10.0f, distance * 2.5f, ortho_extent * 1.5f}),
-                                            1.0f, 100000.0f);
-            float step = std::pow(10.0f, std::floor(std::log10(std::max(extent / 20.0f, 1e-3f))));
-            if (extent / step > 40.0f) {
-                step *= 2.0f;
-            }
-            const int line_count = std::clamp(static_cast<int>(std::ceil(extent / step)), 8, 80);
+            const int plane = std::clamp(rendering_manager.getGridPlaneForPanel(panel.panel), 0, 2);
             const auto& t = theme();
             const glm::vec4 regular = toGuideColor(t.palette.text_dim, settings.grid_opacity * 0.22f);
             const glm::vec4 major = toGuideColor(t.palette.text_dim, settings.grid_opacity * 0.42f);
             constexpr glm::vec4 X_AXIS(0.9f, 0.22f, 0.22f, 0.72f);
             constexpr glm::vec4 Y_AXIS(0.25f, 0.75f, 0.25f, 0.72f);
             constexpr glm::vec4 Z_AXIS(0.28f, 0.48f, 0.95f, 0.72f);
+            const auto axis_color = [](const int axis) {
+                switch (axis) {
+                case 0: return X_AXIS;
+                case 1: return Y_AXIS;
+                case 2:
+                default: return Z_AXIS;
+                }
+            };
 
             const auto make_point = [plane](const float a, const float b) {
                 switch (plane) {
@@ -517,31 +592,133 @@ namespace lfs::vis::gui::native_panels {
                 default: return glm::vec3(a, 0.0f, b); // XZ
                 }
             };
+            const int a_axis = plane == 0 ? 1 : 0;
+            const int b_axis = plane == 2 ? 1 : 2;
 
-            const glm::vec3 pivot = panel.viewport->camera.getPivot();
-            const float center_a = plane == 0 ? pivot.y : pivot.x;
-            const float center_b = plane == 2 ? pivot.y : pivot.z;
-            const float start_a = std::floor(center_a / step) * step - static_cast<float>(line_count) * step;
-            const float start_b = std::floor(center_b / step) * step - static_cast<float>(line_count) * step;
-            const float min_a = start_a;
-            const float max_a = start_a + static_cast<float>(line_count * 2) * step;
-            const float min_b = start_b;
-            const float max_b = start_b + static_cast<float>(line_count * 2) * step;
+            const auto component = [](const glm::vec3& v, const int axis) {
+                return axis == 0 ? v.x : (axis == 1 ? v.y : v.z);
+            };
+            const auto choose_step = [](const float span) {
+                const float raw = std::max(span / 32.0f, 1e-4f);
+                const float base = std::pow(10.0f, std::floor(std::log10(raw)));
+                const float scaled = raw / base;
+                if (scaled > 5.0f) {
+                    return base * 10.0f;
+                }
+                if (scaled > 2.0f) {
+                    return base * 5.0f;
+                }
+                if (scaled > 1.0f) {
+                    return base * 2.0f;
+                }
+                return base;
+            };
 
-            for (int i = 0; i <= line_count * 2; ++i) {
-                const float a = start_a + static_cast<float>(i) * step;
+            struct PlaneHit {
+                float a = 0.0f;
+                float b = 0.0f;
+            };
+            std::vector<PlaneHit> hits;
+            hits.reserve(81);
+
+            const glm::mat3 rotation = panel.viewport->getRotationMatrix();
+            const glm::vec3 translation = panel.viewport->getTranslation();
+            const glm::vec3 ortho_forward = glm::normalize(rotation * glm::vec3(0.0f, 0.0f, -1.0f));
+            const auto sample_plane = [&](const float sx, const float sy) -> std::optional<PlaneHit> {
+                glm::vec3 origin = translation;
+                glm::vec3 direction;
+                if (settings.orthographic) {
+                    const float cx = static_cast<float>(panel.render_size.x) * 0.5f;
+                    const float cy = static_cast<float>(panel.render_size.y) * 0.5f;
+                    const float inv_scale = 1.0f / std::max(settings.ortho_scale, 1e-6f);
+                    origin += rotation * glm::vec3((sx - cx) * inv_scale, (cy - sy) * inv_scale, 0.0f);
+                    direction = ortho_forward;
+                } else {
+                    direction = lfs::rendering::computePickRayDirection(
+                        rotation, panel.render_size, sx, sy, settings.focal_length_mm);
+                }
+
+                const float denom = component(direction, plane);
+                if (std::abs(denom) <= 1e-7f) {
+                    return std::nullopt;
+                }
+                const float ray_t = -component(origin, plane) / denom;
+                if (ray_t < 0.0f || !std::isfinite(ray_t)) {
+                    return std::nullopt;
+                }
+                const glm::vec3 world = origin + direction * ray_t;
+                if (glm::length(world - translation) > 1000.0f) {
+                    return std::nullopt;
+                }
+                const float a = component(world, a_axis);
+                const float b = component(world, b_axis);
+                if (!std::isfinite(a) || !std::isfinite(b)) {
+                    return std::nullopt;
+                }
+                return PlaneHit{.a = a, .b = b};
+            };
+
+            constexpr int SAMPLE_STEPS = 8;
+            for (int y = 0; y <= SAMPLE_STEPS; ++y) {
+                for (int x = 0; x <= SAMPLE_STEPS; ++x) {
+                    const float sx = static_cast<float>(panel.render_size.x) *
+                                     (static_cast<float>(x) / static_cast<float>(SAMPLE_STEPS));
+                    const float sy = static_cast<float>(panel.render_size.y) *
+                                     (static_cast<float>(y) / static_cast<float>(SAMPLE_STEPS));
+                    if (const auto hit = sample_plane(sx, sy)) {
+                        hits.push_back(*hit);
+                    }
+                }
+            }
+            if (hits.size() < 2) {
+                return;
+            }
+
+            float min_a = std::numeric_limits<float>::max();
+            float max_a = -std::numeric_limits<float>::max();
+            float min_b = std::numeric_limits<float>::max();
+            float max_b = -std::numeric_limits<float>::max();
+            for (const auto& hit : hits) {
+                min_a = std::min(min_a, hit.a);
+                max_a = std::max(max_a, hit.a);
+                min_b = std::min(min_b, hit.b);
+                max_b = std::max(max_b, hit.b);
+            }
+
+            const float span = std::max(max_a - min_a, max_b - min_b);
+            if (!std::isfinite(span) || span <= 1e-5f) {
+                return;
+            }
+            float step = choose_step(span);
+            while (((max_a - min_a) / step > 180.0f || (max_b - min_b) / step > 180.0f) &&
+                   step < 100000.0f) {
+                step *= 2.0f;
+            }
+            const float margin = step * 2.0f;
+            min_a = std::floor((min_a - margin) / step) * step;
+            max_a = std::ceil((max_a + margin) / step) * step;
+            min_b = std::floor((min_b - margin) / step) * step;
+            max_b = std::ceil((max_b + margin) / step) * step;
+
+            const int a_lines = std::clamp(static_cast<int>(std::lround((max_a - min_a) / step)), 0, 220);
+            const int b_lines = std::clamp(static_cast<int>(std::lround((max_b - min_b) / step)), 0, 220);
+
+            for (int i = 0; i <= a_lines; ++i) {
+                const float a = min_a + static_cast<float>(i) * step;
                 const bool axis = std::abs(a) <= step * 0.25f;
-                const bool is_major = i % 10 == 0;
-                glm::vec4 color = axis ? (plane == 0 ? Y_AXIS : X_AXIS) : (is_major ? major : regular);
-                addProjectedLine(lines, panel, settings, make_point(a, min_b), make_point(a, max_b),
-                                 color, axis ? 1.4f : 1.0f);
+                const bool is_major = (static_cast<int>(std::lround(a / step)) % 10) == 0;
+                glm::vec4 color = axis ? axis_color(b_axis) : (is_major ? major : regular);
+                addProjectedLineClipped(lines, panel, settings, make_point(a, min_b), make_point(a, max_b),
+                                        color, axis ? 1.4f : 1.0f);
+            }
 
-                const float b = start_b + static_cast<float>(i) * step;
-                const bool b_axis = std::abs(b) <= step * 0.25f;
-                const bool b_major = i % 10 == 0;
-                color = b_axis ? (plane == 2 ? Y_AXIS : Z_AXIS) : (b_major ? major : regular);
-                addProjectedLine(lines, panel, settings, make_point(min_a, b), make_point(max_a, b),
-                                 color, b_axis ? 1.4f : 1.0f);
+            for (int i = 0; i <= b_lines; ++i) {
+                const float b = min_b + static_cast<float>(i) * step;
+                const bool b_is_axis = std::abs(b) <= step * 0.25f;
+                const bool b_major = (static_cast<int>(std::lround(b / step)) % 10) == 0;
+                glm::vec4 color = b_is_axis ? axis_color(a_axis) : (b_major ? major : regular);
+                addProjectedLineClipped(lines, panel, settings, make_point(min_a, b), make_point(max_a, b),
+                                        color, b_is_axis ? 1.4f : 1.0f);
             }
         }
 
