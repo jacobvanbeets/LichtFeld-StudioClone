@@ -300,12 +300,13 @@ namespace lfs::vis::gui::native_panels {
 
         // Returns a texture id once the async decode + upload have completed; until then returns 0
         // and the frustum draws without an image. The decode runs on a worker thread so the GUI
-        // thread is never blocked by JPEG decompression. uploaded_count tracks main-thread Vulkan
-        // uploads consumed this frame so we don't take all of them at once for a fresh dataset.
+        // thread is never blocked by JPEG decompression. Budgets keep a fresh dataset from
+        // spawning all decodes or main-thread Vulkan uploads in the same frame.
         [[nodiscard]] ImTextureID getOrLoadCameraThumbnail(
             const lfs::core::Camera& camera,
             std::unordered_map<std::string, std::shared_ptr<ThumbnailEntry>>& entries,
             std::unordered_set<std::string>& failed,
+            int& decode_budget,
             int& upload_budget) {
             if (camera.image_path().empty()) {
                 return 0;
@@ -318,10 +319,16 @@ namespace lfs::vis::gui::native_panels {
 
             auto it = entries.find(key);
             if (it == entries.end()) {
+                if (decode_budget <= 0) {
+                    return 0;
+                }
                 if (!std::filesystem::exists(camera.image_path())) {
+                    LOG_WARN("Camera thumbnail path does not exist: '{}'",
+                             lfs::core::path_to_utf8(camera.image_path()));
                     failed.insert(key);
                     return 0;
                 }
+                --decode_budget;
                 auto entry = std::make_shared<ThumbnailEntry>();
                 entry->decode_started = true;
                 entry->decode = std::async(std::launch::async, decodeThumbnailOnWorker,
@@ -364,12 +371,35 @@ namespace lfs::vis::gui::native_panels {
             const bool uploaded =
                 texture->upload(decoded.pixels.data(), decoded.width, decoded.height, decoded.channels);
             if (!uploaded) {
+                LOG_WARN("Failed to upload camera thumbnail texture '{}'",
+                         lfs::core::path_to_utf8(camera.image_path()));
                 failed.insert(key);
                 return 0;
             }
             const ImTextureID texture_id = texture->textureId();
             entry.texture = std::move(texture);
             return texture_id;
+        }
+
+        [[nodiscard]] std::unordered_set<int> collectSelectedCameraUids(
+            const SceneManager* scene_manager,
+            const lfs::core::Scene& scene) {
+            std::unordered_set<int> uids;
+            if (!scene_manager) {
+                return uids;
+            }
+            for (const auto& node_name : scene_manager->getSelectedNodeNames()) {
+                const auto* const node = scene.getNode(node_name);
+                if (!node || node->type != lfs::core::NodeType::CAMERA) {
+                    continue;
+                }
+                if (node->camera) {
+                    uids.insert(node->camera->uid());
+                } else if (node->camera_uid >= 0) {
+                    uids.insert(node->camera_uid);
+                }
+            }
+            return uids;
         }
 
         void drawCameraImageQuad(const GuidePanelTarget& panel,
@@ -558,6 +588,7 @@ namespace lfs::vis::gui::native_panels {
                                 const RenderingManager& rendering_manager,
                                 const RenderSettings& settings,
                                 lfs::core::Scene& scene,
+                                const SceneManager* scene_manager,
                                 std::unordered_map<std::string, std::shared_ptr<ThumbnailEntry>>& thumbnail_entries,
                                 std::unordered_set<std::string>& thumbnail_failed) {
             if (!settings.show_camera_frustums || settings.camera_frustum_scale <= 0.0f) {
@@ -568,9 +599,11 @@ namespace lfs::vis::gui::native_panels {
             if (cameras.empty()) {
                 return false;
             }
-            // Decoding happens on worker threads, so only the per-frame Vulkan upload count needs
-            // to be capped to keep the GUI thread responsive while many decodes finish at once.
+            // Decoding happens on worker threads; cap new jobs and Vulkan uploads so the GUI
+            // thread stays responsive when a dataset exposes hundreds of cameras at once.
+            constexpr int kThumbnailDecodeBudgetPerFrame = 8;
             constexpr int kThumbnailUploadBudgetPerFrame = 4;
+            int thumbnail_decode_budget = kThumbnailDecodeBudgetPerFrame;
             int thumbnail_upload_budget = kThumbnailUploadBudgetPerFrame;
             auto scene_transforms = scene.getVisibleCameraSceneTransforms();
             for (auto& transform : scene_transforms) {
@@ -579,6 +612,8 @@ namespace lfs::vis::gui::native_panels {
 
             const auto disabled_uids = scene.getTrainingDisabledCameraUids();
             const int current_camera_uid = rendering_manager.getCurrentCameraId();
+            const int hovered_camera_uid = rendering_manager.getHoveredCameraId();
+            const auto selected_camera_uids = collectSelectedCameraUids(scene_manager, scene);
             constexpr std::array<std::pair<int, int>, 8> EDGES{{
                 {0, 1},
                 {0, 2},
@@ -609,15 +644,27 @@ namespace lfs::vis::gui::native_panels {
                     continue;
                 }
 
+                const bool disabled = disabled_uids.count(camera->uid()) > 0;
+                const bool current = camera->uid() == current_camera_uid;
+                const bool hovered = camera->uid() == hovered_camera_uid;
+                const bool selected = selected_camera_uids.contains(camera->uid());
                 glm::vec4 color = toGuideColor(
                     camera->split() == lfs::core::CameraSplit::Eval || camera->image_name().find("test") != std::string::npos
                         ? settings.eval_camera_color
                         : settings.train_camera_color,
-                    disabled_uids.count(camera->uid()) > 0 ? 0.28f : 0.72f);
+                    disabled ? 0.28f : 0.72f);
                 float thickness = 1.4f;
-                if (camera->uid() == current_camera_uid) {
+                if (current) {
                     color.a = 0.95f;
                     thickness = 2.4f;
+                }
+                if (selected) {
+                    color = toGuideColor(theme().palette.primary, disabled ? 0.65f : 1.0f);
+                    thickness = 3.2f;
+                }
+                if (hovered) {
+                    color = toGuideColor(theme().palette.warning, disabled ? 0.70f : 1.0f);
+                    thickness = std::max(thickness, 3.4f);
                 }
 
                 const bool equirectangular =
@@ -673,21 +720,27 @@ namespace lfs::vis::gui::native_panels {
                     world_points[p] = glm::vec3(*visualizer_c2w * glm::vec4(local_points[p], 1.0f));
                 }
                 const float thumbnail_opacity =
-                    (disabled_uids.count(camera->uid()) > 0 ? 0.30f : 0.80f) *
-                    (camera->uid() == current_camera_uid ? 1.0f : 0.85f);
-                // Only kick off the thumbnail load (which performs a synchronous JPEG decode
-                // and Vulkan upload) when the frustum quad is actually on-screen. Off-screen
-                // cameras would never display the thumbnail anyway.
-                const bool quad_on_screen =
-                    projectToScreen(panel, settings, world_points[1]).has_value() &&
-                    projectToScreen(panel, settings, world_points[2]).has_value() &&
-                    projectToScreen(panel, settings, world_points[3]).has_value() &&
-                    projectToScreen(panel, settings, world_points[4]).has_value();
+                    (disabled ? 0.30f : 0.80f) *
+                    (current || hovered || selected ? 1.0f : 0.85f);
+                std::array<std::optional<glm::vec2>, 5> screen_points{};
+                for (size_t p = 0; p < world_points.size(); ++p) {
+                    screen_points[p] = projectToScreen(panel, settings, world_points[p]);
+                }
+                const bool frustum_projected =
+                    std::any_of(screen_points.begin(), screen_points.end(),
+                                [](const auto& point) { return point.has_value(); });
+                const bool quad_projected =
+                    screen_points[1].has_value() && screen_points[2].has_value() &&
+                    screen_points[3].has_value() && screen_points[4].has_value();
                 const ImTextureID thumbnail =
-                    quad_on_screen ? getOrLoadCameraThumbnail(*camera, thumbnail_entries,
-                                                              thumbnail_failed, thumbnail_upload_budget)
-                                   : 0;
-                drawCameraImageQuad(panel, settings, world_points, thumbnail, thumbnail_opacity);
+                    frustum_projected ? getOrLoadCameraThumbnail(*camera, thumbnail_entries,
+                                                                 thumbnail_failed,
+                                                                 thumbnail_decode_budget,
+                                                                 thumbnail_upload_budget)
+                                      : 0;
+                if (quad_projected) {
+                    drawCameraImageQuad(panel, settings, world_points, thumbnail, thumbnail_opacity);
+                }
                 for (const auto& [a, b] : EDGES) {
                     addProjectedLine(lines, panel, settings,
                                      world_points[static_cast<size_t>(a)],
@@ -913,6 +966,7 @@ namespace lfs::vis::gui::native_panels {
                                     rendering_manager->getGizmoState());
             thumbnails_pending |=
                 drawCameraFrustums(line_renderer_, panel, *rendering_manager, settings, *ctx.scene,
+                                   ctx.ui->viewer->getSceneManager(),
                                    camera_thumbnail_entries_, camera_thumbnail_failed_);
             line_renderer_.end();
         }

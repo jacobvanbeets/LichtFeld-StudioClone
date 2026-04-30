@@ -24,6 +24,12 @@
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 
+#include <atomic>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <vector>
+
 #ifdef RMLUI_DEBUG
 	#define RMLUI_VK_ASSERTMSG(statement, msg) RMLUI_ASSERTMSG(statement, msg)
 
@@ -131,6 +137,20 @@ private:
 		VkSampler m_p_vk_sampler;
 		VkDescriptorSet m_p_vk_descriptor_set;
 		VmaAllocation m_p_vma_allocation;
+	};
+
+	struct async_preview_result_t {
+		std::vector<Rml::byte> pixels;
+		int width = 0;
+		int height = 0;
+	};
+
+	struct async_preview_state_t {
+		texture_data_t* texture = nullptr;
+		Rml::String source;
+		std::mutex mutex;
+		async_preview_result_t result;
+		std::atomic<bool> ready = false;
 	};
 
 	struct geometry_handle_t {
@@ -451,6 +471,11 @@ private:
 
 private:
 	Rml::TextureHandle CreateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i dimensions, const Rml::String& name);
+	Rml::TextureHandle LoadAsyncPreviewTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source);
+	void ProcessAsyncPreviewUploads();
+	void DropAsyncPreviewTexture(texture_data_t* texture);
+	void QueueTextureForDeferredDeletion(texture_data_t* texture);
+	static async_preview_result_t DecodePreviewTexture(std::filesystem::path path, int max_size);
 
 	void Initialize_Instance(Rml::Vector<const char*> required_extensions) noexcept;
 	void Initialize_Device() noexcept;
@@ -648,6 +673,7 @@ private:
 	Rml::Vector<VkImageView> m_swapchain_image_views;
 	Rml::Vector<VkShaderModule> m_shaders;
 	Rml::Array<Rml::Vector<texture_data_t*>, kSwapchainBackBufferCount> m_pending_for_deletion_textures_by_frames;
+	std::vector<std::shared_ptr<async_preview_state_t>> m_async_preview_textures;
 	Rml::Vector<render_layer_t> m_render_layers;
 	Rml::Vector<VmaVirtualAllocation> m_transient_shader_allocations;
 	VkFramebuffer m_external_framebuffer = VK_NULL_HANDLE;

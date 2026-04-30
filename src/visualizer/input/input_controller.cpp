@@ -1890,6 +1890,8 @@ namespace lfs::vis {
             if (node->type == core::NodeType::CAMERA && node->camera_uid == uid) {
                 if (auto result = cap::selectNode(*sm, node->name); !result) {
                     LOG_WARN("Camera selection failed for '{}': {}", node->name, result.error());
+                } else if (auto* rendering_manager = services().renderingOrNull()) {
+                    rendering_manager->markDirty(DirtyFlag::OVERLAY);
                 }
                 return;
             }

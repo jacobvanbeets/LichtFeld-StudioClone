@@ -200,6 +200,7 @@ namespace lfs::vis {
             markDirty(DirtyFlag::SPLIT_VIEW | DirtyFlag::PPISP);
         }
         int getCurrentCameraId() const { return camera_interaction_service_.currentCameraId(); }
+        int getHoveredCameraId() const { return camera_interaction_service_.hoveredCameraId(); }
 
         struct CameraMetricsOverlayState {
             int camera_id = -1;

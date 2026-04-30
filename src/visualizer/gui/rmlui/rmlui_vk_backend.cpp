@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: MIT */
 
 #include "gui/rmlui/rmlui_vk_backend.hpp"
+#include "core/image_io.hpp"
+#include "core/logger.hpp"
+#include "core/path_utils.hpp"
 #include "gui/rmlui/vulkan/rmlui_shaders_spv.hpp"
 #include "internal/resource_paths.hpp"
 #include <RmlUi/Core/Core.h>
@@ -13,10 +16,15 @@
 #include <RmlUi/Core/Profiling.h>
 #include <stb_image.h>
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <filesystem>
+#include <optional>
+#include <semaphore>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <thread>
 #include <string.h>
 
 // AlignUp(314, 256) = 512
@@ -82,6 +90,113 @@ static void SetDebugUtilsObjectName(VkDevice device, const VkDebugUtilsObjectNam
 		(void)fn(device, &name_info);
 }
 #endif
+
+namespace {
+
+	struct PreviewTextureRequest {
+		std::filesystem::path path;
+		int max_size = 0;
+	};
+
+	bool IsPreviewTextureSource(std::string_view source)
+	{
+		return source.rfind("preview://", 0) == 0;
+	}
+
+	int HexValue(char c)
+	{
+		if (c >= '0' && c <= '9')
+			return c - '0';
+		if (c >= 'a' && c <= 'f')
+			return 10 + c - 'a';
+		if (c >= 'A' && c <= 'F')
+			return 10 + c - 'A';
+		return -1;
+	}
+
+	std::string PercentDecode(std::string_view value)
+	{
+		std::string decoded;
+		decoded.reserve(value.size());
+		for (size_t i = 0; i < value.size(); ++i)
+		{
+			if (value[i] == '%' && i + 2 < value.size())
+			{
+				const int hi = HexValue(value[i + 1]);
+				const int lo = HexValue(value[i + 2]);
+				if (hi >= 0 && lo >= 0)
+				{
+					decoded.push_back(static_cast<char>((hi << 4) | lo));
+					i += 2;
+					continue;
+				}
+			}
+			decoded.push_back(value[i] == '+' ? ' ' : value[i]);
+		}
+		return decoded;
+	}
+
+	int ParseIntParam(std::string_view value)
+	{
+		int parsed = 0;
+		const auto* first = value.data();
+		const auto* last = value.data() + value.size();
+		const auto [ptr, ec] = std::from_chars(first, last, parsed);
+		if (ec != std::errc() || ptr != last)
+			return 0;
+		return std::max(parsed, 0);
+	}
+
+	std::optional<PreviewTextureRequest> ParsePreviewTextureRequest(std::string_view source)
+	{
+		if (!IsPreviewTextureSource(source))
+			return std::nullopt;
+
+		source.remove_prefix(std::string_view("preview://").size());
+		PreviewTextureRequest request;
+		int thumb_size = 0;
+		int preview_size = 0;
+		int dataset_size = 0;
+
+		while (!source.empty())
+		{
+			const size_t sep = source.find('&');
+			const std::string_view part = sep == std::string_view::npos ? source : source.substr(0, sep);
+			if (const size_t eq = part.find('='); eq != std::string_view::npos)
+			{
+				const std::string_view key = part.substr(0, eq);
+				const std::string_view value = part.substr(eq + 1);
+				if (key == "path")
+				{
+					request.path = lfs::core::utf8_to_path(PercentDecode(value));
+				}
+				else if (key == "thumb")
+				{
+					thumb_size = ParseIntParam(value);
+				}
+				else if (key == "pmw")
+				{
+					preview_size = ParseIntParam(value);
+				}
+				else if (key == "mw")
+				{
+					dataset_size = ParseIntParam(value);
+				}
+			}
+
+			if (sep == std::string_view::npos)
+				break;
+			source.remove_prefix(sep + 1);
+		}
+
+		if (request.path.empty())
+			return std::nullopt;
+
+		request.max_size = thumb_size > 0 ? thumb_size : (preview_size > 0 ? preview_size : dataset_size);
+		return request;
+	}
+
+} // namespace
 
 RenderInterface_VK::RenderInterface_VK() :
 	m_is_transform_enabled{false}, m_is_apply_to_regular_geometry_stencil{false}, m_is_clip_mask_enabled{false},
@@ -636,6 +751,9 @@ struct TGAHeader {
 
 Rml::TextureHandle RenderInterface_VK::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source)
 {
+	if (IsPreviewTextureSource(source))
+		return LoadAsyncPreviewTexture(texture_dimensions, source);
+
 	auto load_with_stbi = [&](const std::string& path) -> Rml::TextureHandle {
 		int width = 0;
 		int height = 0;
@@ -794,6 +912,161 @@ Rml::TextureHandle RenderInterface_VK::LoadTexture(Rml::Vector2i& texture_dimens
 	texture_dimensions.y = header.height;
 
 	return GenerateTexture({image_dest, image_size}, texture_dimensions);
+}
+
+Rml::TextureHandle RenderInterface_VK::LoadAsyncPreviewTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source)
+{
+	const auto request = ParsePreviewTextureRequest(source);
+	if (!request)
+		return 0;
+
+	static constexpr Rml::byte transparent_pixel[4] = {0, 0, 0, 0};
+	texture_dimensions = {1, 1};
+	const Rml::TextureHandle handle = CreateTexture({transparent_pixel, sizeof(transparent_pixel)}, texture_dimensions, source);
+	auto* texture = reinterpret_cast<texture_data_t*>(handle);
+	if (!texture)
+		return 0;
+
+	auto state = std::make_shared<async_preview_state_t>();
+	state->texture = texture;
+	state->source = source;
+	m_async_preview_textures.push_back(state);
+
+	try
+	{
+		std::thread([state, path = request->path, max_size = request->max_size]() mutable {
+			auto result = DecodePreviewTexture(std::move(path), max_size);
+			{
+				std::lock_guard lock(state->mutex);
+				state->result = std::move(result);
+			}
+			state->ready.store(true, std::memory_order_release);
+		}).detach();
+	}
+	catch (const std::exception& e)
+	{
+		LOG_WARN("Failed to start async preview texture worker for '{}': {}", lfs::core::path_to_utf8(request->path), e.what());
+		DropAsyncPreviewTexture(texture);
+	}
+
+	return handle;
+}
+
+RenderInterface_VK::async_preview_result_t RenderInterface_VK::DecodePreviewTexture(std::filesystem::path path, const int max_size)
+{
+	static std::counting_semaphore<4> decode_slots(4);
+	struct DecodeSlotGuard {
+		std::counting_semaphore<4>& slots;
+		explicit DecodeSlotGuard(std::counting_semaphore<4>& s) : slots(s) { slots.acquire(); }
+		~DecodeSlotGuard() { slots.release(); }
+	};
+
+	DecodeSlotGuard guard(decode_slots);
+
+	async_preview_result_t result;
+	unsigned char* data = nullptr;
+	try
+	{
+		auto [pixels, width, height, channels] = lfs::core::load_image(path, -1, max_size);
+		data = pixels;
+		if (pixels && width > 0 && height > 0 && channels > 0)
+		{
+			const std::size_t pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+			result.pixels.resize(pixel_count * 4u);
+			for (std::size_t i = 0; i < pixel_count; ++i)
+			{
+				const unsigned char* src = pixels + i * static_cast<std::size_t>(channels);
+				const unsigned char r = src[0];
+				const unsigned char g = channels > 1 ? src[1] : r;
+				const unsigned char b = channels > 2 ? src[2] : r;
+				const unsigned char a = channels > 3 ? src[3] : 255;
+				Rml::byte* dst = result.pixels.data() + i * 4u;
+				dst[0] = static_cast<Rml::byte>((static_cast<unsigned int>(r) * a + 127u) / 255u);
+				dst[1] = static_cast<Rml::byte>((static_cast<unsigned int>(g) * a + 127u) / 255u);
+				dst[2] = static_cast<Rml::byte>((static_cast<unsigned int>(b) * a + 127u) / 255u);
+				dst[3] = static_cast<Rml::byte>(a);
+			}
+			result.width = width;
+			result.height = height;
+		}
+	}
+	catch (const std::exception& e)
+	{
+		LOG_WARN("Failed to decode preview texture '{}': {}", lfs::core::path_to_utf8(path), e.what());
+	}
+	if (data)
+		lfs::core::free_image(data);
+	return result;
+}
+
+void RenderInterface_VK::QueueTextureForDeferredDeletion(texture_data_t* texture)
+{
+	if (texture)
+		m_pending_for_deletion_textures_by_frames[m_semaphore_index_previous].push_back(texture);
+}
+
+void RenderInterface_VK::DropAsyncPreviewTexture(texture_data_t* texture)
+{
+	if (!texture)
+		return;
+	m_async_preview_textures.erase(std::remove_if(m_async_preview_textures.begin(), m_async_preview_textures.end(),
+									  [texture](const std::shared_ptr<async_preview_state_t>& state) {
+										  if (state && state->texture == texture)
+										  {
+											  state->texture = nullptr;
+											  return true;
+										  }
+										  return false;
+									  }),
+		m_async_preview_textures.end());
+}
+
+void RenderInterface_VK::ProcessAsyncPreviewUploads()
+{
+	if (m_async_preview_textures.empty() || !m_p_device || !m_p_allocator)
+		return;
+
+	constexpr int kUploadBudgetPerFrame = 2;
+	int uploads_remaining = kUploadBudgetPerFrame;
+
+	for (auto it = m_async_preview_textures.begin(); it != m_async_preview_textures.end();)
+	{
+		const std::shared_ptr<async_preview_state_t>& state = *it;
+		if (!state || !state->texture)
+		{
+			it = m_async_preview_textures.erase(it);
+			continue;
+		}
+		if (!state->ready.load(std::memory_order_acquire))
+		{
+			++it;
+			continue;
+		}
+		if (uploads_remaining <= 0)
+			break;
+
+		async_preview_result_t result;
+		{
+			std::lock_guard lock(state->mutex);
+			result = std::move(state->result);
+		}
+
+		if (!result.pixels.empty() && result.width > 0 && result.height > 0)
+		{
+			Rml::Vector2i dimensions{result.width, result.height};
+			const Rml::TextureHandle replacement_handle = CreateTexture({result.pixels.data(), result.pixels.size()}, dimensions, state->source);
+			auto* replacement = reinterpret_cast<texture_data_t*>(replacement_handle);
+			if (replacement)
+			{
+				QueueTextureForDeferredDeletion(new texture_data_t(*state->texture));
+				*state->texture = *replacement;
+				delete replacement;
+				--uploads_remaining;
+			}
+		}
+
+		it = m_async_preview_textures.erase(it);
+	}
 }
 
 Rml::TextureHandle RenderInterface_VK::GenerateTexture(Rml::Span<const Rml::byte> source_data, Rml::Vector2i source_dimensions)
@@ -965,7 +1238,8 @@ void RenderInterface_VK::ReleaseTexture(Rml::TextureHandle texture_handle)
 
 	if (p_texture)
 	{
-		m_pending_for_deletion_textures_by_frames[m_semaphore_index_previous].push_back(p_texture);
+		DropAsyncPreviewTexture(p_texture);
+		QueueTextureForDeferredDeletion(p_texture);
 	}
 }
 
@@ -1044,6 +1318,7 @@ void RenderInterface_VK::BeginFrame()
 	FreeTransientShaderAllocations();
 	Update_PendingForDeletion_Textures_By_Frames();
 	Update_PendingForDeletion_Geometries();
+	ProcessAsyncPreviewUploads();
 
 	m_command_buffer_ring.OnBeginFrame();
 	m_p_current_command_buffer = m_command_buffer_ring.GetCommandBufferForActiveFrame(CommandBufferName::Primary);
@@ -1190,6 +1465,7 @@ void RenderInterface_VK::Shutdown()
 
 	RMLUI_VK_ASSERTMSG(status == VkResult::VK_SUCCESS, "you must have a valid status here");
 
+	m_async_preview_textures.clear();
 	DestroyResourcesDependentOnSize();
 	Destroy_Resources();
 	Destroy_Allocator();
@@ -1250,6 +1526,7 @@ void RenderInterface_VK::ShutdownExternal()
 	if (m_p_device)
 		vkDeviceWaitIdle(m_p_device);
 
+	m_async_preview_textures.clear();
 	DestroyRenderLayers();
 	Destroy_Pipelines();
 	DestroyAuxiliaryRenderPasses();
@@ -1286,6 +1563,7 @@ void RenderInterface_VK::BeginExternalFrame(VkCommandBuffer command_buffer, VkEx
 	FreeTransientShaderAllocations();
 	Update_PendingForDeletion_Textures_By_Frames();
 	Update_PendingForDeletion_Geometries();
+	ProcessAsyncPreviewUploads();
 
 	m_p_current_command_buffer = command_buffer;
 	m_external_framebuffer = framebuffer;

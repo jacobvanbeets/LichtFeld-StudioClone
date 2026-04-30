@@ -5,6 +5,7 @@
 #include "gui/imgui_vulkan_backend.hpp"
 
 #include "core/logger.hpp"
+#include "gui/imgui_vulkan_texture.hpp"
 #include "window/vulkan_context.hpp"
 
 #include <imgui_impl_sdl3.h>
@@ -72,6 +73,7 @@ namespace lfs::vis::gui {
         }
 
         initialized_ = true;
+        setImGuiVulkanTextureContext(&context);
         LOG_INFO("ImGui Vulkan backend initialized");
         return true;
 #else
@@ -87,6 +89,7 @@ namespace lfs::vis::gui {
             return;
         }
 #ifdef LFS_VULKAN_VIEWER_ENABLED
+        setImGuiVulkanTextureContext(nullptr);
         ImGui_ImplVulkan_Shutdown();
 #endif
         ImGui_ImplSDL3_Shutdown();
