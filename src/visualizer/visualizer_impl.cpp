@@ -29,9 +29,6 @@
 #include "tools/brush_tool.hpp"
 #include "tools/builtin_tools.hpp"
 #include "tools/selection_tool.hpp"
-// clang-format off
-#include <glad/glad.h>
-// clang-format on
 #include <SDL3/SDL_events.h>
 #include <cassert>
 #include <chrono>
@@ -857,23 +854,6 @@ namespace lfs::vis {
                       viewport_.windowSize.x, viewport_.windowSize.y);
         }
 
-        // Initialize rendering early so we can show a frame before font atlas build
-        if (!window_manager_->isVulkan() && !rendering_manager_->isInitialized()) {
-            rendering_manager_->initialize();
-        }
-
-        // Render one frame (grid + background) before the expensive GUI/font init
-        if (!window_manager_->isVulkan()) {
-            RenderingManager::RenderContext ctx{
-                .viewport = viewport_,
-                .settings = rendering_manager_->getSettings(),
-                .logical_screen_size = window_manager_->getWindowSize(),
-                .viewport_region = nullptr,
-                .scene_manager = scene_manager_.get()};
-            rendering_manager_->renderFrame(ctx);
-            window_manager_->swapBuffers();
-        }
-
         // Initialize GUI (sets up ImGui, builds font atlas)
         if (!gui_initialized_) {
             gui_manager_->init();
@@ -1080,57 +1060,6 @@ namespace lfs::vis {
             has_viewport_region = true;
         }
 
-        if (window_manager_->isVulkan()) {
-            RenderingManager::RenderContext context{
-                .viewport = viewport_,
-                .settings = rendering_manager_->getSettings(),
-                .logical_screen_size = window_manager_->getWindowSize(),
-                .viewport_region = has_viewport_region ? &viewport_region : nullptr,
-                .scene_manager = scene_manager_.get()};
-
-            if (gui_manager_) {
-                rendering_manager_->setCropboxGizmoActive(gui_manager_->gizmo().isCropboxGizmoActive());
-                rendering_manager_->setEllipsoidGizmoActive(gui_manager_->gizmo().isEllipsoidGizmoActive());
-            }
-
-            const auto vulkan_frame = rendering_manager_->renderVulkanFrame(context);
-            if (gui_manager_) {
-                gui_manager_->setVulkanSceneImage(
-                    vulkan_frame.image,
-                    vulkan_frame.size,
-                    vulkan_frame.flip_y);
-            }
-
-            if (gui_manager_)
-                gui_manager_->render();
-
-            processRenderWorkQueue();
-
-            python::flush_signals();
-            gui_frame_rendered_ = true;
-
-            const bool is_training = trainer_manager_ && trainer_manager_->isRunning();
-            const bool needs_render = rendering_manager_ && rendering_manager_->pollDirtyState();
-            const bool continuous_input = input_controller_ && input_controller_->isContinuousInputActive();
-            const bool has_python_animation = python::has_frame_callback();
-            const bool has_python_overlay = python::has_viewport_draw_handlers();
-            const bool has_python_redraw = python::consume_redraw_request();
-            const bool needs_gui_animation = gui_manager_ && gui_manager_->needsAnimationFrame();
-
-            if (needs_render || continuous_input || has_python_animation || has_python_overlay ||
-                has_python_redraw || needs_gui_animation) {
-                window_manager_->pollEvents();
-            } else if (is_training) {
-                constexpr double TRAINING_WAIT_SEC = 0.1;
-                window_manager_->waitEvents(TRAINING_WAIT_SEC);
-            } else {
-                constexpr double IDLE_WAIT_SEC = 0.5;
-                window_manager_->waitEvents(IDLE_WAIT_SEC);
-            }
-            return;
-        }
-
-        // viewport_region accounts for toolbar offset - required for all render modes
         RenderingManager::RenderContext context{
             .viewport = viewport_,
             .settings = rendering_manager_->getSettings(),
@@ -1143,24 +1072,25 @@ namespace lfs::vis {
             rendering_manager_->setEllipsoidGizmoActive(gui_manager_->gizmo().isEllipsoidGizmoActive());
         }
 
-        rendering_manager_->renderFrame(context);
+        const auto vulkan_frame = rendering_manager_->renderVulkanFrame(context);
+        if (gui_manager_) {
+            gui_manager_->setVulkanSceneImage(
+                vulkan_frame.image,
+                vulkan_frame.size,
+                vulkan_frame.flip_y);
+        }
 
-        gui_manager_->render();
-
-        const bool resize_done = rendering_manager_->consumeResizeCompleted();
-        if (resize_done)
-            glFinish();
+        if (gui_manager_)
+            gui_manager_->render();
 
         processRenderWorkQueue();
-
-        window_manager_->swapBuffers();
 
         python::flush_signals();
         gui_frame_rendered_ = true;
 
         // Render-on-demand: VSync handles frame pacing, waitEvents saves CPU when idle
         const bool is_training = trainer_manager_ && trainer_manager_->isRunning();
-        const bool needs_render = rendering_manager_->pollDirtyState();
+        const bool needs_render = rendering_manager_ && rendering_manager_->pollDirtyState();
         const bool continuous_input = input_controller_ && input_controller_->isContinuousInputActive();
         const bool has_python_animation = python::has_frame_callback();
         const bool has_python_overlay = python::has_viewport_draw_handlers();

@@ -30,9 +30,7 @@ namespace lfs::vis {
 
 namespace lfs::vis::gui {
 
-    class RmlFBO;
     class RmlSystemInterface;
-    class RmlRenderInterface;
     class RmlTextInputHandler;
     enum class RmlCursorRequest : uint8_t;
 
@@ -41,7 +39,6 @@ namespace lfs::vis::gui {
         RmlUIManager();
         ~RmlUIManager();
 
-        bool init(SDL_Window* window, float dp_ratio = 1.0f);
         bool initVulkan(SDL_Window* window, lfs::vis::VulkanContext& vulkan_context, float dp_ratio = 1.0f);
         void shutdown();
         [[nodiscard]] bool isInitialized() const { return initialized_; }
@@ -54,12 +51,11 @@ namespace lfs::vis::gui {
         void destroyContext(const std::string& name);
 
         void setResizeDeferring(bool defer) { resize_deferring_ = defer; }
-        [[nodiscard]] bool shouldDeferFboUpdate(const RmlFBO& fbo) const;
+        [[nodiscard]] bool isResizeDeferring() const { return resize_deferring_; }
 
         void activateTheme(const std::string& theme_id);
         const std::string& activeThemeId() const { return active_theme_id_; }
 
-        RmlRenderInterface* getRenderInterface() const { return render_interface_; }
         RenderInterface_VK* getVulkanRenderInterface() const { return vulkan_render_interface_; }
         RmlTextInputHandler* getTextInputHandler() const { return text_input_handler_.get(); }
         SDL_Window* getWindow() const { return window_; }
@@ -99,12 +95,10 @@ namespace lfs::vis::gui {
         bool initWithRenderInterface(SDL_Window* window,
                                      float dp_ratio,
                                      std::unique_ptr<Rml::RenderInterface> render_interface,
-                                     RmlRenderInterface* gl_render_interface,
                                      RenderInterface_VK* vulkan_render_interface);
 
         std::unique_ptr<RmlSystemInterface> system_interface_;
         std::unique_ptr<Rml::RenderInterface> owned_render_interface_;
-        RmlRenderInterface* render_interface_ = nullptr;
         RenderInterface_VK* vulkan_render_interface_ = nullptr;
         std::unique_ptr<RmlTextInputHandler> text_input_handler_;
         std::unordered_map<std::string, Rml::Context*> contexts_;

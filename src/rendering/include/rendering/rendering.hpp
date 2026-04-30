@@ -9,7 +9,9 @@
 #include "geometry/euclidean_transform.hpp"
 #include "render_constants.hpp"
 #include <array>
+#include <cstdint>
 #include <expected>
+#include <filesystem>
 #include <glm/glm.hpp>
 #include <memory>
 #include <optional>
@@ -169,6 +171,7 @@ namespace lfs::rendering {
     struct PointCloudSceneState {
         const std::vector<glm::mat4>* model_transforms = nullptr;
         std::shared_ptr<lfs::core::Tensor> transform_indices;
+        std::vector<bool> node_visibility_mask;
     };
 
     struct PointCloudFilterState {
@@ -206,8 +209,7 @@ namespace lfs::rendering {
         size_t depth_panel_count = 0;
         bool valid = false;
         // Depth conversion parameters (needed for proper depth buffer writing)
-        bool depth_is_ndc = false;               // True if depth is already NDC (0-1), e.g., from OpenGL
-        unsigned int external_depth_texture = 0; // If set, use this OpenGL texture directly (zero-copy)
+        bool depth_is_ndc = false; // True if depth is already normalized device depth (0-1).
         glm::vec2 depth_texcoord_scale{1.0f, 1.0f};
         // Presentation orientation for the screen quad.
         bool flip_y = false;
@@ -235,11 +237,6 @@ namespace lfs::rendering {
 
     struct PointCloudImageResult {
         std::shared_ptr<lfs::core::Tensor> image;
-        FrameMetadata metadata;
-    };
-
-    struct SplitViewFrameResult {
-        GpuFrame frame;
         FrameMetadata metadata;
     };
 
@@ -276,7 +273,7 @@ namespace lfs::rendering {
         glm::mat4 model_transform{1.0f};
         std::optional<SplitViewGaussianPanelRenderState> gaussian_render;
         std::optional<SplitViewPointCloudPanelRenderState> point_cloud_render;
-        unsigned int texture_id = 0;
+        uint64_t image_handle = 0;
     };
 
     struct SplitViewPanelPresentation {
@@ -375,6 +372,28 @@ namespace lfs::rendering {
         bool transparent_background = false;
     };
 
+    struct EnvironmentRenderOptions {
+        bool enabled = false;
+        std::filesystem::path map_path;
+        float exposure = 0.0f;
+        float rotation_degrees = 0.0f;
+        bool equirectangular = false;
+    };
+
+    struct MeshFrameItem {
+        const lfs::core::MeshData* mesh = nullptr;
+        glm::mat4 transform{1.0f};
+        MeshRenderOptions options{};
+    };
+
+    struct VideoCompositeFrameRequest {
+        ViewportData viewport;
+        FrameView frame_view;
+        glm::vec3 background_color{0.0f};
+        EnvironmentRenderOptions environment;
+        std::vector<MeshFrameItem> meshes;
+    };
+
     struct CameraFrustumRenderRequest {
         ViewportData viewport;
         float scale = 0.1f;
@@ -403,6 +422,7 @@ namespace lfs::rendering {
     class RenderingEngine {
     public:
         static std::unique_ptr<RenderingEngine> create();
+        static std::unique_ptr<RenderingEngine> createRasterOnly();
 
         virtual ~RenderingEngine() = default;
 
@@ -441,25 +461,13 @@ namespace lfs::rendering {
             const lfs::core::SplatData& splat_data,
             const PointCloudRenderRequest& request) = 0;
 
-        virtual Result<GpuFrame> renderPointCloudGpuFrame(
+        virtual Result<PointCloudImageResult> renderPointCloudImage(
             const lfs::core::PointCloud& point_cloud,
             const PointCloudRenderRequest& request) = 0;
 
-        virtual Result<SplitViewFrameResult> renderSplitViewGpuFrame(
-            const SplitViewRequest& request) = 0;
-
-        virtual Result<void> renderMesh(
-            const lfs::core::MeshData& mesh,
-            const ViewportData& viewport,
-            const glm::mat4& model_transform = glm::mat4(1.0f),
-            const MeshRenderOptions& options = {},
-            bool use_fbo = false) = 0;
-
-        virtual unsigned int getMeshColorTexture() const = 0;
-        virtual unsigned int getMeshDepthTexture() const = 0;
-        virtual unsigned int getMeshFramebuffer() const = 0;
-        virtual bool hasMeshRender() const = 0;
-        virtual void resetMeshFrameState() = 0;
+        virtual Result<GpuFrame> renderPointCloudGpuFrame(
+            const lfs::core::PointCloud& point_cloud,
+            const PointCloudRenderRequest& request) = 0;
 
         virtual Result<GpuFrame> materializeGpuFrame(
             const std::shared_ptr<lfs::core::Tensor>& image,
@@ -469,16 +477,9 @@ namespace lfs::rendering {
         virtual Result<std::shared_ptr<lfs::core::Tensor>> readbackGpuFrameColor(
             const GpuFrame& frame) = 0;
 
-        virtual Result<void> compositeMeshAndGpuFrame(
-            const GpuFrame& splat_frame,
-            const glm::ivec2& viewport_size) = 0;
-
-        virtual Result<void> presentMeshOnly() = 0;
-
-        virtual Result<void> presentGpuFrame(
-            const GpuFrame& frame,
-            const glm::ivec2& viewport_pos,
-            const glm::ivec2& viewport_size) = 0;
+        virtual Result<lfs::core::Tensor> renderVideoCompositeFrame(
+            const std::optional<GpuFrame>& primary_frame,
+            const VideoCompositeFrameRequest& request) = 0;
 
         virtual Result<void> renderScreenSpaceVignette(
             const glm::ivec2& viewport_size,

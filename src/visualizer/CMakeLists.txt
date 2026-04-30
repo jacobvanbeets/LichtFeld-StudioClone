@@ -33,10 +33,6 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
 
         # Rendering
         rendering/camera_interaction_service.cpp
-        rendering/gt_texture_cache.cpp
-        rendering/image_texture_loader.cpp
-        rendering/render_frame_coordinator.cpp
-        rendering/render_pass_graph.cpp
         rendering/rendering_manager.cpp
         rendering/rendering_manager_events.cpp
         rendering/rendering_manager_frame.cpp
@@ -46,17 +42,9 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         rendering/split_view_service.cpp
         rendering/viewport_artifact_service.cpp
         rendering/viewport_frame_lifecycle_service.cpp
-        rendering/render_pass.cpp
         rendering/viewport_appearance_correction.cpp
         rendering/viewport_request_builder.cpp
         rendering/framerate_controller.cpp
-        rendering/passes/environment_pass.cpp
-        rendering/passes/overlay_pass.cpp
-        rendering/passes/splat_raster_pass.cpp
-        rendering/passes/mesh_pass.cpp
-        rendering/passes/present_pass.cpp
-        rendering/passes/point_cloud_pass.cpp
-        rendering/passes/split_view_pass.cpp
 
         # Theme system
         theme/theme.cpp
@@ -64,6 +52,7 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         # GUI system
         gui/gui_manager.cpp
         gui/imgui_vulkan_backend.cpp
+        gui/imgui_vulkan_texture.cpp
         gui/global_context_menu.cpp
         gui/gizmo_manager.cpp
         gui/pie_menu.cpp
@@ -84,7 +73,7 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         gui/rml_viewport_overlay.cpp
         gui/rml_status_bar.cpp
         gui/gpu_memory_query.cpp
-        gui/gl_line_renderer.cpp
+        gui/line_renderer.cpp
         gui/rml_overlay_context.cpp
         gui/film_strip_renderer.cpp
         gui/sequencer_ui_manager.cpp
@@ -180,10 +169,7 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         # RmlUI integration
         gui/rmlui/rmlui_system_interface.cpp
         gui/rmlui/rml_text_input_handler.cpp
-        gui/rmlui/rmlui_render_interface.cpp
-        gui/rmlui/rmlui_gl3_backend.cpp
         gui/rmlui/rmlui_manager.cpp
-        gui/rmlui/rml_fbo.cpp
         gui/rmlui/rml_document_utils.cpp
         gui/rmlui/rml_panel_host.cpp
         gui/rmlui/rml_theme.cpp
@@ -194,11 +180,6 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         gui/rmlui/elements/python_editor_element.cpp
         gui/rmlui/elements/scene_graph_element.cpp
         gui/rmlui/elements/terminal_element.cpp
-)
-
-set_source_files_properties(
-        ${CMAKE_CURRENT_SOURCE_DIR}/gui/rmlui/rmlui_gl3_backend.cpp
-        PROPERTIES COMPILE_DEFINITIONS "RMLUI_GL3_CUSTOM_LOADER=<glad/glad.h>"
 )
 
 # MSVC 14.44 ICEs (C1001 in msc1.cpp:1589) on the sequencer panel TUs under
@@ -221,7 +202,6 @@ target_include_directories(lfs_visualizer
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/external/httplib
-        ${OPENGL_INCLUDE_DIRS}
 )
 
 target_link_libraries(lfs_visualizer
@@ -230,12 +210,11 @@ target_link_libraries(lfs_visualizer
         lfs_video
         lfs_geometry
         lfs_io
-        lfs_rendering
+        lfs_rendering_tensor
         lfs_training
         lfs_python_runtime
         lfs_python_utils
         lfs_sequencer
-        glad::glad
         SDL3::SDL3
         imgui::imgui
         implot::implot
@@ -248,7 +227,6 @@ target_link_libraries(lfs_visualizer
         OpenSSL::Crypto
         CUDA::cudart
         nfd::nfd
-        ${OPENGL_LIBRARIES}
         vterm
 )
 
@@ -450,7 +428,6 @@ endif()
 # Compile definitions
 target_compile_definitions(lfs_visualizer PRIVATE
         LFS_VIS_EXPORTS
-        $<$<BOOL:${CUDA_GL_INTEROP_ENABLED}>:CUDA_GL_INTEROP_ENABLED>
         PROJECT_ROOT_PATH="${PROJECT_SOURCE_DIR}"
         VISUALIZER_SHADER_PATH="${VISUALIZER_BUILD_RESOURCE_DIR}/shaders"
         VISUALIZER_ASSET_PATH="${VISUALIZER_BUILD_RESOURCE_DIR}/assets"
@@ -475,8 +452,6 @@ if (WIN32)
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(lfs_visualizer PRIVATE
-            GL
-            GLU
             X11
             util  # PTY support (forkpty)
     )

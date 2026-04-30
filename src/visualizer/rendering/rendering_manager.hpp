@@ -8,11 +8,8 @@
 #include "core/export.hpp"
 #include "dirty_flags.hpp"
 #include "framerate_controller.hpp"
-#include "gt_texture_cache.hpp"
 #include "internal/viewport.hpp"
 #include "render_animation_state.hpp"
-#include "render_pass_graph.hpp"
-#include "rendering/cuda_gl_interop.hpp"
 #include "rendering/rendering.hpp"
 #include "rendering_types.hpp"
 #include "split_view_service.hpp"
@@ -82,23 +79,12 @@ namespace lfs::vis {
         void renderFrame(const RenderContext& context);
         VulkanFrameResult renderVulkanFrame(const RenderContext& context);
 
-        // Render preview to external texture (for PiP preview)
-        bool renderPreviewFrame(SceneManager* scene_manager,
-                                const glm::mat3& camera_rotation,
-                                const glm::vec3& camera_position,
-                                float focal_length_mm,
-                                unsigned int target_fbo,
-                                unsigned int target_texture,
-                                int width, int height);
-
-        // Render preview image directly into an external texture without touching
-        // the shared viewport presentation textures.
-        bool renderPreviewTexture(SceneManager* scene_manager,
-                                  const glm::mat3& camera_rotation,
-                                  const glm::vec3& camera_position,
-                                  float focal_length_mm,
-                                  unsigned int target_texture,
-                                  int width, int height);
+        // Render preview image without touching the shared viewport presentation textures.
+        std::shared_ptr<lfs::core::Tensor> renderPreviewImage(SceneManager* scene_manager,
+                                                              const glm::mat3& camera_rotation,
+                                                              const glm::vec3& camera_position,
+                                                              float focal_length_mm,
+                                                              int width, int height);
 
         void markDirty();
         void markDirty(DirtyMask flags);
@@ -411,11 +397,8 @@ namespace lfs::vis {
 
         // Core components
         std::unique_ptr<lfs::rendering::RenderingEngine> engine_;
-        RenderPassGraph pass_graph_;
         mutable FramerateController framerate_controller_;
 
-        // GT texture cache
-        GTTextureCache gt_texture_cache_;
         std::shared_ptr<const lfs::core::Tensor> vulkan_viewport_image_;
         glm::ivec2 vulkan_viewport_image_size_{0, 0};
         bool vulkan_viewport_image_flip_y_ = false;

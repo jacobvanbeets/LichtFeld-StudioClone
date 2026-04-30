@@ -9,7 +9,6 @@
 #include "rendering/rasterizer/rasterization/include/rasterization_api_tensor.h"
 #include "rendering/rasterizer/rasterization/include/rasterization_config.h"
 #include "rendering/rendering.hpp"
-#include "rendering/rendering_pipeline.hpp"
 #include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
 #include "training/trainer.hpp"
@@ -90,8 +89,8 @@ namespace lfs::vis {
 
         LOG_TIMER("RenderingEngine initialization");
 
-        engine_ = lfs::rendering::RenderingEngine::create();
-        auto init_result = engine_->initialize();
+        engine_ = lfs::rendering::RenderingEngine::createRasterOnly();
+        auto init_result = engine_->initializeRasterOnly();
         if (!init_result) {
             LOG_ERROR("Failed to initialize rendering engine: {}", init_result.error());
             throw std::runtime_error("Failed to initialize rendering engine: " + init_result.error());
@@ -99,7 +98,7 @@ namespace lfs::vis {
 
         initialized_ = true;
         raster_initialized_ = true;
-        LOG_INFO("Rendering engine initialized successfully");
+        LOG_INFO("Raster rendering engine initialized successfully");
     }
 
     void RenderingManager::markDirty() {

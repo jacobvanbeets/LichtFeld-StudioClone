@@ -2,11 +2,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-// glad must be included before OpenGL headers
-// clang-format off
-#include <glad/glad.h>
-// clang-format on
-
 #include "gui/sequencer_ui_manager.hpp"
 #include "core/event_bridge/localization_manager.hpp"
 #include "core/events.hpp"
@@ -56,17 +51,15 @@ namespace lfs::vis::gui {
 
     SequencerUIManager::~SequencerUIManager() = default;
 
-    void SequencerUIManager::destroyGLResources() {
+    void SequencerUIManager::destroyGraphicsResources() {
         if (panel_)
-            panel_->destroyGLResources();
+            panel_->destroyGraphicsResources();
         if (overlay_)
-            overlay_->destroyGLResources();
-        pip_fbo_ = {};
-        pip_texture_ = {};
-        pip_depth_rbo_ = {};
+            overlay_->destroyGraphicsResources();
+        pip_texture_.reset();
         pip_initialized_ = false;
-        line_renderer_.destroyGLResources();
-        film_strip_.destroyGLResources();
+        line_renderer_.destroyResources();
+        film_strip_.destroyGraphicsResources();
     }
 
     void SequencerUIManager::reloadRmlResources() {
@@ -1195,37 +1188,6 @@ namespace lfs::vis::gui {
     }
 
     void SequencerUIManager::initPipPreview() {
-        if (pip_initialized_ || pip_init_failed_)
-            return;
-
-        glGenFramebuffers(1, pip_fbo_.ptr());
-        glGenTextures(1, pip_texture_.ptr());
-        glGenRenderbuffers(1, pip_depth_rbo_.ptr());
-
-        glBindTexture(GL_TEXTURE_2D, pip_texture_.get());
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, PREVIEW_WIDTH, PREVIEW_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glBindTexture(GL_TEXTURE_2D, 0);
-
-        glBindRenderbuffer(GL_RENDERBUFFER, pip_depth_rbo_.get());
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, PREVIEW_WIDTH, PREVIEW_HEIGHT);
-        glBindRenderbuffer(GL_RENDERBUFFER, 0);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, pip_fbo_.get());
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pip_texture_.get(), 0);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, pip_depth_rbo_.get());
-
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-            LOG_ERROR("PiP preview FBO incomplete");
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            pip_init_failed_ = true;
-            return;
-        }
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
         pip_initialized_ = true;
     }
 
@@ -1292,8 +1254,9 @@ namespace lfs::vis::gui {
             }
         }
 
-        if (rm->renderPreviewTexture(sm, cam_rot, cam_pos, cam_focal_length_mm,
-                                     pip_texture_, PREVIEW_WIDTH, PREVIEW_HEIGHT)) {
+        const auto image = rm->renderPreviewImage(sm, cam_rot, cam_pos, cam_focal_length_mm,
+                                                  PREVIEW_WIDTH, PREVIEW_HEIGHT);
+        if (image && pip_texture_.upload(*image, PREVIEW_WIDTH, PREVIEW_HEIGHT)) {
             pip_last_render_time_ = now;
             if (!is_playing) {
                 pip_last_keyframe_ = selected;
@@ -1314,7 +1277,7 @@ namespace lfs::vis::gui {
         const bool is_playing = !controller_.isStopped();
         const auto selected = controller_.selectedKeyframe();
 
-        if (!pip_initialized_ || pip_texture_ == 0) {
+        if (!pip_initialized_ || !pip_texture_.valid()) {
             overlay_->hidePreviewWindow();
             return;
         }
@@ -1353,7 +1316,7 @@ namespace lfs::vis::gui {
                                         }();
 
         overlay_->showPreviewWindow(left, top, scaled_width, scaled_height,
-                                    title, is_playing, pip_texture_.get());
+                                    title, is_playing, pip_texture_.textureId());
     }
 
     void SequencerUIManager::renderKeyframeEditOverlay(const ViewportLayout& viewport) {

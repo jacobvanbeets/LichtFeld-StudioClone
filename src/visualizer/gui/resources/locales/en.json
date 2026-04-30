@@ -65,7 +65,6 @@
     "build_info.commit": "Commit",
     "build_info.build_type": "Build Type",
     "build_info.platform": "Platform",
-    "build_info.cuda_gl_interop": "CUDA-GL Interop",
     "build_info.property": "Property",
     "build_info.value": "Value",
     "build_type.debug": "Debug",

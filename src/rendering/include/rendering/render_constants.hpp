@@ -73,7 +73,7 @@ namespace lfs::rendering {
                                                           const CameraIntrinsics& intrinsics,
                                                           const float near_plane = DEFAULT_NEAR_PLANE,
                                                           const float far_plane = DEFAULT_FAR_PLANE) {
-        // This produces an image-space frustum (Y down). OpenGL callers must apply a Y flip.
+        // This produces an image-space frustum with window-space Y increasing downward.
         const float width = static_cast<float>(viewport_size.x);
         const float height = static_cast<float>(viewport_size.y);
         const float fx = std::max(intrinsics.focal_x, 1e-6f);

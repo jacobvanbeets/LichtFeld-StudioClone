@@ -9,6 +9,7 @@
 #include "rendering/render_constants.hpp"
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cmath>
 #include <glm/glm.hpp>
 #include <optional>
@@ -281,7 +282,7 @@ namespace lfs::vis {
     };
 
     struct GTComparisonContext {
-        unsigned int gt_texture_id = 0;
+        uint64_t gt_image_handle = 0;
         int camera_id = -1;
         glm::ivec2 dimensions{0, 0};
         glm::ivec2 gpu_aligned_dims{0, 0};
@@ -292,7 +293,7 @@ namespace lfs::vis {
         glm::mat4 scene_transform{1.0f};
         std::optional<GTRenderCamera> render_camera;
 
-        [[nodiscard]] bool valid() const { return gt_texture_id != 0 && dimensions.x > 0 && dimensions.y > 0; }
+        [[nodiscard]] bool valid() const { return gt_image_handle != 0 && dimensions.x > 0 && dimensions.y > 0; }
     };
 
 } // namespace lfs::vis

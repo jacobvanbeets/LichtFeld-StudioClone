@@ -37,6 +37,7 @@ namespace lfs::vis {
         void clearViewportOutput();
         void updateFromFrameResources(const FrameResources& resources, bool viewport_output_updated);
         void updateFromImageOutput(std::shared_ptr<lfs::core::Tensor> image,
+                                   const lfs::rendering::FrameMetadata& metadata,
                                    const glm::ivec2& rendered_size,
                                    bool viewport_output_updated);
         void storeCapturedImage(std::shared_ptr<lfs::core::Tensor> image);
@@ -49,18 +50,12 @@ namespace lfs::vis {
 
     private:
         void invalidateCapture();
-        [[nodiscard]] float readLinearDepth(const lfs::rendering::GpuFrame& frame,
-                                            int x,
-                                            int y,
-                                            int viewport_height) const;
-
         CachedRenderMetadata metadata_;
         std::optional<lfs::rendering::GpuFrame> gpu_frame_;
         glm::ivec2 rendered_size_{0};
         std::shared_ptr<lfs::core::Tensor> captured_image_;
         uint64_t artifact_generation_ = 1;
         uint64_t captured_artifact_generation_ = 0;
-        mutable unsigned int depth_readback_fbo_ = 0;
     };
 
 } // namespace lfs::vis

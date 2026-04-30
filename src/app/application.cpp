@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "app/application.hpp"
-#include "app/splash_screen.hpp"
 #include "control/command_api.hpp"
 #include "core/checkpoint_format.hpp"
 #include "core/cuda_version.hpp"
@@ -16,7 +15,6 @@
 #include "core/scene.hpp"
 #include "core/tensor.hpp"
 #include "io/cache_image_loader.hpp"
-#include "rendering/framebuffer_factory.hpp"
 #include "training/trainer.hpp"
 #include "training/training_setup.hpp"
 #include "visualizer/visualizer.hpp"
@@ -55,8 +53,8 @@ namespace lfs::app {
                 return lfs::vis::GraphicsBackend::Vulkan;
             }
             if (backend == "opengl" || backend == "OpenGL" || backend == "GL" || backend == "gl") {
-                LOG_WARN("Viewer graphics backend requested via LFS_GRAPHICS_BACKEND=opengl; Vulkan is the default transition path");
-                return lfs::vis::GraphicsBackend::OpenGL;
+                LOG_WARN("Viewer graphics backend requested via LFS_GRAPHICS_BACKEND=opengl; OpenGL is no longer an active viewer backend, using Vulkan");
+                return lfs::vis::GraphicsBackend::Vulkan;
             }
             LOG_WARN("Unknown LFS_GRAPHICS_BACKEND='{}'; using Vulkan", backend);
             return lfs::vis::GraphicsBackend::Vulkan;
@@ -243,7 +241,6 @@ namespace lfs::app {
         int runGui(std::unique_ptr<lfs::core::param::TrainingParameters> params) {
             if (params->optimization.no_interop) {
                 LOG_INFO("GPU display interop disabled");
-                lfs::rendering::disableInterop();
             }
 
             if (!params->python_scripts.empty()) {
@@ -257,11 +254,7 @@ namespace lfs::app {
                 params->optimization.no_splash;
 #endif
 
-            if (disable_splash) {
-                warmupCuda();
-            } else {
-                SplashScreen::runWithDelay([]() { warmupCuda(); return 0; });
-            }
+            warmupCuda();
 
             lfs::event::CommandCenterBridge::instance().set(&lfs::training::CommandCenter::instance());
 

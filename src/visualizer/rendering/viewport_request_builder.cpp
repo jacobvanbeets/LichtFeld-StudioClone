@@ -218,7 +218,8 @@ namespace lfs::vis {
                  .equirectangular = ctx.settings.equirectangular},
             .scene =
                 {.model_transforms = &ctx.scene_state.model_transforms,
-                 .transform_indices = ctx.scene_state.transform_indices},
+                 .transform_indices = ctx.scene_state.transform_indices,
+                 .node_visibility_mask = ctx.scene_state.node_visibility_mask},
             .filters = {}};
         applyPointCloudCropBox(state.filters, ctx);
         return state;
@@ -237,7 +238,8 @@ namespace lfs::vis {
                  .equirectangular = ctx.settings.equirectangular},
             .scene =
                 {.model_transforms = &model_transforms,
-                 .transform_indices = ctx.scene_state.transform_indices},
+                 .transform_indices = ctx.scene_state.transform_indices,
+                 .node_visibility_mask = ctx.scene_state.node_visibility_mask},
             .filters = {},
             .transparent_background = environmentBackgroundUsesTransparentViewerCompositing(ctx.settings)};
 

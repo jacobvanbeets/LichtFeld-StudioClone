@@ -65,6 +65,22 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(VkDebugUtilsMessageS
 
 	return VK_FALSE;
 }
+
+static void InsertDebugUtilsLabel(VkDevice device, VkCommandBuffer command_buffer, const VkDebugUtilsLabelEXT& label) noexcept
+{
+	auto* const fn = reinterpret_cast<PFN_vkCmdInsertDebugUtilsLabelEXT>(
+		vkGetDeviceProcAddr(device, "vkCmdInsertDebugUtilsLabelEXT"));
+	if (fn)
+		fn(command_buffer, &label);
+}
+
+static void SetDebugUtilsObjectName(VkDevice device, const VkDebugUtilsObjectNameInfoEXT& name_info) noexcept
+{
+	auto* const fn = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(
+		vkGetDeviceProcAddr(device, "vkSetDebugUtilsObjectNameEXT"));
+	if (fn)
+		(void)fn(device, &name_info);
+}
 #endif
 
 RenderInterface_VK::RenderInterface_VK() :
@@ -292,7 +308,7 @@ void RenderInterface_VK::SetScissorRegion(Rml::Rectanglei region)
 				m_scissor = ContextClipScissor();
 				vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor);
 
-#ifdef RMLUI_DEBUG
+	#ifdef RMLUI_VK_DEBUG
 			VkDebugUtilsLabelEXT info{};
 			info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
 			info.color[0] = 1.0f;
@@ -301,8 +317,8 @@ void RenderInterface_VK::SetScissorRegion(Rml::Rectanglei region)
 			info.color[3] = 1.0f;
 			info.pLabelName = "SetScissorRegion (generated region)";
 
-			vkCmdInsertDebugUtilsLabelEXT(m_p_current_command_buffer, &info);
-#endif
+			InsertDebugUtilsLabel(m_p_device, m_p_current_command_buffer, info);
+	#endif
 
 			VkClearDepthStencilValue info_clear_color{};
 
@@ -346,7 +362,7 @@ void RenderInterface_VK::SetScissorRegion(Rml::Rectanglei region)
 			m_scissor.offset.y = Rml::Math::Clamp(region.Top() + offset_y, 0, m_height);
 			m_scissor = IntersectContextClip(m_scissor);
 
-#ifdef RMLUI_DEBUG
+	#ifdef RMLUI_VK_DEBUG
 			VkDebugUtilsLabelEXT info{};
 			info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
 			info.color[0] = 1.0f;
@@ -355,8 +371,8 @@ void RenderInterface_VK::SetScissorRegion(Rml::Rectanglei region)
 			info.color[3] = 1.0f;
 			info.pLabelName = "SetScissorRegion (offset)";
 
-			vkCmdInsertDebugUtilsLabelEXT(m_p_current_command_buffer, &info);
-#endif
+			InsertDebugUtilsLabel(m_p_device, m_p_current_command_buffer, info);
+	#endif
 
 			vkCmdSetScissor(m_p_current_command_buffer, 0, 1, &m_scissor);
 		}
@@ -869,32 +885,9 @@ Rml::TextureHandle RenderInterface_VK::CreateTexture(Rml::Span<const Rml::byte> 
 #endif
 
 	/*
-	 * So Vulkan works only through VkCommandBuffer, it is for remembering API commands what you want to call from GPU
-	 * So on CPU side you need to create a scope that consists of two things
-	 * vkBeginCommandBuffer
-	 * ... <= here your commands what you want to place into your command buffer and send it to GPU through vkQueueSubmit function
-	 * vkEndCommandBuffer
-	 *
-	 * So commands start to work ONLY when you called the vkQueueSubmit otherwise you just "place" commands into your command buffer but you
-	 * didn't issue any thing in order to start the work on GPU side. ALWAYS remember that just sumbit means execute async mode, so you have to wait
-	 * operations before they exeecute fully otherwise you will get some errors or write/read concurrent state and all other stuff, vulkan validation
-	 * will notify you :) (in most cases)
-	 *
-	 * BUT you need always sync what you have done when you called your vkQueueSubmit function, so it is wait method, but generally you can create
-	 * another queue and isolate all stuff tbh
-	 *
-	 * So understing these principles you understand how to work with API and your GPU
-	 *
-	 * There's nothing hard, but it makes all stuff on programmer side if you remember OpenGL and how it was easy to load texture upload it and create
-	 * buffers and it In OpenGL all stuff is handled by driver and other things, not a programmer definitely
-	 *
-	 * What we do here? We need to change the layout of our image. it means where we want to use it. So in our case we want to see that this image
-	 * will be in shaders Because the initial state of create object is VK_IMAGE_LAYOUT_UNDEFINED means you can't just pass that VkImage handle to
-	 * your functions and wait that it comes to shaders for exmaple No it doesn't work like that you have to have the explicit states of your resource
-	 * and where it goes
-	 *
-	 * In our case we want to see in our pixel shader so we need to change transfer into this flag VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, because we
-	 * want to copy so it means some transfer thing, but after we say it goes to pixel after our copying operation
+	 * Newly created images start in VK_IMAGE_LAYOUT_UNDEFINED. Transition to
+	 * transfer destination for the upload, then to shader-read layout before
+	 * the texture is sampled by RmlUi.
 	 */
 	m_upload_manager.UploadToGPU([p_image, extent_image, cpu_buffer](VkCommandBuffer p_cmd) {
 		VkImageSubresourceRange range = {};
@@ -1387,7 +1380,7 @@ void RenderInterface_VK::Initialize_Device() noexcept
 	AddExtensionToDevice(device_extension_names, device_extension_properties, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 	AddExtensionToDevice(device_extension_names, device_extension_properties, VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME);
 
-#ifdef RMLUI_DEBUG
+#ifdef RMLUI_VK_DEBUG
 	AddExtensionToDevice(device_extension_names, device_extension_properties, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
 
@@ -2644,7 +2637,7 @@ void RenderInterface_VK::Create_Pipelines() noexcept
 	status = vkCreateGraphicsPipelines(m_p_device, nullptr, 1, &info, nullptr, &m_p_pipeline_stencil_for_region_where_geometry_will_be_drawn);
 	RMLUI_VK_ASSERTMSG(status == VkResult::VK_SUCCESS, "failed to vkCreateGraphicsPipelines");
 
-#ifdef RMLUI_DEBUG
+#ifdef RMLUI_VK_DEBUG
 	VkDebugUtilsObjectNameInfoEXT info_debug = {};
 
 	info_debug.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
@@ -2652,27 +2645,27 @@ void RenderInterface_VK::Create_Pipelines() noexcept
 	info_debug.objectType = VkObjectType::VK_OBJECT_TYPE_PIPELINE;
 	info_debug.objectHandle = (uint64_t)m_p_pipeline_stencil_for_region_where_geometry_will_be_drawn;
 
-	vkSetDebugUtilsObjectNameEXT(m_p_device, &info_debug);
+	SetDebugUtilsObjectName(m_p_device, info_debug);
 
 	info_debug.pObjectName = "pipeline_stencil_for_regular_geometry_that_applied_to_region_without_textures";
 	info_debug.objectHandle = (uint64_t)m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_without_textures;
 
-	vkSetDebugUtilsObjectNameEXT(m_p_device, &info_debug);
+	SetDebugUtilsObjectName(m_p_device, info_debug);
 
 	info_debug.pObjectName = "pipeline_without_textures";
 	info_debug.objectHandle = (uint64_t)m_p_pipeline_without_textures;
 
-	vkSetDebugUtilsObjectNameEXT(m_p_device, &info_debug);
+	SetDebugUtilsObjectName(m_p_device, info_debug);
 
 	info_debug.pObjectName = "pipeline_stencil_for_regular_geometry_that_applied_to_region_with_textures";
 	info_debug.objectHandle = (uint64_t)m_p_pipeline_stencil_for_regular_geometry_that_applied_to_region_with_textures;
 
-	vkSetDebugUtilsObjectNameEXT(m_p_device, &info_debug);
+	SetDebugUtilsObjectName(m_p_device, info_debug);
 
 	info_debug.pObjectName = "pipeline_with_textures";
 	info_debug.objectHandle = (uint64_t)m_p_pipeline_with_textures;
 
-	vkSetDebugUtilsObjectNameEXT(m_p_device, &info_debug);
+	SetDebugUtilsObjectName(m_p_device, info_debug);
 #endif
 }
 

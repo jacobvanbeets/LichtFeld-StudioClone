@@ -12,9 +12,7 @@
 #include "gui/rmlui/elements/python_editor_element.hpp"
 #include "gui/rmlui/elements/scene_graph_element.hpp"
 #include "gui/rmlui/elements/terminal_element.hpp"
-#include "gui/rmlui/rml_fbo.hpp"
 #include "gui/rmlui/rml_text_input_handler.hpp"
-#include "gui/rmlui/rmlui_render_interface.hpp"
 #include "gui/rmlui/rmlui_system_interface.hpp"
 #include "internal/resource_paths.hpp"
 #include "python/python_runtime.hpp"
@@ -52,12 +50,6 @@ namespace lfs::vis::gui {
             shutdown();
     }
 
-    bool RmlUIManager::init(SDL_Window* window, float dp_ratio) {
-        auto render_interface = std::make_unique<RmlRenderInterface>();
-        auto* gl_render_interface = render_interface.get();
-        return initWithRenderInterface(window, dp_ratio, std::move(render_interface), gl_render_interface, nullptr);
-    }
-
     bool RmlUIManager::initVulkan(SDL_Window* window, lfs::vis::VulkanContext& vulkan_context, float dp_ratio) {
 #ifdef LFS_VULKAN_VIEWER_ENABLED
         auto render_interface = std::make_unique<RenderInterface_VK>();
@@ -78,7 +70,7 @@ namespace lfs::vis::gui {
             return false;
         }
 
-        return initWithRenderInterface(window, dp_ratio, std::move(render_interface), nullptr, vulkan_render_interface);
+        return initWithRenderInterface(window, dp_ratio, std::move(render_interface), vulkan_render_interface);
 #else
         (void)window;
         (void)vulkan_context;
@@ -91,7 +83,6 @@ namespace lfs::vis::gui {
     bool RmlUIManager::initWithRenderInterface(SDL_Window* window,
                                                float dp_ratio,
                                                std::unique_ptr<Rml::RenderInterface> render_interface,
-                                               RmlRenderInterface* gl_render_interface,
                                                RenderInterface_VK* vulkan_render_interface) {
         assert(!initialized_);
         assert(window);
@@ -104,7 +95,6 @@ namespace lfs::vis::gui {
 
         system_interface_ = std::make_unique<RmlSystemInterface>(window);
         owned_render_interface_ = std::move(render_interface);
-        render_interface_ = gl_render_interface;
         vulkan_render_interface_ = vulkan_render_interface;
         text_input_handler_ = std::make_unique<RmlTextInputHandler>();
 
@@ -119,7 +109,6 @@ namespace lfs::vis::gui {
                 vulkan_render_interface_->ShutdownExternal();
 #endif
             owned_render_interface_.reset();
-            render_interface_ = nullptr;
             vulkan_render_interface_ = nullptr;
             text_input_handler_.reset();
             system_interface_.reset();
@@ -204,7 +193,6 @@ namespace lfs::vis::gui {
             vulkan_render_interface_->ShutdownExternal();
 #endif
         owned_render_interface_.reset();
-        render_interface_ = nullptr;
         vulkan_render_interface_ = nullptr;
         vulkan_queue_.clear();
         vulkan_foreground_queue_.clear();
@@ -383,9 +371,5 @@ namespace lfs::vis::gui {
         vulkan_frame_active_ = false;
     }
 #endif
-
-    bool RmlUIManager::shouldDeferFboUpdate(const RmlFBO& fbo) const {
-        return resize_deferring_ && fbo.valid();
-    }
 
 } // namespace lfs::vis::gui

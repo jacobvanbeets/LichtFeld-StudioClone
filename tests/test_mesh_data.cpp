@@ -2,6 +2,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "core/mesh_data.hpp"
+#include "rendering/mesh2splat.hpp"
 #include <gtest/gtest.h>
 
 using namespace lfs::core;
@@ -188,4 +189,23 @@ TEST_F(MeshDataTest, MaterialsAndSubmeshes) {
     EXPECT_EQ(mesh.submeshes[0].start_index, 0u);
     EXPECT_EQ(mesh.submeshes[0].index_count, 6u);
     EXPECT_EQ(mesh.submeshes[0].material_index, 0u);
+}
+
+TEST_F(MeshDataTest, Mesh2SplatCpuTensorConverterProducesSplatData) {
+    auto mesh = make_triangle();
+
+    Mesh2SplatOptions options;
+    options.resolution_target = Mesh2SplatOptions::kMinResolution;
+
+    auto result = lfs::rendering::mesh_to_splat(mesh, options);
+
+    ASSERT_TRUE(result.has_value()) << result.error();
+    ASSERT_NE(*result, nullptr);
+    EXPECT_GT((*result)->size(), 0u);
+    EXPECT_EQ((*result)->get_max_sh_degree(), 0);
+    EXPECT_EQ((*result)->means_raw().device(), Device::CUDA);
+    EXPECT_EQ((*result)->means_raw().size(1), size_t{3});
+    EXPECT_EQ((*result)->sh0_raw().size(1), size_t{1});
+    EXPECT_EQ((*result)->sh0_raw().size(2), size_t{3});
+    EXPECT_EQ((*result)->opacity_raw().size(1), size_t{1});
 }

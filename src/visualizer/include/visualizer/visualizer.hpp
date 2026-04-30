@@ -26,7 +26,6 @@ namespace lfs::vis {
     class RenderingManager;
 
     enum class GraphicsBackend {
-        OpenGL,
         Vulkan,
     };
 

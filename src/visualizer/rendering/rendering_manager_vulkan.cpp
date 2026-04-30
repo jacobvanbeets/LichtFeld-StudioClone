@@ -7,6 +7,7 @@
 #include "core/splat_data.hpp"
 #include "core/tensor.hpp"
 #include "model_renderability.hpp"
+#include "rendering/image_layout.hpp"
 #include "rendering/rasterizer/rasterization/include/rasterization_config.h"
 #include "scene/scene_manager.hpp"
 #include "training/trainer.hpp"
@@ -16,8 +17,11 @@
 #include "viewport_request_builder.hpp"
 #include <algorithm>
 #include <cmath>
+#include <expected>
+#include <format>
 #include <shared_mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace lfs::vis {
@@ -85,13 +89,166 @@ namespace lfs::vis {
                        static_cast<float>((*layouts)[1].width));
             return panels;
         }
+
+        struct CpuChwImage {
+            lfs::core::Tensor tensor;
+            int width = 0;
+            int height = 0;
+            int channels = 0;
+
+            [[nodiscard]] bool valid() const {
+                return tensor.is_valid() && width > 0 && height > 0 && channels >= 3;
+            }
+        };
+
+        [[nodiscard]] std::expected<CpuChwImage, std::string> toCpuChwFloatImage(
+            const std::shared_ptr<lfs::core::Tensor>& image) {
+            if (!image || !image->is_valid() || image->ndim() != 3) {
+                return std::unexpected("Invalid image tensor");
+            }
+
+            lfs::core::Tensor formatted = *image;
+            const auto layout = lfs::rendering::detectImageLayout(formatted);
+            if (layout == lfs::rendering::ImageLayout::Unknown) {
+                return std::unexpected("Unsupported image tensor layout");
+            }
+            if (formatted.dtype() == lfs::core::DataType::UInt8) {
+                formatted = formatted.to(lfs::core::DataType::Float32) / 255.0f;
+            } else if (formatted.dtype() != lfs::core::DataType::Float32) {
+                formatted = formatted.to(lfs::core::DataType::Float32);
+            }
+            if (layout == lfs::rendering::ImageLayout::HWC) {
+                formatted = formatted.permute({2, 0, 1}).contiguous();
+            }
+            formatted = formatted.cpu().contiguous();
+
+            return CpuChwImage{
+                .tensor = std::move(formatted),
+                .width = static_cast<int>(layout == lfs::rendering::ImageLayout::HWC ? image->size(1) : image->size(2)),
+                .height = static_cast<int>(layout == lfs::rendering::ImageLayout::HWC ? image->size(0) : image->size(1)),
+                .channels = static_cast<int>(layout == lfs::rendering::ImageLayout::HWC ? image->size(2) : image->size(0))};
+        }
+
+        struct CompositePanelImage {
+            std::shared_ptr<lfs::core::Tensor> image;
+            float start_position = 0.0f;
+            float end_position = 1.0f;
+            bool normalize_x_to_panel = false;
+        };
+
+        [[nodiscard]] float sampleNearestChw(
+            const CpuChwImage& image,
+            const float u,
+            const float v,
+            const int channel) {
+            const float clamped_u = std::clamp(u, 0.0f, 1.0f);
+            const float clamped_v = std::clamp(v, 0.0f, 1.0f);
+            const int x = std::clamp(
+                static_cast<int>(std::lround(clamped_u * static_cast<float>(image.width - 1))),
+                0,
+                image.width - 1);
+            const int y = std::clamp(
+                static_cast<int>(std::lround(clamped_v * static_cast<float>(image.height - 1))),
+                0,
+                image.height - 1);
+            const float* const data = image.tensor.ptr<float>();
+            return data[(static_cast<size_t>(channel) * image.height + y) * image.width + x];
+        }
+
+        [[nodiscard]] std::expected<std::shared_ptr<lfs::core::Tensor>, std::string> compositeSplitImages(
+            const CompositePanelImage& left_panel,
+            const CompositePanelImage& right_panel,
+            const glm::ivec2 output_size,
+            const glm::vec3& background_color,
+            const float split_position) {
+            if (output_size.x <= 0 || output_size.y <= 0) {
+                return std::unexpected("Invalid split-view output size");
+            }
+
+            auto left = toCpuChwFloatImage(left_panel.image);
+            if (!left) {
+                return std::unexpected(left.error());
+            }
+            auto right = toCpuChwFloatImage(right_panel.image);
+            if (!right) {
+                return std::unexpected(right.error());
+            }
+
+            const int width = output_size.x;
+            const int height = output_size.y;
+            const size_t pixel_count = static_cast<size_t>(width) * height;
+            std::vector<float> output(3 * pixel_count, 0.0f);
+            for (size_t i = 0; i < pixel_count; ++i) {
+                output[i] = background_color.r;
+                output[pixel_count + i] = background_color.g;
+                output[2 * pixel_count + i] = background_color.b;
+            }
+
+            const int divider = splitViewDividerPixel(width, split_position);
+            const auto sample_panel = [](const CpuChwImage& image,
+                                         const CompositePanelImage& panel,
+                                         const float u,
+                                         const float v,
+                                         const int channel) {
+                float panel_u = u;
+                if (panel.normalize_x_to_panel) {
+                    const float span = std::max(panel.end_position - panel.start_position, 1e-6f);
+                    panel_u = (u - panel.start_position) / span;
+                }
+                return sampleNearestChw(image, panel_u, v, channel);
+            };
+
+            for (int y = 0; y < height; ++y) {
+                const float v = height > 1 ? static_cast<float>(y) / static_cast<float>(height - 1) : 0.0f;
+                for (int x = 0; x < width; ++x) {
+                    const float u = width > 1 ? static_cast<float>(x) / static_cast<float>(width - 1) : 0.0f;
+                    const bool use_left = x < divider;
+                    const auto& image = use_left ? *left : *right;
+                    const auto& panel = use_left ? left_panel : right_panel;
+                    const size_t pixel_index = static_cast<size_t>(y) * width + x;
+                    output[pixel_index] = sample_panel(image, panel, u, v, 0);
+                    output[pixel_count + pixel_index] = sample_panel(image, panel, u, v, 1);
+                    output[2 * pixel_count + pixel_index] = sample_panel(image, panel, u, v, 2);
+                }
+            }
+
+            auto tensor = lfs::core::Tensor::from_vector(
+                output,
+                {static_cast<size_t>(3), static_cast<size_t>(height), static_cast<size_t>(width)},
+                lfs::core::Device::CPU)
+                              .cuda();
+            return std::make_shared<lfs::core::Tensor>(std::move(tensor));
+        }
+
+        [[nodiscard]] lfs::rendering::FrameMetadata makeSplitMetadata(
+            const lfs::rendering::FrameMetadata& left,
+            const lfs::rendering::FrameMetadata& right,
+            const float split_position) {
+            lfs::rendering::FrameMetadata metadata{
+                .depth_panels =
+                    {lfs::rendering::FramePanelMetadata{
+                         .depth = left.depth_panel_count > 0 ? left.depth_panels[0].depth : nullptr,
+                         .start_position = 0.0f,
+                         .end_position = split_position,
+                     },
+                     lfs::rendering::FramePanelMetadata{
+                         .depth = right.depth_panel_count > 0 ? right.depth_panels[0].depth : nullptr,
+                         .start_position = split_position,
+                         .end_position = 1.0f,
+                     }},
+                .depth_panel_count = 2,
+                .valid = true,
+                .far_plane = left.valid ? left.far_plane : right.far_plane,
+                .orthographic = left.valid ? left.orthographic : right.orthographic};
+            return metadata;
+        }
     } // namespace
 
     RenderingManager::VulkanFrameResult RenderingManager::renderVulkanFrame(const RenderContext& context) {
         SceneManager* const scene_manager = context.scene_manager;
 
         if (!engine_) {
-            engine_ = lfs::rendering::RenderingEngine::create();
+            engine_ = lfs::rendering::RenderingEngine::createRasterOnly();
         }
         if (!raster_initialized_) {
             if (auto init_result = engine_->initializeRasterOnly(); !init_result) {
@@ -101,6 +258,7 @@ namespace lfs::vis {
                         .flip_y = vulkan_viewport_image_flip_y_};
             }
             raster_initialized_ = true;
+            initialized_ = true;
         }
 
         if (scene_manager && (dirty_mask_.load(std::memory_order_relaxed) & DirtyFlag::SELECTION)) {
@@ -146,7 +304,13 @@ namespace lfs::vis {
         auto render_lock = acquireLiveModelRenderLock(scene_manager);
 
         const lfs::core::SplatData* const model = scene_manager ? scene_manager->getModelForRendering() : nullptr;
+        SceneRenderState scene_state;
+        if (scene_manager) {
+            scene_state = scene_manager->buildRenderState();
+        }
         const bool has_renderable_model = hasRenderableGaussians(model);
+        const bool has_point_cloud =
+            scene_state.point_cloud != nullptr && scene_state.point_cloud->size() > 0;
         const size_t model_ptr = reinterpret_cast<size_t>(model);
 
         if (const auto model_change = frame_lifecycle_service_.handleModelChange(model_ptr, viewport_artifact_service_);
@@ -170,14 +334,14 @@ namespace lfs::vis {
 
         if (const DirtyMask required_dirty = frame_lifecycle_service_.requiredDirtyMask(
                 vulkan_viewport_image_ != nullptr,
-                has_renderable_model,
+                has_renderable_model || has_point_cloud,
                 settings_.split_view_mode);
             required_dirty) {
             dirty_mask_.fetch_or(required_dirty, std::memory_order_relaxed);
         }
 
         DirtyMask frame_dirty = dirty_mask_.exchange(0);
-        if (!has_renderable_model) {
+        if (!has_renderable_model && !has_point_cloud) {
             vulkan_viewport_image_.reset();
             vulkan_viewport_image_size_ = {0, 0};
             vulkan_viewport_image_flip_y_ = false;
@@ -197,11 +361,6 @@ namespace lfs::vis {
         glm::ivec2 render_size(
             std::max(static_cast<int>(std::lround(static_cast<float>(current_size.x) * scale)), 1),
             std::max(static_cast<int>(std::lround(static_cast<float>(current_size.y) * scale)), 1));
-
-        SceneRenderState scene_state;
-        if (scene_manager) {
-            scene_state = scene_manager->buildRenderState();
-        }
 
         const FrameContext frame_ctx{
             .viewport = context.viewport,
@@ -225,10 +384,303 @@ namespace lfs::vis {
         std::shared_ptr<lfs::core::Tensor> rendered_image;
         lfs::rendering::FrameMetadata rendered_metadata{};
         std::string render_error;
+        bool rendered_image_contains_ground_truth = false;
+        std::optional<SplitViewInfo> rendered_split_info;
 
-        if (settings_.point_cloud_mode) {
+        struct RenderedPanel {
+            std::shared_ptr<lfs::core::Tensor> image;
+            lfs::rendering::FrameMetadata metadata;
+        };
+
+        const auto render_panel_image =
+            [&](const Viewport& source_viewport,
+                const glm::ivec2 panel_size,
+                const std::optional<SplitViewPanelId> panel_id,
+                const std::optional<std::vector<bool>>& node_visibility_override,
+                const lfs::core::SplatData* model_override = nullptr,
+                const std::vector<glm::mat4>* model_transforms_override = nullptr)
+            -> std::expected<RenderedPanel, std::string> {
+            const lfs::core::SplatData* const panel_model = model_override ? model_override : model;
+            if (panel_size.x <= 0 || panel_size.y <= 0) {
+                return std::unexpected("Invalid split-view panel size");
+            }
+
+            if ((settings_.point_cloud_mode || !hasRenderableGaussians(panel_model)) && has_point_cloud && !panel_model) {
+                const std::vector<glm::mat4> point_cloud_transforms = {frame_ctx.scene_state.point_cloud_transform};
+                const auto state = buildSplitViewPointCloudPanelRenderState(frame_ctx, panel_size, &source_viewport);
+                lfs::rendering::PointCloudRenderRequest request{
+                    .frame_view = state.frame_view,
+                    .render = state.render,
+                    .scene =
+                        {.model_transforms = &point_cloud_transforms,
+                         .transform_indices = nullptr,
+                         .node_visibility_mask = {}},
+                    .filters = state.filters,
+                    .transparent_background = environmentBackgroundUsesTransparentViewerCompositing(settings_)};
+                auto result = engine_->renderPointCloudImage(*frame_ctx.scene_state.point_cloud, request);
+                if (!result || !result->image) {
+                    return std::unexpected(result ? "Raw point-cloud panel render returned no image"
+                                                  : result.error());
+                }
+                return RenderedPanel{.image = std::move(result->image), .metadata = std::move(result->metadata)};
+            }
+
+            if (!hasRenderableGaussians(panel_model)) {
+                return std::unexpected("No renderable model for split-view panel");
+            }
+
+            if (settings_.point_cloud_mode) {
+                const auto state = buildSplitViewPointCloudPanelRenderState(frame_ctx, panel_size, &source_viewport);
+                std::vector<glm::mat4> transforms_storage;
+                auto scene = state.scene;
+                if (model_transforms_override) {
+                    scene.model_transforms = model_transforms_override;
+                } else if (!scene.model_transforms) {
+                    transforms_storage = {glm::mat4(1.0f)};
+                    scene.model_transforms = &transforms_storage;
+                }
+                if (node_visibility_override) {
+                    scene.node_visibility_mask = *node_visibility_override;
+                }
+                lfs::rendering::PointCloudRenderRequest request{
+                    .frame_view = state.frame_view,
+                    .render = state.render,
+                    .scene = scene,
+                    .filters = state.filters,
+                    .transparent_background = environmentBackgroundUsesTransparentViewerCompositing(settings_)};
+                auto result = engine_->renderPointCloudImage(*panel_model, request);
+                if (!result || !result->image) {
+                    return std::unexpected(result ? "Point-cloud panel render returned no image"
+                                                  : result.error());
+                }
+                return RenderedPanel{.image = std::move(result->image), .metadata = std::move(result->metadata)};
+            }
+
+            auto request = buildViewportRenderRequest(frame_ctx, panel_size, &source_viewport, panel_id);
+            std::vector<glm::mat4> transforms_storage;
+            if (model_transforms_override) {
+                request.scene.model_transforms = model_transforms_override;
+            } else if (!request.scene.model_transforms) {
+                transforms_storage = {glm::mat4(1.0f)};
+                request.scene.model_transforms = &transforms_storage;
+            }
+            if (node_visibility_override) {
+                request.scene.node_visibility_mask = *node_visibility_override;
+            }
+            auto result = engine_->renderGaussiansImage(*panel_model, request);
+            if (!result || !result->image) {
+                return std::unexpected(result ? "Gaussian panel render returned no image"
+                                              : result.error());
+            }
+            return RenderedPanel{.image = std::move(result->image), .metadata = std::move(result->metadata)};
+        };
+
+        if (splitViewUsesGTComparison(settings_.split_view_mode) && scene_manager && has_renderable_model) {
+            std::shared_ptr<lfs::core::Camera> camera;
+            const auto cameras = scene_manager->getScene().getAllCameras();
+            if (frame_ctx.current_camera_id >= 0) {
+                for (const auto& candidate : cameras) {
+                    if (candidate && candidate->uid() == frame_ctx.current_camera_id) {
+                        camera = candidate;
+                        break;
+                    }
+                }
+            }
+            if (!camera && !cameras.empty()) {
+                for (const auto& candidate : cameras) {
+                    if (candidate) {
+                        camera = candidate;
+                        break;
+                    }
+                }
+            }
+
+            if (camera && !camera->image_path().empty()) {
+                try {
+                    auto gt_tensor = camera->load_and_get_image(-1, render_size.x, false);
+                    if (gt_tensor.is_valid() && gt_tensor.ndim() == 3) {
+                        const auto gt_layout = lfs::rendering::detectImageLayout(gt_tensor);
+                        if (gt_layout != lfs::rendering::ImageLayout::Unknown) {
+                            gt_tensor = lfs::rendering::flipImageVertical(gt_tensor, gt_layout);
+                            const glm::ivec2 gt_size{
+                                lfs::rendering::imageWidth(gt_tensor, gt_layout),
+                                lfs::rendering::imageHeight(gt_tensor, gt_layout)};
+
+                            auto request = buildViewportRenderRequest(frame_ctx, gt_size);
+                            const glm::mat4 scene_transform =
+                                detail::currentSceneTransform(scene_manager, camera->uid());
+                            const auto render_camera =
+                                detail::buildGTRenderCamera(*camera, gt_size, scene_transform);
+                            if (render_camera) {
+                                request.frame_view.rotation = render_camera->rotation;
+                                request.frame_view.translation = render_camera->translation;
+                                request.frame_view.intrinsics_override = render_camera->intrinsics;
+                                request.frame_view.orthographic = false;
+                                request.frame_view.ortho_scale = lfs::rendering::DEFAULT_ORTHO_SCALE;
+                                request.equirectangular = render_camera->equirectangular;
+                            }
+
+                            auto rendered = engine_->renderGaussiansImage(*model, request);
+                            if (rendered && rendered->image) {
+                                rendered->image = applyViewportAppearanceCorrection(
+                                    std::move(rendered->image),
+                                    scene_manager,
+                                    settings_,
+                                    camera->uid());
+                            }
+
+                            if (rendered && rendered->image) {
+                                auto gt_image = std::make_shared<lfs::core::Tensor>(std::move(gt_tensor));
+                                auto composite = compositeSplitImages(
+                                    CompositePanelImage{
+                                        .image = std::move(gt_image),
+                                        .start_position = 0.0f,
+                                        .end_position = settings_.split_position,
+                                        .normalize_x_to_panel = false},
+                                    CompositePanelImage{
+                                        .image = rendered->image,
+                                        .start_position = settings_.split_position,
+                                        .end_position = 1.0f,
+                                        .normalize_x_to_panel = false},
+                                    render_size,
+                                    settings_.background_color,
+                                    settings_.split_position);
+                                if (composite) {
+                                    rendered_image = std::move(*composite);
+                                    rendered_metadata = rendered->metadata;
+                                    rendered_image_contains_ground_truth = true;
+                                    rendered_split_info = SplitViewInfo{
+                                        .enabled = true,
+                                        .mode_label = "GT Compare",
+                                        .detail_label = camera->image_name(),
+                                        .left_name = "Ground Truth",
+                                        .right_name = "Rendered"};
+                                } else {
+                                    render_error = composite.error();
+                                }
+                            } else {
+                                render_error = rendered ? "GT comparison render returned no image" : rendered.error();
+                            }
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    render_error = std::format("GT comparison failed: {}", e.what());
+                }
+            }
+        } else if (splitViewUsesIndependentPanels(settings_.split_view_mode)) {
+            if (const auto layouts = split_view_service_.panelLayouts(settings_, render_size.x);
+                layouts && render_size.x > 1) {
+                auto left = render_panel_image(
+                    context.viewport,
+                    {std::max((*layouts)[0].width, 1), render_size.y},
+                    SplitViewPanelId::Left,
+                    std::nullopt);
+                auto right = render_panel_image(
+                    split_view_service_.secondaryViewport(),
+                    {std::max((*layouts)[1].width, 1), render_size.y},
+                    SplitViewPanelId::Right,
+                    std::nullopt);
+                if (left && right) {
+                    auto composite = compositeSplitImages(
+                        CompositePanelImage{
+                            .image = left->image,
+                            .start_position = (*layouts)[0].start_position,
+                            .end_position = (*layouts)[0].end_position,
+                            .normalize_x_to_panel = true},
+                        CompositePanelImage{
+                            .image = right->image,
+                            .start_position = (*layouts)[1].start_position,
+                            .end_position = (*layouts)[1].end_position,
+                            .normalize_x_to_panel = true},
+                        render_size,
+                        settings_.background_color,
+                        settings_.split_position);
+                    if (composite) {
+                        rendered_image = std::move(*composite);
+                        rendered_metadata = makeSplitMetadata(left->metadata, right->metadata, settings_.split_position);
+                        rendered_split_info = SplitViewInfo{
+                            .enabled = true,
+                            .mode_label = "Split View",
+                            .detail_label = "Primary | Secondary",
+                            .left_name = "Primary View",
+                            .right_name = "Secondary View"};
+                    } else {
+                        render_error = composite.error();
+                    }
+                } else {
+                    render_error = left ? right.error() : left.error();
+                }
+            }
+        } else if (splitViewUsesPLYComparison(settings_.split_view_mode) && scene_manager && has_renderable_model) {
+            const auto visible_nodes = scene_manager->getScene().getVisibleNodes();
+            if (visible_nodes.size() >= 2 && !frame_ctx.scene_state.node_visibility_mask.empty()) {
+                const size_t left_idx = settings_.split_view_offset % visible_nodes.size();
+                const size_t right_idx = (settings_.split_view_offset + 1) % visible_nodes.size();
+                std::vector<bool> left_mask(frame_ctx.scene_state.node_visibility_mask.size(), false);
+                std::vector<bool> right_mask(frame_ctx.scene_state.node_visibility_mask.size(), false);
+                if (left_idx < left_mask.size()) {
+                    left_mask[left_idx] = true;
+                }
+                if (right_idx < right_mask.size()) {
+                    right_mask[right_idx] = true;
+                }
+
+                auto left = render_panel_image(
+                    context.viewport, render_size, std::nullopt, std::optional<std::vector<bool>>(left_mask));
+                auto right = render_panel_image(
+                    context.viewport, render_size, std::nullopt, std::optional<std::vector<bool>>(right_mask));
+                if (left && right) {
+                    auto composite = compositeSplitImages(
+                        CompositePanelImage{
+                            .image = left->image,
+                            .start_position = 0.0f,
+                            .end_position = settings_.split_position,
+                            .normalize_x_to_panel = false},
+                        CompositePanelImage{
+                            .image = right->image,
+                            .start_position = settings_.split_position,
+                            .end_position = 1.0f,
+                            .normalize_x_to_panel = false},
+                        render_size,
+                        settings_.background_color,
+                        settings_.split_position);
+                    if (composite) {
+                        rendered_image = std::move(*composite);
+                        rendered_metadata = makeSplitMetadata(left->metadata, right->metadata, settings_.split_position);
+                        rendered_split_info = SplitViewInfo{
+                            .enabled = true,
+                            .mode_label = "Split View",
+                            .detail_label = std::format("{} | {}",
+                                                        visible_nodes[left_idx]->name,
+                                                        visible_nodes[right_idx]->name),
+                            .left_name = visible_nodes[left_idx]->name,
+                            .right_name = visible_nodes[right_idx]->name};
+                    } else {
+                        render_error = composite.error();
+                    }
+                } else {
+                    render_error = left ? right.error() : left.error();
+                }
+            }
+        }
+
+        const bool render_point_cloud = settings_.point_cloud_mode || !has_renderable_model;
+
+        if (rendered_image) {
+            // Split-view render already produced the final viewport image.
+        } else if (render_point_cloud && has_renderable_model) {
             auto request = buildPointCloudRenderRequest(frame_ctx, render_size, frame_ctx.scene_state.model_transforms);
             auto render_result = engine_->renderPointCloudImage(*model, request);
+            if (render_result) {
+                rendered_image = std::move(render_result->image);
+                rendered_metadata = std::move(render_result->metadata);
+            } else {
+                render_error = render_result.error();
+            }
+        } else if (render_point_cloud && has_point_cloud) {
+            const std::vector<glm::mat4> point_cloud_transforms = {frame_ctx.scene_state.point_cloud_transform};
+            auto request = buildPointCloudRenderRequest(frame_ctx, render_size, point_cloud_transforms);
+            auto render_result = engine_->renderPointCloudImage(*frame_ctx.scene_state.point_cloud, request);
             if (render_result) {
                 rendered_image = std::move(render_result->image);
                 rendered_metadata = std::move(render_result->metadata);
@@ -246,12 +698,78 @@ namespace lfs::vis {
             }
         }
 
-        if (rendered_image) {
+        if (rendered_image && !rendered_image_contains_ground_truth) {
             rendered_image = applyViewportAppearanceCorrection(
                 std::move(rendered_image),
                 scene_manager,
                 settings_,
                 frame_ctx.current_camera_id);
+        }
+
+        if (rendered_image && (environmentBackgroundEnabled(settings_) || !frame_ctx.scene_state.meshes.empty())) {
+            const bool any_selected_mesh = std::any_of(
+                frame_ctx.scene_state.meshes.begin(),
+                frame_ctx.scene_state.meshes.end(),
+                [](const auto& mesh) { return mesh.is_selected; });
+            const bool any_selected_node = std::any_of(
+                frame_ctx.scene_state.selected_node_mask.begin(),
+                frame_ctx.scene_state.selected_node_mask.end(),
+                [](const bool selected) { return selected; });
+            const bool dim_non_emphasized =
+                settings_.desaturate_unselected && (any_selected_mesh || any_selected_node);
+
+            std::vector<lfs::rendering::MeshFrameItem> mesh_items;
+            mesh_items.reserve(frame_ctx.scene_state.meshes.size());
+            for (const auto& mesh : frame_ctx.scene_state.meshes) {
+                if (!mesh.mesh) {
+                    continue;
+                }
+                mesh_items.push_back(lfs::rendering::MeshFrameItem{
+                    .mesh = mesh.mesh,
+                    .transform = mesh.transform,
+                    .options =
+                        {.wireframe_overlay = settings_.mesh_wireframe,
+                         .wireframe_color = settings_.mesh_wireframe_color,
+                         .wireframe_width = settings_.mesh_wireframe_width,
+                         .light_dir = settings_.mesh_light_dir,
+                         .light_intensity = settings_.mesh_light_intensity,
+                         .ambient = settings_.mesh_ambient,
+                         .backface_culling = settings_.mesh_backface_culling,
+                         .shadow_enabled = settings_.mesh_shadow_enabled,
+                         .shadow_map_resolution = settings_.mesh_shadow_resolution,
+                         .is_emphasized = mesh.is_selected,
+                         .dim_non_emphasized = dim_non_emphasized,
+                         .flash_intensity = frame_ctx.selection_flash_intensity,
+                         .background_color = settings_.background_color,
+                         .transparent_background = environmentBackgroundUsesTransparentViewerCompositing(settings_)},
+                });
+            }
+
+            if (!mesh_items.empty()) {
+                auto tensor_frame = engine_->materializeGpuFrame(rendered_image, rendered_metadata, render_size);
+                if (tensor_frame) {
+                    lfs::rendering::VideoCompositeFrameRequest composite_request{
+                        .viewport = frame_ctx.makeViewportData(),
+                        .frame_view = frame_ctx.makeFrameView(),
+                        .background_color = settings_.background_color,
+                        .environment =
+                            {.enabled = environmentBackgroundEnabled(settings_),
+                             .map_path = settings_.environment_map_path,
+                             .exposure = settings_.environment_exposure,
+                             .rotation_degrees = settings_.environment_rotation_degrees,
+                             .equirectangular = settings_.equirectangular},
+                        .meshes = std::move(mesh_items),
+                    };
+                    auto composite = engine_->renderVideoCompositeFrame(*tensor_frame, composite_request);
+                    if (composite) {
+                        rendered_image = std::make_shared<lfs::core::Tensor>(std::move(*composite));
+                    } else {
+                        LOG_ERROR("Failed to composite Vulkan mesh frame: {}", composite.error());
+                    }
+                } else {
+                    LOG_ERROR("Failed to prepare tensor frame for mesh compositing: {}", tensor_frame.error());
+                }
+            }
         }
         render_lock.reset();
 
@@ -269,7 +787,7 @@ namespace lfs::vis {
         vulkan_viewport_image_size_ = render_size;
         vulkan_viewport_image_flip_y_ = !rendered_metadata.flip_y;
         viewport_artifact_service_.updateFromImageOutput(
-            std::move(viewport_image), render_size, true);
+            std::move(viewport_image), rendered_metadata, render_size, true);
 
         if (resize_result.completed) {
             frame_lifecycle_service_.noteResizeCompleted();
@@ -278,6 +796,12 @@ namespace lfs::vis {
 
         queueCameraMetricsRefreshIfStale(scene_manager);
         viewport_interaction_context_.scene_manager = scene_manager;
+        FrameResources split_info_resources;
+        if (rendered_split_info) {
+            split_info_resources.split_view_executed = true;
+            split_info_resources.split_info = std::move(*rendered_split_info);
+        }
+        split_view_service_.updateInfo(split_info_resources);
 
         return {.image = vulkan_viewport_image_,
                 .size = vulkan_viewport_image_size_,

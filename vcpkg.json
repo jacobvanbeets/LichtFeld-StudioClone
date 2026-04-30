@@ -16,7 +16,6 @@
       ]
     },
     "freetype",
-    "glad",
     "glm",
     "gtest",
     {
@@ -25,7 +24,6 @@
         "docking-experimental",
         "freetype",
         "vulkan-binding",
-        "opengl3-binding",
         "sdl3-binding"
       ]
     },
@@ -94,10 +92,6 @@
     {
       "name": "freetype",
       "version": "2.13.3"
-    },
-    {
-      "name": "glad",
-      "version": "0.1.36"
     },
     {
       "name": "sdl3",

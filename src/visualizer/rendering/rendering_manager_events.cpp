@@ -128,7 +128,6 @@ namespace lfs::vis {
         markDirty(DirtyFlag::VIEWPORT | DirtyFlag::CAMERA);
         viewport_artifact_service_.clearViewportOutput();
         frame_lifecycle_service_.resetViewportSize();
-        gt_texture_cache_.clear();
     }
 
     void RenderingManager::handleGridSettingsChanged(const ui::GridSettingsChanged& event) {
@@ -163,7 +162,6 @@ namespace lfs::vis {
         LOG_DEBUG("Scene loaded, marking render dirty");
         invalidateFrustumImageLoaderSync();
         markDirty();
-        gt_texture_cache_.clear();
         invalidateCameraMetricsRequests(true);
         camera_interaction_service_.clearCurrentCamera();
         camera_interaction_service_.clearHoveredCamera();
@@ -181,14 +179,11 @@ namespace lfs::vis {
     }
 
     void RenderingManager::handleSceneChanged() {
-        pass_graph_.resetPointCloudCache();
         markDirty();
     }
 
     void RenderingManager::handleSceneCleared() {
         viewport_artifact_service_.clearViewportOutput();
-        pass_graph_.resetPointCloudCache();
-        gt_texture_cache_.clear();
         invalidateCameraMetricsRequests(true);
         invalidateFrustumImageLoaderSync();
         SplitViewService::ModeChangeResult result;

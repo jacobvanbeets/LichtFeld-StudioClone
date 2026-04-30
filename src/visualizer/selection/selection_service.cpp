@@ -1084,7 +1084,7 @@ namespace lfs::vis {
         }
 
         auto* const engine = rendering_manager_->getRenderingEngineIfInitialized();
-        if (!engine || !engine->isInitialized()) {
+        if (!engine || !engine->isRasterInitialized()) {
             return nullptr;
         }
 
@@ -1122,7 +1122,7 @@ namespace lfs::vis {
 
         auto render_lock = acquireLiveModelRenderLock(scene_manager_);
         auto* const engine = rendering_manager_->getRenderingEngineIfInitialized();
-        if (!engine || !engine->isInitialized()) {
+        if (!engine || !engine->isRasterInitialized()) {
             return nullptr;
         }
 
@@ -1231,7 +1231,7 @@ namespace lfs::vis {
 
         auto render_lock = acquireLiveModelRenderLock(scene_manager_);
         auto* const engine = rendering_manager_->getRenderingEngine();
-        if (!engine || !engine->isInitialized()) {
+        if (!engine || !engine->isRasterInitialized()) {
             return std::nullopt;
         }
 

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "gui/line_renderer.hpp"
 #include "gui/panel_registry.hpp"
 
 namespace lfs::vis::gui {
@@ -59,6 +60,15 @@ namespace lfs::vis::gui::native_panels {
 
     private:
         GuiManager* gui_;
+    };
+
+    class ViewportSceneGuidesPanel : public IPanel {
+    public:
+        void draw(const PanelDrawContext& ctx) override;
+        bool poll(const PanelDrawContext& ctx) override;
+
+    private:
+        LineRenderer line_renderer_;
     };
 
     class SequencerPanel : public IPanel {

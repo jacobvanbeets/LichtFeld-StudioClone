@@ -2,10 +2,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-// clang-format off
-#include <glad/glad.h>
-// clang-format on
-
 #include "gui/startup_overlay.hpp"
 #include "core/event_bridge/localization_manager.hpp"
 #include "core/image_io.hpp"
@@ -15,7 +11,6 @@
 #include "gui/rmlui/rml_input_utils.hpp"
 #include "gui/rmlui/rml_theme.hpp"
 #include "gui/rmlui/rmlui_manager.hpp"
-#include "gui/rmlui/rmlui_render_interface.hpp"
 #include "gui/rmlui/sdl_rml_key_mapping.hpp"
 #include "gui/string_keys.hpp"
 #include "internal/resource_paths.hpp"
@@ -125,7 +120,6 @@ namespace lfs::vis::gui {
     }
 
     void StartupOverlay::shutdown() {
-        fbo_.destroy();
         if (rml_context_ && rml_manager_)
             rml_manager_->destroyContext("startup_overlay");
         rml_context_ = nullptr;
@@ -350,93 +344,38 @@ namespace lfs::vis::gui {
         focus.want_capture_mouse = true;
         focus.want_capture_keyboard = true;
 
+        if (!rml_manager_ || !rml_manager_->getVulkanRenderInterface())
+            return;
+
+        updateTheme();
+        updateLocalizedText();
+
+        const int ctx_w = static_cast<int>(viewport.size.x);
+        const int ctx_h = static_cast<int>(viewport.size.y);
+
+        rml_context_->SetDimensions(Rml::Vector2i(ctx_w, ctx_h));
+        document_->SetProperty("width", std::format("{}px", ctx_w));
+        document_->SetProperty("height", std::format("{}px", ctx_h));
+        rml_context_->Update();
+
         bool escape_consumed = false;
-        const bool defer_fbo_update = rml_manager_->shouldDeferFboUpdate(fbo_);
-        const bool vulkan_render = rml_manager_->getVulkanRenderInterface() != nullptr;
-        if (defer_fbo_update && input_) {
+        if (input_) {
             escape_consumed = forwardInput(*input_, viewport.pos.x, viewport.pos.y,
                                            viewport.size.x, viewport.size.y);
         }
 
-        if (!defer_fbo_update) {
-            updateTheme();
-            updateLocalizedText();
-
-            const int ctx_w = static_cast<int>(viewport.size.x);
-            const int ctx_h = static_cast<int>(viewport.size.y);
-
-            rml_context_->SetDimensions(Rml::Vector2i(ctx_w, ctx_h));
-            document_->SetProperty("width", std::format("{}px", ctx_w));
-            document_->SetProperty("height", std::format("{}px", ctx_h));
-            rml_context_->Update();
-
-            if (input_) {
-                escape_consumed = forwardInput(*input_, viewport.pos.x, viewport.pos.y,
-                                               viewport.size.x, viewport.size.y);
-            }
-
-            if (vulkan_render) {
-                const auto* main_viewport = ImGui::GetMainViewport();
-                const float screen_x = main_viewport ? main_viewport->Pos.x : 0.0f;
-                const float screen_y = main_viewport ? main_viewport->Pos.y : 0.0f;
-                rml_manager_->queueVulkanContext(rml_context_,
-                                                 viewport.pos.x - screen_x,
-                                                 viewport.pos.y - screen_y,
-                                                 true,
-                                                 true,
-                                                 viewport.pos.x - screen_x,
-                                                 viewport.pos.y - screen_y,
-                                                 viewport.pos.x - screen_x + viewport.size.x,
-                                                 viewport.pos.y - screen_y + viewport.size.y);
-            } else {
-                fbo_.ensure(ctx_w, ctx_h);
-                if (!fbo_.valid())
-                    return;
-
-                auto* render = rml_manager_->getRenderInterface();
-                assert(render);
-                render->SetViewport(ctx_w, ctx_h);
-
-                GLint prev_fbo = 0;
-                fbo_.bind(&prev_fbo);
-                render->SetTargetFramebuffer(fbo_.fbo());
-
-                render->BeginFrame();
-                rml_context_->Render();
-                render->EndFrame();
-
-                render->SetTargetFramebuffer(0);
-                fbo_.unbind(prev_fbo);
-            }
-        }
-
-        if (!vulkan_render && fbo_.valid()) {
-            auto* main_viewport = ImGui::GetMainViewport();
-            ImGui::SetNextWindowPos(ImVec2(viewport.pos.x, viewport.pos.y));
-            ImGui::SetNextWindowSize(ImVec2(viewport.size.x, viewport.size.y));
-            if (main_viewport)
-                ImGui::SetNextWindowViewport(main_viewport->ID);
-            ImGui::SetNextWindowBgAlpha(0.0f);
-
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-            const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
-                                           ImGuiWindowFlags_NoDocking |
-                                           ImGuiWindowFlags_NoMove |
-                                           ImGuiWindowFlags_NoSavedSettings |
-                                           ImGuiWindowFlags_NoScrollbar |
-                                           ImGuiWindowFlags_NoScrollWithMouse |
-                                           ImGuiWindowFlags_NoNav |
-                                           ImGuiWindowFlags_NoNavFocus;
-            if (ImGui::Begin("##StartupOverlayComposite", nullptr, flags)) {
-                ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
-                // Keep the splash in ImGui's item stack so hover tests block viewport tools.
-                fbo_.blitAsImage(viewport.size.x, viewport.size.y);
-            }
-            ImGui::End();
-            ImGui::PopStyleVar(3);
-        }
+        const auto* main_viewport = ImGui::GetMainViewport();
+        const float screen_x = main_viewport ? main_viewport->Pos.x : 0.0f;
+        const float screen_y = main_viewport ? main_viewport->Pos.y : 0.0f;
+        rml_manager_->queueVulkanContext(rml_context_,
+                                         viewport.pos.x - screen_x,
+                                         viewport.pos.y - screen_y,
+                                         true,
+                                         true,
+                                         viewport.pos.x - screen_x,
+                                         viewport.pos.y - screen_y,
+                                         viewport.pos.x - screen_x + viewport.size.x,
+                                         viewport.pos.y - screen_y + viewport.size.y);
 
         ++shown_frames_;
 

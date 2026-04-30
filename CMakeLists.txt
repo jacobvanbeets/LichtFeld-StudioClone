@@ -97,8 +97,8 @@ file(WRITE "${CMAKE_BINARY_DIR}/include/git_version.h"
 # Setup
 get_filename_component(PROJ_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 
-option(ENABLE_CUDA_GL_INTEROP "Enable CUDA-OpenGL interoperability" ON)
-option(ENABLE_VULKAN_VIEWER "Resolve and link Vulkan viewer dependencies" ON)
+option(ENABLE_VULKAN_VIEWER "Resolve and link required Vulkan viewer dependencies" ON)
+set(ENABLE_VULKAN_VIEWER ON CACHE BOOL "Vulkan viewer dependencies are required" FORCE)
 option(BUILD_TESTS "Build tests" OFF)
 option(BUILD_UNICODE_TEST_ONLY "Build only Unicode path test (no CUDA)" OFF)
 option(ENABLE_ALLOCATION_PROFILING "Enable tensor allocation profiling" OFF)
@@ -171,6 +171,9 @@ include(ProcessorCount)
 ProcessorCount(total_cores)
 if(total_cores GREATER 1)
     math(EXPR used_cores "${total_cores} - 2")
+    if(used_cores GREATER 20)
+        set(used_cores 20)
+    endif()
     set(ENV{MAKEFLAGS} "-j${used_cores}")
     message(STATUS "Building with ${used_cores} cores")
 endif()
@@ -286,8 +289,6 @@ message(STATUS "CUDA Toolkit ${CUDAToolkit_VERSION} found at ${CUDAToolkit_TARGE
 # Find packages
 find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
-find_package(OpenGL REQUIRED)
-find_package(glad REQUIRED)
 if(ENABLE_VULKAN_VIEWER)
     find_package(Vulkan REQUIRED)
     find_package(VulkanMemoryAllocator CONFIG REQUIRED)
@@ -315,47 +316,6 @@ find_package(RmlUi CONFIG REQUIRED)
 # use it here as the global default CUDA architecture list too
 if(LichtFeld-Studio_CUDA_ARCH)
     set(CMAKE_CUDA_ARCHITECTURES "${LichtFeld-Studio_CUDA_ARCH}" CACHE STRING "CUDA architectures" FORCE)
-endif()
-
-if(WIN32)
-    set(CMAKE_CUDA_RUNTIME_LIBRARY "Shared") # when using INTEROP in windows static and dynamic symbols are mixed
-endif()
-
-# Check for CUDA-OpenGL interop capability (only if enabled)
-if(ENABLE_CUDA_GL_INTEROP)
-    include(CheckCXXSourceCompiles)
-    set(CMAKE_REQUIRED_INCLUDES ${CUDAToolkit_INCLUDE_DIRS} ${OPENGL_INCLUDE_DIRS})
-    set(CMAKE_REQUIRED_LIBRARIES ${CUDA_LIBRARIES} ${OPENGL_LIBRARIES})
-    check_cxx_source_compiles("
-        #ifdef _WIN32
-        #include <windows.h>
-        #endif
-        #include <cuda_runtime.h>
-
-        // On ARM machines, you must include the gl headers before including cuda_gl_interop.h
-        // Please refer to /usr/local/cuda/include/cuda_gl_interop.h
-        #if defined(__arm__) || defined(__aarch64__)
-        #include <GL/gl.h>
-        #endif
-
-        #include <cuda_gl_interop.h>
-        int main() {
-            cudaGraphicsResource_t resource;
-            return 0;
-        }
-    " CUDA_GL_INTEROP_FOUND)
-
-    if(CUDA_GL_INTEROP_FOUND)
-        message(STATUS "CUDA-OpenGL interop support: ENABLED")
-        set(CUDA_GL_INTEROP_ENABLED 1)
-    else()
-        message(WARNING "CUDA-OpenGL interop support: DISABLED (headers not found)")
-        set(CUDA_GL_INTEROP_ENABLED 0)
-    endif()
-else()
-    message(STATUS "CUDA-OpenGL interop support: DISABLED (by user option)")
-    set(CUDA_GL_INTEROP_FOUND FALSE)
-    set(CUDA_GL_INTEROP_ENABLED 0)
 endif()
 
 if(ENABLE_VULKAN_VIEWER)
@@ -426,7 +386,6 @@ add_executable(${PROJECT_NAME}
     src/app/mcp_sequencer_tools.cpp
     src/app/mcp_ui_registry_tools.cpp
     src/app/converter.cpp
-    src/app/splash_screen.cpp
     resources/lichtfeld-studio.rc
 )
 
@@ -447,19 +406,18 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/external         # For external headers
 
         ${CUDAToolkit_INCLUDE_DIRS}
-        ${OPENGL_INCLUDE_DIRS}
 )
 
 if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
     set(LFS_APP_INTERNAL_LINK_LIBS
-        "$<LINK_GROUP:RESCAN,lfs_visualizer,lfs_mcp,lfs_sequencer,lfs_rendering,lfs_training,lfs_geometry,lfs_core,lfs_io,lfs_video,fastlfs_backend,lfs_python_utils>"
+        "$<LINK_GROUP:RESCAN,lfs_visualizer,lfs_mcp,lfs_sequencer,lfs_rendering_tensor,lfs_training,lfs_geometry,lfs_core,lfs_io,lfs_video,fastlfs_backend,lfs_python_utils>"
     )
 else()
     set(LFS_APP_INTERNAL_LINK_LIBS
         lfs_visualizer
         lfs_mcp
         lfs_sequencer
-        lfs_rendering
+        lfs_rendering_tensor
         lfs_training
         lfs_geometry
         lfs_core
@@ -474,12 +432,10 @@ target_link_libraries(${PROJECT_NAME}
         PRIVATE
         ${LFS_APP_INTERNAL_LINK_LIBS}
 
-        ${OPENGL_LIBRARIES}
         CUDA::cudart
         spdlog::spdlog
         taywee::args
         OpenImageIO::OpenImageIO
-        glad::glad
         SDL3::SDL3
 )
 
@@ -686,14 +642,6 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMENT "Creating resource directory structure"
 )
 
-# Copy rendering shaders
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
-        "${CMAKE_SOURCE_DIR}/src/rendering/resources/shaders"
-        "${RESOURCE_DIR}/shaders"
-    COMMENT "Copying rendering shaders"
-)
-
 # Copy visualizer icons
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
@@ -708,14 +656,6 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/fonts"
         "${RESOURCE_DIR}/assets/fonts"
     COMMENT "Copying visualizer fonts"
-)
-
-# Copy fonts (from rendering - JetBrainsMono for viewport gizmo)
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/src/rendering/resources/assets/JetBrainsMono-Regular.ttf"
-        "${RESOURCE_DIR}/assets/fonts/"
-    COMMENT "Copying rendering fonts"
 )
 
 # Copy themes
@@ -835,8 +775,6 @@ endif()
 
 # Platform-specific settings
 if(UNIX)
-    target_link_libraries(${PROJECT_NAME} PRIVATE GL GLU)
-
     if(BUILD_PORTABLE)
         set_target_properties(${PROJECT_NAME} PROPERTIES
                 INSTALL_RPATH "$ORIGIN:$ORIGIN/lib:$ORIGIN/../lib"
@@ -943,6 +881,7 @@ configure_build_type(fastlfs_backend)
 configure_build_type(lfs_core)
 configure_build_type(lfs_core_cuda)
 configure_build_type(lfs_training)
+configure_build_type(lfs_rendering_tensor)
 configure_build_type(lfs_rendering)
 configure_build_type(lfs_visualizer)
 configure_build_type(lfs_io)
@@ -975,7 +914,6 @@ message(STATUS "===========================================")
 message(STATUS "Build Configuration:")
 message(STATUS "  CUDA Version: ${CUDAToolkit_VERSION}")
 message(STATUS "  CUDA Archs: ${CMAKE_CUDA_ARCHITECTURES}")
-message(STATUS "  OpenGL Found: ${OPENGL_FOUND}")
 message(STATUS "  Vulkan Viewer Dependencies: ${ENABLE_VULKAN_VIEWER}")
 if(ENABLE_VULKAN_VIEWER)
     message(STATUS "  Vulkan Found: ${Vulkan_FOUND}")
@@ -984,8 +922,6 @@ endif()
 message(STATUS "  FreeType Found: ${FREETYPE_FOUND}")
 message(STATUS "  WebP Found: ${WebP_FOUND}")
 message(STATUS "  LibArchive Found: ${LibArchive_FOUND}")
-message(STATUS "  CUDA-GL Interop Option: ${ENABLE_CUDA_GL_INTEROP}")
-message(STATUS "  CUDA-GL Interop Available: ${CUDA_GL_INTEROP_FOUND}")
 message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "  CUDA Standard: ${CMAKE_CUDA_STANDARD}")
@@ -1036,10 +972,8 @@ install(TARGETS lfs_mcp
 install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION ".")
 
 set(INSTALL_RESOURCE_DIR "${CMAKE_INSTALL_DATADIR}/LichtFeld-Studio")
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/src/rendering/resources/shaders" DESTINATION "${INSTALL_RESOURCE_DIR}")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/icon" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/fonts" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
-install(FILES "${CMAKE_SOURCE_DIR}/src/rendering/resources/assets/JetBrainsMono-Regular.ttf" DESTINATION "${INSTALL_RESOURCE_DIR}/assets/fonts")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/themes" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/environments" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
 install(FILES "${CMAKE_SOURCE_DIR}/src/visualizer/gui/assets/lichtfeld-icon.png" DESTINATION "${INSTALL_RESOURCE_DIR}/assets")
