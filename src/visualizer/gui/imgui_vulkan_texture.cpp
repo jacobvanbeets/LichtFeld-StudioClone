@@ -41,11 +41,11 @@ namespace lfs::vis::gui {
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < width; ++x) {
                     const std::size_t src = (static_cast<std::size_t>(y) *
-                                             static_cast<std::size_t>(width) +
+                                                 static_cast<std::size_t>(width) +
                                              static_cast<std::size_t>(x)) *
                                             static_cast<std::size_t>(channels);
                     const std::size_t dst = (static_cast<std::size_t>(y) *
-                                             static_cast<std::size_t>(width) +
+                                                 static_cast<std::size_t>(width) +
                                              static_cast<std::size_t>(x)) *
                                             4u;
                     if (channels == 1) {
@@ -127,8 +127,34 @@ namespace lfs::vis::gui {
         VkImageView image_view = VK_NULL_HANDLE;
         VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
         VkImageLayout image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        VkFence upload_fence = VK_NULL_HANDLE;
+        VkBuffer pending_staging_buffer = VK_NULL_HANDLE;
+        VkDeviceMemory pending_staging_memory = VK_NULL_HANDLE;
+        VkCommandBuffer pending_command_buffer = VK_NULL_HANDLE;
         int width = 0;
         int height = 0;
+
+        void waitAndReleasePendingUpload() {
+            if (upload_fence == VK_NULL_HANDLE) {
+                return;
+            }
+            vkWaitForFences(device, 1, &upload_fence, VK_TRUE,
+                            std::numeric_limits<std::uint64_t>::max());
+            if (pending_command_buffer != VK_NULL_HANDLE && command_pool != VK_NULL_HANDLE) {
+                vkFreeCommandBuffers(device, command_pool, 1, &pending_command_buffer);
+                pending_command_buffer = VK_NULL_HANDLE;
+            }
+            if (pending_staging_buffer != VK_NULL_HANDLE) {
+                vkDestroyBuffer(device, pending_staging_buffer, nullptr);
+                pending_staging_buffer = VK_NULL_HANDLE;
+            }
+            if (pending_staging_memory != VK_NULL_HANDLE) {
+                vkFreeMemory(device, pending_staging_memory, nullptr);
+                pending_staging_memory = VK_NULL_HANDLE;
+            }
+            vkDestroyFence(device, upload_fence, nullptr);
+            upload_fence = VK_NULL_HANDLE;
+        }
 
         [[nodiscard]] bool init(VulkanContext& context) {
             if (device != VK_NULL_HANDLE) {
@@ -414,6 +440,9 @@ namespace lfs::vis::gui {
                 return false;
             }
 
+            // Block here only if a previous upload to this texture is still in flight.
+            waitAndReleasePendingUpload();
+
             const VkDeviceSize upload_size = static_cast<VkDeviceSize>(rgba.size());
             VkBuffer staging_buffer = VK_NULL_HANDLE;
             VkDeviceMemory staging_memory = VK_NULL_HANDLE;
@@ -464,14 +493,50 @@ namespace lfs::vis::gui {
                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-            const bool submitted = endSingleTimeCommands(command_buffer);
-            if (submitted) {
-                image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
+                LOG_ERROR("Failed to end ImGui Vulkan texture command buffer");
+                vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
+                vkDestroyBuffer(device, staging_buffer, nullptr);
+                vkFreeMemory(device, staging_memory, nullptr);
+                return false;
             }
 
-            vkDestroyBuffer(device, staging_buffer, nullptr);
-            vkFreeMemory(device, staging_memory, nullptr);
-            return submitted;
+            VkFenceCreateInfo fence_info{};
+            fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            VkFence fence = VK_NULL_HANDLE;
+            if (vkCreateFence(device, &fence_info, nullptr, &fence) != VK_SUCCESS) {
+                LOG_ERROR("Failed to create ImGui Vulkan texture upload fence");
+                vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
+                vkDestroyBuffer(device, staging_buffer, nullptr);
+                vkFreeMemory(device, staging_memory, nullptr);
+                return false;
+            }
+
+            VkSubmitInfo submit_info{};
+            submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submit_info.commandBufferCount = 1;
+            submit_info.pCommandBuffers = &command_buffer;
+            const VkResult submit_status = vkQueueSubmit(graphics_queue, 1, &submit_info, fence);
+            if (submit_status != VK_SUCCESS) {
+                LOG_ERROR("Failed to submit ImGui Vulkan texture upload: {}",
+                          static_cast<int>(submit_status));
+                vkDestroyFence(device, fence, nullptr);
+                vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
+                vkDestroyBuffer(device, staging_buffer, nullptr);
+                vkFreeMemory(device, staging_memory, nullptr);
+                return false;
+            }
+
+            // Defer command-buffer + staging-buffer cleanup until the GPU finishes via the fence.
+            // The next upload (or destruction) will reap them. ImGui's frame submit on the same
+            // queue serializes correctly with this transfer, so the descriptor is safe to sample
+            // immediately.
+            image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            upload_fence = fence;
+            pending_command_buffer = command_buffer;
+            pending_staging_buffer = staging_buffer;
+            pending_staging_memory = staging_memory;
+            return true;
         }
 
         [[nodiscard]] bool upload(const std::uint8_t* pixels,
@@ -485,6 +550,7 @@ namespace lfs::vis::gui {
         }
 
         void destroyImage() {
+            waitAndReleasePendingUpload();
             if (descriptor_set != VK_NULL_HANDLE) {
                 ImGui_ImplVulkan_RemoveTexture(descriptor_set);
                 descriptor_set = VK_NULL_HANDLE;

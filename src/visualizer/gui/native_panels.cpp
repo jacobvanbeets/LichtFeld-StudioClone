@@ -278,7 +278,8 @@ namespace lfs::vis::gui::native_panels {
         [[nodiscard]] ImTextureID getOrLoadCameraThumbnail(
             const lfs::core::Camera& camera,
             std::unordered_map<std::string, std::shared_ptr<ImGuiVulkanTexture>>& textures,
-            std::unordered_set<std::string>& failed) {
+            std::unordered_set<std::string>& failed,
+            int& load_budget) {
             if (camera.image_path().empty() || !std::filesystem::exists(camera.image_path())) {
                 return 0;
             }
@@ -290,6 +291,10 @@ namespace lfs::vis::gui::native_panels {
             if (failed.contains(key)) {
                 return 0;
             }
+            if (load_budget <= 0) {
+                return 0;
+            }
+            --load_budget;
 
             try {
                 auto [pixels, width, height, channels] = lfs::core::load_image(camera.image_path(), 1, 128);
@@ -496,7 +501,9 @@ namespace lfs::vis::gui::native_panels {
             }
         }
 
-        void drawCameraFrustums(LineRenderer& lines,
+        // Returns true when a thumbnail load was attempted this frame, signalling the caller to
+        // request another frame so the remaining thumbnails can fill in.
+        bool drawCameraFrustums(LineRenderer& lines,
                                 const GuidePanelTarget& panel,
                                 const RenderingManager& rendering_manager,
                                 const RenderSettings& settings,
@@ -504,13 +511,18 @@ namespace lfs::vis::gui::native_panels {
                                 std::unordered_map<std::string, std::shared_ptr<ImGuiVulkanTexture>>& thumbnail_textures,
                                 std::unordered_set<std::string>& thumbnail_failed) {
             if (!settings.show_camera_frustums || settings.camera_frustum_scale <= 0.0f) {
-                return;
+                return false;
             }
 
             const auto cameras = scene.getVisibleCameras();
             if (cameras.empty()) {
-                return;
+                return false;
             }
+            // Cap synchronous thumbnail loads per frame so a fresh dataset with hundreds of
+            // cameras does not freeze the UI on first render. Thumbnails fill in over the next
+            // few seconds as subsequent frames consume more of the budget.
+            constexpr int kThumbnailLoadBudgetPerFrame = 2;
+            int thumbnail_load_budget = kThumbnailLoadBudgetPerFrame;
             auto scene_transforms = scene.getVisibleCameraSceneTransforms();
             for (auto& transform : scene_transforms) {
                 transform = lfs::rendering::dataWorldTransformToVisualizerWorld(transform);
@@ -614,10 +626,19 @@ namespace lfs::vis::gui::native_panels {
                 const float thumbnail_opacity =
                     (disabled_uids.count(camera->uid()) > 0 ? 0.30f : 0.80f) *
                     (camera->uid() == current_camera_uid ? 1.0f : 0.85f);
-                drawCameraImageQuad(
-                    panel, settings, world_points,
-                    getOrLoadCameraThumbnail(*camera, thumbnail_textures, thumbnail_failed),
-                    thumbnail_opacity);
+                // Only kick off the thumbnail load (which performs a synchronous JPEG decode
+                // and Vulkan upload) when the frustum quad is actually on-screen. Off-screen
+                // cameras would never display the thumbnail anyway.
+                const bool quad_on_screen =
+                    projectToScreen(panel, settings, world_points[1]).has_value() &&
+                    projectToScreen(panel, settings, world_points[2]).has_value() &&
+                    projectToScreen(panel, settings, world_points[3]).has_value() &&
+                    projectToScreen(panel, settings, world_points[4]).has_value();
+                const ImTextureID thumbnail =
+                    quad_on_screen ? getOrLoadCameraThumbnail(*camera, thumbnail_textures,
+                                                              thumbnail_failed, thumbnail_load_budget)
+                                   : 0;
+                drawCameraImageQuad(panel, settings, world_points, thumbnail, thumbnail_opacity);
                 for (const auto& [a, b] : EDGES) {
                     addProjectedLine(lines, panel, settings,
                                      world_points[static_cast<size_t>(a)],
@@ -625,6 +646,7 @@ namespace lfs::vis::gui::native_panels {
                                      color, thickness);
                 }
             }
+            return thumbnail_load_budget < kThumbnailLoadBudgetPerFrame;
         }
 
         void drawCropAndFilterGuides(LineRenderer& lines,
@@ -816,6 +838,7 @@ namespace lfs::vis::gui::native_panels {
 
         const glm::ivec2 screen_size = window_manager->getWindowSize();
         const glm::ivec2 framebuffer_size = window_manager->getFramebufferSize();
+        bool thumbnails_pending = false;
         for (const auto& panel : panels) {
             if (!panel.valid()) {
                 continue;
@@ -828,9 +851,13 @@ namespace lfs::vis::gui::native_panels {
             drawCropAndFilterGuides(line_renderer_, panel, settings, *ctx.scene,
                                     ctx.ui->viewer->getSceneManager(),
                                     rendering_manager->getGizmoState());
-            drawCameraFrustums(line_renderer_, panel, *rendering_manager, settings, *ctx.scene,
-                               camera_thumbnail_textures_, camera_thumbnail_failed_);
+            thumbnails_pending |=
+                drawCameraFrustums(line_renderer_, panel, *rendering_manager, settings, *ctx.scene,
+                                   camera_thumbnail_textures_, camera_thumbnail_failed_);
             line_renderer_.end();
+        }
+        if (thumbnails_pending) {
+            rendering_manager->markDirty(DirtyFlag::OVERLAY);
         }
     }
 
