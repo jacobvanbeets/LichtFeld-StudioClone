@@ -2359,8 +2359,10 @@ namespace lfs::vis::gui {
         if (auto* cc = lfs::event::command_center())
             draw_ctx.is_training = cc->snapshot().is_running;
 
+        const auto _t_preload_a = std::chrono::steady_clock::now();
         reg.preload_panels(PanelSpace::SceneHeader, draw_ctx);
         reg.preload_panels(PanelSpace::SidePanel, draw_ctx);
+        const auto _t_preload_b = std::chrono::steady_clock::now();
 
         auto* mvp_input = ImGui::GetMainViewport();
         s_frame_input = &sdl_input;
@@ -2467,11 +2469,14 @@ namespace lfs::vis::gui {
                                     panel_input.screen_x, panel_input.screen_y,
                                     panel_input.screen_w, panel_input.screen_h);
         }
+        const auto _t_rmlrp_a = std::chrono::steady_clock::now();
 
         panel_layout_.renderRightPanel(ctx, draw_ctx, show_main_panel_, ui_hidden_,
                                        window_states_, focus_panel_name_, panel_input, screen);
+        const auto _t_pl_right_b = std::chrono::steady_clock::now();
         panel_layout_.renderBottomDock(draw_ctx, show_main_panel_, ui_hidden_,
                                        panel_input, screen);
+        const auto _t_pl_bottom_b = std::chrono::steady_clock::now();
 
         applyFrameInputCapture(&rml_right_panel_);
 
@@ -2487,7 +2492,9 @@ namespace lfs::vis::gui {
 
         PanelInputState floating_input = panel_input;
         floating_input.bg_draw_list = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
+        const auto _t_floating_a = std::chrono::steady_clock::now();
         reg.draw_panels(PanelSpace::Floating, draw_ctx, &floating_input);
+        const auto _t_floating_b = std::chrono::steady_clock::now();
 
         applyFrameInputCapture(&rml_right_panel_);
 
@@ -2580,9 +2587,31 @@ namespace lfs::vis::gui {
             lfs::python::invoke_python_hooks("viewport_overlay", "draw", true);
             lfs::python::invoke_python_hooks("viewport_overlay", "draw", false);
         }
+        const auto _t_renderv_a = std::chrono::steady_clock::now();
         if (vulkan_gui_)
             renderVulkan();
+        const auto _t_renderv_b = std::chrono::steady_clock::now();
         reg.draw_panels(PanelSpace::ViewportOverlay, draw_ctx);
+        const auto _t_overlay_b = std::chrono::steady_clock::now();
+        {
+            using ms = std::chrono::duration<double, std::milli>;
+            static double a_preload = 0, a_floating = 0, a_pl_right = 0, a_pl_bottom = 0,
+                          a_renderv = 0, a_overlay = 0;
+            static int n = 0;
+            a_preload += ms(_t_preload_b - _t_preload_a).count();
+            a_floating += ms(_t_floating_b - _t_floating_a).count();
+            a_pl_right += ms(_t_pl_right_b - _t_rmlrp_a).count();
+            a_pl_bottom += ms(_t_pl_bottom_b - _t_pl_right_b).count();
+            a_renderv += ms(_t_renderv_b - _t_renderv_a).count();
+            a_overlay += ms(_t_overlay_b - _t_renderv_b).count();
+            ++n;
+            if (n >= 60) {
+                LOG_INFO("PHASE avg over {} frames: preload {:.1f} | pl_right {:.1f} | pl_bottom {:.1f} | floating {:.1f} | renderVulkan {:.1f} | overlay_panels {:.1f}",
+                         n, a_preload / n, a_pl_right / n, a_pl_bottom / n, a_floating / n, a_renderv / n, a_overlay / n);
+                a_preload = a_floating = a_pl_right = a_pl_bottom = a_renderv = a_overlay = 0;
+                n = 0;
+            }
+        }
 
         rml_viewport_overlay_.render();
 

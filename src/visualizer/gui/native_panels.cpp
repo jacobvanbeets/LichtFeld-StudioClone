@@ -275,51 +275,101 @@ namespace lfs::vis::gui::native_panels {
             return std::to_string(camera.uid()) + ":" + lfs::core::path_to_utf8(camera.image_path());
         }
 
+        [[nodiscard]] DecodedThumbnail decodeThumbnailOnWorker(std::filesystem::path path) {
+            DecodedThumbnail result;
+            try {
+                auto [pixels, width, height, channels] = lfs::core::load_image(path, 1, 128);
+                if (pixels && width > 0 && height > 0 && channels > 0) {
+                    const std::size_t total =
+                        static_cast<std::size_t>(width) * static_cast<std::size_t>(height) *
+                        static_cast<std::size_t>(channels);
+                    result.pixels.assign(pixels, pixels + total);
+                    result.width = width;
+                    result.height = height;
+                    result.channels = channels;
+                }
+                if (pixels) {
+                    lfs::core::free_image(pixels);
+                }
+            } catch (const std::exception& e) {
+                LOG_WARN("Failed to decode camera thumbnail '{}': {}",
+                         lfs::core::path_to_utf8(path), e.what());
+            }
+            return result;
+        }
+
+        // Returns a texture id once the async decode + upload have completed; until then returns 0
+        // and the frustum draws without an image. The decode runs on a worker thread so the GUI
+        // thread is never blocked by JPEG decompression. uploaded_count tracks main-thread Vulkan
+        // uploads consumed this frame so we don't take all of them at once for a fresh dataset.
         [[nodiscard]] ImTextureID getOrLoadCameraThumbnail(
             const lfs::core::Camera& camera,
-            std::unordered_map<std::string, std::shared_ptr<ImGuiVulkanTexture>>& textures,
+            std::unordered_map<std::string, std::shared_ptr<ThumbnailEntry>>& entries,
             std::unordered_set<std::string>& failed,
-            int& load_budget) {
-            if (camera.image_path().empty() || !std::filesystem::exists(camera.image_path())) {
+            int& upload_budget) {
+            if (camera.image_path().empty()) {
                 return 0;
             }
 
             const std::string key = cameraThumbnailKey(camera);
-            if (const auto cached = textures.find(key); cached != textures.end()) {
-                return cached->second ? cached->second->textureId() : 0;
-            }
             if (failed.contains(key)) {
                 return 0;
             }
-            if (load_budget <= 0) {
+
+            auto it = entries.find(key);
+            if (it == entries.end()) {
+                if (!std::filesystem::exists(camera.image_path())) {
+                    failed.insert(key);
+                    return 0;
+                }
+                auto entry = std::make_shared<ThumbnailEntry>();
+                entry->decode_started = true;
+                entry->decode = std::async(std::launch::async, decodeThumbnailOnWorker,
+                                           camera.image_path());
+                entries.emplace(key, std::move(entry));
                 return 0;
             }
-            --load_budget;
 
+            auto& entry = *it->second;
+            if (entry.texture) {
+                return entry.texture->textureId();
+            }
+            if (!entry.decode.valid()) {
+                return 0;
+            }
+            if (entry.decode.wait_for(std::chrono::seconds::zero()) != std::future_status::ready) {
+                return 0;
+            }
+            if (upload_budget <= 0) {
+                return 0;
+            }
+            --upload_budget;
+
+            DecodedThumbnail decoded;
             try {
-                auto [pixels, width, height, channels] = lfs::core::load_image(camera.image_path(), 1, 128);
-                if (!pixels || width <= 0 || height <= 0 || channels <= 0) {
-                    failed.insert(key);
-                    return 0;
-                }
-
-                auto texture = std::make_shared<ImGuiVulkanTexture>();
-                const bool uploaded = texture->upload(pixels, width, height, channels);
-                lfs::core::free_image(pixels);
-                if (!uploaded) {
-                    failed.insert(key);
-                    return 0;
-                }
-
-                const ImTextureID texture_id = texture->textureId();
-                textures.emplace(key, std::move(texture));
-                return texture_id;
+                decoded = entry.decode.get();
             } catch (const std::exception& e) {
-                LOG_WARN("Failed to load camera thumbnail '{}': {}",
+                LOG_WARN("Camera thumbnail decode worker threw '{}': {}",
                          lfs::core::path_to_utf8(camera.image_path()), e.what());
                 failed.insert(key);
                 return 0;
             }
+            if (decoded.pixels.empty() || decoded.width <= 0 || decoded.height <= 0 ||
+                decoded.channels <= 0) {
+                failed.insert(key);
+                return 0;
+            }
+
+            auto texture = std::make_shared<ImGuiVulkanTexture>();
+            const bool uploaded =
+                texture->upload(decoded.pixels.data(), decoded.width, decoded.height, decoded.channels);
+            if (!uploaded) {
+                failed.insert(key);
+                return 0;
+            }
+            const ImTextureID texture_id = texture->textureId();
+            entry.texture = std::move(texture);
+            return texture_id;
         }
 
         void drawCameraImageQuad(const GuidePanelTarget& panel,
@@ -501,14 +551,14 @@ namespace lfs::vis::gui::native_panels {
             }
         }
 
-        // Returns true when a thumbnail load was attempted this frame, signalling the caller to
-        // request another frame so the remaining thumbnails can fill in.
+        // Returns true while any thumbnail decode or upload is still pending this frame, so the
+        // caller can keep the overlay dirty and request another frame.
         bool drawCameraFrustums(LineRenderer& lines,
                                 const GuidePanelTarget& panel,
                                 const RenderingManager& rendering_manager,
                                 const RenderSettings& settings,
                                 lfs::core::Scene& scene,
-                                std::unordered_map<std::string, std::shared_ptr<ImGuiVulkanTexture>>& thumbnail_textures,
+                                std::unordered_map<std::string, std::shared_ptr<ThumbnailEntry>>& thumbnail_entries,
                                 std::unordered_set<std::string>& thumbnail_failed) {
             if (!settings.show_camera_frustums || settings.camera_frustum_scale <= 0.0f) {
                 return false;
@@ -518,11 +568,10 @@ namespace lfs::vis::gui::native_panels {
             if (cameras.empty()) {
                 return false;
             }
-            // Cap synchronous thumbnail loads per frame so a fresh dataset with hundreds of
-            // cameras does not freeze the UI on first render. Thumbnails fill in over the next
-            // few seconds as subsequent frames consume more of the budget.
-            constexpr int kThumbnailLoadBudgetPerFrame = 2;
-            int thumbnail_load_budget = kThumbnailLoadBudgetPerFrame;
+            // Decoding happens on worker threads, so only the per-frame Vulkan upload count needs
+            // to be capped to keep the GUI thread responsive while many decodes finish at once.
+            constexpr int kThumbnailUploadBudgetPerFrame = 4;
+            int thumbnail_upload_budget = kThumbnailUploadBudgetPerFrame;
             auto scene_transforms = scene.getVisibleCameraSceneTransforms();
             for (auto& transform : scene_transforms) {
                 transform = lfs::rendering::dataWorldTransformToVisualizerWorld(transform);
@@ -635,8 +684,8 @@ namespace lfs::vis::gui::native_panels {
                     projectToScreen(panel, settings, world_points[3]).has_value() &&
                     projectToScreen(panel, settings, world_points[4]).has_value();
                 const ImTextureID thumbnail =
-                    quad_on_screen ? getOrLoadCameraThumbnail(*camera, thumbnail_textures,
-                                                              thumbnail_failed, thumbnail_load_budget)
+                    quad_on_screen ? getOrLoadCameraThumbnail(*camera, thumbnail_entries,
+                                                              thumbnail_failed, thumbnail_upload_budget)
                                    : 0;
                 drawCameraImageQuad(panel, settings, world_points, thumbnail, thumbnail_opacity);
                 for (const auto& [a, b] : EDGES) {
@@ -646,7 +695,18 @@ namespace lfs::vis::gui::native_panels {
                                      color, thickness);
                 }
             }
-            return thumbnail_load_budget < kThumbnailLoadBudgetPerFrame;
+            // Always request another frame while any decode is still in flight so the texture
+            // can be uploaded as soon as the worker completes; ignoring this would leave
+            // thumbnails permanently blank when no other event dirties the overlay.
+            for (const auto& [_, entry] : thumbnail_entries) {
+                if (!entry || entry->texture) {
+                    continue;
+                }
+                if (entry->decode.valid()) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         void drawCropAndFilterGuides(LineRenderer& lines,
@@ -853,7 +913,7 @@ namespace lfs::vis::gui::native_panels {
                                     rendering_manager->getGizmoState());
             thumbnails_pending |=
                 drawCameraFrustums(line_renderer_, panel, *rendering_manager, settings, *ctx.scene,
-                                   camera_thumbnail_textures_, camera_thumbnail_failed_);
+                                   camera_thumbnail_entries_, camera_thumbnail_failed_);
             line_renderer_.end();
         }
         if (thumbnails_pending) {

@@ -12,6 +12,7 @@
 #include "core/tensor.hpp"
 #include "gs_rasterizer_tensor.hpp"
 #include "image_layout.hpp"
+#include "point_cloud_raster.cuh"
 #include "rendering/coordinate_conventions.hpp"
 #include "rendering/rendering.hpp"
 #include <OpenImageIO/imageio.h>
@@ -23,6 +24,7 @@
 #include <format>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <limits>
 #include <mutex>
 #include <string_view>
@@ -880,27 +882,77 @@ namespace lfs::rendering {
                 return std::unexpected("Point cloud colors must have shape [N, 3]");
             }
 
-            Tensor positions_cpu = positions_source.cpu().contiguous();
-            Tensor colors_cpu = colors_source;
-            if (colors_cpu.dtype() == lfs::core::DataType::UInt8) {
-                colors_cpu = colors_cpu.to(lfs::core::DataType::Float32) / 255.0f;
+            Tensor positions_cuda = positions_source;
+            if (positions_cuda.device() != lfs::core::Device::CUDA) {
+                positions_cuda = positions_cuda.cuda();
             }
-            colors_cpu = colors_cpu.cpu().contiguous();
-            if (colors_cpu.dtype() != lfs::core::DataType::Float32) {
-                colors_cpu = colors_cpu.to(lfs::core::DataType::Float32).cpu().contiguous();
-            }
+            positions_cuda = positions_cuda.contiguous();
 
-            Tensor transform_indices_cpu;
-            const Tensor* transform_indices = nullptr;
+            Tensor colors_cuda = colors_source;
+            if (colors_cuda.dtype() == lfs::core::DataType::UInt8) {
+                colors_cuda = colors_cuda.to(lfs::core::DataType::Float32) / 255.0f;
+            }
+            if (colors_cuda.dtype() != lfs::core::DataType::Float32) {
+                colors_cuda = colors_cuda.to(lfs::core::DataType::Float32);
+            }
+            if (colors_cuda.device() != lfs::core::Device::CUDA) {
+                colors_cuda = colors_cuda.cuda();
+            }
+            colors_cuda = colors_cuda.contiguous();
+
+            Tensor transform_indices_cuda;
+            const std::int32_t* transform_indices_ptr = nullptr;
             if (request.scene.transform_indices && request.scene.transform_indices->is_valid() &&
                 request.scene.transform_indices->numel() == positions_source.size(0)) {
-                transform_indices_cpu = request.scene.transform_indices->cpu().contiguous();
-                transform_indices = &transform_indices_cpu;
+                transform_indices_cuda = *request.scene.transform_indices;
+                if (transform_indices_cuda.dtype() != lfs::core::DataType::Int32) {
+                    transform_indices_cuda = transform_indices_cuda.to(lfs::core::DataType::Int32);
+                }
+                if (transform_indices_cuda.device() != lfs::core::Device::CUDA) {
+                    transform_indices_cuda = transform_indices_cuda.cuda();
+                }
+                transform_indices_cuda = transform_indices_cuda.contiguous();
+                transform_indices_ptr = transform_indices_cuda.ptr<std::int32_t>();
             }
 
             const std::vector<glm::mat4>* const transforms_ptr = request.scene.model_transforms;
             const std::vector<glm::mat4> empty_transforms;
             const auto& transforms = transforms_ptr ? *transforms_ptr : empty_transforms;
+
+            Tensor transforms_cuda;
+            const float* transforms_device = nullptr;
+            if (!transforms.empty()) {
+                std::vector<float> transforms_host(transforms.size() * 16);
+                for (size_t i = 0; i < transforms.size(); ++i) {
+                    const float* m = glm::value_ptr(transforms[i]);
+                    std::copy(m, m + 16, transforms_host.begin() + static_cast<std::ptrdiff_t>(i * 16));
+                }
+                transforms_cuda = Tensor::from_vector(
+                                      transforms_host,
+                                      {transforms.size(), static_cast<size_t>(16)},
+                                      lfs::core::Device::CPU)
+                                      .cuda()
+                                      .contiguous();
+                transforms_device = transforms_cuda.ptr<float>();
+            }
+
+            Tensor visibility_cuda;
+            const std::uint8_t* visibility_device = nullptr;
+            if (!request.scene.node_visibility_mask.empty()) {
+                std::vector<int> mask_host(request.scene.node_visibility_mask.size());
+                for (size_t i = 0; i < mask_host.size(); ++i) {
+                    mask_host[i] = request.scene.node_visibility_mask[i] ? 1 : 0;
+                }
+                visibility_cuda = Tensor::from_vector(
+                                      mask_host,
+                                      {mask_host.size()},
+                                      lfs::core::Device::CPU)
+                                      .cuda()
+                                      .to(lfs::core::DataType::UInt8)
+                                      .contiguous();
+                visibility_device = visibility_cuda.ptr<std::uint8_t>();
+            }
+
             const glm::mat4 view = request.frame_view.getViewMatrix();
             const glm::mat4 projection = createProjectionMatrix(
                 request.frame_view.size,
@@ -909,75 +961,69 @@ namespace lfs::rendering {
                 request.frame_view.ortho_scale,
                 request.frame_view.near_plane,
                 request.frame_view.far_plane);
+            const glm::mat4 view_proj = projection * view;
 
             const int width = request.frame_view.size.x;
             const int height = request.frame_view.size.y;
             const int channels = request.transparent_background ? 4 : 3;
-            const size_t pixel_count = static_cast<size_t>(width) * height;
-            std::vector<float> image(static_cast<size_t>(channels) * pixel_count, 0.0f);
-            std::vector<float> depth(pixel_count, request.frame_view.far_plane);
-            for (size_t i = 0; i < pixel_count; ++i) {
-                image[i] = request.frame_view.background_color.r;
-                image[pixel_count + i] = request.frame_view.background_color.g;
-                image[2 * pixel_count + i] = request.frame_view.background_color.b;
-                if (channels == 4) {
-                    image[3 * pixel_count + i] = request.transparent_background ? 0.0f : 1.0f;
-                }
+
+            Tensor image_tensor = Tensor::empty(
+                {static_cast<size_t>(channels), static_cast<size_t>(height), static_cast<size_t>(width)},
+                lfs::core::Device::CUDA, lfs::core::DataType::Float32);
+            Tensor depth_tensor = Tensor::empty(
+                {static_cast<size_t>(1), static_cast<size_t>(height), static_cast<size_t>(width)},
+                lfs::core::Device::CUDA, lfs::core::DataType::Float32);
+
+            pcraster::LaunchParams params{};
+            params.positions = positions_cuda.ptr<float>();
+            params.colors = colors_cuda.ptr<float>();
+            params.transforms = transforms_device;
+            params.transform_indices = transform_indices_ptr;
+            params.visibility_mask = visibility_device;
+            params.n_points = static_cast<std::size_t>(positions_source.size(0));
+            params.n_transforms = static_cast<int>(transforms.size());
+            params.n_visibility = static_cast<int>(request.scene.node_visibility_mask.size());
+            params.has_crop = request.filters.crop_box.has_value();
+            if (params.has_crop) {
+                const auto& crop = *request.filters.crop_box;
+                std::copy_n(glm::value_ptr(crop.transform), 16, params.crop.to_local);
+                params.crop.min[0] = crop.min.x;
+                params.crop.min[1] = crop.min.y;
+                params.crop.min[2] = crop.min.z;
+                params.crop.max[0] = crop.max.x;
+                params.crop.max[1] = crop.max.y;
+                params.crop.max[2] = crop.max.z;
+                params.crop.inverse = request.filters.crop_inverse;
+                params.crop.desaturate = request.filters.crop_desaturate;
             }
+            std::copy_n(glm::value_ptr(view), 16, params.view);
+            std::copy_n(glm::value_ptr(view_proj), 16, params.view_proj);
+            params.width = width;
+            params.height = height;
+            params.channels = channels;
+            params.equirectangular = request.render.equirectangular;
+            params.orthographic = request.frame_view.orthographic;
+            params.ortho_scale = request.frame_view.ortho_scale;
+            params.focal_y = lfs::core::fov2focal(
+                focalLengthToVFovRad(request.frame_view.focal_length_mm),
+                request.frame_view.size.y);
+            params.voxel_size = request.render.voxel_size;
+            params.scaling_modifier = request.render.scaling_modifier;
+            params.far_plane = request.frame_view.far_plane;
+            params.bg_r = request.frame_view.background_color.r;
+            params.bg_g = request.frame_view.background_color.g;
+            params.bg_b = request.frame_view.background_color.b;
+            params.bg_a = 1.0f;
+            params.transparent_background = request.transparent_background;
+            params.image = image_tensor.ptr<float>();
+            params.depth = depth_tensor.ptr<float>();
+            params.stream = image_tensor.stream();
 
-            const float* const positions = positions_cpu.ptr<float>();
-            const float* const colors = colors_cpu.ptr<float>();
-            if (!positions || !colors) {
-                return std::unexpected("Point cloud tensors have no readable storage");
+            if (const cudaError_t status = pcraster::launchPointCloudRaster(params);
+                status != cudaSuccess) {
+                return std::unexpected(std::format("Point cloud rasterization failed: {}",
+                                                   cudaGetErrorString(status)));
             }
-
-            const size_t count = positions_source.size(0);
-            for (size_t i = 0; i < count; ++i) {
-                int transform_index = readTensorIndex(transform_indices, i);
-                if (transform_index < 0) {
-                    transform_index = 0;
-                }
-                if (!request.scene.node_visibility_mask.empty() &&
-                    static_cast<size_t>(transform_index) < request.scene.node_visibility_mask.size() &&
-                    !request.scene.node_visibility_mask[static_cast<size_t>(transform_index)]) {
-                    continue;
-                }
-
-                glm::vec3 position(
-                    positions[i * 3 + 0],
-                    positions[i * 3 + 1],
-                    positions[i * 3 + 2]);
-                if (!transforms.empty()) {
-                    const size_t clamped_index =
-                        std::min(static_cast<size_t>(transform_index), transforms.size() - 1);
-                    position = glm::vec3(transforms[clamped_index] * glm::vec4(position, 1.0f));
-                }
-
-                bool desaturate = false;
-                if (!pointPassesCrop(position, request.filters, desaturate)) {
-                    continue;
-                }
-
-                const auto pixel_depth = projectPointToPixel(position, request, view, projection);
-                if (!pixel_depth) {
-                    continue;
-                }
-
-                const glm::vec3 color = readPointColor(colors, i, desaturate);
-                const int radius = pointRadiusPixels(request, pixel_depth->z);
-                drawSoftwarePoint(image, depth, width, height, channels, *pixel_depth, color, radius);
-            }
-
-            Tensor image_tensor = Tensor::from_vector(
-                                      image,
-                                      {static_cast<size_t>(channels), static_cast<size_t>(height), static_cast<size_t>(width)},
-                                      lfs::core::Device::CPU)
-                                      .cuda();
-            Tensor depth_tensor = Tensor::from_vector(
-                                      depth,
-                                      {static_cast<size_t>(1), static_cast<size_t>(height), static_cast<size_t>(width)},
-                                      lfs::core::Device::CPU)
-                                      .cuda();
 
             return RasterImageResult{
                 .image = std::move(image_tensor),

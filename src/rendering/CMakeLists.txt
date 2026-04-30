@@ -8,6 +8,7 @@ set(RENDERING_TENSOR_SOURCES
         gs_rasterizer_tensor.cpp
         raster_rendering_engine.cpp
         cuda_interaction_kernels.cu
+        point_cloud_raster.cu
         mesh2splat_cpu.cpp
 )
 
