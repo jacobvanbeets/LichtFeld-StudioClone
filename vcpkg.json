@@ -23,7 +23,6 @@
       "features": [
         "docking-experimental",
         "freetype",
-        "vulkan-binding",
         "sdl3-binding"
       ]
     },
@@ -70,6 +69,7 @@
     },
     "vulkan-memory-allocator",
     "volk",
+    "glslang",
     "usd"
   ],
   "overrides": [
