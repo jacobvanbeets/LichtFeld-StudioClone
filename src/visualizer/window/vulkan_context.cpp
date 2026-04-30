@@ -22,7 +22,7 @@ namespace lfs::vis {
     namespace {
 #ifdef LFS_VULKAN_VIEWER_ENABLED
         [[nodiscard]] bool extensionAvailable(const std::vector<VkExtensionProperties>& extensions,
-                                               const char* const extension_name) {
+                                              const char* const extension_name) {
             return std::ranges::any_of(extensions, [extension_name](const VkExtensionProperties& extension) {
                 return std::strcmp(extension.extensionName, extension_name) == 0;
             });
@@ -116,6 +116,9 @@ namespace lfs::vis {
 
     void VulkanContext::notifyFramebufferResized(const int width, const int height) {
 #ifdef LFS_VULKAN_VIEWER_ENABLED
+        if (width == framebuffer_width_ && height == framebuffer_height_) {
+            return;
+        }
         framebuffer_width_ = width;
         framebuffer_height_ = height;
         framebuffer_resized_ = true;
@@ -443,7 +446,7 @@ namespace lfs::vis {
         std::vector<VkExtensionProperties> available_extensions(available_extension_count);
         if (available_extension_count > 0) {
             vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &available_extension_count,
-                                                available_extensions.data());
+                                                 available_extensions.data());
         }
 
         std::vector<const char*> extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
