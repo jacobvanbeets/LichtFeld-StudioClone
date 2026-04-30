@@ -34,10 +34,6 @@ namespace lfs::core {
     class Tensor;
 }
 
-namespace lfs::io {
-    class PipelinedImageLoader;
-}
-
 namespace lfs::core::events::ui {
     struct GridSettingsChanged;
     struct PointCloudModeChanged;
@@ -344,6 +340,7 @@ namespace lfs::vis {
         }
         void setCropboxGizmoActive(bool active) { viewport_overlay_service_.setCropboxActive(active); }
         void setEllipsoidGizmoActive(bool active) { viewport_overlay_service_.setEllipsoidActive(active); }
+        [[nodiscard]] GizmoState getGizmoState() const { return viewport_overlay_service_.makeFrameGizmoState(); }
 
         void setViewportResizeActive(bool active);
         [[nodiscard]] bool isViewportResizeDeferring() const {
@@ -366,12 +363,6 @@ namespace lfs::vis {
         void queueCameraMetricsRefreshIfStale(SceneManager* scene_manager);
         void invalidateCameraMetricsRequests(bool clear_latest = false);
         void cameraMetricsWorkerLoop(std::stop_token stop_token);
-        void clearFrustumThumbnailState();
-        void invalidateFrustumImageLoaderSync(bool poll_until_ready = false);
-        void syncFrustumImageLoader(SceneManager* scene_manager);
-        void storeFrustumImageLoaderSyncState(std::shared_ptr<lfs::io::PipelinedImageLoader> loader,
-                                              bool allow_fallback,
-                                              bool wait_for_active_loader);
         void setupEventHandlers();
         void handleToggleSplitView();
         void handleToggleIndependentSplitView(const lfs::core::events::cmd::ToggleIndependentSplitView& event);
@@ -418,7 +409,6 @@ namespace lfs::vis {
         std::array<int, 2> panel_grid_planes_{{1, 1}};
         mutable std::mutex settings_mutex_;
         mutable std::mutex camera_metrics_mutex_;
-        mutable std::mutex frustum_loader_sync_mutex_;
         std::optional<CameraMetricsOverlayState> latest_camera_metrics_;
         std::optional<CameraMetricsJobRequest> pending_camera_metrics_request_;
         std::optional<CameraMetricsJobRequest> active_camera_metrics_request_;
@@ -426,12 +416,6 @@ namespace lfs::vis {
         std::jthread camera_metrics_worker_;
         uint64_t camera_metrics_request_generation_ = 0;
         std::chrono::steady_clock::time_point last_camera_metrics_refresh_time_{};
-        std::shared_ptr<lfs::io::PipelinedImageLoader> synced_frustum_loader_;
-        std::atomic<bool> frustum_loader_dirty_{true};
-        std::atomic<bool> frustum_loader_poll_until_ready_{false};
-        bool frustum_loader_sync_initialized_ = false;
-        bool synced_frustum_allow_fallback_ = true;
-
         bool initialized_ = false;
         bool raster_initialized_ = false;
 

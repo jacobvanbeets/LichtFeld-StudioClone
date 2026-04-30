@@ -6,7 +6,6 @@
 
 #include "core/tensor.hpp"
 #include "frame_contract.hpp"
-#include "geometry/euclidean_transform.hpp"
 #include "render_constants.hpp"
 #include <array>
 #include <cstdint>
@@ -16,7 +15,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace lfs::core {
@@ -26,10 +24,6 @@ namespace lfs::core {
     class Camera;
     class Tensor;
 } // namespace lfs::core
-
-namespace lfs::io {
-    class PipelinedImageLoader;
-}
 
 namespace lfs::rendering {
 
@@ -307,12 +301,6 @@ namespace lfs::rendering {
         bool prefer_batched_gaussian_render = false;
     };
 
-    enum class GridPlane {
-        YZ = 0, // X plane
-        XZ = 1, // Y plane
-        XY = 2  // Z plane
-    };
-
     // Render modes
     enum class RenderMode {
         RGB = 0,
@@ -320,39 +308,6 @@ namespace lfs::rendering {
         ED = 2,
         RGB_D = 3,
         RGB_ED = 4
-    };
-
-    // Interface for bounding box manipulation (for visualizer)
-    class IBoundingBox {
-    public:
-        virtual ~IBoundingBox() = default;
-
-        virtual void setBounds(const glm::vec3& min, const glm::vec3& max) = 0;
-        virtual glm::vec3 getMinBounds() const = 0;
-        virtual glm::vec3 getMaxBounds() const = 0;
-        virtual glm::vec3 getCenter() const = 0;
-        virtual glm::vec3 getSize() const = 0;
-        virtual glm::vec3 getLocalCenter() const = 0;
-
-        virtual void setColor(const glm::vec3& color) = 0;
-        virtual void setLineWidth(float width) = 0;
-        virtual bool isInitialized() const = 0;
-
-        virtual void setworld2BBox(const lfs::geometry::EuclideanTransform& transform) = 0;
-        virtual lfs::geometry::EuclideanTransform getworld2BBox() const = 0;
-
-        virtual glm::vec3 getColor() const = 0;
-        virtual float getLineWidth() const = 0;
-    };
-
-    // Interface for coordinate axes (for visualizer)
-    class ICoordinateAxes {
-    public:
-        virtual ~ICoordinateAxes() = default;
-
-        virtual void setSize(float size) = 0;
-        virtual void setAxisVisible(int axis, bool visible) = 0;
-        virtual bool isAxisVisible(int axis) const = 0;
     };
 
     struct MeshRenderOptions {
@@ -392,20 +347,6 @@ namespace lfs::rendering {
         glm::vec3 background_color{0.0f};
         EnvironmentRenderOptions environment;
         std::vector<MeshFrameItem> meshes;
-    };
-
-    struct CameraFrustumRenderRequest {
-        ViewportData viewport;
-        float scale = 0.1f;
-        glm::vec3 train_color{0.0f, 1.0f, 0.0f};
-        glm::vec3 eval_color{1.0f, 0.0f, 0.0f};
-        std::vector<glm::vec3> per_camera_colors;
-        int focused_index = -1;
-        glm::mat4 scene_transform{1.0f};
-        std::vector<glm::mat4> scene_transforms;
-        bool equirectangular_view = false;
-        std::unordered_set<int> disabled_uids;
-        std::unordered_set<int> emphasized_uids;
     };
 
     struct CameraFrustumPickRequest {
@@ -481,71 +422,10 @@ namespace lfs::rendering {
             const std::optional<GpuFrame>& primary_frame,
             const VideoCompositeFrameRequest& request) = 0;
 
-        virtual Result<void> renderScreenSpaceVignette(
-            const glm::ivec2& viewport_size,
-            ScreenSpaceVignette vignette) = 0;
-
-        // Overlay rendering - now returns Result for consistency
-        virtual Result<void> renderGrid(
-            const ViewportData& viewport,
-            GridPlane plane = GridPlane::XZ,
-            float opacity = 0.5f) = 0;
-
-        virtual Result<void> renderBoundingBox(
-            const BoundingBox& box,
-            const ViewportData& viewport,
-            const glm::vec3& color = glm::vec3(1.0f, 1.0f, 0.0f),
-            float line_width = 2.0f) = 0;
-
-        virtual Result<void> renderEllipsoid(
-            const Ellipsoid& ellipsoid,
-            const ViewportData& viewport,
-            const glm::vec3& color = glm::vec3(0.3f, 0.8f, 1.0f),
-            float line_width = 2.0f) = 0;
-
-        virtual Result<void> renderCoordinateAxes(
-            const ViewportData& viewport,
-            float size = 2.0f,
-            const std::array<bool, 3>& visible = {true, true, true},
-            bool equirectangular = false) = 0;
-
-        virtual Result<void> renderPivot(
-            const ViewportData& viewport,
-            const glm::vec3& pivot_position,
-            float size = 50.0f,
-            float opacity = 1.0f) = 0;
-
-        // Viewport gizmo rendering
-        virtual Result<void> renderViewportGizmo(
-            const glm::mat3& camera_rotation,
-            const glm::vec2& viewport_pos,
-            const glm::vec2& viewport_size) = 0;
-
-        // Hit-test viewport gizmo (returns 0-2=+X/Y/Z, 3-5=-X/Y/Z, or -1 for none)
-        virtual int hitTestViewportGizmo(
-            const glm::vec2& click_pos,
-            const glm::vec2& viewport_pos,
-            const glm::vec2& viewport_size) const = 0;
-
-        // Set hovered axis for highlighting (0-2=+X/Y/Z, 3-5=-X/Y/Z, -1 for none)
-        virtual void setViewportGizmoHover(int axis) = 0;
-
-        // Get camera rotation matrix to view along axis
-        [[nodiscard]] static glm::mat3 getAxisViewRotation(int axis, bool negative = false);
-
-        // Camera frustum rendering with focus/emphasis state
-        virtual Result<void> renderCameraFrustums(
-            const std::vector<std::shared_ptr<const lfs::core::Camera>>& cameras,
-            const CameraFrustumRenderRequest& request) = 0;
-
         // Camera frustum picking
         virtual Result<int> pickCameraFrustum(
             const std::vector<std::shared_ptr<const lfs::core::Camera>>& cameras,
             const CameraFrustumPickRequest& request) = 0;
-
-        virtual void clearFrustumCache() = 0;
-        virtual void setFrustumImageLoader(std::shared_ptr<lfs::io::PipelinedImageLoader> loader,
-                                           bool allow_fallback) = 0;
     };
 
 } // namespace lfs::rendering

@@ -7,6 +7,11 @@
 #include "gui/line_renderer.hpp"
 #include "gui/panel_registry.hpp"
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+
 namespace lfs::vis::gui {
 
     class StartupOverlay;
@@ -15,6 +20,7 @@ namespace lfs::vis::gui {
     class SequencerUIManager;
     class PanelLayoutManager;
     class RmlStatusBar;
+    class ImGuiVulkanTexture;
 
 } // namespace lfs::vis::gui
 
@@ -64,11 +70,14 @@ namespace lfs::vis::gui::native_panels {
 
     class ViewportSceneGuidesPanel : public IPanel {
     public:
+        ~ViewportSceneGuidesPanel() override;
         void draw(const PanelDrawContext& ctx) override;
         bool poll(const PanelDrawContext& ctx) override;
 
     private:
         LineRenderer line_renderer_;
+        std::unordered_map<std::string, std::shared_ptr<ImGuiVulkanTexture>> camera_thumbnail_textures_;
+        std::unordered_set<std::string> camera_thumbnail_failed_;
     };
 
     class SequencerPanel : public IPanel {

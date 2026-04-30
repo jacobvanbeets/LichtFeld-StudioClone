@@ -3,28 +3,35 @@
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
 #include "gui/native_panels.hpp"
+#include "core/camera.hpp"
+#include "core/image_io.hpp"
+#include "core/logger.hpp"
+#include "core/path_utils.hpp"
+#include "core/scene.hpp"
 #include "gui/gizmo_manager.hpp"
 #include "gui/gui_manager.hpp"
+#include "gui/imgui_vulkan_texture.hpp"
 #include "gui/panel_layout.hpp"
 #include "gui/panel_registry.hpp"
 #include "gui/rml_status_bar.hpp"
 #include "gui/sequencer_ui_manager.hpp"
 #include "gui/startup_overlay.hpp"
-#include "core/camera.hpp"
-#include "core/scene.hpp"
 #include "internal/viewport.hpp"
 #include "python/python_runtime.hpp"
 #include "rendering/coordinate_conventions.hpp"
 #include "rendering/rendering_manager.hpp"
+#include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
 #include "visualizer/gui/video_widget_interface.hpp"
+#include "visualizer/scene_coordinate_utils.hpp"
 #include "visualizer_impl.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <glm/gtc/type_ptr.hpp>
+#include <filesystem>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 
 namespace lfs::vis::gui::native_panels {
@@ -162,6 +169,194 @@ namespace lfs::vis::gui::native_panels {
             if (pa && pb) {
                 lines.addLine(*pa, *pb, color, thickness);
             }
+        }
+
+        [[nodiscard]] std::array<glm::vec3, 8> boxCorners(const glm::vec3& min,
+                                                          const glm::vec3& max,
+                                                          const glm::mat4& box_to_world) {
+            const std::array local{
+                glm::vec3(min.x, min.y, min.z),
+                glm::vec3(max.x, min.y, min.z),
+                glm::vec3(max.x, max.y, min.z),
+                glm::vec3(min.x, max.y, min.z),
+                glm::vec3(min.x, min.y, max.z),
+                glm::vec3(max.x, min.y, max.z),
+                glm::vec3(max.x, max.y, max.z),
+                glm::vec3(min.x, max.y, max.z),
+            };
+            std::array<glm::vec3, 8> world{};
+            for (size_t i = 0; i < local.size(); ++i) {
+                world[i] = glm::vec3(box_to_world * glm::vec4(local[i], 1.0f));
+            }
+            return world;
+        }
+
+        void drawBox(LineRenderer& lines,
+                     const GuidePanelTarget& panel,
+                     const RenderSettings& settings,
+                     const glm::vec3& min,
+                     const glm::vec3& max,
+                     const glm::mat4& box_to_world,
+                     const glm::vec4& color,
+                     const float thickness) {
+            constexpr std::array<std::pair<int, int>, 12> EDGES{{
+                {0, 1},
+                {1, 2},
+                {2, 3},
+                {3, 0},
+                {4, 5},
+                {5, 6},
+                {6, 7},
+                {7, 4},
+                {0, 4},
+                {1, 5},
+                {2, 6},
+                {3, 7},
+            }};
+            const auto corners = boxCorners(min, max, box_to_world);
+            for (const auto& [a, b] : EDGES) {
+                addProjectedLine(lines, panel, settings,
+                                 corners[static_cast<size_t>(a)],
+                                 corners[static_cast<size_t>(b)],
+                                 color, thickness);
+            }
+        }
+
+        [[nodiscard]] glm::vec4 cropGuideColor(const glm::vec3& base_color,
+                                               const bool inverse,
+                                               const float flash) {
+            const glm::vec3 inverse_color(1.0f, 0.2f, 0.2f);
+            const glm::vec3 color = glm::mix(inverse ? inverse_color : base_color, glm::vec3(1.0f), flash);
+            return glm::vec4(color, 0.95f);
+        }
+
+        void drawEllipsoid(LineRenderer& lines,
+                           const GuidePanelTarget& panel,
+                           const RenderSettings& settings,
+                           const glm::vec3& radii,
+                           const glm::mat4& ellipsoid_to_world,
+                           const glm::vec4& color,
+                           const float thickness) {
+            constexpr int LAT_SEGMENTS = 24;
+            constexpr int LON_SEGMENTS = 48;
+
+            const auto point = [&](const int lat, const int lon) {
+                const float theta = static_cast<float>(lat) /
+                                    static_cast<float>(LAT_SEGMENTS) * glm::pi<float>();
+                const float phi = static_cast<float>(lon) /
+                                  static_cast<float>(LON_SEGMENTS) * 2.0f * glm::pi<float>();
+                const float sin_theta = std::sin(theta);
+                const glm::vec3 local(
+                    sin_theta * std::cos(phi) * radii.x,
+                    std::cos(theta) * radii.y,
+                    sin_theta * std::sin(phi) * radii.z);
+                return glm::vec3(ellipsoid_to_world * glm::vec4(local, 1.0f));
+            };
+
+            for (int lat = 2; lat < LAT_SEGMENTS; lat += 4) {
+                glm::vec3 previous = point(lat, 0);
+                for (int lon = 1; lon <= LON_SEGMENTS; ++lon) {
+                    const glm::vec3 current = point(lat, lon % LON_SEGMENTS);
+                    addProjectedLine(lines, panel, settings, previous, current, color, thickness);
+                    previous = current;
+                }
+            }
+            for (int lon = 0; lon < LON_SEGMENTS; lon += 6) {
+                glm::vec3 previous = point(0, lon);
+                for (int lat = 1; lat <= LAT_SEGMENTS; ++lat) {
+                    const glm::vec3 current = point(lat, lon);
+                    addProjectedLine(lines, panel, settings, previous, current, color, thickness);
+                    previous = current;
+                }
+            }
+        }
+
+        [[nodiscard]] std::string cameraThumbnailKey(const lfs::core::Camera& camera) {
+            return std::to_string(camera.uid()) + ":" + lfs::core::path_to_utf8(camera.image_path());
+        }
+
+        [[nodiscard]] ImTextureID getOrLoadCameraThumbnail(
+            const lfs::core::Camera& camera,
+            std::unordered_map<std::string, std::shared_ptr<ImGuiVulkanTexture>>& textures,
+            std::unordered_set<std::string>& failed) {
+            if (camera.image_path().empty() || !std::filesystem::exists(camera.image_path())) {
+                return 0;
+            }
+
+            const std::string key = cameraThumbnailKey(camera);
+            if (const auto cached = textures.find(key); cached != textures.end()) {
+                return cached->second ? cached->second->textureId() : 0;
+            }
+            if (failed.contains(key)) {
+                return 0;
+            }
+
+            try {
+                auto [pixels, width, height, channels] = lfs::core::load_image(camera.image_path(), 1, 128);
+                if (!pixels || width <= 0 || height <= 0 || channels <= 0) {
+                    failed.insert(key);
+                    return 0;
+                }
+
+                auto texture = std::make_shared<ImGuiVulkanTexture>();
+                const bool uploaded = texture->upload(pixels, width, height, channels);
+                lfs::core::free_image(pixels);
+                if (!uploaded) {
+                    failed.insert(key);
+                    return 0;
+                }
+
+                const ImTextureID texture_id = texture->textureId();
+                textures.emplace(key, std::move(texture));
+                return texture_id;
+            } catch (const std::exception& e) {
+                LOG_WARN("Failed to load camera thumbnail '{}': {}",
+                         lfs::core::path_to_utf8(camera.image_path()), e.what());
+                failed.insert(key);
+                return 0;
+            }
+        }
+
+        void drawCameraImageQuad(const GuidePanelTarget& panel,
+                                 const RenderSettings& settings,
+                                 const std::array<glm::vec3, 5>& world_points,
+                                 const ImTextureID texture_id,
+                                 const float opacity) {
+            if (!texture_id || opacity <= 0.0f) {
+                return;
+            }
+
+            const auto p0 = projectToScreen(panel, settings, world_points[1]);
+            const auto p1 = projectToScreen(panel, settings, world_points[2]);
+            const auto p2 = projectToScreen(panel, settings, world_points[3]);
+            const auto p3 = projectToScreen(panel, settings, world_points[4]);
+            if (!p0 || !p1 || !p2 || !p3) {
+                return;
+            }
+
+            ImDrawList* const draw_list = ImGui::GetBackgroundDrawList();
+            if (!draw_list) {
+                return;
+            }
+
+            draw_list->PushClipRect(
+                ImVec2(static_cast<float>(panel.clip_rect.x), static_cast<float>(panel.clip_rect.y)),
+                ImVec2(static_cast<float>(panel.clip_rect.x + panel.clip_rect.width),
+                       static_cast<float>(panel.clip_rect.y + panel.clip_rect.height)),
+                true);
+            const ImU32 tint = ImGui::ColorConvertFloat4ToU32(
+                ImVec4(1.0f, 1.0f, 1.0f, std::clamp(opacity, 0.0f, 1.0f)));
+            draw_list->AddImageQuad(texture_id,
+                                    ImVec2(p0->x, p0->y),
+                                    ImVec2(p1->x, p1->y),
+                                    ImVec2(p2->x, p2->y),
+                                    ImVec2(p3->x, p3->y),
+                                    ImVec2(0.0f, 0.0f),
+                                    ImVec2(1.0f, 0.0f),
+                                    ImVec2(1.0f, 1.0f),
+                                    ImVec2(0.0f, 1.0f),
+                                    tint);
+            draw_list->PopClipRect();
         }
 
         [[nodiscard]] std::optional<glm::mat4> cameraVisualizerTransform(
@@ -305,7 +500,9 @@ namespace lfs::vis::gui::native_panels {
                                 const GuidePanelTarget& panel,
                                 const RenderingManager& rendering_manager,
                                 const RenderSettings& settings,
-                                lfs::core::Scene& scene) {
+                                lfs::core::Scene& scene,
+                                std::unordered_map<std::string, std::shared_ptr<ImGuiVulkanTexture>>& thumbnail_textures,
+                                std::unordered_set<std::string>& thumbnail_failed) {
             if (!settings.show_camera_frustums || settings.camera_frustum_scale <= 0.0f) {
                 return;
             }
@@ -322,8 +519,14 @@ namespace lfs::vis::gui::native_panels {
             const auto disabled_uids = scene.getTrainingDisabledCameraUids();
             const int current_camera_uid = rendering_manager.getCurrentCameraId();
             constexpr std::array<std::pair<int, int>, 8> EDGES{{
-                {0, 1}, {0, 2}, {0, 3}, {0, 4},
-                {1, 2}, {2, 3}, {3, 4}, {4, 1},
+                {0, 1},
+                {0, 2},
+                {0, 3},
+                {0, 4},
+                {1, 2},
+                {2, 3},
+                {3, 4},
+                {4, 1},
             }};
 
             for (size_t i = 0; i < cameras.size(); ++i) {
@@ -408,6 +611,13 @@ namespace lfs::vis::gui::native_panels {
                 for (size_t p = 0; p < local_points.size(); ++p) {
                     world_points[p] = glm::vec3(*visualizer_c2w * glm::vec4(local_points[p], 1.0f));
                 }
+                const float thumbnail_opacity =
+                    (disabled_uids.count(camera->uid()) > 0 ? 0.30f : 0.80f) *
+                    (camera->uid() == current_camera_uid ? 1.0f : 0.85f);
+                drawCameraImageQuad(
+                    panel, settings, world_points,
+                    getOrLoadCameraThumbnail(*camera, thumbnail_textures, thumbnail_failed),
+                    thumbnail_opacity);
                 for (const auto& [a, b] : EDGES) {
                     addProjectedLine(lines, panel, settings,
                                      world_points[static_cast<size_t>(a)],
@@ -415,6 +625,125 @@ namespace lfs::vis::gui::native_panels {
                                      color, thickness);
                 }
             }
+        }
+
+        void drawCropAndFilterGuides(LineRenderer& lines,
+                                     const GuidePanelTarget& panel,
+                                     const RenderSettings& settings,
+                                     lfs::core::Scene& scene,
+                                     const SceneManager* scene_manager,
+                                     const GizmoState& gizmo) {
+            if (settings.depth_filter_enabled) {
+                const glm::mat4 filter_to_world = settings.depth_filter_transform.toMat4();
+                drawBox(lines, panel, settings,
+                        settings.depth_filter_min,
+                        settings.depth_filter_max,
+                        filter_to_world,
+                        glm::vec4(0.0f, 0.0f, 0.0f, 0.85f),
+                        9.0f);
+                drawBox(lines, panel, settings,
+                        settings.depth_filter_min,
+                        settings.depth_filter_max,
+                        filter_to_world,
+                        glm::vec4(1.0f, 1.0f, 1.0f, 0.90f),
+                        6.0f);
+                drawBox(lines, panel, settings,
+                        settings.depth_filter_min,
+                        settings.depth_filter_max,
+                        filter_to_world,
+                        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                        4.5f);
+            }
+
+            if (settings.show_crop_box) {
+                const auto cropboxes = scene.getVisibleCropBoxes();
+                const core::NodeId selected_id =
+                    scene_manager ? scene_manager->getSelectedNodeCropBoxId() : core::NULL_NODE;
+                for (const auto& cb : cropboxes) {
+                    if (!cb.data) {
+                        continue;
+                    }
+                    const bool selected = cb.node_id == selected_id;
+                    const glm::vec3 box_min = selected && gizmo.cropbox_active ? gizmo.cropbox_min : cb.data->min;
+                    const glm::vec3 box_max = selected && gizmo.cropbox_active ? gizmo.cropbox_max : cb.data->max;
+                    const glm::mat4 world_transform =
+                        selected && gizmo.cropbox_active
+                            ? gizmo.cropbox_transform
+                            : scene_coords::nodeVisualizerWorldTransform(scene, cb.node_id);
+                    const float flash = selected ? std::clamp(cb.data->flash_intensity, 0.0f, 1.0f) : 0.0f;
+                    drawBox(lines, panel, settings, box_min, box_max, world_transform,
+                            cropGuideColor(cb.data->color, cb.data->inverse, flash),
+                            cb.data->line_width + flash * 4.0f);
+                }
+            }
+
+            if (settings.show_ellipsoid) {
+                const auto ellipsoids = scene.getVisibleEllipsoids();
+                const core::NodeId selected_id =
+                    scene_manager ? scene_manager->getSelectedNodeEllipsoidId() : core::NULL_NODE;
+                for (const auto& el : ellipsoids) {
+                    if (!el.data) {
+                        continue;
+                    }
+                    const bool selected = el.node_id == selected_id;
+                    const glm::vec3 radii = selected && gizmo.ellipsoid_active ? gizmo.ellipsoid_radii : el.data->radii;
+                    const glm::mat4 world_transform =
+                        selected && gizmo.ellipsoid_active
+                            ? gizmo.ellipsoid_transform
+                            : scene_coords::nodeVisualizerWorldTransform(scene, el.node_id);
+                    const float flash = selected ? std::clamp(el.data->flash_intensity, 0.0f, 1.0f) : 0.0f;
+                    drawEllipsoid(lines, panel, settings, radii, world_transform,
+                                  cropGuideColor(el.data->color, el.data->inverse, flash),
+                                  el.data->line_width + flash * 4.0f);
+                }
+            }
+        }
+
+        void drawViewportVignette(const ViewportLayout& viewport_layout) {
+            const auto& vignette = theme().vignette;
+            if (!vignette.enabled || vignette.intensity <= 0.0f ||
+                viewport_layout.size.x <= 0.0f || viewport_layout.size.y <= 0.0f) {
+                return;
+            }
+
+            ImDrawList* const draw_list = ImGui::GetBackgroundDrawList();
+            if (!draw_list) {
+                return;
+            }
+
+            const ImVec2 pos(viewport_layout.pos.x, viewport_layout.pos.y);
+            const ImVec2 max(pos.x + viewport_layout.size.x, pos.y + viewport_layout.size.y);
+            draw_list->PushClipRect(pos, max, true);
+
+            const float extent = std::max(1.0f, std::min(viewport_layout.size.x, viewport_layout.size.y) * 0.5f);
+            const int steps = 28;
+            const float step = extent / static_cast<float>(steps);
+            const float radius = std::clamp(vignette.radius, 0.0f, 0.99f);
+            const float softness = std::clamp(vignette.softness, 0.01f, 1.0f);
+            const float outer = std::min(1.0f, radius + softness * (1.0f - radius));
+            const float max_alpha = std::clamp(vignette.intensity, 0.0f, 1.0f) * 0.72f;
+
+            for (int i = 0; i < steps; ++i) {
+                const float inset0 = static_cast<float>(i) * step;
+                const float inset1 = static_cast<float>(i + 1) * step;
+                const float radial = 1.0f - inset0 / extent;
+                const float t = std::clamp((radial - radius) / std::max(outer - radius, 1e-5f), 0.0f, 1.0f);
+                const float smooth = t * t * (3.0f - 2.0f * t);
+                if (smooth <= 0.001f) {
+                    continue;
+                }
+                const ImU32 color = ImGui::ColorConvertFloat4ToU32(ImVec4(0.0f, 0.0f, 0.0f, max_alpha * smooth));
+                draw_list->AddRectFilled(ImVec2(pos.x + inset0, pos.y + inset0),
+                                         ImVec2(max.x - inset0, pos.y + inset1), color);
+                draw_list->AddRectFilled(ImVec2(pos.x + inset0, max.y - inset1),
+                                         ImVec2(max.x - inset0, max.y - inset0), color);
+                draw_list->AddRectFilled(ImVec2(pos.x + inset0, pos.y + inset1),
+                                         ImVec2(pos.x + inset1, max.y - inset1), color);
+                draw_list->AddRectFilled(ImVec2(max.x - inset1, pos.y + inset1),
+                                         ImVec2(max.x - inset0, max.y - inset1), color);
+            }
+
+            draw_list->PopClipRect();
         }
     } // namespace
 
@@ -453,9 +782,13 @@ namespace lfs::vis::gui::native_panels {
         : gui_(gui) {}
 
     void ViewportDecorationsPanel::draw(const PanelDrawContext& ctx) {
-        (void)ctx;
         gui_->renderViewportDecorations();
+        if (ctx.viewport) {
+            drawViewportVignette(*ctx.viewport);
+        }
     }
+
+    ViewportSceneGuidesPanel::~ViewportSceneGuidesPanel() = default;
 
     void ViewportSceneGuidesPanel::draw(const PanelDrawContext& ctx) {
         if (ctx.ui_hidden || !ctx.ui || !ctx.ui->viewer || !ctx.viewport || !ctx.scene) {
@@ -471,7 +804,8 @@ namespace lfs::vis::gui::native_panels {
 
         const RenderSettings settings = rendering_manager->getSettings();
         if (!settings.show_grid && !settings.show_coord_axes && !settings.show_pivot &&
-            !settings.show_camera_frustums) {
+            !settings.show_camera_frustums && !settings.depth_filter_enabled &&
+            !settings.show_crop_box && !settings.show_ellipsoid) {
             return;
         }
 
@@ -491,7 +825,11 @@ namespace lfs::vis::gui::native_panels {
                                  panel.clip_rect);
             drawGrid(line_renderer_, panel, *rendering_manager, settings);
             drawAxesAndPivot(line_renderer_, panel, settings);
-            drawCameraFrustums(line_renderer_, panel, *rendering_manager, settings, *ctx.scene);
+            drawCropAndFilterGuides(line_renderer_, panel, settings, *ctx.scene,
+                                    ctx.ui->viewer->getSceneManager(),
+                                    rendering_manager->getGizmoState());
+            drawCameraFrustums(line_renderer_, panel, *rendering_manager, settings, *ctx.scene,
+                               camera_thumbnail_textures_, camera_thumbnail_failed_);
             line_renderer_.end();
         }
     }

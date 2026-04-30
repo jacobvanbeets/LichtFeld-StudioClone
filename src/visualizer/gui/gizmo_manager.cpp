@@ -75,7 +75,7 @@ namespace lfs::vis::gui {
             return base + (panel == SplitViewPanelId::Right ? 1 : 0);
         }
 
-        struct ImGuiViewportGizmoMarker {
+        struct ViewportGizmoMarker {
             int encoded_axis = -1;
             int axis = 0;
             bool negative = false;
@@ -85,11 +85,11 @@ namespace lfs::vis::gui {
             bool visible = false;
         };
 
-        struct ImGuiViewportGizmoLayout {
+        struct ViewportGizmoLayoutData {
             glm::vec2 top_left{0.0f};
             glm::vec2 center{0.0f};
             float size = 0.0f;
-            std::array<ImGuiViewportGizmoMarker, 6> markers{};
+            std::array<ViewportGizmoMarker, 6> markers{};
         };
 
         constexpr std::array<glm::vec3, 3> VIEWPORT_GIZMO_AXIS_COLORS = {
@@ -111,7 +111,7 @@ namespace lfs::vis::gui {
                             static_cast<int>(std::clamp(alpha, 0.0f, 1.0f) * 255.0f));
         }
 
-        [[nodiscard]] std::optional<ImGuiViewportGizmoLayout> buildImGuiViewportGizmoLayout(
+        [[nodiscard]] std::optional<ViewportGizmoLayoutData> buildViewportGizmoLayout(
             const ViewportGizmoPanelTarget& panel,
             const float size,
             const float margin_x,
@@ -120,7 +120,7 @@ namespace lfs::vis::gui {
                 return std::nullopt;
             }
 
-            ImGuiViewportGizmoLayout layout;
+            ViewportGizmoLayoutData layout;
             layout.size = size;
             layout.top_left = {
                 panel.pos.x + panel.size.x - size - margin_x,
@@ -137,7 +137,7 @@ namespace lfs::vis::gui {
             const float ref_dist = std::max(glm::length(origin_cam_space), 0.001f);
 
             const auto project_marker = [&](const int axis, const bool negative) {
-                ImGuiViewportGizmoMarker marker;
+                ViewportGizmoMarker marker;
                 marker.axis = axis;
                 marker.negative = negative;
                 marker.encoded_axis = axis + (negative ? 3 : 0);
@@ -170,8 +170,8 @@ namespace lfs::vis::gui {
             return layout;
         }
 
-        [[nodiscard]] int hitTestImGuiViewportGizmo(
-            const ImGuiViewportGizmoLayout& layout,
+        [[nodiscard]] int hitTestViewportGizmoLayout(
+            const ViewportGizmoLayoutData& layout,
             const glm::vec2& mouse_pos) {
             for (const auto& marker : layout.markers) {
                 if (!marker.visible) {
@@ -186,8 +186,8 @@ namespace lfs::vis::gui {
             return -1;
         }
 
-        void drawImGuiViewportGizmo(
-            const ImGuiViewportGizmoLayout& layout,
+        void drawViewportGizmoOverlay(
+            const ViewportGizmoLayoutData& layout,
             ImDrawList* const draw_list,
             const int hovered_axis) {
             if (!draw_list) {
@@ -205,7 +205,7 @@ namespace lfs::vis::gui {
             draw_list->AddCircle(center, layout.size * 0.46f,
                                  toU32WithAlpha(t.overlay.text_dim, 0.30f), 40, 1.0f);
 
-            std::vector<const ImGuiViewportGizmoMarker*> draw_order;
+            std::vector<const ViewportGizmoMarker*> draw_order;
             draw_order.reserve(layout.markers.size());
             for (const auto& marker : layout.markers) {
                 if (marker.visible) {
@@ -1691,14 +1691,6 @@ namespace lfs::vis::gui {
         if (!rendering_manager)
             return;
 
-        const bool use_imgui_gizmo = viewer_->getWindowManager() && viewer_->getWindowManager()->isVulkan();
-        lfs::rendering::RenderingEngine* engine = nullptr;
-        if (!use_imgui_gizmo) {
-            engine = rendering_manager->getRenderingEngine();
-            if (!engine)
-                return;
-        }
-
         const glm::vec2 vp_pos(viewport.pos.x, viewport.pos.y);
         const glm::vec2 vp_size(viewport.size.x, viewport.size.y);
         auto panels = collectViewportGizmoPanels(viewer_, vp_pos, vp_size);
@@ -1734,14 +1726,9 @@ namespace lfs::vis::gui {
                     continue;
                 }
 
-                if (use_imgui_gizmo) {
-                    if (const auto layout = buildImGuiViewportGizmoLayout(
-                            panel, VIEWPORT_GIZMO_SIZE, VIEWPORT_GIZMO_MARGIN_X, VIEWPORT_GIZMO_MARGIN_Y)) {
-                        hovered_axis = hitTestImGuiViewportGizmo(*layout, glm::vec2(mouse_x, mouse_y));
-                    }
-                } else {
-                    hovered_axis = engine->hitTestViewportGizmo(glm::vec2(mouse_x, mouse_y),
-                                                                panel.pos, panel.size);
+                if (const auto layout = buildViewportGizmoLayout(
+                        panel, VIEWPORT_GIZMO_SIZE, VIEWPORT_GIZMO_MARGIN_X, VIEWPORT_GIZMO_MARGIN_Y)) {
+                    hovered_axis = hitTestViewportGizmoLayout(*layout, glm::vec2(mouse_x, mouse_y));
                 }
                 hovered_panel = &panel;
                 break;
@@ -1819,26 +1806,13 @@ namespace lfs::vis::gui {
         for (const auto& panel : panels) {
             const int panel_hover_axis =
                 hovered_panel && hovered_panel->panel == panel.panel ? hovered_axis : -1;
-            if (use_imgui_gizmo) {
-                if (const auto layout = buildImGuiViewportGizmoLayout(
-                        panel, VIEWPORT_GIZMO_SIZE, VIEWPORT_GIZMO_MARGIN_X, VIEWPORT_GIZMO_MARGIN_Y)) {
-                    drawImGuiViewportGizmo(
-                        *layout,
-                        ImGui::GetBackgroundDrawList(ImGui::GetMainViewport()),
-                        panel_hover_axis);
-                }
-            } else {
-                engine->setViewportGizmoHover(panel_hover_axis);
-                if (auto result = engine->renderViewportGizmo(panel.viewport->getRotationMatrix(),
-                                                              panel.pos,
-                                                              panel.size);
-                    !result) {
-                    LOG_WARN("Failed to render viewport gizmo: {}", result.error());
-                }
+            if (const auto layout = buildViewportGizmoLayout(
+                    panel, VIEWPORT_GIZMO_SIZE, VIEWPORT_GIZMO_MARGIN_X, VIEWPORT_GIZMO_MARGIN_Y)) {
+                drawViewportGizmoOverlay(
+                    *layout,
+                    ImGui::GetBackgroundDrawList(ImGui::GetMainViewport()),
+                    panel_hover_axis);
             }
-        }
-        if (engine) {
-            engine->setViewportGizmoHover(-1);
         }
 
         if (viewport_gizmo_dragging_) {

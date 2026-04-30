@@ -119,8 +119,6 @@ namespace lfs::vis {
 
     void RenderingManager::updateSettings(const RenderSettings& new_settings) {
         bool clear_metrics = false;
-        bool clear_frustum_thumbnails = false;
-        bool frustum_visibility_changed = false;
         {
             std::lock_guard<std::mutex> lock(settings_mutex_);
             const int focused_panel_index =
@@ -146,11 +144,6 @@ namespace lfs::vis {
                 clear_metrics = true;
             }
 
-            if (settings_.show_camera_frustums && !new_settings.show_camera_frustums) {
-                clear_frustum_thumbnails = true;
-            }
-            frustum_visibility_changed = settings_.show_camera_frustums != new_settings.show_camera_frustums;
-
             settings_ = new_settings;
             settings_.grid_plane = clampGridPlane(settings_.grid_plane);
             if (split_view_service_.isIndependentDualActive(settings_)) {
@@ -165,13 +158,6 @@ namespace lfs::vis {
 
         if (clear_metrics) {
             invalidateCameraMetricsRequests(true);
-        }
-        if (frustum_visibility_changed) {
-            invalidateFrustumImageLoaderSync();
-        }
-        if (clear_frustum_thumbnails) {
-            clearFrustumThumbnailState();
-            syncFrustumImageLoader(viewport_interaction_context_.scene_manager);
         }
     }
 
@@ -249,78 +235,6 @@ namespace lfs::vis {
     void RenderingManager::syncSelectionGroupColor(const int group_id, const glm::vec3& color) {
         lfs::rendering::config::setSelectionGroupColor(group_id, make_float3(color.x, color.y, color.z));
         markDirty(DirtyFlag::SELECTION);
-    }
-
-    void RenderingManager::clearFrustumThumbnailState() {
-        if (!engine_) {
-            return;
-        }
-
-        engine_->clearFrustumCache();
-    }
-
-    void RenderingManager::invalidateFrustumImageLoaderSync(const bool poll_until_ready) {
-        frustum_loader_dirty_.store(true, std::memory_order_relaxed);
-        if (poll_until_ready) {
-            frustum_loader_poll_until_ready_.store(true, std::memory_order_relaxed);
-        }
-    }
-
-    void RenderingManager::storeFrustumImageLoaderSyncState(
-        std::shared_ptr<lfs::io::PipelinedImageLoader> loader,
-        const bool allow_fallback,
-        const bool wait_for_active_loader) {
-        {
-            std::lock_guard<std::mutex> lock(frustum_loader_sync_mutex_);
-            synced_frustum_loader_ = std::move(loader);
-            synced_frustum_allow_fallback_ = allow_fallback;
-            frustum_loader_sync_initialized_ = true;
-        }
-        frustum_loader_poll_until_ready_.store(wait_for_active_loader, std::memory_order_relaxed);
-        frustum_loader_dirty_.store(false, std::memory_order_relaxed);
-    }
-
-    void RenderingManager::syncFrustumImageLoader(SceneManager* const scene_manager) {
-        if (!engine_) {
-            return;
-        }
-
-        std::shared_ptr<lfs::io::PipelinedImageLoader> frustum_loader;
-        bool allow_fallback_loader = true;
-        bool wait_for_active_loader = false;
-        bool show_camera_frustums = false;
-        {
-            std::lock_guard<std::mutex> lock(settings_mutex_);
-            show_camera_frustums = settings_.show_camera_frustums;
-        }
-
-        if (!show_camera_frustums) {
-            allow_fallback_loader = false;
-        } else if (const auto* tm = scene_manager ? scene_manager->getTrainerManager() : nullptr) {
-            if (const auto* trainer = tm->getTrainer()) {
-                frustum_loader = trainer->getActiveImageLoader();
-            }
-            if (tm->isRunning() && !frustum_loader) {
-                allow_fallback_loader = false;
-                wait_for_active_loader = true;
-            }
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(frustum_loader_sync_mutex_);
-            if (frustum_loader_sync_initialized_ &&
-                synced_frustum_loader_ == frustum_loader &&
-                synced_frustum_allow_fallback_ == allow_fallback_loader) {
-                frustum_loader_poll_until_ready_.store(wait_for_active_loader, std::memory_order_relaxed);
-                frustum_loader_dirty_.store(false, std::memory_order_relaxed);
-                return;
-            }
-        }
-
-        engine_->setFrustumImageLoader(frustum_loader, allow_fallback_loader);
-        storeFrustumImageLoaderSyncState(std::move(frustum_loader),
-                                         allow_fallback_loader,
-                                         wait_for_active_loader);
     }
 
     void RenderingManager::advanceSplitOffset() {
