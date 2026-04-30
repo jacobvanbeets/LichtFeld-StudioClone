@@ -12,7 +12,6 @@
 #include "gui/async_task_manager.hpp"
 #include "gui/gizmo_manager.hpp"
 #include "gui/global_context_menu.hpp"
-#include "gui/imgui_vulkan_backend.hpp"
 #include "gui/panel_layout.hpp"
 #include "gui/panel_registry.hpp"
 #include "gui/panels/menu_bar.hpp"
@@ -28,6 +27,7 @@
 #include "gui/startup_overlay.hpp"
 #include "gui/ui_context.hpp"
 #include "gui/utils/drag_drop_native.hpp"
+#include "rendering/passes/vulkan_viewport_pass.hpp"
 #include "visualizer/gui/video_widget_interface.hpp"
 #include <chrono>
 #include <filesystem>
@@ -38,6 +38,7 @@
 #include <unordered_map>
 #include <utility>
 #include <imgui.h>
+#include <vulkan/vulkan.h>
 
 struct SDL_Cursor;
 
@@ -47,10 +48,9 @@ namespace lfs::core {
 
 namespace lfs::vis {
     class VisualizerImpl;
+    class VulkanContext;
 
     namespace gui {
-        class VulkanSceneTexture;
-
         struct GuiHitTestResult {
             bool blocks_pointer = false;
             bool takes_keyboard_focus = false;
@@ -138,7 +138,10 @@ namespace lfs::vis {
             void renderViewportDecorations();
 
         private:
-            void renderVulkan();
+            [[nodiscard]] VulkanViewportPassParams buildVulkanViewportParams(VkExtent2D extent) const;
+            void recordVulkanViewport(VkCommandBuffer command_buffer,
+                                      VkExtent2D extent,
+                                      const VulkanViewportPassParams& params);
             void setupEventHandlers();
             void checkCudaVersionAndNotify();
             void applyDefaultStyle();
@@ -225,12 +228,9 @@ namespace lfs::vis {
 
             // RmlUI integration
             RmlUIManager rmlui_manager_;
-            ImGuiVulkanBackend imgui_vulkan_backend_;
-            std::unique_ptr<VulkanSceneTexture> vulkan_scene_texture_;
+            std::unique_ptr<lfs::vis::VulkanViewportPass> vulkan_viewport_pass_;
             std::shared_ptr<const lfs::core::Tensor> vulkan_scene_image_;
-            std::shared_ptr<const lfs::core::Tensor> vulkan_scene_uploaded_image_;
             glm::ivec2 vulkan_scene_image_size_{0, 0};
-            glm::ivec2 vulkan_scene_uploaded_size_{0, 0};
             bool vulkan_scene_image_flip_y_ = false;
             bool vulkan_gui_ = false;
             SDL_Cursor* pipette_cursor_ = nullptr;

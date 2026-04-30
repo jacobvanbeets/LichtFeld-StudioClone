@@ -30,12 +30,17 @@ namespace lfs::vis {
         ContentBounds bounds{0.0f, 0.0f, static_cast<float>(viewport_size.x), static_cast<float>(viewport_size.y), false};
 
         if (split_view_service_.isGTComparisonActive(settings_)) {
-            const auto content_dims = split_view_service_.gtContentDimensions();
-            if (!content_dims) {
+            glm::ivec2 content_dims{0, 0};
+            if (const auto service_dims = split_view_service_.gtContentDimensions()) {
+                content_dims = *service_dims;
+            } else {
+                content_dims = vulkan_gt_comparison_content_size_;
+            }
+            if (content_dims.x <= 0 || content_dims.y <= 0) {
                 return bounds;
             }
 
-            const float content_aspect = static_cast<float>(content_dims->x) / content_dims->y;
+            const float content_aspect = static_cast<float>(content_dims.x) / content_dims.y;
             const float viewport_aspect = static_cast<float>(viewport_size.x) / viewport_size.y;
 
             if (content_aspect > viewport_aspect) {

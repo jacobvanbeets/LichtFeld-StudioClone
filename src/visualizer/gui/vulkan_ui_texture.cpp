@@ -2,7 +2,7 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later */
 
-#include "gui/imgui_vulkan_texture.hpp"
+#include "gui/vulkan_ui_texture.hpp"
 
 #include "config.h"
 #include "core/logger.hpp"
@@ -11,7 +11,6 @@
 #include "window/vulkan_context.hpp"
 
 #ifdef LFS_VULKAN_VIEWER_ENABLED
-#include <imgui_impl_vulkan.h>
 #include <vulkan/vulkan.h>
 #endif
 
@@ -73,7 +72,7 @@ namespace lfs::vis::gui {
 
             const auto layout = lfs::rendering::detectImageLayout(image);
             if (layout == lfs::rendering::ImageLayout::Unknown) {
-                LOG_ERROR("ImGui Vulkan texture upload received unsupported tensor shape [{}, {}, {}]",
+                LOG_ERROR("Vulkan UI texture upload received unsupported tensor shape [{}, {}, {}]",
                           image.size(0), image.size(1), image.size(2));
                 return {};
             }
@@ -93,12 +92,12 @@ namespace lfs::vis::gui {
             const int width = static_cast<int>(formatted.size(1));
             const int channels = static_cast<int>(formatted.size(2));
             if (width != expected_width || height != expected_height || !formatted.ptr<std::uint8_t>()) {
-                LOG_ERROR("ImGui Vulkan texture upload dimension mismatch: {}x{} vs {}x{}",
+                LOG_ERROR("Vulkan UI texture upload dimension mismatch: {}x{} vs {}x{}",
                           width, height, expected_width, expected_height);
                 return {};
             }
             if (channels != 1 && channels != 3 && channels != 4) {
-                LOG_ERROR("ImGui Vulkan texture upload received unsupported channel count {}", channels);
+                LOG_ERROR("Vulkan UI texture upload received unsupported channel count {}", channels);
                 return {};
             }
             return toRgba(formatted.ptr<std::uint8_t>(), width, height, channels);
@@ -106,15 +105,15 @@ namespace lfs::vis::gui {
 #endif
     } // namespace
 
-    void setImGuiVulkanTextureContext(VulkanContext* const context) {
+    void setVulkanUiTextureContext(VulkanContext* const context) {
         g_texture_context = context;
     }
 
-    VulkanContext* getImGuiVulkanTextureContext() {
+    VulkanContext* getVulkanUiTextureContext() {
         return g_texture_context;
     }
 
-    struct ImGuiVulkanTexture::Impl {
+    struct VulkanUiTexture::Impl {
 #ifdef LFS_VULKAN_VIEWER_ENABLED
         VkDevice device = VK_NULL_HANDLE;
         VkPhysicalDevice physical_device = VK_NULL_HANDLE;
@@ -122,6 +121,8 @@ namespace lfs::vis::gui {
         std::uint32_t graphics_queue_family = 0;
         VkCommandPool command_pool = VK_NULL_HANDLE;
         VkSampler sampler = VK_NULL_HANDLE;
+        VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+        VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
         VkImage image = VK_NULL_HANDLE;
         VkDeviceMemory image_memory = VK_NULL_HANDLE;
         VkImageView image_view = VK_NULL_HANDLE;
@@ -166,7 +167,7 @@ namespace lfs::vis::gui {
             graphics_queue_family = context.graphicsQueueFamily();
             if (device == VK_NULL_HANDLE || physical_device == VK_NULL_HANDLE ||
                 graphics_queue == VK_NULL_HANDLE) {
-                LOG_ERROR("ImGui Vulkan texture requires an initialized Vulkan context");
+                LOG_ERROR("Vulkan UI texture requires an initialized Vulkan context");
                 device = VK_NULL_HANDLE;
                 return false;
             }
@@ -176,7 +177,7 @@ namespace lfs::vis::gui {
             pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             pool_info.queueFamilyIndex = graphics_queue_family;
             if (vkCreateCommandPool(device, &pool_info, nullptr, &command_pool) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create ImGui Vulkan texture command pool");
+                LOG_ERROR("Failed to create Vulkan UI texture command pool");
                 device = VK_NULL_HANDLE;
                 return false;
             }
@@ -191,7 +192,38 @@ namespace lfs::vis::gui {
             sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
             sampler_info.maxLod = 1.0f;
             if (vkCreateSampler(device, &sampler_info, nullptr, &sampler) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create ImGui Vulkan texture sampler");
+                LOG_ERROR("Failed to create Vulkan UI texture sampler");
+                reset();
+                return false;
+            }
+
+            VkDescriptorSetLayoutBinding binding{};
+            binding.binding = 0;
+            binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            binding.descriptorCount = 1;
+            binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+            VkDescriptorSetLayoutCreateInfo layout_info{};
+            layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layout_info.bindingCount = 1;
+            layout_info.pBindings = &binding;
+            if (vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &descriptor_set_layout) != VK_SUCCESS) {
+                LOG_ERROR("Failed to create Vulkan UI texture descriptor set layout");
+                reset();
+                return false;
+            }
+
+            VkDescriptorPoolSize pool_size{};
+            pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            pool_size.descriptorCount = 1;
+
+            VkDescriptorPoolCreateInfo pool_create{};
+            pool_create.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            pool_create.maxSets = 1;
+            pool_create.poolSizeCount = 1;
+            pool_create.pPoolSizes = &pool_size;
+            if (vkCreateDescriptorPool(device, &pool_create, nullptr, &descriptor_pool) != VK_SUCCESS) {
+                LOG_ERROR("Failed to create Vulkan UI texture descriptor pool");
                 reset();
                 return false;
             }
@@ -224,7 +256,7 @@ namespace lfs::vis::gui {
             buffer_info.usage = usage;
             buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             if (vkCreateBuffer(device, &buffer_info, nullptr, &buffer) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create ImGui Vulkan texture staging buffer");
+                LOG_ERROR("Failed to create Vulkan UI texture staging buffer");
                 return false;
             }
 
@@ -236,19 +268,19 @@ namespace lfs::vis::gui {
             alloc_info.allocationSize = requirements.size;
             alloc_info.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits, properties);
             if (alloc_info.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max()) {
-                LOG_ERROR("No suitable memory type for ImGui Vulkan texture staging buffer");
+                LOG_ERROR("No suitable memory type for Vulkan UI texture staging buffer");
                 vkDestroyBuffer(device, buffer, nullptr);
                 buffer = VK_NULL_HANDLE;
                 return false;
             }
             if (vkAllocateMemory(device, &alloc_info, nullptr, &memory) != VK_SUCCESS) {
-                LOG_ERROR("Failed to allocate ImGui Vulkan texture staging memory");
+                LOG_ERROR("Failed to allocate Vulkan UI texture staging memory");
                 vkDestroyBuffer(device, buffer, nullptr);
                 buffer = VK_NULL_HANDLE;
                 return false;
             }
             if (vkBindBufferMemory(device, buffer, memory, 0) != VK_SUCCESS) {
-                LOG_ERROR("Failed to bind ImGui Vulkan texture staging memory");
+                LOG_ERROR("Failed to bind Vulkan UI texture staging memory");
                 vkDestroyBuffer(device, buffer, nullptr);
                 vkFreeMemory(device, memory, nullptr);
                 buffer = VK_NULL_HANDLE;
@@ -267,7 +299,7 @@ namespace lfs::vis::gui {
 
             VkCommandBuffer command_buffer = VK_NULL_HANDLE;
             if (vkAllocateCommandBuffers(device, &alloc_info, &command_buffer) != VK_SUCCESS) {
-                LOG_ERROR("Failed to allocate ImGui Vulkan texture command buffer");
+                LOG_ERROR("Failed to allocate Vulkan UI texture command buffer");
                 return VK_NULL_HANDLE;
             }
 
@@ -275,7 +307,7 @@ namespace lfs::vis::gui {
             begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
             if (vkBeginCommandBuffer(command_buffer, &begin_info) != VK_SUCCESS) {
-                LOG_ERROR("Failed to begin ImGui Vulkan texture command buffer");
+                LOG_ERROR("Failed to begin Vulkan UI texture command buffer");
                 vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
                 return VK_NULL_HANDLE;
             }
@@ -284,7 +316,7 @@ namespace lfs::vis::gui {
 
         [[nodiscard]] bool endSingleTimeCommands(const VkCommandBuffer command_buffer) const {
             if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
-                LOG_ERROR("Failed to end ImGui Vulkan texture command buffer");
+                LOG_ERROR("Failed to end Vulkan UI texture command buffer");
                 vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
                 return false;
             }
@@ -297,7 +329,7 @@ namespace lfs::vis::gui {
             if (submit_status == VK_SUCCESS) {
                 vkQueueWaitIdle(graphics_queue);
             } else {
-                LOG_ERROR("Failed to submit ImGui Vulkan texture upload: {}", static_cast<int>(submit_status));
+                LOG_ERROR("Failed to submit Vulkan UI texture upload: {}", static_cast<int>(submit_status));
             }
             vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
             return submit_status == VK_SUCCESS;
@@ -371,7 +403,7 @@ namespace lfs::vis::gui {
             image_info.samples = VK_SAMPLE_COUNT_1_BIT;
             image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             if (vkCreateImage(device, &image_info, nullptr, &image) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create ImGui Vulkan texture image");
+                LOG_ERROR("Failed to create Vulkan UI texture image");
                 return false;
             }
 
@@ -384,17 +416,17 @@ namespace lfs::vis::gui {
             alloc_info.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits,
                                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             if (alloc_info.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max()) {
-                LOG_ERROR("No suitable memory type for ImGui Vulkan texture image");
+                LOG_ERROR("No suitable memory type for Vulkan UI texture image");
                 destroyImage();
                 return false;
             }
             if (vkAllocateMemory(device, &alloc_info, nullptr, &image_memory) != VK_SUCCESS) {
-                LOG_ERROR("Failed to allocate ImGui Vulkan texture image memory");
+                LOG_ERROR("Failed to allocate Vulkan UI texture image memory");
                 destroyImage();
                 return false;
             }
             if (vkBindImageMemory(device, image, image_memory, 0) != VK_SUCCESS) {
-                LOG_ERROR("Failed to bind ImGui Vulkan texture image memory");
+                LOG_ERROR("Failed to bind Vulkan UI texture image memory");
                 destroyImage();
                 return false;
             }
@@ -410,15 +442,37 @@ namespace lfs::vis::gui {
             view_info.subresourceRange.baseArrayLayer = 0;
             view_info.subresourceRange.layerCount = 1;
             if (vkCreateImageView(device, &view_info, nullptr, &image_view) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create ImGui Vulkan texture image view");
+                LOG_ERROR("Failed to create Vulkan UI texture image view");
                 destroyImage();
                 return false;
             }
 
-            descriptor_set = ImGui_ImplVulkan_AddTexture(
-                sampler,
-                image_view,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            if (descriptor_set == VK_NULL_HANDLE) {
+                VkDescriptorSetAllocateInfo alloc_info{};
+                alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+                alloc_info.descriptorPool = descriptor_pool;
+                alloc_info.descriptorSetCount = 1;
+                alloc_info.pSetLayouts = &descriptor_set_layout;
+                if (vkAllocateDescriptorSets(device, &alloc_info, &descriptor_set) != VK_SUCCESS) {
+                    LOG_ERROR("Failed to allocate Vulkan UI texture descriptor set");
+                    destroyImage();
+                    return false;
+                }
+            }
+
+            VkDescriptorImageInfo image_info_write{};
+            image_info_write.sampler = sampler;
+            image_info_write.imageView = image_view;
+            image_info_write.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            VkWriteDescriptorSet write{};
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet = descriptor_set;
+            write.dstBinding = 0;
+            write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            write.pImageInfo = &image_info_write;
+            vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
             image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
             return descriptor_set != VK_NULL_HANDLE;
         }
@@ -431,7 +485,7 @@ namespace lfs::vis::gui {
                                    static_cast<std::size_t>(new_height) * 4u) {
                 return false;
             }
-            VulkanContext* const context = getImGuiVulkanTextureContext();
+            VulkanContext* const context = getVulkanUiTextureContext();
             if (!context || !init(*context)) {
                 return false;
             }
@@ -457,7 +511,7 @@ namespace lfs::vis::gui {
             void* mapped = nullptr;
             const VkResult map_status = vkMapMemory(device, staging_memory, 0, upload_size, 0, &mapped);
             if (map_status != VK_SUCCESS || !mapped) {
-                LOG_ERROR("Failed to map ImGui Vulkan texture staging memory");
+                LOG_ERROR("Failed to map Vulkan UI texture staging memory");
                 vkDestroyBuffer(device, staging_buffer, nullptr);
                 vkFreeMemory(device, staging_memory, nullptr);
                 return false;
@@ -494,7 +548,7 @@ namespace lfs::vis::gui {
                                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
             if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
-                LOG_ERROR("Failed to end ImGui Vulkan texture command buffer");
+                LOG_ERROR("Failed to end Vulkan UI texture command buffer");
                 vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
                 vkDestroyBuffer(device, staging_buffer, nullptr);
                 vkFreeMemory(device, staging_memory, nullptr);
@@ -505,7 +559,7 @@ namespace lfs::vis::gui {
             fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
             VkFence fence = VK_NULL_HANDLE;
             if (vkCreateFence(device, &fence_info, nullptr, &fence) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create ImGui Vulkan texture upload fence");
+                LOG_ERROR("Failed to create Vulkan UI texture upload fence");
                 vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
                 vkDestroyBuffer(device, staging_buffer, nullptr);
                 vkFreeMemory(device, staging_memory, nullptr);
@@ -518,7 +572,7 @@ namespace lfs::vis::gui {
             submit_info.pCommandBuffers = &command_buffer;
             const VkResult submit_status = vkQueueSubmit(graphics_queue, 1, &submit_info, fence);
             if (submit_status != VK_SUCCESS) {
-                LOG_ERROR("Failed to submit ImGui Vulkan texture upload: {}",
+                LOG_ERROR("Failed to submit Vulkan UI texture upload: {}",
                           static_cast<int>(submit_status));
                 vkDestroyFence(device, fence, nullptr);
                 vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
@@ -528,9 +582,7 @@ namespace lfs::vis::gui {
             }
 
             // Defer command-buffer + staging-buffer cleanup until the GPU finishes via the fence.
-            // The next upload (or destruction) will reap them. ImGui's frame submit on the same
-            // queue serializes correctly with this transfer, so the descriptor is safe to sample
-            // immediately.
+            // The next upload (or destruction) reaps them.
             image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             upload_fence = fence;
             pending_command_buffer = command_buffer;
@@ -551,10 +603,6 @@ namespace lfs::vis::gui {
 
         void destroyImage() {
             waitAndReleasePendingUpload();
-            if (descriptor_set != VK_NULL_HANDLE) {
-                ImGui_ImplVulkan_RemoveTexture(descriptor_set);
-                descriptor_set = VK_NULL_HANDLE;
-            }
             if (image_view != VK_NULL_HANDLE) {
                 vkDestroyImageView(device, image_view, nullptr);
                 image_view = VK_NULL_HANDLE;
@@ -580,6 +628,15 @@ namespace lfs::vis::gui {
                     vkDestroySampler(device, sampler, nullptr);
                     sampler = VK_NULL_HANDLE;
                 }
+                if (descriptor_pool != VK_NULL_HANDLE) {
+                    vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
+                    descriptor_pool = VK_NULL_HANDLE;
+                    descriptor_set = VK_NULL_HANDLE;
+                }
+                if (descriptor_set_layout != VK_NULL_HANDLE) {
+                    vkDestroyDescriptorSetLayout(device, descriptor_set_layout, nullptr);
+                    descriptor_set_layout = VK_NULL_HANDLE;
+                }
                 if (command_pool != VK_NULL_HANDLE) {
                     vkDestroyCommandPool(device, command_pool, nullptr);
                     command_pool = VK_NULL_HANDLE;
@@ -596,15 +653,15 @@ namespace lfs::vis::gui {
 #endif
     };
 
-    ImGuiVulkanTexture::~ImGuiVulkanTexture() {
+    VulkanUiTexture::~VulkanUiTexture() {
         reset();
         delete impl_;
     }
 
-    ImGuiVulkanTexture::ImGuiVulkanTexture(ImGuiVulkanTexture&& other) noexcept
+    VulkanUiTexture::VulkanUiTexture(VulkanUiTexture&& other) noexcept
         : impl_(std::exchange(other.impl_, nullptr)) {}
 
-    ImGuiVulkanTexture& ImGuiVulkanTexture::operator=(ImGuiVulkanTexture&& other) noexcept {
+    VulkanUiTexture& VulkanUiTexture::operator=(VulkanUiTexture&& other) noexcept {
         if (this != &other) {
             reset();
             delete impl_;
@@ -613,7 +670,7 @@ namespace lfs::vis::gui {
         return *this;
     }
 
-    bool ImGuiVulkanTexture::upload(const std::uint8_t* const pixels,
+    bool VulkanUiTexture::upload(const std::uint8_t* const pixels,
                                     const int width,
                                     const int height,
                                     const int channels) {
@@ -623,7 +680,7 @@ namespace lfs::vis::gui {
         return impl_->upload(pixels, width, height, channels);
     }
 
-    bool ImGuiVulkanTexture::upload(const lfs::core::Tensor& image,
+    bool VulkanUiTexture::upload(const lfs::core::Tensor& image,
                                     const int expected_width,
                                     const int expected_height) {
         if (!impl_) {
@@ -640,7 +697,7 @@ namespace lfs::vis::gui {
 #endif
     }
 
-    ImTextureID ImGuiVulkanTexture::textureId() const {
+    ImTextureID VulkanUiTexture::textureId() const {
 #ifdef LFS_VULKAN_VIEWER_ENABLED
         return impl_ ? reinterpret_cast<ImTextureID>(impl_->descriptor_set) : 0;
 #else
@@ -648,15 +705,15 @@ namespace lfs::vis::gui {
 #endif
     }
 
-    bool ImGuiVulkanTexture::valid() const {
+    bool VulkanUiTexture::valid() const {
 #ifdef LFS_VULKAN_VIEWER_ENABLED
-        return impl_ && impl_->descriptor_set != VK_NULL_HANDLE;
+        return impl_ && impl_->descriptor_set != VK_NULL_HANDLE && impl_->image_view != VK_NULL_HANDLE;
 #else
         return false;
 #endif
     }
 
-    void ImGuiVulkanTexture::reset() {
+    void VulkanUiTexture::reset() {
         if (impl_) {
             impl_->reset();
         }

@@ -44,6 +44,7 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
         rendering/viewport_frame_lifecycle_service.cpp
         rendering/viewport_appearance_correction.cpp
         rendering/viewport_request_builder.cpp
+        rendering/passes/vulkan_viewport_pass.cpp
         rendering/framerate_controller.cpp
 
         # Theme system
@@ -51,8 +52,7 @@ add_library(lfs_visualizer ${LFS_VIS_LIB_TYPE}
 
         # GUI system
         gui/gui_manager.cpp
-        gui/imgui_vulkan_backend.cpp
-        gui/imgui_vulkan_texture.cpp
+        gui/vulkan_ui_texture.cpp
         gui/global_context_menu.cpp
         gui/gizmo_manager.cpp
         gui/pie_menu.cpp
@@ -233,13 +233,18 @@ target_link_libraries(lfs_visualizer
 if(ENABLE_VULKAN_VIEWER)
     target_sources(lfs_visualizer
             PRIVATE
-            gui/vulkan_scene_cuda_upload.cu
             gui/rmlui/rmlui_vk_backend.cpp)
+    set(glslang_DIR "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/glslang"
+        CACHE PATH "Path to vcpkg-installed glslang config" FORCE)
+    find_package(glslang CONFIG REQUIRED)
     target_link_libraries(lfs_visualizer
             PRIVATE
             Vulkan::Vulkan
             GPUOpen::VulkanMemoryAllocator
-            volk::volk_headers)
+            volk::volk_headers
+            glslang::glslang
+            glslang::SPIRV
+            glslang::glslang-default-resource-limits)
     if(WIN32)
         target_compile_definitions(lfs_visualizer PRIVATE VK_USE_PLATFORM_WIN32_KHR)
     endif()
@@ -325,17 +330,16 @@ target_compile_options(lfs_visualizer PRIVATE
 # Handle resources (shaders and assets)
 set(VISUALIZER_BUILD_RESOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/resources")
 set(VISUALIZER_SOURCE_RESOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources")
+set(RENDERING_SOURCE_RESOURCE_DIR "${PROJECT_SOURCE_DIR}/src/rendering/resources")
 
 # Create resource directories in build folder
 file(MAKE_DIRECTORY "${VISUALIZER_BUILD_RESOURCE_DIR}/shaders")
 file(MAKE_DIRECTORY "${VISUALIZER_BUILD_RESOURCE_DIR}/assets")
+file(MAKE_DIRECTORY "${VISUALIZER_BUILD_RESOURCE_DIR}/assets/fonts")
 
 # Copy shaders to build directory
-file(GLOB SHADER_FILES CONFIGURE_DEPENDS "${VISUALIZER_SOURCE_RESOURCE_DIR}/shaders/*")
-foreach (SHADER_FILE ${SHADER_FILES})
-    get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
-    configure_file(${SHADER_FILE} "${VISUALIZER_BUILD_RESOURCE_DIR}/shaders/${SHADER_NAME}" COPYONLY)
-endforeach ()
+file(COPY "${RENDERING_SOURCE_RESOURCE_DIR}/shaders/"
+        DESTINATION "${VISUALIZER_BUILD_RESOURCE_DIR}/shaders")
 
 # Copy assets from resources/assets if they exist
 file(GLOB ASSET_FILES CONFIGURE_DEPENDS "${VISUALIZER_SOURCE_RESOURCE_DIR}/assets/*")
@@ -353,6 +357,17 @@ foreach (GUI_ASSET_FILE ${GUI_ASSET_FILES})
     if (EXISTS ${GUI_ASSET_FILE} AND NOT IS_DIRECTORY ${GUI_ASSET_FILE})
         get_filename_component(ASSET_NAME ${GUI_ASSET_FILE} NAME)
         configure_file(${GUI_ASSET_FILE} "${VISUALIZER_BUILD_RESOURCE_DIR}/assets/${ASSET_NAME}" COPYONLY)
+    endif ()
+endforeach ()
+
+set(RENDERING_FONT_FILES
+        "${RENDERING_SOURCE_RESOURCE_DIR}/assets/JetBrainsMono-Regular.ttf"
+)
+
+foreach (RENDERING_FONT_FILE ${RENDERING_FONT_FILES})
+    if (EXISTS ${RENDERING_FONT_FILE} AND NOT IS_DIRECTORY ${RENDERING_FONT_FILE})
+        get_filename_component(FONT_NAME ${RENDERING_FONT_FILE} NAME)
+        configure_file(${RENDERING_FONT_FILE} "${VISUALIZER_BUILD_RESOURCE_DIR}/assets/fonts/${FONT_NAME}" COPYONLY)
     endif ()
 endforeach ()
 
@@ -432,7 +447,7 @@ target_compile_definitions(lfs_visualizer PRIVATE
         VISUALIZER_SHADER_PATH="${VISUALIZER_BUILD_RESOURCE_DIR}/shaders"
         VISUALIZER_ASSET_PATH="${VISUALIZER_BUILD_RESOURCE_DIR}/assets"
         VISUALIZER_LOCALE_PATH="${VISUALIZER_BUILD_RESOURCE_DIR}/locales"
-        VISUALIZER_SOURCE_SHADER_PATH="${VISUALIZER_SOURCE_RESOURCE_DIR}/shaders"
+        VISUALIZER_SOURCE_SHADER_PATH="${RENDERING_SOURCE_RESOURCE_DIR}/shaders"
         VISUALIZER_SOURCE_ASSET_PATH="${VISUALIZER_SOURCE_RESOURCE_DIR}/assets"
         ${LFS_VISUALIZER_DEV_RESOURCE_DEFINITIONS}
         $<$<CONFIG:Debug>:DEBUG_BUILD>
@@ -463,11 +478,21 @@ if(NOT BUILD_PORTABLE)
 endif()
 
 # Optionally install resources
-install(DIRECTORY ${VISUALIZER_SOURCE_RESOURCE_DIR}/
-        DESTINATION share/LichtFeld-Studio/visualizer/resources
+install(DIRECTORY ${RENDERING_SOURCE_RESOURCE_DIR}/shaders/
+        DESTINATION share/LichtFeld-Studio/visualizer/resources/shaders
         FILES_MATCHING
         PATTERN "*.vert"
         PATTERN "*.frag"
+        PATTERN "*.geom"
+        PATTERN "*.glsl"
+)
+
+install(FILES ${RENDERING_SOURCE_RESOURCE_DIR}/assets/JetBrainsMono-Regular.ttf
+        DESTINATION share/LichtFeld-Studio/visualizer/resources/assets/fonts)
+
+install(DIRECTORY ${VISUALIZER_SOURCE_RESOURCE_DIR}/
+        DESTINATION share/LichtFeld-Studio/visualizer/resources
+        FILES_MATCHING
         PATTERN "*.ttf"
 )
 
@@ -480,8 +505,8 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/gui/resources/locales/
 
 # Add custom target for resource files (makes them show up in IDEs)
 file(GLOB_RECURSE VISUALIZER_RESOURCE_FILES
-        "${VISUALIZER_SOURCE_RESOURCE_DIR}/shaders/*.vert"
-        "${VISUALIZER_SOURCE_RESOURCE_DIR}/shaders/*.frag"
+        "${RENDERING_SOURCE_RESOURCE_DIR}/shaders/*.vert"
+        "${RENDERING_SOURCE_RESOURCE_DIR}/shaders/*.frag"
         "${VISUALIZER_SOURCE_RESOURCE_DIR}/assets/*.ttf"
 )
 if (VISUALIZER_RESOURCE_FILES)

@@ -394,6 +394,7 @@ namespace lfs::vis {
         std::shared_ptr<const lfs::core::Tensor> vulkan_viewport_image_;
         glm::ivec2 vulkan_viewport_image_size_{0, 0};
         bool vulkan_viewport_image_flip_y_ = false;
+        glm::ivec2 vulkan_gt_comparison_content_size_{0, 0};
 
         // Granular dirty tracking
         std::atomic<uint32_t> dirty_mask_{DirtyFlag::ALL};

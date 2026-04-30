@@ -5,6 +5,7 @@
 #include "gui/gui_manager.hpp"
 #include "control/command_api.hpp"
 #include "core/cuda_version.hpp"
+#include "core/camera.hpp"
 #include "core/event_bridge/command_center_bridge.hpp"
 #include "core/event_bridge/localization_manager.hpp"
 #include "core/image_io.hpp"
@@ -29,7 +30,7 @@
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/file_association.hpp"
 #include "gui/utils/native_file_dialog.hpp"
-#include "gui/vulkan_scene_cuda_upload.hpp"
+#include "gui/vulkan_ui_texture.hpp"
 #include <implot.h>
 
 #include "gui/gui_focus_state.hpp"
@@ -46,16 +47,19 @@
 #include "python/ui_hooks.hpp"
 #include "rendering/coordinate_conventions.hpp"
 #include "rendering/image_layout.hpp"
+#include "rendering/passes/vulkan_viewport_pass.hpp"
 #include "rendering/rendering_manager.hpp"
 #include "scene/scene_manager.hpp"
 #include "theme/theme.hpp"
 #include "tools/brush_tool.hpp"
 #include "tools/selection_tool.hpp"
+#include "visualizer/scene_coordinate_utils.hpp"
 #include "visualizer_impl.hpp"
 #include "window/vulkan_context.hpp"
 #include <OpenImageIO/imageio.h>
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -64,819 +68,20 @@
 #include <format>
 #include <fstream>
 #include <imgui_impl_sdl3.h>
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-#include <imgui_impl_vulkan.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-#endif
 #include <imgui_internal.h>
 #include <iterator>
 #include <limits>
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 #include <unordered_set>
 
 namespace lfs::vis::gui {
 
     namespace {
         const FrameInputBuffer* s_frame_input = nullptr;
-
-        [[nodiscard]] std::optional<std::vector<unsigned char>> tensorToRgba8(
-            const lfs::core::Tensor& image,
-            const glm::ivec2 expected_size) {
-            if (!image.is_valid() || image.ndim() != 3 || expected_size.x <= 0 || expected_size.y <= 0) {
-                return std::nullopt;
-            }
-
-            const auto layout = lfs::rendering::detectImageLayout(image);
-            if (layout == lfs::rendering::ImageLayout::Unknown) {
-                LOG_ERROR("Vulkan scene upload received unsupported tensor shape [{}, {}, {}]",
-                          image.size(0), image.size(1), image.size(2));
-                return std::nullopt;
-            }
-
-            lfs::core::Tensor formatted = (layout == lfs::rendering::ImageLayout::HWC)
-                                              ? image
-                                              : image.permute({1, 2, 0}).contiguous();
-            if (formatted.device() == lfs::core::Device::CUDA) {
-                formatted = formatted.cpu();
-            }
-            if (formatted.dtype() != lfs::core::DataType::UInt8) {
-                formatted = (formatted.clamp(0.0f, 1.0f) * 255.0f).to(lfs::core::DataType::UInt8);
-            }
-            formatted = formatted.contiguous();
-
-            const int height = static_cast<int>(formatted.size(0));
-            const int width = static_cast<int>(formatted.size(1));
-            const int channels = static_cast<int>(formatted.size(2));
-            if (width != expected_size.x || height != expected_size.y || !formatted.ptr<unsigned char>()) {
-                LOG_ERROR("Vulkan scene upload dimension mismatch: {}x{} vs {}x{}",
-                          width, height, expected_size.x, expected_size.y);
-                return std::nullopt;
-            }
-            if (channels != 1 && channels != 3 && channels != 4) {
-                LOG_ERROR("Vulkan scene upload received unsupported channel count {}", channels);
-                return std::nullopt;
-            }
-
-            const unsigned char* const src = formatted.ptr<unsigned char>();
-            std::vector<unsigned char> rgba(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u);
-            for (int y = 0; y < height; ++y) {
-                for (int x = 0; x < width; ++x) {
-                    const size_t src_offset = (static_cast<size_t>(y) * width + x) * channels;
-                    const size_t dst_offset = (static_cast<size_t>(y) * width + x) * 4u;
-                    if (channels == 1) {
-                        rgba[dst_offset + 0] = src[src_offset];
-                        rgba[dst_offset + 1] = src[src_offset];
-                        rgba[dst_offset + 2] = src[src_offset];
-                        rgba[dst_offset + 3] = 255;
-                    } else {
-                        rgba[dst_offset + 0] = src[src_offset + 0];
-                        rgba[dst_offset + 1] = src[src_offset + 1];
-                        rgba[dst_offset + 2] = src[src_offset + 2];
-                        // Scene alpha is not a UI fade mask.
-                        rgba[dst_offset + 3] = 255;
-                    }
-                }
-            }
-            return rgba;
-        }
-
-    } // namespace
-
-    class VulkanSceneTexture {
-    public:
-        VulkanSceneTexture() = default;
-        ~VulkanSceneTexture() { shutdown(); }
-
-        VulkanSceneTexture(const VulkanSceneTexture&) = delete;
-        VulkanSceneTexture& operator=(const VulkanSceneTexture&) = delete;
-
-        bool init(lfs::vis::VulkanContext& context) {
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-            if (initialized_) {
-                return true;
-            }
-            device_ = context.device();
-            physical_device_ = context.physicalDevice();
-            graphics_queue_ = context.graphicsQueue();
-            graphics_queue_family_ = context.graphicsQueueFamily();
-            external_memory_interop_available_ = context.externalMemoryInteropEnabled();
-            use_dedicated_external_memory_ = context.externalMemoryDedicatedAllocationEnabled();
-            if (device_ == VK_NULL_HANDLE || physical_device_ == VK_NULL_HANDLE ||
-                graphics_queue_ == VK_NULL_HANDLE) {
-                LOG_ERROR("Vulkan scene texture requires an initialized Vulkan context");
-                return false;
-            }
-
-            VkCommandPoolCreateInfo pool_info{};
-            pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            pool_info.queueFamilyIndex = graphics_queue_family_;
-            if (vkCreateCommandPool(device_, &pool_info, nullptr, &command_pool_) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create Vulkan scene texture command pool");
-                return false;
-            }
-
-            VkSamplerCreateInfo sampler_info{};
-            sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-            sampler_info.magFilter = VK_FILTER_LINEAR;
-            sampler_info.minFilter = VK_FILTER_LINEAR;
-            sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            sampler_info.maxLod = 1.0f;
-            if (vkCreateSampler(device_, &sampler_info, nullptr, &sampler_) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create Vulkan scene texture sampler");
-                shutdown();
-                return false;
-            }
-
-            initialized_ = true;
-            return true;
-#else
-            (void)context;
-            return false;
-#endif
-        }
-
-        void shutdown() {
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-            if (device_ != VK_NULL_HANDLE) {
-                vkDeviceWaitIdle(device_);
-            }
-            destroyImageResources();
-            if (sampler_ != VK_NULL_HANDLE) {
-                vkDestroySampler(device_, sampler_, nullptr);
-                sampler_ = VK_NULL_HANDLE;
-            }
-            if (command_pool_ != VK_NULL_HANDLE) {
-                vkDestroyCommandPool(device_, command_pool_, nullptr);
-                command_pool_ = VK_NULL_HANDLE;
-            }
-            destroyCudaUploadBuffer();
-#endif
-            initialized_ = false;
-        }
-
-        bool upload(const lfs::core::Tensor& image,
-                    const glm::ivec2 size,
-                    const bool enable_cuda_interop) {
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-            if (!initialized_) {
-                return false;
-            }
-            if (enable_cuda_interop && uploadWithCudaInterop(image, size)) {
-                return true;
-            }
-            return uploadWithStaging(image, size);
-#else
-            (void)image;
-            (void)size;
-            (void)enable_cuda_interop;
-            return false;
-#endif
-        }
-
-        [[nodiscard]] ImTextureID textureId() const {
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-            return reinterpret_cast<ImTextureID>(descriptor_set_);
-#else
-            return 0;
-#endif
-        }
-
-        [[nodiscard]] bool valid() const {
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-            return descriptor_set_ != VK_NULL_HANDLE && image_view_ != VK_NULL_HANDLE;
-#else
-            return false;
-#endif
-        }
-
-    private:
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-        bool uploadWithStaging(const lfs::core::Tensor& image, const glm::ivec2 size) {
-            auto rgba = tensorToRgba8(image, size);
-            if (!rgba || !ensureImageResources(size, false)) {
-                return false;
-            }
-
-            const VkDeviceSize upload_size = static_cast<VkDeviceSize>(rgba->size());
-            VkBuffer staging_buffer = VK_NULL_HANDLE;
-            VkDeviceMemory staging_memory = VK_NULL_HANDLE;
-            if (!createBuffer(upload_size,
-                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                              staging_buffer,
-                              staging_memory)) {
-                return false;
-            }
-
-            void* mapped = nullptr;
-            const VkResult map_status = vkMapMemory(device_, staging_memory, 0, upload_size, 0, &mapped);
-            if (map_status != VK_SUCCESS || !mapped) {
-                LOG_ERROR("Failed to map Vulkan scene texture staging buffer");
-                vkDestroyBuffer(device_, staging_buffer, nullptr);
-                vkFreeMemory(device_, staging_memory, nullptr);
-                return false;
-            }
-            std::memcpy(mapped, rgba->data(), rgba->size());
-            vkUnmapMemory(device_, staging_memory);
-
-            VkCommandBuffer command_buffer = beginSingleTimeCommands();
-            if (command_buffer == VK_NULL_HANDLE) {
-                vkDestroyBuffer(device_, staging_buffer, nullptr);
-                vkFreeMemory(device_, staging_memory, nullptr);
-                return false;
-            }
-
-            transitionImageLayout(command_buffer, image_layout_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-            VkBufferImageCopy copy_region{};
-            copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            copy_region.imageSubresource.mipLevel = 0;
-            copy_region.imageSubresource.baseArrayLayer = 0;
-            copy_region.imageSubresource.layerCount = 1;
-            copy_region.imageExtent = {static_cast<uint32_t>(size.x), static_cast<uint32_t>(size.y), 1};
-            vkCmdCopyBufferToImage(command_buffer,
-                                   staging_buffer,
-                                   image_,
-                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                   1,
-                                   &copy_region);
-
-            transitionImageLayout(command_buffer,
-                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-            const bool submitted = endSingleTimeCommands(command_buffer);
-            image_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-            vkDestroyBuffer(device_, staging_buffer, nullptr);
-            vkFreeMemory(device_, staging_memory, nullptr);
-            return submitted;
-        }
-
-        bool uploadWithCudaInterop(const lfs::core::Tensor& image, const glm::ivec2 size) {
-            if (!external_memory_interop_available_ || cuda_interop_disabled_) {
-                return false;
-            }
-            if (!image.is_valid() || image.device() != lfs::core::Device::CUDA ||
-                image.dtype() != lfs::core::DataType::Float32 || image.ndim() != 3 ||
-                size.x <= 0 || size.y <= 0) {
-                return false;
-            }
-
-            const auto layout = lfs::rendering::detectImageLayout(image);
-            if (layout == lfs::rendering::ImageLayout::Unknown) {
-                return false;
-            }
-            const int width = lfs::rendering::imageWidth(image, layout);
-            const int height = lfs::rendering::imageHeight(image, layout);
-            const int channels = lfs::rendering::imageChannels(image, layout);
-            if (width != size.x || height != size.y || (channels != 3 && channels != 4)) {
-                return false;
-            }
-
-            if (!ensureImageResources(size, true)) {
-                cuda_interop_disabled_ = true;
-                return false;
-            }
-            const size_t upload_size = static_cast<size_t>(width) * static_cast<size_t>(height) * sizeof(uchar4);
-            if (!ensureCudaUploadBuffer(upload_size)) {
-                cuda_interop_disabled_ = true;
-                return false;
-            }
-
-            lfs::core::Tensor formatted = image.is_contiguous() ? image : image.contiguous();
-            const float* const src = formatted.ptr<float>();
-            if (!src || !cuda_array_) {
-                return false;
-            }
-
-            vkDeviceWaitIdle(device_);
-            VkCommandBuffer command_buffer = beginSingleTimeCommands();
-            if (command_buffer == VK_NULL_HANDLE) {
-                return false;
-            }
-            transitionImageLayout(command_buffer, image_layout_, VK_IMAGE_LAYOUT_GENERAL);
-            if (!endSingleTimeCommands(command_buffer)) {
-                return false;
-            }
-            image_layout_ = VK_IMAGE_LAYOUT_GENERAL;
-
-            cudaStream_t stream = formatted.stream();
-            cudaError_t cuda_status = uploadFloatImageToCudaArray(src,
-                                                                  cuda_upload_buffer_,
-                                                                  cuda_array_,
-                                                                  width,
-                                                                  height,
-                                                                  channels,
-                                                                  layout == lfs::rendering::ImageLayout::CHW,
-                                                                  stream);
-            if (cuda_status != cudaSuccess) {
-                LOG_WARN("CUDA to Vulkan viewport upload failed: {}", cudaGetErrorString(cuda_status));
-                cuda_interop_disabled_ = true;
-                return false;
-            }
-            cuda_status = cudaStreamSynchronize(stream);
-            if (cuda_status != cudaSuccess) {
-                LOG_WARN("CUDA to Vulkan viewport upload synchronization failed: {}",
-                         cudaGetErrorString(cuda_status));
-                cuda_interop_disabled_ = true;
-                return false;
-            }
-
-            command_buffer = beginSingleTimeCommands();
-            if (command_buffer == VK_NULL_HANDLE) {
-                return false;
-            }
-            transitionImageLayout(command_buffer,
-                                  VK_IMAGE_LAYOUT_GENERAL,
-                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            const bool submitted = endSingleTimeCommands(command_buffer);
-            if (submitted) {
-                image_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            }
-            return submitted;
-        }
-
-        [[nodiscard]] uint32_t findMemoryType(const uint32_t type_filter,
-                                              const VkMemoryPropertyFlags properties) const {
-            VkPhysicalDeviceMemoryProperties memory_properties{};
-            vkGetPhysicalDeviceMemoryProperties(physical_device_, &memory_properties);
-
-            for (uint32_t i = 0; i < memory_properties.memoryTypeCount; ++i) {
-                const bool supported = (type_filter & (1u << i)) != 0;
-                const bool matches = (memory_properties.memoryTypes[i].propertyFlags & properties) == properties;
-                if (supported && matches) {
-                    return i;
-                }
-            }
-            return std::numeric_limits<uint32_t>::max();
-        }
-
-        bool createBuffer(const VkDeviceSize size,
-                          const VkBufferUsageFlags usage,
-                          const VkMemoryPropertyFlags properties,
-                          VkBuffer& buffer,
-                          VkDeviceMemory& memory) {
-            VkBufferCreateInfo buffer_info{};
-            buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-            buffer_info.size = size;
-            buffer_info.usage = usage;
-            buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            if (vkCreateBuffer(device_, &buffer_info, nullptr, &buffer) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create Vulkan scene staging buffer");
-                return false;
-            }
-
-            VkMemoryRequirements requirements{};
-            vkGetBufferMemoryRequirements(device_, buffer, &requirements);
-
-            VkMemoryAllocateInfo alloc_info{};
-            alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            alloc_info.allocationSize = requirements.size;
-            alloc_info.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits, properties);
-            if (alloc_info.memoryTypeIndex == std::numeric_limits<uint32_t>::max()) {
-                LOG_ERROR("No suitable Vulkan memory type for scene staging buffer");
-                vkDestroyBuffer(device_, buffer, nullptr);
-                buffer = VK_NULL_HANDLE;
-                return false;
-            }
-
-            if (vkAllocateMemory(device_, &alloc_info, nullptr, &memory) != VK_SUCCESS) {
-                LOG_ERROR("Failed to allocate Vulkan scene staging memory");
-                vkDestroyBuffer(device_, buffer, nullptr);
-                buffer = VK_NULL_HANDLE;
-                return false;
-            }
-
-            if (vkBindBufferMemory(device_, buffer, memory, 0) != VK_SUCCESS) {
-                LOG_ERROR("Failed to bind Vulkan scene staging memory");
-                vkDestroyBuffer(device_, buffer, nullptr);
-                vkFreeMemory(device_, memory, nullptr);
-                buffer = VK_NULL_HANDLE;
-                memory = VK_NULL_HANDLE;
-                return false;
-            }
-            return true;
-        }
-
-        [[nodiscard]] VkExternalMemoryHandleTypeFlagBits externalMemoryHandleType() const {
-#ifdef _WIN32
-            return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
-#else
-            return VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
-#endif
-        }
-
-        bool ensureImageResources(const glm::ivec2 size, const bool prefer_external_memory) {
-            if (image_ != VK_NULL_HANDLE && size_ == size &&
-                (!prefer_external_memory || image_external_memory_)) {
-                return true;
-            }
-
-            vkDeviceWaitIdle(device_);
-            destroyImageResources();
-            size_ = size;
-
-            VkImageCreateInfo image_info{};
-            image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-            image_info.imageType = VK_IMAGE_TYPE_2D;
-            image_info.extent.width = static_cast<uint32_t>(size.x);
-            image_info.extent.height = static_cast<uint32_t>(size.y);
-            image_info.extent.depth = 1;
-            image_info.mipLevels = 1;
-            image_info.arrayLayers = 1;
-            image_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-            image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-            image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            image_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-            image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-            image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            VkExternalMemoryImageCreateInfo external_image_info{};
-            if (prefer_external_memory) {
-                external_image_info.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-                external_image_info.handleTypes = externalMemoryHandleType();
-                image_info.pNext = &external_image_info;
-            }
-            if (vkCreateImage(device_, &image_info, nullptr, &image_) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create Vulkan scene texture image");
-                return false;
-            }
-
-            VkMemoryRequirements requirements{};
-            vkGetImageMemoryRequirements(device_, image_, &requirements);
-
-            VkMemoryAllocateInfo alloc_info{};
-            alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            alloc_info.allocationSize = requirements.size;
-            alloc_info.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits,
-                                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            VkExportMemoryAllocateInfo export_info{};
-            VkMemoryDedicatedAllocateInfo dedicated_info{};
-            if (prefer_external_memory) {
-                export_info.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
-                export_info.handleTypes = externalMemoryHandleType();
-                alloc_info.pNext = &export_info;
-                if (use_dedicated_external_memory_) {
-                    dedicated_info.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
-                    dedicated_info.image = image_;
-                    export_info.pNext = &dedicated_info;
-                }
-            }
-            if (alloc_info.memoryTypeIndex == std::numeric_limits<uint32_t>::max()) {
-                LOG_ERROR("No suitable Vulkan device-local memory type for scene texture");
-                destroyImageResources();
-                return false;
-            }
-
-            if (vkAllocateMemory(device_, &alloc_info, nullptr, &image_memory_) != VK_SUCCESS) {
-                LOG_ERROR("Failed to allocate Vulkan scene texture memory");
-                destroyImageResources();
-                return false;
-            }
-            if (vkBindImageMemory(device_, image_, image_memory_, 0) != VK_SUCCESS) {
-                LOG_ERROR("Failed to bind Vulkan scene texture memory");
-                destroyImageResources();
-                return false;
-            }
-            image_memory_size_ = alloc_info.allocationSize;
-
-            if (prefer_external_memory && !importCudaExternalMemory()) {
-                destroyImageResources();
-                return false;
-            }
-
-            VkImageViewCreateInfo view_info{};
-            view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            view_info.image = image_;
-            view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            view_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-            view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            view_info.subresourceRange.baseMipLevel = 0;
-            view_info.subresourceRange.levelCount = 1;
-            view_info.subresourceRange.baseArrayLayer = 0;
-            view_info.subresourceRange.layerCount = 1;
-            if (vkCreateImageView(device_, &view_info, nullptr, &image_view_) != VK_SUCCESS) {
-                LOG_ERROR("Failed to create Vulkan scene texture image view");
-                destroyImageResources();
-                return false;
-            }
-
-            descriptor_set_ = ImGui_ImplVulkan_AddTexture(
-                sampler_,
-                image_view_,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
-            image_external_memory_ = prefer_external_memory;
-            return descriptor_set_ != VK_NULL_HANDLE;
-        }
-
-        void destroyImageResources() {
-            destroyCudaImageInterop();
-            if (descriptor_set_ != VK_NULL_HANDLE) {
-                ImGui_ImplVulkan_RemoveTexture(descriptor_set_);
-                descriptor_set_ = VK_NULL_HANDLE;
-            }
-            if (image_view_ != VK_NULL_HANDLE) {
-                vkDestroyImageView(device_, image_view_, nullptr);
-                image_view_ = VK_NULL_HANDLE;
-            }
-            if (image_ != VK_NULL_HANDLE) {
-                vkDestroyImage(device_, image_, nullptr);
-                image_ = VK_NULL_HANDLE;
-            }
-            if (image_memory_ != VK_NULL_HANDLE) {
-                vkFreeMemory(device_, image_memory_, nullptr);
-                image_memory_ = VK_NULL_HANDLE;
-            }
-            image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
-            image_external_memory_ = false;
-            image_memory_size_ = 0;
-            size_ = {0, 0};
-        }
-
-        bool importCudaExternalMemory() {
-            if (image_memory_ == VK_NULL_HANDLE || image_memory_size_ == 0 || size_.x <= 0 || size_.y <= 0) {
-                return false;
-            }
-
-            cudaExternalMemoryHandleDesc handle_desc{};
-#ifdef _WIN32
-            auto get_memory_handle = reinterpret_cast<PFN_vkGetMemoryWin32HandleKHR>(
-                vkGetDeviceProcAddr(device_, "vkGetMemoryWin32HandleKHR"));
-            if (!get_memory_handle) {
-                LOG_WARN("Vulkan win32 external memory export entry point is unavailable");
-                return false;
-            }
-
-            VkMemoryGetWin32HandleInfoKHR handle_info{};
-            handle_info.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
-            handle_info.memory = image_memory_;
-            handle_info.handleType = externalMemoryHandleType();
-            HANDLE handle = nullptr;
-            const VkResult handle_result = get_memory_handle(device_, &handle_info, &handle);
-            if (handle_result != VK_SUCCESS || !handle) {
-                LOG_WARN("Failed to export Vulkan scene texture memory handle: {}",
-                         static_cast<int>(handle_result));
-                return false;
-            }
-
-            handle_desc.type = cudaExternalMemoryHandleTypeOpaqueWin32;
-            handle_desc.handle.win32.handle = handle;
-            handle_desc.size = image_memory_size_;
-            if (use_dedicated_external_memory_) {
-                handle_desc.flags = cudaExternalMemoryDedicated;
-            }
-            const cudaError_t import_status = cudaImportExternalMemory(&cuda_external_memory_, &handle_desc);
-            CloseHandle(handle);
-            if (import_status != cudaSuccess) {
-                LOG_WARN("Failed to import Vulkan scene texture memory into CUDA: {}",
-                         cudaGetErrorString(import_status));
-                return false;
-            }
-#else
-            auto get_memory_fd = reinterpret_cast<PFN_vkGetMemoryFdKHR>(
-                vkGetDeviceProcAddr(device_, "vkGetMemoryFdKHR"));
-            if (!get_memory_fd) {
-                LOG_WARN("Vulkan fd external memory export entry point is unavailable");
-                return false;
-            }
-
-            VkMemoryGetFdInfoKHR fd_info{};
-            fd_info.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
-            fd_info.memory = image_memory_;
-            fd_info.handleType = externalMemoryHandleType();
-            int fd = -1;
-            const VkResult fd_result = get_memory_fd(device_, &fd_info, &fd);
-            if (fd_result != VK_SUCCESS || fd < 0) {
-                LOG_WARN("Failed to export Vulkan scene texture memory fd: {}", static_cast<int>(fd_result));
-                return false;
-            }
-
-            handle_desc.type = cudaExternalMemoryHandleTypeOpaqueFd;
-            handle_desc.handle.fd = fd;
-            handle_desc.size = image_memory_size_;
-            if (use_dedicated_external_memory_) {
-                handle_desc.flags = cudaExternalMemoryDedicated;
-            }
-            const cudaError_t import_status = cudaImportExternalMemory(&cuda_external_memory_, &handle_desc);
-            if (import_status != cudaSuccess) {
-                close(fd);
-                LOG_WARN("Failed to import Vulkan scene texture memory into CUDA: {}",
-                         cudaGetErrorString(import_status));
-                return false;
-            }
-#endif
-
-            cudaExternalMemoryMipmappedArrayDesc mip_desc{};
-            mip_desc.formatDesc = cudaCreateChannelDesc(8, 8, 8, 8, cudaChannelFormatKindUnsigned);
-            mip_desc.extent = make_cudaExtent(static_cast<size_t>(size_.x), static_cast<size_t>(size_.y), 0);
-            mip_desc.numLevels = 1;
-            cudaError_t cuda_status = cudaExternalMemoryGetMappedMipmappedArray(&cuda_mipmap_,
-                                                                                cuda_external_memory_,
-                                                                                &mip_desc);
-            if (cuda_status != cudaSuccess) {
-                LOG_WARN("Failed to map Vulkan scene texture memory as a CUDA array: {}",
-                         cudaGetErrorString(cuda_status));
-                destroyCudaImageInterop();
-                return false;
-            }
-
-            cuda_status = cudaGetMipmappedArrayLevel(&cuda_array_, cuda_mipmap_, 0);
-            if (cuda_status != cudaSuccess) {
-                LOG_WARN("Failed to get CUDA scene texture array level: {}", cudaGetErrorString(cuda_status));
-                destroyCudaImageInterop();
-                return false;
-            }
-            return true;
-        }
-
-        void destroyCudaImageInterop() {
-            if (cuda_mipmap_ != nullptr || cuda_external_memory_ != nullptr) {
-                cudaDeviceSynchronize();
-            }
-            if (cuda_mipmap_ != nullptr) {
-                cudaFreeMipmappedArray(cuda_mipmap_);
-                cuda_mipmap_ = nullptr;
-            }
-            cuda_array_ = nullptr;
-            if (cuda_external_memory_ != nullptr) {
-                cudaDestroyExternalMemory(cuda_external_memory_);
-                cuda_external_memory_ = nullptr;
-            }
-        }
-
-        bool ensureCudaUploadBuffer(const size_t bytes) {
-            if (bytes == 0) {
-                return false;
-            }
-            if (cuda_upload_buffer_ != nullptr && cuda_upload_buffer_size_ >= bytes) {
-                return true;
-            }
-            destroyCudaUploadBuffer();
-            const cudaError_t alloc_status = cudaMalloc(&cuda_upload_buffer_, bytes);
-            if (alloc_status != cudaSuccess) {
-                LOG_WARN("Failed to allocate CUDA viewport upload buffer: {}",
-                         cudaGetErrorString(alloc_status));
-                cuda_upload_buffer_ = nullptr;
-                cuda_upload_buffer_size_ = 0;
-                return false;
-            }
-            cuda_upload_buffer_size_ = bytes;
-            return true;
-        }
-
-        void destroyCudaUploadBuffer() {
-            if (cuda_upload_buffer_ != nullptr) {
-                cudaDeviceSynchronize();
-                cudaFree(cuda_upload_buffer_);
-                cuda_upload_buffer_ = nullptr;
-                cuda_upload_buffer_size_ = 0;
-            }
-        }
-
-        VkCommandBuffer beginSingleTimeCommands() {
-            VkCommandBufferAllocateInfo alloc_info{};
-            alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            alloc_info.commandPool = command_pool_;
-            alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            alloc_info.commandBufferCount = 1;
-
-            VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-            if (vkAllocateCommandBuffers(device_, &alloc_info, &command_buffer) != VK_SUCCESS) {
-                LOG_ERROR("Failed to allocate Vulkan scene upload command buffer");
-                return VK_NULL_HANDLE;
-            }
-
-            VkCommandBufferBeginInfo begin_info{};
-            begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            if (vkBeginCommandBuffer(command_buffer, &begin_info) != VK_SUCCESS) {
-                LOG_ERROR("Failed to begin Vulkan scene upload command buffer");
-                vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
-                return VK_NULL_HANDLE;
-            }
-            return command_buffer;
-        }
-
-        bool endSingleTimeCommands(VkCommandBuffer command_buffer) {
-            if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
-                LOG_ERROR("Failed to end Vulkan scene upload command buffer");
-                vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
-                return false;
-            }
-
-            VkSubmitInfo submit_info{};
-            submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            submit_info.commandBufferCount = 1;
-            submit_info.pCommandBuffers = &command_buffer;
-            const VkResult submit_status = vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE);
-            if (submit_status == VK_SUCCESS) {
-                vkQueueWaitIdle(graphics_queue_);
-            } else {
-                LOG_ERROR("Failed to submit Vulkan scene upload command buffer: {}", static_cast<int>(submit_status));
-            }
-            vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
-            return submit_status == VK_SUCCESS;
-        }
-
-        void transitionImageLayout(VkCommandBuffer command_buffer,
-                                   const VkImageLayout old_layout,
-                                   const VkImageLayout new_layout) {
-            VkImageMemoryBarrier barrier{};
-            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            barrier.oldLayout = old_layout;
-            barrier.newLayout = new_layout;
-            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            barrier.image = image_;
-            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            barrier.subresourceRange.baseMipLevel = 0;
-            barrier.subresourceRange.levelCount = 1;
-            barrier.subresourceRange.baseArrayLayer = 0;
-            barrier.subresourceRange.layerCount = 1;
-
-            VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            if (old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL &&
-                new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-                barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            } else if (old_layout == VK_IMAGE_LAYOUT_GENERAL &&
-                       new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-                barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-                barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                src_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-            } else if (new_layout == VK_IMAGE_LAYOUT_GENERAL) {
-                barrier.srcAccessMask = old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                                            ? VK_ACCESS_SHADER_READ_BIT
-                                            : 0;
-                barrier.dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-                src_stage = old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                                ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-                                : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                dst_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-            } else if (old_layout == VK_IMAGE_LAYOUT_GENERAL &&
-                       new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
-                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                src_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-                dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            } else if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-                src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-                dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            } else {
-                barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            }
-
-            vkCmdPipelineBarrier(command_buffer,
-                                 src_stage,
-                                 dst_stage,
-                                 0,
-                                 0,
-                                 nullptr,
-                                 0,
-                                 nullptr,
-                                 1,
-                                 &barrier);
-        }
-
-        VkDevice device_ = VK_NULL_HANDLE;
-        VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
-        VkQueue graphics_queue_ = VK_NULL_HANDLE;
-        uint32_t graphics_queue_family_ = 0;
-        VkCommandPool command_pool_ = VK_NULL_HANDLE;
-        VkImage image_ = VK_NULL_HANDLE;
-        VkDeviceMemory image_memory_ = VK_NULL_HANDLE;
-        VkDeviceSize image_memory_size_ = 0;
-        VkImageView image_view_ = VK_NULL_HANDLE;
-        VkSampler sampler_ = VK_NULL_HANDLE;
-        VkDescriptorSet descriptor_set_ = VK_NULL_HANDLE;
-        VkImageLayout image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
-        glm::ivec2 size_{0, 0};
-        cudaExternalMemory_t cuda_external_memory_ = nullptr;
-        cudaMipmappedArray_t cuda_mipmap_ = nullptr;
-        cudaArray_t cuda_array_ = nullptr;
-        void* cuda_upload_buffer_ = nullptr;
-        size_t cuda_upload_buffer_size_ = 0;
-        bool external_memory_interop_available_ = false;
-        bool use_dedicated_external_memory_ = false;
-        bool image_external_memory_ = false;
-        bool cuda_interop_disabled_ = false;
-#endif
-        bool initialized_ = false;
-    };
-
-    namespace {
 
         [[nodiscard]] bool isTransformGizmoOverOrUsing() {
             return isBoundsGizmoHovered() ||
@@ -887,6 +92,780 @@ namespace lfs::vis::gui {
                    isScaleGizmoActive() ||
                    isTranslationGizmoHovered() ||
                    isTranslationGizmoActive();
+        }
+
+        struct VulkanGuidePanelTarget {
+            SplitViewPanelId panel = SplitViewPanelId::Left;
+            const Viewport* viewport = nullptr;
+            glm::vec2 pos{0.0f};
+            glm::vec2 size{0.0f};
+            glm::ivec2 render_size{0};
+
+            [[nodiscard]] bool valid() const {
+                return viewport != nullptr && size.x > 0.0f && size.y > 0.0f &&
+                       render_size.x > 0 && render_size.y > 0;
+            }
+        };
+
+        [[nodiscard]] glm::vec4 guideColor(const glm::vec3& color, const float alpha) {
+            return {color.r, color.g, color.b, std::clamp(alpha, 0.0f, 1.0f)};
+        }
+
+        [[nodiscard]] glm::vec4 guideColor(const ImVec4& color, const float alpha) {
+            return {color.x, color.y, color.z, std::clamp(alpha, 0.0f, 1.0f)};
+        }
+
+        [[nodiscard]] glm::vec2 screenToViewportNdc(const glm::vec2& screen,
+                                                    const glm::vec2& viewport_pos,
+                                                    const glm::vec2& viewport_size) {
+            const float x = viewport_size.x > 0.0f
+                                ? (screen.x - viewport_pos.x) / viewport_size.x
+                                : 0.0f;
+            const float y = viewport_size.y > 0.0f
+                                ? (screen.y - viewport_pos.y) / viewport_size.y
+                                : 0.0f;
+            return {x * 2.0f - 1.0f, y * 2.0f - 1.0f};
+        }
+
+        void appendOverlayTriangle(std::vector<VulkanViewportOverlayVertex>& out,
+                                   const glm::vec2& viewport_pos,
+                                   const glm::vec2& viewport_size,
+                                   const glm::vec2& p0,
+                                   const glm::vec2& p1,
+                                   const glm::vec2& p2,
+                                   const glm::vec4& color) {
+            if (color.a <= 0.0f || viewport_size.x <= 0.0f || viewport_size.y <= 0.0f) {
+                return;
+            }
+            out.push_back({.position = screenToViewportNdc(p0, viewport_pos, viewport_size), .color = color});
+            out.push_back({.position = screenToViewportNdc(p1, viewport_pos, viewport_size), .color = color});
+            out.push_back({.position = screenToViewportNdc(p2, viewport_pos, viewport_size), .color = color});
+        }
+
+        void appendOverlayLine(std::vector<VulkanViewportOverlayVertex>& out,
+                               const glm::vec2& viewport_pos,
+                               const glm::vec2& viewport_size,
+                               const glm::vec2& p0,
+                               const glm::vec2& p1,
+                               const glm::vec4& color,
+                               const float thickness) {
+            if (color.a <= 0.0f || viewport_size.x <= 0.0f || viewport_size.y <= 0.0f) {
+                return;
+            }
+            const glm::vec2 delta = p1 - p0;
+            const float len = glm::length(delta);
+            if (!std::isfinite(len) || len <= 1e-4f) {
+                return;
+            }
+            const glm::vec2 normal = glm::vec2(-delta.y, delta.x) / len *
+                                     (std::max(thickness, 1.0f) * 0.5f);
+            const glm::vec2 a = p0 + normal;
+            const glm::vec2 b = p1 + normal;
+            const glm::vec2 c = p1 - normal;
+            const glm::vec2 d = p0 - normal;
+            appendOverlayTriangle(out, viewport_pos, viewport_size, a, b, c, color);
+            appendOverlayTriangle(out, viewport_pos, viewport_size, a, c, d, color);
+        }
+
+        void appendOverlayCircle(std::vector<VulkanViewportOverlayVertex>& out,
+                                 const glm::vec2& viewport_pos,
+                                 const glm::vec2& viewport_size,
+                                 const glm::vec2& center,
+                                 const float radius,
+                                 const glm::vec4& color,
+                                 const int segments = 24) {
+            if (radius <= 0.0f || color.a <= 0.0f) {
+                return;
+            }
+            const int count = std::max(segments, 8);
+            for (int i = 0; i < count; ++i) {
+                const float a0 = static_cast<float>(i) / static_cast<float>(count) * 2.0f * glm::pi<float>();
+                const float a1 = static_cast<float>(i + 1) / static_cast<float>(count) * 2.0f * glm::pi<float>();
+                const glm::vec2 p0 = center + glm::vec2(std::cos(a0), std::sin(a0)) * radius;
+                const glm::vec2 p1 = center + glm::vec2(std::cos(a1), std::sin(a1)) * radius;
+                appendOverlayTriangle(out, viewport_pos, viewport_size, center, p0, p1, color);
+            }
+        }
+
+        void appendOverlayCircleOutline(std::vector<VulkanViewportOverlayVertex>& out,
+                                        const glm::vec2& viewport_pos,
+                                        const glm::vec2& viewport_size,
+                                        const glm::vec2& center,
+                                        const float radius,
+                                        const glm::vec4& color,
+                                        const float thickness,
+                                        const int segments = 32) {
+            if (radius <= 0.0f || color.a <= 0.0f) {
+                return;
+            }
+            const int count = std::max(segments, 8);
+            for (int i = 0; i < count; ++i) {
+                const float a0 = static_cast<float>(i) / static_cast<float>(count) * 2.0f * glm::pi<float>();
+                const float a1 = static_cast<float>(i + 1) / static_cast<float>(count) * 2.0f * glm::pi<float>();
+                const glm::vec2 p0 = center + glm::vec2(std::cos(a0), std::sin(a0)) * radius;
+                const glm::vec2 p1 = center + glm::vec2(std::cos(a1), std::sin(a1)) * radius;
+                appendOverlayLine(out, viewport_pos, viewport_size, p0, p1, color, thickness);
+            }
+        }
+
+        void addResolvedVulkanPanel(std::vector<VulkanGuidePanelTarget>& panels,
+                                    const std::optional<RenderingManager::ViewerPanelInfo>& info_opt) {
+            if (!info_opt || !info_opt->valid()) {
+                return;
+            }
+            const auto& info = *info_opt;
+            panels.push_back({
+                .panel = info.panel,
+                .viewport = info.viewport,
+                .pos = {info.x, info.y},
+                .size = {info.width, info.height},
+                .render_size = {info.render_width, info.render_height},
+            });
+        }
+
+        [[nodiscard]] std::vector<VulkanGuidePanelTarget> collectVulkanGuidePanels(
+            const VisualizerImpl& viewer,
+            const ViewportLayout& viewport_layout,
+            const RenderingManager& rendering_manager) {
+            std::vector<VulkanGuidePanelTarget> panels;
+            panels.reserve(2);
+
+            const auto& viewport = viewer.getViewport();
+            if (rendering_manager.isIndependentSplitViewActive()) {
+                addResolvedVulkanPanel(panels, rendering_manager.resolveViewerPanel(
+                                                   viewport, viewport_layout.pos, viewport_layout.size,
+                                                   std::nullopt, SplitViewPanelId::Left));
+                addResolvedVulkanPanel(panels, rendering_manager.resolveViewerPanel(
+                                                   viewport, viewport_layout.pos, viewport_layout.size,
+                                                   std::nullopt, SplitViewPanelId::Right));
+            }
+
+            if (!panels.empty()) {
+                return panels;
+            }
+
+            const glm::ivec2 render_size(
+                std::max(static_cast<int>(std::round(viewport_layout.size.x)), 1),
+                std::max(static_cast<int>(std::round(viewport_layout.size.y)), 1));
+            panels.push_back({
+                .panel = SplitViewPanelId::Left,
+                .viewport = &viewport,
+                .pos = viewport_layout.pos,
+                .size = viewport_layout.size,
+                .render_size = render_size,
+            });
+            return panels;
+        }
+
+        [[nodiscard]] glm::vec2 renderToPanelScreen(const VulkanGuidePanelTarget& panel,
+                                                    const glm::vec2& projected) {
+            const float sx = panel.size.x / static_cast<float>(std::max(panel.render_size.x, 1));
+            const float sy = panel.size.y / static_cast<float>(std::max(panel.render_size.y, 1));
+            return glm::vec2(panel.pos.x + projected.x * sx, panel.pos.y + projected.y * sy);
+        }
+
+        [[nodiscard]] std::optional<std::pair<glm::vec2, glm::vec2>> projectSegmentToScreenClipped(
+            const VulkanGuidePanelTarget& panel,
+            const RenderSettings& settings,
+            const glm::vec3& world_a,
+            const glm::vec3& world_b) {
+            constexpr float kMinViewZ = -1e-4f;
+            const glm::mat3 rotation = panel.viewport->getRotationMatrix();
+            const glm::vec3 translation = panel.viewport->getTranslation();
+            glm::vec3 view_a = glm::transpose(rotation) * (world_a - translation);
+            glm::vec3 view_b = glm::transpose(rotation) * (world_b - translation);
+
+            if (view_a.z >= kMinViewZ && view_b.z >= kMinViewZ) {
+                return std::nullopt;
+            }
+
+            const auto clip_to_near = [](glm::vec3& inside, glm::vec3& outside) {
+                const float denom = outside.z - inside.z;
+                if (std::abs(denom) <= 1e-8f) {
+                    return;
+                }
+                const float t = (-1e-4f - inside.z) / denom;
+                outside = glm::mix(inside, outside, std::clamp(t, 0.0f, 1.0f));
+                outside.z = -1e-4f;
+            };
+            if (view_a.z >= kMinViewZ) {
+                clip_to_near(view_b, view_a);
+            }
+            if (view_b.z >= kMinViewZ) {
+                clip_to_near(view_a, view_b);
+            }
+
+            const auto project_view = [&](const glm::vec3& view) -> std::optional<glm::vec2> {
+                const float width = static_cast<float>(std::max(panel.render_size.x, 1));
+                const float height = static_cast<float>(std::max(panel.render_size.y, 1));
+                const float cx = width * 0.5f;
+                const float cy = height * 0.5f;
+                if (settings.orthographic) {
+                    if (!std::isfinite(settings.ortho_scale) || settings.ortho_scale <= 0.0f) {
+                        return std::nullopt;
+                    }
+                    return glm::vec2(cx + view.x * settings.ortho_scale,
+                                     cy - view.y * settings.ortho_scale);
+                }
+                const auto [fx, fy] = lfs::rendering::computePixelFocalLengths(
+                    panel.render_size, settings.focal_length_mm);
+                const float depth = -view.z;
+                if (depth <= 0.0f) {
+                    return std::nullopt;
+                }
+                return glm::vec2(cx + view.x * fx / depth,
+                                 cy - view.y * fy / depth);
+            };
+
+            const auto pa = project_view(view_a);
+            const auto pb = project_view(view_b);
+            if (!pa || !pb) {
+                return std::nullopt;
+            }
+            return std::pair(renderToPanelScreen(panel, *pa), renderToPanelScreen(panel, *pb));
+        }
+
+        struct VulkanViewportGizmoMarker {
+            int encoded_axis = -1;
+            int axis = 0;
+            bool negative = false;
+            glm::vec2 screen_pos{0.0f};
+            float radius = 0.0f;
+            float depth = 0.0f;
+            bool visible = false;
+        };
+
+        struct VulkanViewportGizmoLayout {
+            glm::vec2 top_left{0.0f};
+            glm::vec2 center{0.0f};
+            float size = 0.0f;
+            std::array<VulkanViewportGizmoMarker, 6> markers{};
+        };
+
+        constexpr std::array<glm::vec3, 3> kViewportGizmoAxisColors = {
+            glm::vec3{0.89f, 0.15f, 0.21f},
+            glm::vec3{0.54f, 0.86f, 0.20f},
+            glm::vec3{0.17f, 0.48f, 0.87f}};
+        constexpr float kViewportGizmoSize = 95.0f;
+        constexpr float kViewportGizmoMarginX = 10.0f;
+        constexpr float kViewportGizmoMarginY = 10.0f;
+        constexpr float kViewportGizmoSphereRadius = 0.198f;
+        constexpr float kViewportGizmoLabelDistance = 0.63f;
+        constexpr float kViewportGizmoHoverScale = 1.2f;
+        constexpr float kViewportGizmoHoverBrightness = 1.3f;
+        constexpr float kViewportGizmoHitRadiusScale = 2.5f;
+
+        [[nodiscard]] glm::vec4 viewportGizmoAxisColor(const int axis,
+                                                       const float alpha,
+                                                       const float brightness = 1.0f) {
+            const glm::vec3 c = glm::clamp(kViewportGizmoAxisColors[static_cast<size_t>(axis)] * brightness,
+                                           glm::vec3(0.0f), glm::vec3(1.0f));
+            return {c.r, c.g, c.b, std::clamp(alpha, 0.0f, 1.0f)};
+        }
+
+        [[nodiscard]] std::optional<VulkanViewportGizmoLayout> buildViewportGizmoLayout(
+            const VulkanGuidePanelTarget& panel,
+            const float size,
+            const float margin_x,
+            const float margin_y) {
+            if (!panel.valid() || size <= 0.0f) {
+                return std::nullopt;
+            }
+
+            VulkanViewportGizmoLayout layout;
+            layout.size = size;
+            layout.top_left = {
+                panel.pos.x + panel.size.x - size - margin_x,
+                panel.pos.y + margin_y,
+            };
+            layout.center = layout.top_left + glm::vec2(size * 0.5f);
+
+            constexpr float kGizmoDistance = 2.8f;
+            constexpr float kGizmoFov = 38.0f;
+            glm::mat4 view = lfs::rendering::makeViewMatrix(panel.viewport->getRotationMatrix(), glm::vec3(0.0f));
+            view[3][2] = -kGizmoDistance;
+            const glm::mat4 proj = glm::perspective(glm::radians(kGizmoFov), 1.0f, 0.1f, 10.0f);
+            const glm::vec3 origin_cam_space = glm::vec3(view * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+            const float ref_dist = std::max(glm::length(origin_cam_space), 0.001f);
+
+            const auto project_marker = [&](const int axis, const bool negative) {
+                VulkanViewportGizmoMarker marker;
+                marker.axis = axis;
+                marker.negative = negative;
+                marker.encoded_axis = axis + (negative ? 3 : 0);
+
+                glm::vec3 position(0.0f);
+                position[axis] = negative ? -kViewportGizmoLabelDistance : kViewportGizmoLabelDistance;
+
+                const glm::vec4 clip = proj * view * glm::vec4(position, 1.0f);
+                if (clip.w <= 0.0f) {
+                    return marker;
+                }
+
+                const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                const float local_x = (ndc.x * 0.5f + 0.5f) * size;
+                const float local_y = (1.0f - (ndc.y * 0.5f + 0.5f)) * size;
+                const glm::vec3 cam_space = glm::vec3(view * glm::vec4(position, 1.0f));
+                const float scale_factor = glm::length(cam_space) / ref_dist;
+
+                marker.screen_pos = layout.top_left + glm::vec2(local_x, local_y);
+                marker.radius = kViewportGizmoSphereRadius * scale_factor * size * 0.5f;
+                marker.depth = clip.z / clip.w;
+                marker.visible = true;
+                return marker;
+            };
+
+            for (int axis = 0; axis < 3; ++axis) {
+                layout.markers[static_cast<size_t>(axis)] = project_marker(axis, false);
+                layout.markers[static_cast<size_t>(axis + 3)] = project_marker(axis, true);
+            }
+            return layout;
+        }
+
+        [[nodiscard]] int hitTestViewportGizmoLayout(const VulkanViewportGizmoLayout& layout,
+                                                     const glm::vec2& mouse_pos) {
+            for (const auto& marker : layout.markers) {
+                if (!marker.visible) {
+                    continue;
+                }
+                const glm::vec2 delta = mouse_pos - marker.screen_pos;
+                const float radius = marker.radius * kViewportGizmoHitRadiusScale;
+                if (glm::dot(delta, delta) <= radius * radius) {
+                    return marker.encoded_axis;
+                }
+            }
+            return -1;
+        }
+
+        void appendViewportGizmoLabel(std::vector<VulkanViewportOverlayVertex>& out,
+                                      const VulkanViewportPassParams& params,
+                                      const glm::vec2& center,
+                                      const int axis,
+                                      const float radius) {
+            const glm::vec4 white(1.0f, 1.0f, 1.0f, 0.96f);
+            const float s = std::max(radius * 0.42f, 3.0f);
+            const float thickness = std::max(radius * 0.16f, 1.25f);
+            if (axis == 0) {
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  center + glm::vec2(-s, -s),
+                                  center + glm::vec2(s, s),
+                                  white, thickness);
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  center + glm::vec2(-s, s),
+                                  center + glm::vec2(s, -s),
+                                  white, thickness);
+            } else if (axis == 1) {
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  center + glm::vec2(-s, -s),
+                                  center,
+                                  white, thickness);
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  center + glm::vec2(s, -s),
+                                  center,
+                                  white, thickness);
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  center,
+                                  center + glm::vec2(0.0f, s),
+                                  white, thickness);
+            } else {
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  center + glm::vec2(-s, -s),
+                                  center + glm::vec2(s, -s),
+                                  white, thickness);
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  center + glm::vec2(s, -s),
+                                  center + glm::vec2(-s, s),
+                                  white, thickness);
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  center + glm::vec2(-s, s),
+                                  center + glm::vec2(s, s),
+                                  white, thickness);
+            }
+        }
+
+        void appendViewportGizmoLayout(std::vector<VulkanViewportOverlayVertex>& out,
+                                       const VulkanViewportPassParams& params,
+                                       const VulkanViewportGizmoLayout& layout,
+                                       const int hovered_axis) {
+            const auto& t = theme();
+            appendOverlayCircle(out, params.viewport_pos, params.viewport_size,
+                                layout.center, layout.size * 0.46f,
+                                guideColor(t.overlay.background, 0.24f), 40);
+            appendOverlayCircleOutline(out, params.viewport_pos, params.viewport_size,
+                                       layout.center, layout.size * 0.46f,
+                                       guideColor(t.overlay.text_dim, 0.30f), 1.0f, 40);
+
+            std::vector<const VulkanViewportGizmoMarker*> draw_order;
+            draw_order.reserve(layout.markers.size());
+            for (const auto& marker : layout.markers) {
+                if (marker.visible) {
+                    draw_order.push_back(&marker);
+                }
+            }
+            std::sort(draw_order.begin(), draw_order.end(),
+                      [](const auto* a, const auto* b) {
+                          return a->depth > b->depth;
+                      });
+
+            for (const auto& marker : layout.markers) {
+                if (!marker.visible || marker.negative) {
+                    continue;
+                }
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  layout.center, marker.screen_pos,
+                                  viewportGizmoAxisColor(marker.axis, 0.72f), 3.0f);
+            }
+
+            for (const auto* const marker_ptr : draw_order) {
+                const auto& marker = *marker_ptr;
+                const bool hovered = hovered_axis == marker.encoded_axis;
+                const float radius = marker.radius * (hovered ? kViewportGizmoHoverScale : 1.0f);
+                const float brightness = hovered ? kViewportGizmoHoverBrightness : 1.0f;
+                const glm::vec4 color = viewportGizmoAxisColor(marker.axis,
+                                                               marker.negative ? 0.88f : 1.0f,
+                                                               brightness);
+                if (marker.negative) {
+                    appendOverlayCircleOutline(out, params.viewport_pos, params.viewport_size,
+                                               marker.screen_pos, radius, color,
+                                               hovered ? 3.0f : 2.0f, 24);
+                    appendOverlayCircle(out, params.viewport_pos, params.viewport_size,
+                                        marker.screen_pos, std::max(radius - 5.0f, 2.0f),
+                                        viewportGizmoAxisColor(marker.axis, 0.18f, brightness), 20);
+                } else {
+                    appendOverlayCircle(out, params.viewport_pos, params.viewport_size,
+                                        marker.screen_pos, radius, color, 24);
+                    appendOverlayCircleOutline(out, params.viewport_pos, params.viewport_size,
+                                               marker.screen_pos, radius,
+                                               guideColor(t.palette.background, 0.55f), 1.0f, 24);
+                    appendViewportGizmoLabel(out, params, marker.screen_pos, marker.axis, radius);
+                }
+            }
+        }
+
+        void appendVulkanViewportGizmoOverlay(VulkanViewportPassParams& params,
+                                              VisualizerImpl& viewer,
+                                              const ViewportLayout& viewport_layout,
+                                              RenderingManager& rendering_manager,
+                                              const bool ui_hidden,
+                                              const bool dragging) {
+            if (ui_hidden || params.viewport_size.x <= 0.0f || params.viewport_size.y <= 0.0f) {
+                return;
+            }
+
+            const auto panels = collectVulkanGuidePanels(viewer, viewport_layout, rendering_manager);
+            if (panels.empty()) {
+                return;
+            }
+
+            int hovered_axis = -1;
+            SplitViewPanelId hovered_panel = SplitViewPanelId::Left;
+            bool has_hovered_panel = false;
+            if (!guiFocusState().want_capture_mouse) {
+                if (auto* const window_manager = viewer.getWindowManager()) {
+                    const auto& frame_input = window_manager->frameInput();
+                    const glm::vec2 mouse(frame_input.mouse_x, frame_input.mouse_y);
+                    for (const auto& panel : panels) {
+                        const float gizmo_x = panel.pos.x + panel.size.x -
+                                              kViewportGizmoSize - kViewportGizmoMarginX;
+                        const float gizmo_y = panel.pos.y + kViewportGizmoMarginY;
+                        const bool mouse_in_gizmo = mouse.x >= gizmo_x &&
+                                                    mouse.x <= gizmo_x + kViewportGizmoSize &&
+                                                    mouse.y >= gizmo_y &&
+                                                    mouse.y <= gizmo_y + kViewportGizmoSize;
+                        if (!mouse_in_gizmo) {
+                            continue;
+                        }
+                        if (const auto layout = buildViewportGizmoLayout(
+                                panel, kViewportGizmoSize, kViewportGizmoMarginX, kViewportGizmoMarginY)) {
+                            hovered_axis = hitTestViewportGizmoLayout(*layout, mouse);
+                        }
+                        hovered_panel = panel.panel;
+                        has_hovered_panel = true;
+                        break;
+                    }
+                }
+            }
+
+            for (const auto& panel : panels) {
+                if (const auto layout = buildViewportGizmoLayout(
+                        panel, kViewportGizmoSize, kViewportGizmoMarginX, kViewportGizmoMarginY)) {
+                    appendViewportGizmoLayout(params.overlay_triangles,
+                                              params,
+                                              *layout,
+                                              has_hovered_panel && hovered_panel == panel.panel ? hovered_axis : -1);
+                    if (dragging && (!has_hovered_panel || hovered_panel == panel.panel)) {
+                        appendOverlayCircle(params.overlay_triangles, params.viewport_pos, params.viewport_size,
+                                            layout->center, layout->size * 0.46f,
+                                            guideColor(theme().overlay.text_dim, 0.20f), 32);
+                    }
+                }
+            }
+        }
+
+        void addProjectedOverlayLine(std::vector<VulkanViewportOverlayVertex>& out,
+                                     const VulkanViewportPassParams& params,
+                                     const VulkanGuidePanelTarget& panel,
+                                     const RenderSettings& settings,
+                                     const glm::vec3& a,
+                                     const glm::vec3& b,
+                                     const glm::vec4& color,
+                                     const float thickness) {
+            if (const auto projected = projectSegmentToScreenClipped(panel, settings, a, b)) {
+                appendOverlayLine(out, params.viewport_pos, params.viewport_size,
+                                  projected->first, projected->second, color, thickness);
+            }
+        }
+
+        void appendPivotShaderOverlay(VulkanViewportPassParams& params,
+                                      const VulkanGuidePanelTarget& panel,
+                                      const RenderSettings& settings,
+                                      const glm::vec3& pivot_world,
+                                      const float opacity) {
+            constexpr float kPivotSizePx = 50.0f;
+            constexpr glm::vec3 kPivotColor{0.26f, 0.59f, 0.98f};
+
+            const glm::mat4 view =
+                lfs::rendering::makeViewMatrix(panel.viewport->getRotationMatrix(), panel.viewport->getTranslation());
+            const glm::mat4 projection = lfs::rendering::createProjectionMatrixFromFocal(
+                panel.render_size,
+                settings.focal_length_mm,
+                settings.orthographic,
+                settings.ortho_scale,
+                lfs::rendering::DEFAULT_NEAR_PLANE,
+                settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
+            const glm::vec4 clip = projection * view * glm::vec4(pivot_world, 1.0f);
+            if (!std::isfinite(clip.x) || !std::isfinite(clip.y) || !std::isfinite(clip.w) ||
+                std::abs(clip.w) <= 1e-6f) {
+                return;
+            }
+
+            const glm::vec2 gl_ndc = glm::vec2(clip) / clip.w;
+            const glm::vec2 screen = panel.pos + glm::vec2(
+                                                     (gl_ndc.x * 0.5f + 0.5f) * panel.size.x,
+                                                     (1.0f - (gl_ndc.y * 0.5f + 0.5f)) * panel.size.y);
+            const glm::vec2 framebuffer_scale(
+                params.framebuffer_scale.x > 0.0f ? params.framebuffer_scale.x : 1.0f,
+                params.framebuffer_scale.y > 0.0f ? params.framebuffer_scale.y : 1.0f);
+            const glm::vec2 framebuffer_size = glm::max(params.viewport_size * framebuffer_scale,
+                                                        glm::vec2(1.0f));
+            params.pivot_overlays.push_back({
+                .center_ndc = screenToViewportNdc(screen, params.viewport_pos, params.viewport_size),
+                .size_ndc = (glm::vec2(kPivotSizePx) / framebuffer_size) * 2.0f,
+                .color = kPivotColor,
+                .opacity = std::clamp(opacity, 0.0f, 1.0f),
+            });
+        }
+
+        [[nodiscard]] std::optional<glm::mat4> cameraVisualizerTransform(
+            const lfs::core::Camera& camera,
+            const glm::mat4& scene_transform) {
+            auto rotation_tensor = camera.R();
+            auto translation_tensor = camera.T();
+            if (!rotation_tensor.is_valid() || !translation_tensor.is_valid()) {
+                return std::nullopt;
+            }
+            if (rotation_tensor.device() != lfs::core::Device::CPU) {
+                rotation_tensor = rotation_tensor.cpu();
+            }
+            if (translation_tensor.device() != lfs::core::Device::CPU) {
+                translation_tensor = translation_tensor.cpu();
+            }
+            if (rotation_tensor.dtype() != lfs::core::DataType::Float32 ||
+                translation_tensor.dtype() != lfs::core::DataType::Float32 ||
+                rotation_tensor.numel() < 9 || translation_tensor.numel() < 3) {
+                return std::nullopt;
+            }
+
+            const float* const rotation = rotation_tensor.ptr<float>();
+            const float* const translation = translation_tensor.ptr<float>();
+            if (!rotation || !translation) {
+                return std::nullopt;
+            }
+            glm::mat4 world_to_camera(1.0f);
+            for (int row = 0; row < 3; ++row) {
+                for (int col = 0; col < 3; ++col) {
+                    world_to_camera[col][row] = rotation[row * 3 + col];
+                }
+                world_to_camera[3][row] = translation[row];
+            }
+            return scene_transform * glm::inverse(world_to_camera) *
+                   lfs::rendering::DATA_TO_VISUALIZER_CAMERA_AXES_4;
+        }
+
+        void appendVulkanSceneGuideOverlays(VulkanViewportPassParams& params,
+                                            const VisualizerImpl& viewer,
+                                            const ViewportLayout& viewport_layout,
+                                            const RenderSettings& settings,
+                                            RenderingManager& rendering_manager,
+                                            SceneManager* scene_manager) {
+            if (params.viewport_size.x <= 0.0f || params.viewport_size.y <= 0.0f) {
+                return;
+            }
+
+            const auto panels = collectVulkanGuidePanels(viewer, viewport_layout, rendering_manager);
+            if (panels.empty()) {
+                return;
+            }
+
+            constexpr std::array axis_colors{
+                glm::vec4(0.95f, 0.18f, 0.18f, 0.9f),
+                glm::vec4(0.25f, 0.82f, 0.25f, 0.9f),
+                glm::vec4(0.30f, 0.50f, 1.0f, 0.9f),
+            };
+            constexpr std::array axes{
+                glm::vec3(1.0f, 0.0f, 0.0f),
+                glm::vec3(0.0f, 1.0f, 0.0f),
+                glm::vec3(0.0f, 0.0f, 1.0f),
+            };
+
+            for (const auto& panel : panels) {
+                if (!panel.valid()) {
+                    continue;
+                }
+
+                if (settings.show_coord_axes) {
+                    for (size_t axis = 0; axis < axes.size(); ++axis) {
+                        if (settings.axes_visibility[axis]) {
+                            addProjectedOverlayLine(params.overlay_triangles, params, panel, settings,
+                                                    glm::vec3(0.0f),
+                                                    axes[axis] * settings.axes_size,
+                                                    axis_colors[axis], 2.0f);
+                        }
+                    }
+                }
+
+                constexpr float kPivotDurationSec = 0.5f;
+                const float time_since_set = panel.viewport->camera.getSecondsSincePivotSet();
+                const bool pivot_animation_active = time_since_set < kPivotDurationSec;
+                if (pivot_animation_active) {
+                    const auto remaining_ms = static_cast<int>(
+                        (kPivotDurationSec - time_since_set) * 1000.0f);
+                    rendering_manager.setPivotAnimationEndTime(
+                        std::chrono::steady_clock::now() + std::chrono::milliseconds(remaining_ms));
+                }
+                if (settings.show_pivot || pivot_animation_active) {
+                    const float opacity = settings.show_pivot
+                                              ? 1.0f
+                                              : 1.0f - std::clamp(time_since_set / kPivotDurationSec, 0.0f, 1.0f);
+                    appendPivotShaderOverlay(params, panel, settings, panel.viewport->camera.getPivot(), opacity);
+                }
+
+                if (!settings.show_camera_frustums || !scene_manager ||
+                    settings.camera_frustum_scale <= 0.0f) {
+                    continue;
+                }
+
+                auto cameras = scene_manager->getScene().getVisibleCameras();
+                if (cameras.empty()) {
+                    continue;
+                }
+                auto scene_transforms = scene_manager->getScene().getVisibleCameraSceneTransforms();
+                for (auto& transform : scene_transforms) {
+                    transform = lfs::rendering::dataWorldTransformToVisualizerWorld(transform);
+                }
+                const auto disabled_uids = scene_manager->getScene().getTrainingDisabledCameraUids();
+                const int current_camera_uid = rendering_manager.getCurrentCameraId();
+                const int hovered_camera_uid = rendering_manager.getHoveredCameraId();
+                constexpr std::array<std::pair<int, int>, 8> edges{{
+                    {0, 1},
+                    {0, 2},
+                    {0, 3},
+                    {0, 4},
+                    {1, 2},
+                    {2, 3},
+                    {3, 4},
+                    {4, 1},
+                }};
+
+                for (size_t i = 0; i < cameras.size(); ++i) {
+                    const auto& camera = cameras[i];
+                    if (!camera) {
+                        continue;
+                    }
+                    glm::mat4 scene_transform(1.0f);
+                    if (i < scene_transforms.size()) {
+                        scene_transform = scene_transforms[i];
+                    }
+                    const auto visualizer_c2w = cameraVisualizerTransform(*camera, scene_transform);
+                    if (!visualizer_c2w) {
+                        continue;
+                    }
+
+                    const bool disabled = disabled_uids.count(camera->uid()) > 0;
+                    const bool current = camera->uid() == current_camera_uid;
+                    const bool hovered = camera->uid() == hovered_camera_uid;
+                    glm::vec4 color = guideColor(
+                        camera->split() == lfs::core::CameraSplit::Eval ||
+                                camera->image_name().find("test") != std::string::npos
+                            ? settings.eval_camera_color
+                            : settings.train_camera_color,
+                        disabled ? 0.28f : 0.72f);
+                    float thickness = 1.4f;
+                    if (current) {
+                        color.a = 0.95f;
+                        thickness = 2.4f;
+                    }
+                    if (hovered) {
+                        color = guideColor(theme().palette.warning, disabled ? 0.70f : 1.0f);
+                        thickness = std::max(thickness, 3.4f);
+                    }
+
+                    if (camera->camera_model_type() == lfs::core::CameraModelType::EQUIRECTANGULAR) {
+                        constexpr int segments = 48;
+                        for (int circle = 0; circle < 3; ++circle) {
+                            std::optional<glm::vec3> previous_world;
+                            for (int segment = 0; segment <= segments; ++segment) {
+                                const float a = static_cast<float>(segment % segments) /
+                                                static_cast<float>(segments) * 2.0f * glm::pi<float>();
+                                glm::vec3 local(0.0f);
+                                if (circle == 0) {
+                                    local = {std::cos(a), std::sin(a), 0.0f};
+                                } else if (circle == 1) {
+                                    local = {std::cos(a), 0.0f, std::sin(a)};
+                                } else {
+                                    local = {0.0f, std::cos(a), std::sin(a)};
+                                }
+                                const glm::vec3 world = glm::vec3(
+                                    *visualizer_c2w * glm::vec4(local * settings.camera_frustum_scale, 1.0f));
+                                if (previous_world) {
+                                    addProjectedOverlayLine(params.overlay_triangles, params, panel, settings,
+                                                            *previous_world, world, color, thickness);
+                                }
+                                previous_world = world;
+                            }
+                        }
+                        continue;
+                    }
+
+                    const int image_width = camera->image_width() > 0 ? camera->image_width() : camera->camera_width();
+                    const int image_height = camera->image_height() > 0 ? camera->image_height() : camera->camera_height();
+                    if (image_width <= 0 || image_height <= 0 || camera->focal_y() <= 0.0f) {
+                        continue;
+                    }
+                    const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+                    const float fov_y = lfs::core::focal2fov(camera->focal_y(), image_height);
+                    const float depth = settings.camera_frustum_scale;
+                    const float half_height = std::tan(fov_y * 0.5f) * depth;
+                    const float half_width = half_height * aspect;
+                    const std::array local_points{
+                        glm::vec3(0.0f, 0.0f, 0.0f),
+                        glm::vec3(-half_width, half_height, -depth),
+                        glm::vec3(half_width, half_height, -depth),
+                        glm::vec3(half_width, -half_height, -depth),
+                        glm::vec3(-half_width, -half_height, -depth),
+                    };
+                    std::array<glm::vec3, 5> world_points{};
+                    for (size_t p = 0; p < local_points.size(); ++p) {
+                        world_points[p] = glm::vec3(*visualizer_c2w * glm::vec4(local_points[p], 1.0f));
+                    }
+                    for (const auto& [a, b] : edges) {
+                        addProjectedOverlayLine(params.overlay_triangles, params, panel, settings,
+                                                world_points[static_cast<size_t>(a)],
+                                                world_points[static_cast<size_t>(b)],
+                                                color, thickness);
+                    }
+                }
+            }
         }
 
         enum class DevResourceKind {
@@ -1504,11 +1483,12 @@ namespace lfs::vis::gui {
         io.ConfigDragClickToInputText = true;
         loadImGuiSettings();
 
-        // Platform/Renderer initialization
+        // Platform initialization. Vulkan rendering is handled by the app-owned passes below.
         auto* vulkan_context = viewer_->getWindowManager()->getVulkanContext();
-        if (!vulkan_context || !imgui_vulkan_backend_.init(viewer_->getWindow(), *vulkan_context)) {
-            throw std::runtime_error("Failed to initialize ImGui Vulkan backend");
+        if (!vulkan_context || !ImGui_ImplSDL3_InitForVulkan(viewer_->getWindow())) {
+            throw std::runtime_error("Failed to initialize ImGui SDL3 platform backend");
         }
+        setVulkanUiTextureContext(vulkan_context);
 
         // Initialize localization system
         auto& loc = lfs::event::LocalizationManager::getInstance();
@@ -1976,13 +1956,13 @@ namespace lfs::vis::gui {
         sequencer_ui_.destroyGraphicsResources();
         drag_drop_.shutdown();
         destroyCustomCursors();
-        vulkan_scene_uploaded_image_.reset();
+        setVulkanUiTextureContext(nullptr);
         vulkan_scene_image_.reset();
-        vulkan_scene_texture_.reset();
+        vulkan_viewport_pass_.reset();
 
         if (ImGui::GetCurrentContext()) {
             saveImGuiSettings();
-            imgui_vulkan_backend_.shutdown();
+            ImGui_ImplSDL3_Shutdown();
             ImPlot::DestroyContext();
             ImGui::DestroyContext();
         }
@@ -2083,76 +2063,102 @@ namespace lfs::vis::gui {
         vulkan_scene_image_ = std::move(image);
         vulkan_scene_image_size_ = size;
         vulkan_scene_image_flip_y_ = flip_y;
-        if (!vulkan_scene_image_) {
-            vulkan_scene_uploaded_image_.reset();
-            vulkan_scene_uploaded_size_ = {0, 0};
-        }
     }
 
-    void GuiManager::renderVulkan() {
-#ifdef LFS_VULKAN_VIEWER_ENABLED
-        auto* window_manager = viewer_ ? viewer_->getWindowManager() : nullptr;
-        auto* vulkan_context = window_manager ? window_manager->getVulkanContext() : nullptr;
-        if (!vulkan_context || !imgui_vulkan_backend_.initialized())
-            return;
+    VulkanViewportPassParams GuiManager::buildVulkanViewportParams(const VkExtent2D extent) const {
+        const bool has_viewport_layout =
+            viewport_layout_.size.x > 0.0f && viewport_layout_.size.y > 0.0f;
 
-        if (vulkan_scene_image_ && vulkan_scene_image_size_.x > 0 && vulkan_scene_image_size_.y > 0) {
-            if (!vulkan_scene_texture_) {
-                vulkan_scene_texture_ = std::make_unique<VulkanSceneTexture>();
+        VulkanViewportPassParams params{};
+        params.viewport_pos = has_viewport_layout ? viewport_layout_.pos : glm::vec2(0.0f, 0.0f);
+        params.viewport_size = has_viewport_layout
+                                   ? viewport_layout_.size
+                                   : glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height));
+        params.framebuffer_scale = {
+            ImGui::GetIO().DisplayFramebufferScale.x,
+            ImGui::GetIO().DisplayFramebufferScale.y,
+        };
+        params.scene_image = vulkan_scene_image_;
+        params.scene_image_size = vulkan_scene_image_size_;
+        params.scene_image_flip_y = vulkan_scene_image_flip_y_;
+
+        if (auto* const rendering_manager = viewer_ ? viewer_->getRenderingManager() : nullptr) {
+            const auto settings = rendering_manager->getSettings();
+            params.background_color = settings.background_color;
+            params.grid_enabled =
+                settings.show_grid && !settings.equirectangular && settings.grid_opacity > 0.0f;
+            params.grid_plane = std::clamp(settings.grid_plane, 0, 2);
+            params.grid_opacity = std::clamp(settings.grid_opacity, 0.0f, 1.0f);
+
+            if (params.grid_enabled && viewer_) {
+                const auto& vp = viewer_->getViewport();
+                const glm::ivec2 grid_size{
+                    std::max(static_cast<int>(std::lround(params.viewport_size.x)), 1),
+                    std::max(static_cast<int>(std::lround(params.viewport_size.y)), 1),
+                };
+                const glm::mat4 view =
+                    lfs::rendering::makeViewMatrix(vp.getRotationMatrix(), vp.getTranslation());
+                const glm::mat4 proj = lfs::rendering::createProjectionMatrixFromFocal(
+                    grid_size,
+                    settings.focal_length_mm,
+                    settings.orthographic,
+                    settings.ortho_scale,
+                    lfs::rendering::DEFAULT_NEAR_PLANE,
+                    settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
+                params.grid_view = view;
+                params.grid_projection = proj;
+                params.grid_view_projection = proj * view;
+                params.grid_view_position = vp.getTranslation();
+                params.grid_orthographic = settings.orthographic;
             }
-            bool texture_ready = vulkan_scene_texture_->init(*vulkan_context);
-            const bool needs_upload =
-                texture_ready &&
-                (vulkan_scene_uploaded_image_.get() != vulkan_scene_image_.get() ||
-                 vulkan_scene_uploaded_size_ != vulkan_scene_image_size_ ||
-                 !vulkan_scene_texture_->valid());
-            if (needs_upload) {
-                const bool enable_cuda_interop = viewer_ && viewer_->options_.enable_cuda_interop;
-                texture_ready = vulkan_scene_texture_->upload(
-                    *vulkan_scene_image_,
-                    vulkan_scene_image_size_,
-                    enable_cuda_interop);
-                if (texture_ready) {
-                    vulkan_scene_uploaded_image_ = vulkan_scene_image_;
-                    vulkan_scene_uploaded_size_ = vulkan_scene_image_size_;
-                }
-            }
-            if (texture_ready && vulkan_scene_texture_->valid()) {
-                ImGuiViewport* const viewport = ImGui::GetMainViewport();
-                const bool has_viewport_layout =
-                    viewport_layout_.size.x > 0.0f && viewport_layout_.size.y > 0.0f;
-                const ImVec2 p0 = has_viewport_layout
-                                      ? ImVec2(viewport_layout_.pos.x, viewport_layout_.pos.y)
-                                      : (viewport ? viewport->Pos : ImVec2(0.0f, 0.0f));
-                const ImVec2 size = has_viewport_layout
-                                        ? ImVec2(viewport_layout_.size.x, viewport_layout_.size.y)
-                                        : (viewport ? viewport->Size
-                                                    : ImVec2(
-                                                          static_cast<float>(vulkan_scene_image_size_.x),
-                                                          static_cast<float>(vulkan_scene_image_size_.y)));
-                const ImVec2 p1(p0.x + size.x, p0.y + size.y);
-                const ImVec2 uv0(0.0f, vulkan_scene_image_flip_y_ ? 1.0f : 0.0f);
-                const ImVec2 uv1(1.0f, vulkan_scene_image_flip_y_ ? 0.0f : 1.0f);
-                ImDrawList* const draw_list = viewport ? ImGui::GetBackgroundDrawList(viewport)
-                                                       : ImGui::GetBackgroundDrawList();
-                draw_list->AddImage(
-                    vulkan_scene_texture_->textureId(),
-                    p0,
-                    p1,
-                    uv0,
-                    uv1);
+
+            if (viewer_) {
+                appendVulkanSceneGuideOverlays(params,
+                                               *viewer_,
+                                               viewport_layout_,
+                                               settings,
+                                               *rendering_manager,
+                                               viewer_->getSceneManager());
+                appendVulkanViewportGizmoOverlay(params,
+                                                 *viewer_,
+                                                 viewport_layout_,
+                                                 *rendering_manager,
+                                                 ui_hidden_,
+                                                 gizmo_manager_.isViewportGizmoDragging());
             }
         }
+
+        const auto& vignette = lfs::vis::theme().vignette;
+        params.vignette_enabled = vignette.enabled && vignette.intensity > 0.0f;
+        params.vignette_intensity = vignette.intensity;
+        params.vignette_radius = vignette.radius;
+        params.vignette_softness = vignette.softness;
+
+        return params;
+    }
+
+    void GuiManager::recordVulkanViewport(VkCommandBuffer command_buffer,
+                                          VkExtent2D extent,
+                                          const VulkanViewportPassParams& params) {
+#ifdef LFS_VULKAN_VIEWER_ENABLED
+        if (!vulkan_viewport_pass_ || command_buffer == VK_NULL_HANDLE ||
+            extent.width == 0 || extent.height == 0) {
+            return;
+        }
+        vulkan_viewport_pass_->record(command_buffer, extent, params);
 #else
-        LOG_ERROR("Vulkan GUI render requested, but Vulkan viewer dependencies are disabled");
+        (void)command_buffer;
+        (void)extent;
+        (void)params;
 #endif
     }
+
 
     void GuiManager::render() {
         auto* window_manager = viewer_ ? viewer_->getWindowManager() : nullptr;
 #ifdef LFS_VULKAN_VIEWER_ENABLED
         auto* vulkan_context = (vulkan_gui_ && window_manager) ? window_manager->getVulkanContext() : nullptr;
-        if (vulkan_gui_ && (!vulkan_context || !imgui_vulkan_backend_.initialized()))
+        if (vulkan_gui_ && !vulkan_context)
             return;
 #endif
 
@@ -2183,7 +2189,7 @@ namespace lfs::vis::gui {
         }
 
         // Start frame
-        imgui_vulkan_backend_.newFrame();
+        ImGui_ImplSDL3_NewFrame();
         rmlui_manager_.clearVulkanQueue();
         const auto& sdl_input = viewer_->getWindowManager()->frameInput();
 
@@ -2587,28 +2593,23 @@ namespace lfs::vis::gui {
             lfs::python::invoke_python_hooks("viewport_overlay", "draw", true);
             lfs::python::invoke_python_hooks("viewport_overlay", "draw", false);
         }
-        const auto _t_renderv_a = std::chrono::steady_clock::now();
-        if (vulkan_gui_)
-            renderVulkan();
-        const auto _t_renderv_b = std::chrono::steady_clock::now();
         reg.draw_panels(PanelSpace::ViewportOverlay, draw_ctx);
         const auto _t_overlay_b = std::chrono::steady_clock::now();
         {
             using ms = std::chrono::duration<double, std::milli>;
             static double a_preload = 0, a_floating = 0, a_pl_right = 0, a_pl_bottom = 0,
-                          a_renderv = 0, a_overlay = 0;
+                          a_overlay = 0;
             static int n = 0;
             a_preload += ms(_t_preload_b - _t_preload_a).count();
             a_floating += ms(_t_floating_b - _t_floating_a).count();
             a_pl_right += ms(_t_pl_right_b - _t_rmlrp_a).count();
             a_pl_bottom += ms(_t_pl_bottom_b - _t_pl_right_b).count();
-            a_renderv += ms(_t_renderv_b - _t_renderv_a).count();
-            a_overlay += ms(_t_overlay_b - _t_renderv_b).count();
+            a_overlay += ms(_t_overlay_b - _t_pl_bottom_b).count();
             ++n;
             if (n >= 60) {
-                LOG_INFO("PHASE avg over {} frames: preload {:.1f} | pl_right {:.1f} | pl_bottom {:.1f} | floating {:.1f} | renderVulkan {:.1f} | overlay_panels {:.1f}",
-                         n, a_preload / n, a_pl_right / n, a_pl_bottom / n, a_floating / n, a_renderv / n, a_overlay / n);
-                a_preload = a_floating = a_pl_right = a_pl_bottom = a_renderv = a_overlay = 0;
+                LOG_INFO("PHASE avg over {} frames: preload {:.1f} | pl_right {:.1f} | pl_bottom {:.1f} | floating {:.1f} | overlay_panels {:.1f}",
+                         n, a_preload / n, a_pl_right / n, a_pl_bottom / n, a_floating / n, a_overlay / n);
+                a_preload = a_floating = a_pl_right = a_pl_bottom = a_overlay = 0;
                 n = 0;
             }
         }
@@ -2670,16 +2671,30 @@ namespace lfs::vis::gui {
             VkClearValue clear_value{};
             clear_value.color = VkClearColorValue{{bg.x, bg.y, bg.z, 1.0f}};
 
+            const VulkanViewportPassParams viewport_params =
+                buildVulkanViewportParams(vulkan_context ? vulkan_context->swapchainExtent() : VkExtent2D{});
+            bool viewport_pass_ready = false;
+            if (vulkan_context) {
+                if (!vulkan_viewport_pass_) {
+                    vulkan_viewport_pass_ = std::make_unique<VulkanViewportPass>();
+                }
+                viewport_pass_ready = vulkan_viewport_pass_->init(*vulkan_context);
+                if (viewport_pass_ready) {
+                    vulkan_viewport_pass_->prepare(*vulkan_context, viewport_params);
+                }
+            }
+
             VulkanContext::Frame frame{};
             if (vulkan_context && vulkan_context->beginFrame(clear_value, frame)) {
+                if (viewport_pass_ready) {
+                    recordVulkanViewport(frame.command_buffer, frame.extent, viewport_params);
+                }
                 if (rmlui_manager_.beginVulkanFrame(frame.command_buffer, frame.extent, frame.framebuffer, frame.swapchain_image)) {
                     rmlui_manager_.renderQueuedVulkanContexts(false);
-                    imgui_vulkan_backend_.renderDrawData(ImGui::GetDrawData(), frame.command_buffer);
                     rmlui_manager_.renderQueuedVulkanContexts(true);
                     rmlui_manager_.endVulkanFrame();
                 } else {
                     rmlui_manager_.clearVulkanQueue();
-                    imgui_vulkan_backend_.renderDrawData(ImGui::GetDrawData(), frame.command_buffer);
                 }
                 if (!vulkan_context->endFrame()) {
                     LOG_WARN("Vulkan GUI frame present failed: {}", vulkan_context->lastError());

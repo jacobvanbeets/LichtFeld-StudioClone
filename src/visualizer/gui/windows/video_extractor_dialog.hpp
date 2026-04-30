@@ -5,7 +5,7 @@
 #pragma once
 
 #include "core/export.hpp"
-#include "visualizer/gui/imgui_vulkan_texture.hpp"
+#include "visualizer/gui/vulkan_ui_texture.hpp"
 #include "io/video_frame_extractor.hpp"
 #include "io/video_player.hpp"
 #include "visualizer/gui/video_widget_interface.hpp"
@@ -113,7 +113,7 @@ namespace lfs::gui {
         bool show_completion_message_ = false;
 
         std::unique_ptr<io::VideoPlayer> player_;
-        std::unique_ptr<lfs::vis::gui::ImGuiVulkanTexture> preview_texture_;
+        std::unique_ptr<lfs::vis::gui::VulkanUiTexture> preview_texture_;
         int preview_texture_width_ = 0;
         int preview_texture_height_ = 0;
         bool texture_needs_update_ = true;

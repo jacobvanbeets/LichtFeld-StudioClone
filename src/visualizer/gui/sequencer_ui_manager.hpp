@@ -6,7 +6,7 @@
 
 #include "gui/film_strip_renderer.hpp"
 #include "gui/line_renderer.hpp"
-#include "gui/imgui_vulkan_texture.hpp"
+#include "gui/vulkan_ui_texture.hpp"
 #include "gui/keyframe_scene_sync.hpp"
 #include "gui/panel_layout.hpp"
 #include "gui/sequencer_ui_state.hpp"
@@ -89,7 +89,7 @@ namespace lfs::vis {
             static constexpr int PREVIEW_WIDTH = 320;
             static constexpr int PREVIEW_HEIGHT = 180;
             static constexpr float PREVIEW_TARGET_FPS = 30.0f;
-            ImGuiVulkanTexture pip_texture_;
+            VulkanUiTexture pip_texture_;
             bool pip_initialized_ = false;
             std::optional<size_t> pip_last_keyframe_;
             bool pip_needs_update_ = true;

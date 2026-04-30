@@ -10,7 +10,7 @@
 #include "core/scene.hpp"
 #include "gui/gizmo_manager.hpp"
 #include "gui/gui_manager.hpp"
-#include "gui/imgui_vulkan_texture.hpp"
+#include "gui/vulkan_ui_texture.hpp"
 #include "gui/panel_layout.hpp"
 #include "gui/panel_registry.hpp"
 #include "gui/rml_status_bar.hpp"
@@ -32,9 +32,9 @@
 #include <filesystem>
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <imgui.h>
 #include <limits>
 #include <utility>
+#include <imgui.h>
 
 namespace lfs::vis::gui::native_panels {
 
@@ -447,7 +447,7 @@ namespace lfs::vis::gui::native_panels {
                 return 0;
             }
 
-            auto texture = std::make_shared<ImGuiVulkanTexture>();
+            auto texture = std::make_shared<VulkanUiTexture>();
             const bool uploaded =
                 texture->upload(decoded.pixels.data(), decoded.width, decoded.height, decoded.channels);
             if (!uploaded) {
@@ -1011,52 +1011,6 @@ namespace lfs::vis::gui::native_panels {
             }
         }
 
-        void drawViewportVignette(const ViewportLayout& viewport_layout) {
-            const auto& vignette = theme().vignette;
-            if (!vignette.enabled || vignette.intensity <= 0.0f ||
-                viewport_layout.size.x <= 0.0f || viewport_layout.size.y <= 0.0f) {
-                return;
-            }
-
-            ImDrawList* const draw_list = ImGui::GetBackgroundDrawList();
-            if (!draw_list) {
-                return;
-            }
-
-            const ImVec2 pos(viewport_layout.pos.x, viewport_layout.pos.y);
-            const ImVec2 max(pos.x + viewport_layout.size.x, pos.y + viewport_layout.size.y);
-            draw_list->PushClipRect(pos, max, true);
-
-            const float extent = std::max(1.0f, std::min(viewport_layout.size.x, viewport_layout.size.y) * 0.5f);
-            const int steps = 28;
-            const float step = extent / static_cast<float>(steps);
-            const float radius = std::clamp(vignette.radius, 0.0f, 0.99f);
-            const float softness = std::clamp(vignette.softness, 0.01f, 1.0f);
-            const float outer = std::min(1.0f, radius + softness * (1.0f - radius));
-            const float max_alpha = std::clamp(vignette.intensity, 0.0f, 1.0f) * 0.72f;
-
-            for (int i = 0; i < steps; ++i) {
-                const float inset0 = static_cast<float>(i) * step;
-                const float inset1 = static_cast<float>(i + 1) * step;
-                const float radial = 1.0f - inset0 / extent;
-                const float t = std::clamp((radial - radius) / std::max(outer - radius, 1e-5f), 0.0f, 1.0f);
-                const float smooth = t * t * (3.0f - 2.0f * t);
-                if (smooth <= 0.001f) {
-                    continue;
-                }
-                const ImU32 color = ImGui::ColorConvertFloat4ToU32(ImVec4(0.0f, 0.0f, 0.0f, max_alpha * smooth));
-                draw_list->AddRectFilled(ImVec2(pos.x + inset0, pos.y + inset0),
-                                         ImVec2(max.x - inset0, pos.y + inset1), color);
-                draw_list->AddRectFilled(ImVec2(pos.x + inset0, max.y - inset1),
-                                         ImVec2(max.x - inset0, max.y - inset0), color);
-                draw_list->AddRectFilled(ImVec2(pos.x + inset0, pos.y + inset1),
-                                         ImVec2(pos.x + inset1, max.y - inset1), color);
-                draw_list->AddRectFilled(ImVec2(max.x - inset1, pos.y + inset1),
-                                         ImVec2(max.x - inset0, max.y - inset1), color);
-            }
-
-            draw_list->PopClipRect();
-        }
     } // namespace
 
     VideoExtractorPanel::VideoExtractorPanel(lfs::gui::IVideoExtractorWidget* widget)
@@ -1095,9 +1049,7 @@ namespace lfs::vis::gui::native_panels {
 
     void ViewportDecorationsPanel::draw(const PanelDrawContext& ctx) {
         gui_->renderViewportDecorations();
-        if (ctx.viewport) {
-            drawViewportVignette(*ctx.viewport);
-        }
+        (void)ctx;
     }
 
     ViewportSceneGuidesPanel::~ViewportSceneGuidesPanel() = default;

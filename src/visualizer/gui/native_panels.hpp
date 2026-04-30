@@ -22,7 +22,7 @@ namespace lfs::vis::gui {
     class SequencerUIManager;
     class PanelLayoutManager;
     class RmlStatusBar;
-    class ImGuiVulkanTexture;
+    class VulkanUiTexture;
 
 } // namespace lfs::vis::gui
 
@@ -78,7 +78,7 @@ namespace lfs::vis::gui::native_panels {
     };
 
     struct ThumbnailEntry {
-        std::shared_ptr<ImGuiVulkanTexture> texture;
+        std::shared_ptr<VulkanUiTexture> texture;
         std::future<DecodedThumbnail> decode;
         bool decode_started = false;
     };

@@ -86,7 +86,7 @@ namespace lfs::vis::gui {
                     continue;
                 }
 
-                auto texture = std::make_unique<ImGuiVulkanTexture>();
+                auto texture = std::make_unique<VulkanUiTexture>();
                 const bool uploaded = texture->upload(
                     static_cast<const std::uint8_t*>(pixels),
                     w,

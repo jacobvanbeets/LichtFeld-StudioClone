@@ -41,6 +41,10 @@ namespace lfs::vis {
 
 #ifdef PROJECT_ROOT_PATH
         search_paths.push_back(std::filesystem::path(PROJECT_ROOT_PATH) / "src/visualizer/gui/assets" / asset_name);
+        if (asset_name == "fonts/JetBrainsMono-Regular.ttf") {
+            search_paths.push_back(std::filesystem::path(PROJECT_ROOT_PATH) /
+                                   "src/rendering/resources/assets/JetBrainsMono-Regular.ttf");
+        }
 #endif
 
         // Try each path
@@ -75,7 +79,7 @@ namespace lfs::vis {
 #endif
 
 #ifdef PROJECT_ROOT_PATH
-        search_paths.push_back(std::filesystem::path(PROJECT_ROOT_PATH) / "src/visualizer/resources/shaders" / shader_name);
+        search_paths.push_back(std::filesystem::path(PROJECT_ROOT_PATH) / "src/rendering/resources/shaders" / shader_name);
 #endif
 
         for (const auto& path : search_paths) {

@@ -19,19 +19,19 @@ namespace lfs::vis {
 
 namespace lfs::vis::gui {
 
-    LFS_VIS_API void setImGuiVulkanTextureContext(VulkanContext* context);
-    [[nodiscard]] LFS_VIS_API VulkanContext* getImGuiVulkanTextureContext();
+    LFS_VIS_API void setVulkanUiTextureContext(VulkanContext* context);
+    [[nodiscard]] LFS_VIS_API VulkanContext* getVulkanUiTextureContext();
 
-    class LFS_VIS_API ImGuiVulkanTexture {
+    class LFS_VIS_API VulkanUiTexture {
     public:
-        ImGuiVulkanTexture() = default;
-        ~ImGuiVulkanTexture();
+        VulkanUiTexture() = default;
+        ~VulkanUiTexture();
 
-        ImGuiVulkanTexture(const ImGuiVulkanTexture&) = delete;
-        ImGuiVulkanTexture& operator=(const ImGuiVulkanTexture&) = delete;
+        VulkanUiTexture(const VulkanUiTexture&) = delete;
+        VulkanUiTexture& operator=(const VulkanUiTexture&) = delete;
 
-        ImGuiVulkanTexture(ImGuiVulkanTexture&& other) noexcept;
-        ImGuiVulkanTexture& operator=(ImGuiVulkanTexture&& other) noexcept;
+        VulkanUiTexture(VulkanUiTexture&& other) noexcept;
+        VulkanUiTexture& operator=(VulkanUiTexture&& other) noexcept;
 
         [[nodiscard]] bool upload(const std::uint8_t* pixels, int width, int height, int channels);
         [[nodiscard]] bool upload(const lfs::core::Tensor& image, int expected_width, int expected_height);

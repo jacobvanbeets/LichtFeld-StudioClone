@@ -222,7 +222,7 @@ namespace lfs::gui {
         const int height = player_->height();
 
         if (!preview_texture_) {
-            preview_texture_ = std::make_unique<lfs::vis::gui::ImGuiVulkanTexture>();
+            preview_texture_ = std::make_unique<lfs::vis::gui::VulkanUiTexture>();
         }
 
         if (preview_texture_->upload(data, width, height, 3)) {

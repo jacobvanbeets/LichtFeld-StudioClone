@@ -14,7 +14,7 @@
 #include "core/scene.hpp"
 #include "gui/global_context_menu.hpp"
 #include "gui/gui_focus_state.hpp"
-#include "gui/imgui_vulkan_texture.hpp"
+#include "gui/vulkan_ui_texture.hpp"
 #include "gui/rml_menu_bar.hpp"
 #include "gui/ui_widgets.hpp"
 #include "gui/utils/file_association.hpp"
@@ -178,7 +178,7 @@ namespace lfs::python {
                 const int h = t.size(0);
 
                 if (!texture_) {
-                    texture_ = std::make_unique<lfs::vis::gui::ImGuiVulkanTexture>();
+                    texture_ = std::make_unique<lfs::vis::gui::VulkanUiTexture>();
                 }
 
                 if (!texture_->upload(t, w, h) || !texture_->valid())
@@ -201,7 +201,7 @@ namespace lfs::python {
                 width_ = height_ = 0;
             }
 
-            std::unique_ptr<lfs::vis::gui::ImGuiVulkanTexture> release_texture() {
+            std::unique_ptr<lfs::vis::gui::VulkanUiTexture> release_texture() {
                 width_ = height_ = 0;
                 return std::move(texture_);
             }
@@ -221,7 +221,7 @@ namespace lfs::python {
             }
 
         private:
-            std::unique_ptr<lfs::vis::gui::ImGuiVulkanTexture> texture_;
+            std::unique_ptr<lfs::vis::gui::VulkanUiTexture> texture_;
             std::string plugin_name_;
             int width_ = 0;
             int height_ = 0;
@@ -483,7 +483,7 @@ namespace lfs::python {
 
         void free_plugin_textures(const std::string& plugin_name) {
             const bool graphics_thread = lfs::python::on_graphics_thread();
-            std::vector<lfs::vis::gui::ImGuiVulkanTexture*> deferred;
+            std::vector<lfs::vis::gui::VulkanUiTexture*> deferred;
             {
                 std::lock_guard lock(g_dynamic_textures_mutex);
                 auto it = g_plugin_textures.find(plugin_name);
