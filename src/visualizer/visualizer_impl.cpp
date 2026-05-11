@@ -804,19 +804,43 @@ namespace lfs::vis {
             }
         });
 
+        const auto sync_viewer_mip_filter_with_training = [this] {
+            if (!rendering_manager_ || !trainer_manager_)
+                return;
+            const auto* trainer = trainer_manager_->getTrainer();
+            if (!trainer)
+                return;
+
+            auto settings = rendering_manager_->getSettings();
+            const bool training_mip_filter = trainer->getParams().optimization.mip_filter;
+            if (settings.mip_filter == training_mip_filter)
+                return;
+
+            settings.mip_filter = training_mip_filter;
+            rendering_manager_->updateSettings(settings);
+            LOG_INFO("Synced viewer mip filter with training: {}", training_mip_filter ? "enabled" : "disabled");
+        };
+
         // Trainer ready signal
-        internal::TrainerReady::when([this](const auto&) {
+        internal::TrainerReady::when([this, sync_viewer_mip_filter_with_training](const auto&) {
+            sync_viewer_mip_filter_with_training();
             internal::TrainingReadyToStart{}.emit();
         });
 
         // Training started - switch to splat rendering without hijacking scene selection
-        state::TrainingStarted::when([this](const auto&) {
+        state::TrainingStarted::when([this, sync_viewer_mip_filter_with_training](const auto&) {
+            sync_viewer_mip_filter_with_training();
+
             ui::PointCloudModeChanged{
                 .enabled = false,
                 .voxel_size = 0.01f}
                 .emit();
 
             LOG_INFO("Switched to splat rendering mode (training started)");
+        });
+
+        state::TrainingResumed::when([sync_viewer_mip_filter_with_training](const auto&) {
+            sync_viewer_mip_filter_with_training();
         });
 
         // Training completed - update content type
