@@ -961,8 +961,7 @@ namespace lfs::vis {
                                     frame_ctx, gt_size, point_cloud_transforms);
                                 point_request.frame_view = request.frame_view;
                                 if (auto auxiliary_engine = ensure_auxiliary_rendering_engine(); auxiliary_engine) {
-                                    auto rendered = (*auxiliary_engine)->renderPointCloudImage(
-                                        *frame_ctx.scene_state.point_cloud, point_request);
+                                    auto rendered = (*auxiliary_engine)->renderPointCloudImage(*frame_ctx.scene_state.point_cloud, point_request);
                                     if (rendered && rendered->image) {
                                         const bool flip_y = !rendered->metadata.flip_y;
                                         compare_panel = RenderedPanel{.image = std::move(rendered->image),

@@ -148,8 +148,8 @@ namespace fast_lfs::rasterization {
                     ", active_sh_bases=" + std::to_string(active_sh_bases) +
                     ", sh_layout_bases=" + std::to_string(sh_layout_bases) +
                     ", width=" + std::to_string(width) +
-                             ", height=" + std::to_string(height) +
-                             ", n_tiles=" + std::to_string(n_tiles) + ")");
+                    ", height=" + std::to_string(height) +
+                    ", n_tiles=" + std::to_string(n_tiles) + ")");
             }
             if (sh_layout_bases < active_sh_bases) {
                 throw std::runtime_error(

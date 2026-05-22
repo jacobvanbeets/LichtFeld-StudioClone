@@ -168,17 +168,17 @@ void VulkanGSRenderer::executeProjectionForward(
         {{num_splats, SUBGROUP_SIZE}},
         &uniforms, sizeof(uniforms),
         use_gut_projection ? pipeline_projection_forward_gut : pipeline_projection_forward,
-            {
-                // inputs
-                buffers.xyz_ws.deviceBuffer,
-                buffers.sh0.deviceBuffer,
-                buffers.shN.deviceBuffer,
-                buffers.rotations.deviceBuffer,
-                buffers.scaling_raw.deviceBuffer,
-                buffers.opacity_raw.deviceBuffer,
-                // outputs
-                resizeDeviceBuffer(buffers.tiles_touched, alloc_size),
-                resizeDeviceBuffer(buffers.rect_tile_space, alloc_size),
+        {
+            // inputs
+            buffers.xyz_ws.deviceBuffer,
+            buffers.sh0.deviceBuffer,
+            buffers.shN.deviceBuffer,
+            buffers.rotations.deviceBuffer,
+            buffers.scaling_raw.deviceBuffer,
+            buffers.opacity_raw.deviceBuffer,
+            // outputs
+            resizeDeviceBuffer(buffers.tiles_touched, alloc_size),
+            resizeDeviceBuffer(buffers.rect_tile_space, alloc_size),
             resizeDeviceBuffer(buffers.radii, alloc_size),
             resizeDeviceBuffer(buffers.xy_vs, 2 * alloc_size),
             resizeDeviceBuffer(buffers.depths, alloc_size),

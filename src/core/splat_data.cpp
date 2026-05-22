@@ -336,9 +336,9 @@ namespace {
         } else if (canonical.ndim() == 2 &&
                    canonical.size(1) > static_cast<size_t>(src_coeffs_rest) * SH_CHANNELS) {
             truncated = canonical.slice(
-                                      1,
-                                      0,
-                                      static_cast<int>(src_coeffs_rest * SH_CHANNELS))
+                                     1,
+                                     0,
+                                     static_cast<int>(src_coeffs_rest * SH_CHANNELS))
                             .contiguous();
             src = truncated;
         }
@@ -1083,17 +1083,17 @@ namespace lfs::core {
                           scaling_.shape().str(), scaling_.numel());
 
                 rotation_ = allocate_param_tensor(TensorShape({num_points, 4}),
-                                                 static_cast<size_t>(capacity),
-                                                 tensor_allocator,
-                                                 "SplatData.rotation");
+                                                  static_cast<size_t>(capacity),
+                                                  tensor_allocator,
+                                                  "SplatData.rotation");
                 LOG_DEBUG("  rotation_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
                           rotation_.is_valid(), static_cast<void*>(rotation_.ptr<float>()),
                           rotation_.shape().str(), rotation_.numel());
 
                 opacity_ = allocate_param_tensor(TensorShape({num_points, 1}),
-                                                static_cast<size_t>(capacity),
-                                                tensor_allocator,
-                                                "SplatData.opacity");
+                                                 static_cast<size_t>(capacity),
+                                                 tensor_allocator,
+                                                 "SplatData.opacity");
                 LOG_DEBUG("  opacity_ allocated: is_valid={}, ptr={}, shape={}, numel={}",
                           opacity_.is_valid(), static_cast<void*>(opacity_.ptr<float>()),
                           opacity_.shape().str(), opacity_.numel());

@@ -10,9 +10,9 @@
 #include "core/services.hpp"
 #include "core/tensor.hpp"
 #include "python/python_runtime.hpp"
+#include "training/training_setup.hpp"
 #include "visualizer/visualizer_impl.hpp"
 #include "window/window_manager.hpp"
-#include "training/training_setup.hpp"
 #ifdef LFS_VULKAN_VIEWER_ENABLED
 #include "rendering/vulkan_external_tensor.hpp"
 #include "window/vulkan_context.hpp"

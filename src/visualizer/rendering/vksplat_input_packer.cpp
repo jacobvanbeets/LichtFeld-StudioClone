@@ -4,8 +4,8 @@
 
 #include "vksplat_input_packer.hpp"
 
-#include "core/tensor/internal/cuda_stream_context.hpp"
 #include "core/tensor.hpp"
+#include "core/tensor/internal/cuda_stream_context.hpp"
 #include "rendering/rasterizer/vksplat_fwd/src/config.h"
 #include "vksplat_input_packer_cuda.hpp"
 

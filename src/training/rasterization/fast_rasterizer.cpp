@@ -431,7 +431,7 @@ namespace lfs::training {
         ctx.w2c_ptr = w2c_ptr;
         ctx.cam_position_ptr = cam_position_ptr;
 
-            ctx.active_sh_bases = active_sh_bases;
+        ctx.active_sh_bases = active_sh_bases;
         ctx.width = width;
         ctx.height = height;
         ctx.focal_x = fx;
