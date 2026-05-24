@@ -142,8 +142,12 @@ _vulkan_add_slang_shader(apply_depth_ordering      apply_depth_ordering.slang)
 _vulkan_add_slang_shader(projection_forward        vertex_shader.slang EXPORT_MODE=0)
 _vulkan_add_slang_shader(projection_forward_3dgut  vertex_shader.slang EXPORT_MODE=0 LFS_3DGUT_PROJECTION=1)
 
-# selection_mask.slang → compact 1-byte-per-splat brush/rectangle masks
+# selection_mask.slang → compact 1-byte-per-splat brush/rectangle/polygon masks
 _vulkan_add_slang_shader(selection_mask            selection_mask.slang)
+
+# selection_polygon_rasterize.slang → rasterizes a screen-space polygon into a
+# coverage mask consumed by selection_mask in POLYGON_MASK mode.
+_vulkan_add_slang_shader(selection_polygon_rasterize selection_polygon_rasterize.slang)
 
 # alphablend_shader.slang → forward variants
 _vulkan_add_slang_shader(rasterize_forward         alphablend_shader.slang EXPORT_MODE=0)

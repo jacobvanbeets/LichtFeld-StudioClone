@@ -66,6 +66,7 @@ namespace lfs::vis {
         enum class SelectionMaskShape : std::uint32_t {
             Brush = 0,
             Rectangle = 1,
+            Polygon = 2,
         };
 
         enum class OutputSlot : std::size_t {
@@ -80,6 +81,7 @@ namespace lfs::vis {
             lfs::rendering::GaussianSceneState scene;
             SelectionMaskShape shape = SelectionMaskShape::Brush;
             std::vector<glm::vec4> primitives;
+            std::vector<glm::vec2> polygon_vertices;
             bool gut = false;
             bool equirectangular = false;
         };
@@ -163,7 +165,7 @@ namespace lfs::vis {
         // Vulkan-external buffers bypass this allocation and are bound directly.
         static constexpr std::size_t kInputRegionCount = 6;
         static constexpr std::size_t kOverlayRegionCount = 7;
-        static constexpr std::size_t kSelectionQueryRegionCount = 5;
+        static constexpr std::size_t kSelectionQueryRegionCount = 7;
         static constexpr std::size_t kRegionAlignment = 256; // VK minStorageBufferOffsetAlignment upper bound on common HW
         struct CudaInputSlot {
             VulkanContext::ExternalBuffer buffer{};
@@ -193,6 +195,7 @@ namespace lfs::vis {
             lfs::core::Tensor node_mask_source;
             lfs::core::Tensor primitive_source;
             lfs::core::Tensor model_transforms_source;
+            lfs::core::Tensor polygon_vertices_source;
             lfs::core::Tensor output_tensor;
         };
 

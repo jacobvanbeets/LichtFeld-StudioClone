@@ -123,6 +123,8 @@ namespace lfs::vis {
                 {"projection_forward", (root / "generated/projection_forward.spv").string()},
                 {"projection_forward_3dgut", (root / "generated/projection_forward_3dgut.spv").string()},
                 {"selection_mask", (root / "generated/selection_mask.spv").string()},
+                {"selection_polygon_rasterize",
+                 (root / "generated/selection_polygon_rasterize.spv").string()},
                 {"generate_keys", (root / "generated/generate_keys.spv").string()},
                 {"compute_tile_ranges", (root / "generated/compute_tile_ranges.spv").string()},
                 {"rasterize_forward", (root / "generated/rasterize_forward.spv").string()},
@@ -318,6 +320,8 @@ namespace lfs::vis {
             SelectionQueryNodeMask = 2,
             SelectionQueryPrimitives = 3,
             SelectionQueryModelTransforms = 4,
+            SelectionQueryPolygonVertices = 5,
+            SelectionQueryPolygonMask = 6,
         };
 
         [[nodiscard]] bool hasOverlayTensor(const Tensor* const tensor, const std::size_t num_splats) {
@@ -453,16 +457,15 @@ namespace lfs::vis {
         [[nodiscard]] std::expected<Tensor, std::string> makeSelectionPrimitiveTensor(
             const std::vector<glm::vec4>& primitives) {
             try {
-                if (primitives.empty()) {
-                    return std::unexpected("VkSplat selection query requires at least one primitive");
-                }
-                Tensor cpu = Tensor::empty({primitives.size(), std::size_t{4}},
+                const std::size_t count = std::max<std::size_t>(primitives.size(), 1u);
+                Tensor cpu = Tensor::empty({count, std::size_t{4}},
                                            Device::CPU,
                                            DataType::Float32);
                 float* const dst = cpu.ptr<float>();
                 if (!dst) {
                     return std::unexpected("VkSplat selection primitive allocation returned a null pointer");
                 }
+                std::memset(dst, 0, count * 4 * sizeof(float));
                 for (std::size_t i = 0; i < primitives.size(); ++i) {
                     dst[i * 4 + 0] = primitives[i].x;
                     dst[i * 4 + 1] = primitives[i].y;
@@ -473,6 +476,66 @@ namespace lfs::vis {
             } catch (const std::exception& e) {
                 return std::unexpected(std::format("VkSplat failed to stage selection primitives: {}", e.what()));
             }
+        }
+
+        [[nodiscard]] std::expected<Tensor, std::string> makeSelectionPolygonVerticesTensor(
+            const std::vector<glm::vec2>& vertices) {
+            try {
+                const std::size_t count = std::max<std::size_t>(vertices.size(), 1u);
+                Tensor cpu = Tensor::empty({count, std::size_t{2}},
+                                           Device::CPU,
+                                           DataType::Float32);
+                float* const dst = cpu.ptr<float>();
+                if (!dst) {
+                    return std::unexpected("VkSplat polygon vertex allocation returned a null pointer");
+                }
+                std::memset(dst, 0, count * 2 * sizeof(float));
+                for (std::size_t i = 0; i < vertices.size(); ++i) {
+                    dst[i * 2 + 0] = vertices[i].x;
+                    dst[i * 2 + 1] = vertices[i].y;
+                }
+                return cpu.to(Device::CUDA).contiguous();
+            } catch (const std::exception& e) {
+                return std::unexpected(std::format("VkSplat failed to stage polygon vertices: {}", e.what()));
+            }
+        }
+
+        struct PolygonAabb {
+            std::uint32_t x0 = 0;
+            std::uint32_t y0 = 0;
+            std::uint32_t w = 0;
+            std::uint32_t h = 0;
+        };
+
+        [[nodiscard]] PolygonAabb computePolygonAabbClipped(
+            const std::vector<glm::vec2>& vertices,
+            const glm::ivec2 viewport_size) {
+            if (vertices.empty() || viewport_size.x <= 0 || viewport_size.y <= 0) {
+                return {};
+            }
+            float min_x = vertices[0].x;
+            float min_y = vertices[0].y;
+            float max_x = vertices[0].x;
+            float max_y = vertices[0].y;
+            for (std::size_t i = 1; i < vertices.size(); ++i) {
+                min_x = std::min(min_x, vertices[i].x);
+                min_y = std::min(min_y, vertices[i].y);
+                max_x = std::max(max_x, vertices[i].x);
+                max_y = std::max(max_y, vertices[i].y);
+            }
+            const int clipped_x0 = std::max(0, static_cast<int>(std::floor(min_x)));
+            const int clipped_y0 = std::max(0, static_cast<int>(std::floor(min_y)));
+            const int clipped_x1 = std::min(viewport_size.x, static_cast<int>(std::ceil(max_x)));
+            const int clipped_y1 = std::min(viewport_size.y, static_cast<int>(std::ceil(max_y)));
+            if (clipped_x1 <= clipped_x0 || clipped_y1 <= clipped_y0) {
+                return {};
+            }
+            PolygonAabb aabb;
+            aabb.x0 = static_cast<std::uint32_t>(clipped_x0);
+            aabb.y0 = static_cast<std::uint32_t>(clipped_y0);
+            aabb.w = static_cast<std::uint32_t>(clipped_x1 - clipped_x0);
+            aabb.h = static_cast<std::uint32_t>(clipped_y1 - clipped_y0);
+            return aabb;
         }
 
         [[nodiscard]] std::size_t modelTransformCount(const std::vector<glm::mat4>* const transforms) {
@@ -2126,16 +2189,46 @@ namespace lfs::vis {
         if (request.equirectangular && !request.gut) {
             return std::unexpected("VkSplat equirectangular selection requires the 3DGUT backend");
         }
-        if (request.primitives.empty()) {
-            return std::unexpected("VkSplat selection query requires at least one primitive");
+        const bool polygon_mode = (request.shape == SelectionMaskShape::Polygon);
+        if (polygon_mode) {
+            if (request.polygon_vertices.size() < 3) {
+                return std::unexpected("VkSplat polygon selection requires at least 3 vertices");
+            }
+        } else {
+            if (request.primitives.empty()) {
+                return std::unexpected("VkSplat selection query requires at least one primitive");
+            }
         }
         const std::size_t num_splats = static_cast<std::size_t>(splat_data.size());
         if (num_splats == 0) {
             return std::unexpected("VkSplat selection query cannot run on an empty model");
         }
         if (num_splats > std::numeric_limits<std::uint32_t>::max() ||
-            request.primitives.size() > std::numeric_limits<std::uint32_t>::max()) {
+            request.primitives.size() > std::numeric_limits<std::uint32_t>::max() ||
+            request.polygon_vertices.size() > std::numeric_limits<std::uint32_t>::max()) {
             return std::unexpected("VkSplat selection query exceeds shader dispatch limits");
+        }
+        const PolygonAabb polygon_aabb = polygon_mode
+                                             ? computePolygonAabbClipped(request.polygon_vertices, size)
+                                             : PolygonAabb{};
+        if (polygon_mode && (polygon_aabb.w == 0 || polygon_aabb.h == 0)) {
+            auto empty_output = Tensor::empty({num_splats}, Device::CUDA, DataType::Bool);
+            if (const cudaError_t status = cudaMemsetAsync(empty_output.ptr<bool>(),
+                                                           0,
+                                                           num_splats * sizeof(bool),
+                                                           empty_output.stream());
+                status != cudaSuccess) {
+                return std::unexpected(std::format("VkSplat polygon empty-output clear failed: {} ({})",
+                                                   cudaGetErrorName(status),
+                                                   cudaGetErrorString(status)));
+            }
+            if (const cudaError_t status = cudaStreamSynchronize(empty_output.stream());
+                status != cudaSuccess) {
+                return std::unexpected(std::format("VkSplat polygon empty-output sync failed: {} ({})",
+                                                   cudaGetErrorName(status),
+                                                   cudaGetErrorString(status)));
+            }
+            return empty_output;
         }
         if (!context.externalMemoryInteropEnabled()) {
             return std::unexpected("VkSplat selection query requires CUDA/Vulkan external-memory interop");
@@ -2173,15 +2266,26 @@ namespace lfs::vis {
                                   sizeof(std::int32_t));
         const std::size_t node_mask_region_bytes =
             alignUp(std::max<std::size_t>(request.scene.node_visibility_mask.size(), 1), 4);
-        const std::size_t primitive_region_bytes = request.primitives.size() * 4 * sizeof(float);
+        const std::size_t primitive_count = std::max<std::size_t>(request.primitives.size(), 1u);
+        const std::size_t primitive_region_bytes = primitive_count * 4 * sizeof(float);
         const std::size_t model_transforms_region_bytes =
             modelTransformCount(request.scene.model_transforms) * 16 * sizeof(float);
+        const std::size_t polygon_vertex_count =
+            std::max<std::size_t>(polygon_mode ? request.polygon_vertices.size() : 0u, 1u);
+        const std::size_t polygon_vertices_region_bytes = polygon_vertex_count * 2 * sizeof(float);
+        const std::size_t polygon_mask_pixels =
+            polygon_mode ? static_cast<std::size_t>(polygon_aabb.w) * static_cast<std::size_t>(polygon_aabb.h)
+                         : std::size_t{0};
+        const std::size_t polygon_mask_region_bytes =
+            alignUp(std::max<std::size_t>(polygon_mask_pixels, 1u), 4u);
         std::array<std::size_t, kSelectionQueryRegionCount> region_bytes{};
         region_bytes[SelectionQueryOutput] = output_region_bytes;
         region_bytes[SelectionQueryTransformIndices] = transform_region_bytes;
         region_bytes[SelectionQueryNodeMask] = node_mask_region_bytes;
         region_bytes[SelectionQueryPrimitives] = primitive_region_bytes;
         region_bytes[SelectionQueryModelTransforms] = model_transforms_region_bytes;
+        region_bytes[SelectionQueryPolygonVertices] = polygon_vertices_region_bytes;
+        region_bytes[SelectionQueryPolygonMask] = polygon_mask_region_bytes;
         std::array<std::size_t, kSelectionQueryRegionCount> region_offset{};
         const std::size_t total_bytes = layoutRegions(region_bytes, region_offset, kRegionAlignment);
 
@@ -2217,6 +2321,11 @@ namespace lfs::vis {
             return std::unexpected(model_transforms.error());
         }
         slot.model_transforms_source = std::move(*model_transforms);
+        auto polygon_vertices_source = makeSelectionPolygonVerticesTensor(request.polygon_vertices);
+        if (!polygon_vertices_source) {
+            return std::unexpected(polygon_vertices_source.error());
+        }
+        slot.polygon_vertices_source = std::move(*polygon_vertices_source);
 
         const cudaStream_t stream = slot.primitive_source.stream();
         if (!slot.interop.copyFromTensor(slot.transform_indices_source,
@@ -2247,11 +2356,27 @@ namespace lfs::vis {
             return std::unexpected(std::format("VkSplat selection model-transform upload failed: {}",
                                                slot.interop.lastError()));
         }
+        if (!slot.interop.copyFromTensor(slot.polygon_vertices_source,
+                                         slot.region_bytes[SelectionQueryPolygonVertices],
+                                         slot.region_offset[SelectionQueryPolygonVertices],
+                                         stream)) {
+            return std::unexpected(std::format("VkSplat polygon vertex upload failed: {}",
+                                               slot.interop.lastError()));
+        }
         auto* const output_ptr =
             static_cast<std::uint8_t*>(slot.interop.devicePointer()) + slot.region_offset[SelectionQueryOutput];
         if (const cudaError_t status = cudaMemsetAsync(output_ptr, 0, output_region_bytes, stream);
             status != cudaSuccess) {
             return std::unexpected(std::format("VkSplat selection output clear failed: {} ({})",
+                                               cudaGetErrorName(status),
+                                               cudaGetErrorString(status)));
+        }
+        auto* const polygon_mask_ptr =
+            static_cast<std::uint8_t*>(slot.interop.devicePointer()) + slot.region_offset[SelectionQueryPolygonMask];
+        if (const cudaError_t status =
+                cudaMemsetAsync(polygon_mask_ptr, 0, polygon_mask_region_bytes, stream);
+            status != cudaSuccess) {
+            return std::unexpected(std::format("VkSplat polygon mask clear failed: {} ({})",
                                                cudaGetErrorName(status),
                                                cudaGetErrorString(status)));
         }
@@ -2297,16 +2422,33 @@ namespace lfs::vis {
         for (std::size_t i = 0; i < 16; ++i) {
             selection_uniforms.world_view_transform[i] = camera_uniforms.world_view_transform[i];
         }
+        selection_uniforms.aabb_x0 = polygon_aabb.x0;
+        selection_uniforms.aabb_y0 = polygon_aabb.y0;
+        selection_uniforms.aabb_w = polygon_aabb.w;
+        selection_uniforms.aabb_h = polygon_aabb.h;
 
         try {
             auto batch = DeviceGuard(&renderer_);
+            if (polygon_mode) {
+                VulkanGSSelectionPolygonRasterizeUniforms rasterize_uniforms{};
+                rasterize_uniforms.vertex_count =
+                    static_cast<std::uint32_t>(request.polygon_vertices.size());
+                rasterize_uniforms.aabb_x0 = polygon_aabb.x0;
+                rasterize_uniforms.aabb_y0 = polygon_aabb.y0;
+                rasterize_uniforms.aabb_w = polygon_aabb.w;
+                rasterize_uniforms.aabb_h = polygon_aabb.h;
+                renderer_.executeSelectionPolygonRasterize(rasterize_uniforms,
+                                                           view(SelectionQueryPolygonVertices),
+                                                           view(SelectionQueryPolygonMask));
+            }
             renderer_.executeSelectionMask(selection_uniforms,
                                            buffers_,
                                            view(SelectionQueryTransformIndices),
                                            view(SelectionQueryNodeMask),
                                            view(SelectionQueryPrimitives),
                                            view(SelectionQueryModelTransforms),
-                                           view(SelectionQueryOutput));
+                                           view(SelectionQueryOutput),
+                                           view(SelectionQueryPolygonMask));
         } catch (const std::exception& e) {
             return std::unexpected(std::format("VkSplat selection query failed: {}", e.what()));
         }

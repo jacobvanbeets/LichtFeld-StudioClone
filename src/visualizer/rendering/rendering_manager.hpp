@@ -107,13 +107,15 @@ namespace lfs::vis {
         enum class VksplatSelectionMaskShape : std::uint32_t {
             Brush = 0,
             Rectangle = 1,
+            Polygon = 2,
         };
         [[nodiscard]] std::expected<lfs::core::Tensor, std::string> buildVksplatSelectionMask(
             SceneManager& scene_manager,
             const lfs::rendering::FrameView& frame_view,
             bool equirectangular,
             VksplatSelectionMaskShape shape,
-            const std::vector<glm::vec4>& primitives);
+            const std::vector<glm::vec4>& primitives,
+            const std::vector<glm::vec2>& polygon_vertices = {});
 
         // Render preview image without touching the shared viewport presentation textures.
         std::shared_ptr<lfs::core::Tensor> renderPreviewImage(SceneManager* scene_manager,

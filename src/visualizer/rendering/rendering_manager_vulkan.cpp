@@ -402,7 +402,8 @@ namespace lfs::vis {
         const lfs::rendering::FrameView& frame_view,
         const bool equirectangular,
         const VksplatSelectionMaskShape shape,
-        const std::vector<glm::vec4>& primitives) {
+        const std::vector<glm::vec4>& primitives,
+        const std::vector<glm::vec2>& polygon_vertices) {
         const auto settings = getSettings();
         if (!lfs::rendering::isVkSplatBackend(settings.raster_backend)) {
             return std::unexpected("VkSplat selection query is available only when a VkSplat backend is active");
@@ -416,7 +417,12 @@ namespace lfs::vis {
         if (settings.point_cloud_mode) {
             return std::unexpected("VkSplat selection query is disabled in point-cloud mode");
         }
-        if (primitives.empty()) {
+        const bool polygon_mode = (shape == VksplatSelectionMaskShape::Polygon);
+        if (polygon_mode) {
+            if (polygon_vertices.size() < 3) {
+                return std::unexpected("VkSplat polygon selection requires at least 3 vertices");
+            }
+        } else if (primitives.empty()) {
             return std::unexpected("VkSplat selection query requires at least one primitive");
         }
 
@@ -437,6 +443,8 @@ namespace lfs::vis {
                 return VksplatViewportRenderer::SelectionMaskShape::Brush;
             case VksplatSelectionMaskShape::Rectangle:
                 return VksplatViewportRenderer::SelectionMaskShape::Rectangle;
+            case VksplatSelectionMaskShape::Polygon:
+                return VksplatViewportRenderer::SelectionMaskShape::Polygon;
             }
             return VksplatViewportRenderer::SelectionMaskShape::Brush;
         };
@@ -449,6 +457,7 @@ namespace lfs::vis {
                  .node_visibility_mask = scene_state.node_visibility_mask},
             .shape = map_shape(shape),
             .primitives = primitives,
+            .polygon_vertices = polygon_vertices,
             .gut = lfs::rendering::isGutBackend(settings.raster_backend),
             .equirectangular = equirectangular,
         };

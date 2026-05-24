@@ -60,69 +60,6 @@ namespace lfs::vis {
             return render_points;
         }
 
-        [[nodiscard]] core::Tensor& uploadRenderPointsToBuffer(
-            const std::vector<glm::vec2>& points,
-            const SelectionService::ViewportInfo& info,
-            std::vector<float>& host_buffer,
-            core::Tensor& device_buffer) {
-            host_buffer.resize(points.size() * 2);
-            for (size_t i = 0; i < points.size(); ++i) {
-                const auto render = screenToRender(points[i], info);
-                host_buffer[i * 2] = render.x;
-                host_buffer[i * 2 + 1] = render.y;
-            }
-
-            const bool needs_realloc = !device_buffer.is_valid() ||
-                                       device_buffer.device() != core::Device::CUDA ||
-                                       device_buffer.dtype() != core::DataType::Float32 ||
-                                       device_buffer.shape().rank() != 2 ||
-                                       device_buffer.size(0) != points.size() ||
-                                       device_buffer.size(1) != 2;
-            if (needs_realloc) {
-                device_buffer = core::Tensor::empty({points.size(), size_t{2}},
-                                                    core::Device::CUDA,
-                                                    core::DataType::Float32);
-            }
-
-            auto host_view = core::Tensor::from_blob(host_buffer.data(),
-                                                     {points.size(), size_t{2}},
-                                                     core::Device::CPU,
-                                                     core::DataType::Float32);
-            device_buffer.copy_from(host_view);
-            return device_buffer;
-        }
-
-        [[nodiscard]] std::optional<core::Tensor> projectWorldPolygonToRenderSpace(
-            const std::vector<glm::vec3>& world_points,
-            const Viewport& viewport,
-            const float focal_mm,
-            const bool orthographic,
-            const float ortho_scale,
-            const int render_width,
-            const int render_height) {
-            auto polygon = core::Tensor::empty({world_points.size(), size_t{2}},
-                                               core::Device::CPU,
-                                               core::DataType::Float32);
-            auto* data = polygon.ptr<float>();
-            const glm::ivec2 render_size(render_width, render_height);
-            for (size_t i = 0; i < world_points.size(); ++i) {
-                const auto projected = rendering::projectWorldPoint(
-                    viewport.camera.R,
-                    viewport.camera.t,
-                    render_size,
-                    world_points[i],
-                    focal_mm,
-                    orthographic,
-                    ortho_scale);
-                if (!projected) {
-                    return std::nullopt;
-                }
-                data[i * 2] = projected->x;
-                data[i * 2 + 1] = projected->y;
-            }
-            return polygon;
-        }
-
         [[nodiscard]] size_t countSelected(const core::Tensor& mask) {
             if (!mask.is_valid()) {
                 return 0;
@@ -426,6 +363,34 @@ namespace lfs::vis {
             return std::nullopt;
         }
 
+        [[nodiscard]] std::optional<core::Tensor> tryBuildVksplatPolygonSelectionMask(
+            SceneManager* const scene_manager,
+            RenderingManager* const rendering_manager,
+            const rendering::FrameView& frame_view,
+            const bool equirectangular,
+            const std::vector<glm::vec2>& polygon_vertices) {
+            if (!scene_manager || !rendering_manager || polygon_vertices.size() < 3) {
+                return std::nullopt;
+            }
+
+            auto result = rendering_manager->buildVksplatSelectionMask(
+                *scene_manager,
+                frame_view,
+                equirectangular,
+                RenderingManager::VksplatSelectionMaskShape::Polygon,
+                {},
+                polygon_vertices);
+            if (result) {
+                return std::move(*result);
+            }
+
+            const auto settings = rendering_manager->getSettings();
+            if (lfs::rendering::isVkSplatBackend(settings.raster_backend)) {
+                LOG_DEBUG("SelectionService: VkSplat polygon selection unavailable: {}", result.error());
+            }
+            return std::nullopt;
+        }
+
         [[nodiscard]] std::vector<glm::vec4> buildBrushPrimitives(
             const std::vector<glm::vec2>& points,
             const float radius,
@@ -611,66 +576,20 @@ namespace lfs::vis {
         if (!scene_manager_ || !rendering_manager_) {
             return {false, 0, "Missing managers"};
         }
-
-        const auto filters = defaultFilterState();
+        const auto frame_view = resolveCommandFrameView(camera_index);
+        if (!frame_view) {
+            return {false, 0, "No viewport for brush selection"};
+        }
+        const auto settings = rendering_manager_->getSettings();
         const std::vector<glm::vec4> primitives{{x, y, radius * radius, 0.0f}};
-        if (!testing_screen_positions_) {
-            const auto settings = rendering_manager_->getSettings();
-            if (camera_index >= 0) {
-                if (const auto it = testing_camera_screen_positions_.find(camera_index);
-                    it == testing_camera_screen_positions_.end()) {
-                    const auto cameras = scene_manager_->getScene().getAllCameras();
-                    if (camera_index < static_cast<int>(cameras.size()) && cameras[camera_index]) {
-                        const auto viewport = viewportDataFromCamera(*cameras[camera_index]);
-                        const auto frame_view = frameViewFromViewport(viewport, settings.background_color);
-                        if (auto selection = tryBuildVksplatSelectionMask(
-                                scene_manager_,
-                                rendering_manager_,
-                                frame_view,
-                                settings.equirectangular,
-                                RenderingManager::VksplatSelectionMaskShape::Brush,
-                                primitives)) {
-                            return commitSelection(*selection,
-                                                   mode,
-                                                   effectiveNodeMask(true),
-                                                   filters,
-                                                   "selection.brush");
-                        }
-                    }
-                }
-            } else if (!testing_viewport_) {
-                if (const auto context = resolveViewerViewportContext(); context && context->valid()) {
-                    Viewport projection_viewport = *context->viewport;
-                    projection_viewport.windowSize = {context->info.render_width, context->info.render_height};
-                    const auto frame_view = frameViewFromViewport(
-                        viewportDataFromViewer(projection_viewport, context->info, settings),
-                        settings.background_color,
-                        settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
-                    if (auto selection = tryBuildVksplatSelectionMask(
-                            scene_manager_,
-                            rendering_manager_,
-                            frame_view,
-                            settings.equirectangular,
-                            RenderingManager::VksplatSelectionMaskShape::Brush,
-                            primitives)) {
-                        return commitSelection(*selection,
-                                               mode,
-                                               effectiveNodeMask(true),
-                                               filters,
-                                               "selection.brush");
-                    }
-                }
-            }
+        auto selection = tryBuildVksplatSelectionMask(
+            scene_manager_, rendering_manager_, *frame_view, settings.equirectangular,
+            RenderingManager::VksplatSelectionMaskShape::Brush, primitives);
+        if (!selection) {
+            return {false, 0, "VkSplat brush selection unavailable"};
         }
-
-        const auto screen_positions = resolveCommandScreenPositions(camera_index);
-        if (!screen_positions || !screen_positions->is_valid()) {
-            return {false, 0, "No screen positions"};
-        }
-
-        auto& selection = resetBoolScratchBuffer(command_selection_buffer_, screen_positions->size(0));
-        rendering::brush_select_tensor(*screen_positions, x, y, radius, selection);
-        return commitSelection(selection, mode, effectiveNodeMask(true), filters, "selection.brush");
+        return commitSelection(*selection, mode, effectiveNodeMask(true), defaultFilterState(),
+                               "selection.brush");
     }
 
     SelectionResult SelectionService::selectRect(float x0, float y0, float x1, float y1, SelectionMode mode,
@@ -678,100 +597,79 @@ namespace lfs::vis {
         if (!scene_manager_ || !rendering_manager_) {
             return {false, 0, "Missing managers"};
         }
-
-        const auto filters = defaultFilterState();
+        const auto frame_view = resolveCommandFrameView(camera_index);
+        if (!frame_view) {
+            return {false, 0, "No viewport for rect selection"};
+        }
+        const auto settings = rendering_manager_->getSettings();
         const std::vector<glm::vec4> primitives{{
             std::min(x0, x1),
             std::min(y0, y1),
             std::max(x0, x1),
             std::max(y0, y1),
         }};
-        if (!testing_screen_positions_) {
-            const auto settings = rendering_manager_->getSettings();
-            if (camera_index >= 0) {
-                if (const auto it = testing_camera_screen_positions_.find(camera_index);
-                    it == testing_camera_screen_positions_.end()) {
-                    const auto cameras = scene_manager_->getScene().getAllCameras();
-                    if (camera_index < static_cast<int>(cameras.size()) && cameras[camera_index]) {
-                        const auto viewport = viewportDataFromCamera(*cameras[camera_index]);
-                        const auto frame_view = frameViewFromViewport(viewport, settings.background_color);
-                        if (auto selection = tryBuildVksplatSelectionMask(
-                                scene_manager_,
-                                rendering_manager_,
-                                frame_view,
-                                settings.equirectangular,
-                                RenderingManager::VksplatSelectionMaskShape::Rectangle,
-                                primitives)) {
-                            return commitSelection(*selection,
-                                                   mode,
-                                                   effectiveNodeMask(true),
-                                                   filters,
-                                                   "selection.rect");
-                        }
-                    }
-                }
-            } else if (!testing_viewport_) {
-                if (const auto context = resolveViewerViewportContext(); context && context->valid()) {
-                    Viewport projection_viewport = *context->viewport;
-                    projection_viewport.windowSize = {context->info.render_width, context->info.render_height};
-                    const auto frame_view = frameViewFromViewport(
-                        viewportDataFromViewer(projection_viewport, context->info, settings),
-                        settings.background_color,
-                        settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
-                    if (auto selection = tryBuildVksplatSelectionMask(
-                            scene_manager_,
-                            rendering_manager_,
-                            frame_view,
-                            settings.equirectangular,
-                            RenderingManager::VksplatSelectionMaskShape::Rectangle,
-                            primitives)) {
-                        return commitSelection(*selection,
-                                               mode,
-                                               effectiveNodeMask(true),
-                                               filters,
-                                               "selection.rect");
-                    }
-                }
-            }
+        auto selection = tryBuildVksplatSelectionMask(
+            scene_manager_, rendering_manager_, *frame_view, settings.equirectangular,
+            RenderingManager::VksplatSelectionMaskShape::Rectangle, primitives);
+        if (!selection) {
+            return {false, 0, "VkSplat rect selection unavailable"};
         }
-
-        const auto screen_positions = resolveCommandScreenPositions(camera_index);
-        if (!screen_positions || !screen_positions->is_valid()) {
-            return {false, 0, "No screen positions"};
-        }
-
-        auto& selection = resetBoolScratchBuffer(command_selection_buffer_, screen_positions->size(0));
-        rendering::rect_select_tensor(*screen_positions,
-                                      std::min(x0, x1),
-                                      std::min(y0, y1),
-                                      std::max(x0, x1),
-                                      std::max(y0, y1),
-                                      selection);
-        return commitSelection(selection, mode, effectiveNodeMask(true), filters, "selection.rect");
+        return commitSelection(*selection, mode, effectiveNodeMask(true), defaultFilterState(),
+                               "selection.rect");
     }
 
-    SelectionResult SelectionService::selectPolygon(const core::Tensor& vertices, SelectionMode mode,
-                                                    int camera_index) {
+    std::optional<rendering::FrameView> SelectionService::resolveCommandFrameView(int camera_index) const {
+        if (!scene_manager_ || !rendering_manager_) {
+            return std::nullopt;
+        }
+        const auto settings = rendering_manager_->getSettings();
+        if (camera_index >= 0) {
+            const auto cameras = scene_manager_->getScene().getAllCameras();
+            if (camera_index < static_cast<int>(cameras.size()) && cameras[camera_index]) {
+                return frameViewFromViewport(
+                    viewportDataFromCamera(*cameras[camera_index]),
+                    settings.background_color);
+            }
+            return std::nullopt;
+        }
+        const auto context = resolveViewerViewportContext();
+        if (!context || !context->valid()) {
+            return std::nullopt;
+        }
+        Viewport projection_viewport = *context->viewport;
+        projection_viewport.windowSize = {context->info.render_width, context->info.render_height};
+        return frameViewFromViewport(
+            viewportDataFromViewer(projection_viewport, context->info, settings),
+            settings.background_color,
+            settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
+    }
+
+    SelectionResult SelectionService::selectPolygon(const std::vector<glm::vec2>& vertices,
+                                                    SelectionMode mode, int camera_index) {
         if (!scene_manager_ || !rendering_manager_) {
             return {false, 0, "Missing managers"};
         }
-
-        const auto screen_positions = resolveCommandScreenPositions(camera_index);
-        if (!screen_positions || !screen_positions->is_valid()) {
-            return {false, 0, "No screen positions"};
-        }
-        if (!vertices.is_valid() || vertices.size(0) < 3) {
+        if (vertices.size() < 3) {
             return {false, 0, "Polygon requires at least 3 vertices"};
         }
 
-        const auto polygon = (vertices.device() == core::Device::CUDA) ? vertices : vertices.cuda();
-        auto& selection = resetBoolScratchBuffer(command_selection_buffer_, screen_positions->size(0));
-        rendering::polygon_select_tensor(*screen_positions, polygon, selection);
-        return commitSelection(selection, mode, effectiveNodeMask(true), defaultFilterState(), "selection.polygon");
+        const auto frame_view = resolveCommandFrameView(camera_index);
+        if (!frame_view) {
+            return {false, 0, "No viewport for polygon selection"};
+        }
+        const auto settings = rendering_manager_->getSettings();
+
+        auto selection = tryBuildVksplatPolygonSelectionMask(
+            scene_manager_, rendering_manager_, *frame_view, settings.equirectangular, vertices);
+        if (!selection) {
+            return {false, 0, "VkSplat polygon selection unavailable"};
+        }
+        return commitSelection(*selection, mode, effectiveNodeMask(true), defaultFilterState(),
+                               "selection.polygon");
     }
 
-    SelectionResult SelectionService::selectLasso(const core::Tensor& vertices, const SelectionMode mode,
-                                                  const int camera_index) {
+    SelectionResult SelectionService::selectLasso(const std::vector<glm::vec2>& vertices,
+                                                  const SelectionMode mode, const int camera_index) {
         auto result = selectPolygon(vertices, mode, camera_index);
         if (result.success) {
             return result;
@@ -1764,70 +1662,37 @@ namespace lfs::vis {
         }
 
         const auto& session = interactive_selection_;
-        if (!session.viewport_context || !session.viewport_context->info.valid()) {
+        if (!scene_manager_ || !rendering_manager_ || !session.viewport_context ||
+            !session.viewport_context->info.valid() || !session.viewport_context->viewport) {
             return false;
         }
         const auto& info = session.viewport_context->info;
 
         const auto primitives = buildBrushPrimitives(points, radius, info);
-        if (!testing_screen_positions_ && !testing_viewport_ && !primitives.empty() &&
-            session.viewport_context->viewport) {
-            const auto settings = rendering_manager_->getSettings();
-            Viewport projection_viewport = *session.viewport_context->viewport;
-            projection_viewport.windowSize = {info.render_width, info.render_height};
-            const auto frame_view = frameViewFromViewport(
-                viewportDataFromViewer(projection_viewport, info, settings),
-                settings.background_color,
-                settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
-            if (auto selection = tryBuildVksplatSelectionMask(
-                    scene_manager_,
-                    rendering_manager_,
-                    frame_view,
-                    settings.equirectangular,
-                    RenderingManager::VksplatSelectionMaskShape::Brush,
-                    primitives)) {
-                if (copySelectionIfSameSize(*selection, selection_out)) {
-                    return true;
-                }
-            }
-        }
-
-        const auto screen_positions = getScreenPositionsForContext(*session.viewport_context);
-        if (!screen_positions || !screen_positions->is_valid()) {
+        if (primitives.empty()) {
             return false;
         }
-        if (screen_positions->size(0) != selection_out.numel()) {
+        const auto settings = rendering_manager_->getSettings();
+        Viewport projection_viewport = *session.viewport_context->viewport;
+        projection_viewport.windowSize = {info.render_width, info.render_height};
+        const auto frame_view = frameViewFromViewport(
+            viewportDataFromViewer(projection_viewport, info, settings),
+            settings.background_color,
+            settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
+        auto selection = tryBuildVksplatSelectionMask(
+            scene_manager_, rendering_manager_, frame_view, settings.equirectangular,
+            RenderingManager::VksplatSelectionMaskShape::Brush, primitives);
+        if (!selection) {
             return false;
         }
-
-        const float scale_x = static_cast<float>(info.render_width) / info.width;
-        const float scaled_radius = radius * scale_x;
-        constexpr float STEP_FACTOR = 0.5f;
-
-        for (size_t i = 0; i < points.size(); ++i) {
-            const glm::vec2 from = (i == 0) ? points[i] : points[i - 1];
-            const glm::vec2 to = points[i];
-            const glm::vec2 delta = to - from;
-            constexpr int MAX_BRUSH_STEPS = 128;
-            const float step_spacing = std::max(radius * STEP_FACTOR, 1.0f);
-            const int num_steps = std::min(
-                MAX_BRUSH_STEPS,
-                std::max(1, static_cast<int>(std::ceil(glm::length(delta) / step_spacing))));
-            for (int step = 0; step < num_steps; ++step) {
-                const float t = (num_steps == 1) ? 1.0f : static_cast<float>(step + 1) / static_cast<float>(num_steps);
-                const glm::vec2 sample = from + delta * t;
-                const auto render = screenToRender(sample, info);
-                rendering::brush_select_tensor(*screen_positions, render.x, render.y, scaled_radius, selection_out);
-            }
-        }
-
-        return true;
+        return copySelectionIfSameSize(*selection, selection_out);
     }
 
     bool SelectionService::buildRectangleSelection(const glm::vec2 start, const glm::vec2 end,
                                                    core::Tensor& selection_out) const {
         const auto& session = interactive_selection_;
-        if (!session.viewport_context || !session.viewport_context->info.valid()) {
+        if (!scene_manager_ || !rendering_manager_ || !session.viewport_context ||
+            !session.viewport_context->info.valid() || !session.viewport_context->viewport) {
             return false;
         }
         const auto& info = session.viewport_context->info;
@@ -1840,42 +1705,20 @@ namespace lfs::vis {
             std::max(render_start.x, render_end.x),
             std::max(render_start.y, render_end.y),
         }};
-        if (!testing_screen_positions_ && !testing_viewport_ && session.viewport_context->viewport) {
-            const auto settings = rendering_manager_->getSettings();
-            Viewport projection_viewport = *session.viewport_context->viewport;
-            projection_viewport.windowSize = {info.render_width, info.render_height};
-            const auto frame_view = frameViewFromViewport(
-                viewportDataFromViewer(projection_viewport, info, settings),
-                settings.background_color,
-                settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
-            if (auto selection = tryBuildVksplatSelectionMask(
-                    scene_manager_,
-                    rendering_manager_,
-                    frame_view,
-                    settings.equirectangular,
-                    RenderingManager::VksplatSelectionMaskShape::Rectangle,
-                    primitives)) {
-                if (copySelectionIfSameSize(*selection, selection_out)) {
-                    return true;
-                }
-            }
-        }
-
-        const auto screen_positions = getScreenPositionsForContext(*session.viewport_context);
-        if (!screen_positions || !screen_positions->is_valid()) {
+        const auto settings = rendering_manager_->getSettings();
+        Viewport projection_viewport = *session.viewport_context->viewport;
+        projection_viewport.windowSize = {info.render_width, info.render_height};
+        const auto frame_view = frameViewFromViewport(
+            viewportDataFromViewer(projection_viewport, info, settings),
+            settings.background_color,
+            settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
+        auto selection = tryBuildVksplatSelectionMask(
+            scene_manager_, rendering_manager_, frame_view, settings.equirectangular,
+            RenderingManager::VksplatSelectionMaskShape::Rectangle, primitives);
+        if (!selection) {
             return false;
         }
-        if (screen_positions->size(0) != selection_out.numel()) {
-            return false;
-        }
-
-        rendering::rect_select_tensor(*screen_positions,
-                                      std::min(render_start.x, render_end.x),
-                                      std::min(render_start.y, render_end.y),
-                                      std::max(render_start.x, render_end.x),
-                                      std::max(render_start.y, render_end.y),
-                                      selection_out);
-        return true;
+        return copySelectionIfSameSize(*selection, selection_out);
     }
 
     bool SelectionService::buildPolygonSelection(const std::vector<glm::vec2>& points,
@@ -1885,23 +1728,31 @@ namespace lfs::vis {
         }
 
         const auto& session = interactive_selection_;
-        if (!session.viewport_context || !session.viewport_context->info.valid()) {
+        if (!scene_manager_ || !rendering_manager_ || !session.viewport_context ||
+            !session.viewport_context->info.valid() || !session.viewport_context->viewport) {
             return false;
         }
-        const auto screen_positions = getScreenPositionsForContext(*session.viewport_context);
         const auto& info = session.viewport_context->info;
-        if (!screen_positions || !screen_positions->is_valid()) {
-            return false;
-        }
-        if (screen_positions->size(0) != selection_out.numel()) {
-            return false;
+
+        std::vector<glm::vec2> render_points;
+        render_points.reserve(points.size());
+        for (const auto& point : points) {
+            render_points.push_back(screenToRender(point, info));
         }
 
-        const auto& polygon = uploadRenderPointsToBuffer(points, info,
-                                                         polygon_vertex_host_buffer_,
-                                                         polygon_vertex_device_buffer_);
-        rendering::polygon_select_tensor(*screen_positions, polygon, selection_out);
-        return true;
+        const auto settings = rendering_manager_->getSettings();
+        Viewport projection_viewport = *session.viewport_context->viewport;
+        projection_viewport.windowSize = {info.render_width, info.render_height};
+        const auto frame_view = frameViewFromViewport(
+            viewportDataFromViewer(projection_viewport, info, settings),
+            settings.background_color,
+            settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
+        auto selection = tryBuildVksplatPolygonSelectionMask(
+            scene_manager_, rendering_manager_, frame_view, settings.equirectangular, render_points);
+        if (!selection) {
+            return false;
+        }
+        return copySelectionIfSameSize(*selection, selection_out);
     }
 
     bool SelectionService::buildWorldPolygonSelection(const std::vector<glm::vec3>& world_points,
@@ -1911,16 +1762,8 @@ namespace lfs::vis {
         }
 
         const auto& session = interactive_selection_;
-        if (!rendering_manager_ || !session.viewport_context || !session.viewport_context->viewport ||
-            !session.viewport_context->info.valid()) {
-            return false;
-        }
-
-        const auto screen_positions = getScreenPositionsForContext(*session.viewport_context);
-        if (!screen_positions || !screen_positions->is_valid()) {
-            return false;
-        }
-        if (screen_positions->size(0) != selection_out.numel()) {
+        if (!scene_manager_ || !rendering_manager_ || !session.viewport_context ||
+            !session.viewport_context->viewport || !session.viewport_context->info.valid()) {
             return false;
         }
 
@@ -1929,19 +1772,34 @@ namespace lfs::vis {
             session.viewport_context->info.render_width,
             session.viewport_context->info.render_height};
         const auto settings = rendering_manager_->getSettings();
-        const auto polygon = projectWorldPolygonToRenderSpace(world_points,
-                                                              projection_viewport,
-                                                              settings.focal_length_mm,
-                                                              settings.orthographic,
-                                                              settings.ortho_scale,
-                                                              session.viewport_context->info.render_width,
-                                                              session.viewport_context->info.render_height);
-        if (!polygon) {
-            return false;
+
+        std::vector<glm::vec2> render_points;
+        render_points.reserve(world_points.size());
+        for (const auto& wp : world_points) {
+            const auto projected = rendering::projectWorldPoint(
+                projection_viewport.camera.R,
+                projection_viewport.camera.t,
+                {session.viewport_context->info.render_width, session.viewport_context->info.render_height},
+                wp,
+                settings.focal_length_mm,
+                settings.orthographic,
+                settings.ortho_scale);
+            if (!projected) {
+                return false;
+            }
+            render_points.emplace_back(projected->x, projected->y);
         }
 
-        rendering::polygon_select_tensor(*screen_positions, polygon->cuda(), selection_out);
-        return true;
+        const auto frame_view = frameViewFromViewport(
+            viewportDataFromViewer(projection_viewport, session.viewport_context->info, settings),
+            settings.background_color,
+            settings.depth_clip_enabled ? settings.depth_clip_far : lfs::rendering::DEFAULT_FAR_PLANE);
+        auto selection = tryBuildVksplatPolygonSelectionMask(
+            scene_manager_, rendering_manager_, frame_view, settings.equirectangular, render_points);
+        if (!selection) {
+            return false;
+        }
+        return copySelectionIfSameSize(*selection, selection_out);
     }
 
     bool SelectionService::buildRingSelection(const glm::vec2 cursor_pos, core::Tensor& selection_out) const {
