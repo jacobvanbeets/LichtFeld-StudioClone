@@ -63,6 +63,42 @@ def _install_stub_modules(monkeypatch):
     return hook_calls, remove_calls
 
 
+class _DataModelHandleStub:
+    def __init__(self):
+        self.dirty_all_calls = 0
+        self.dirty_calls = []
+        self.record_updates = {}
+
+    def dirty_all(self):
+        self.dirty_all_calls += 1
+
+    def dirty(self, name):
+        self.dirty_calls.append(name)
+
+    def update_record_list(self, name, records):
+        self.record_updates[name] = records
+
+
+class _DataModelStub:
+    def __init__(self):
+        self.bound_funcs = {}
+        self.bound_events = {}
+        self.bound_record_lists = []
+        self.handle = _DataModelHandleStub()
+
+    def bind_func(self, name, getter):
+        self.bound_funcs[name] = getter
+
+    def bind_event(self, name, callback):
+        self.bound_events[name] = callback
+
+    def bind_record_list(self, name):
+        self.bound_record_lists.append(name)
+
+    def get_handle(self):
+        return self.handle
+
+
 @pytest.fixture
 def toolbar_module(monkeypatch):
     project_root = Path(__file__).parent.parent.parent
@@ -78,159 +114,147 @@ def toolbar_module(monkeypatch):
     return module, hook_calls, remove_calls
 
 
-def test_toolbar_register_uses_viewport_overlay_hook(toolbar_module):
-    module, hook_calls, _remove_calls = toolbar_module
+def test_toolbar_binds_overlay_model_fields(toolbar_module):
+    module, _hook_calls, _remove_calls = toolbar_module
+    model = _DataModelStub()
 
-    module.register()
+    module.reset_overlay_state()
+    module.bind_overlay_model(model)
 
-    assert len(hook_calls) == 1
-    panel, section, callback, position = hook_calls[0]
-    assert (panel, section, position) == ("viewport_overlay", "document", "append")
-
-    class _DocumentStub:
-        def get_element_by_id(self, _element_id):
-            return None
-
-    callback(_DocumentStub())
-
-
-def test_toolbar_unregister_removes_same_hook(toolbar_module):
-    module, hook_calls, remove_calls = toolbar_module
-
-    module.register()
-    module.unregister()
-
-    assert len(hook_calls) == 1
-    assert remove_calls == [("viewport_overlay", "document", hook_calls[0][2])]
+    assert "show_render_controls" in model.bound_funcs
+    assert "camera_flyout_open" in model.bound_funcs
+    assert "render_flyout_open" in model.bound_funcs
+    assert "camera_group_buttons" in model.bound_record_lists
+    assert "render_group_buttons" in model.bound_record_lists
+    assert "camera_mode_buttons" in model.bound_record_lists
+    assert "render_mode_buttons" in model.bound_record_lists
+    assert "toolbar_action" in model.bound_events
 
 
-def test_gizmo_toolbar_does_not_rebuild_for_new_document_wrappers(toolbar_module, monkeypatch):
+def test_toolbar_attach_handle_marks_model_dirty(toolbar_module):
+    module, _hook_calls, _remove_calls = toolbar_module
+    handle = _DataModelHandleStub()
+
+    module.reset_overlay_state()
+    module.attach_overlay_model_handle(handle)
+
+    assert handle.dirty_all_calls == 1
+
+
+def test_utility_group_button_preserves_active_state(toolbar_module):
     module, _hook_calls, _remove_calls = toolbar_module
 
-    class _ElementStub:
-        def __init__(self, tag="div"):
-            self.tag = tag
-            self.attrs = {}
-            self.classes = set()
-            self.listeners = []
-            self.child_nodes = []
-
-        def set_id(self, value):
-            self.attrs["id"] = value
-
-        def set_class(self, name, active):
-            if active:
-                self.classes.add(name)
-            else:
-                self.classes.discard(name)
-
-        def set_class_names(self, names):
-            self.classes = set(names.split())
-
-        def add_event_listener(self, name, callback):
-            self.listeners.append((name, callback))
-
-        def set_attribute(self, name, value):
-            self.attrs[name] = value
-
-        def remove_attribute(self, name):
-            self.attrs.pop(name, None)
-
-        def append_child(self, tag):
-            child = _ElementStub(tag)
-            self.child_nodes.append(child)
-            return child
-
-        def query_selector(self, _selector):
-            return None
-
-    class _ContainerStub(_ElementStub):
-        def __init__(self):
-            super().__init__("div")
-            self.removed = 0
-
-        def num_children(self):
-            return len(self.child_nodes)
-
-        def children(self):
-            return list(self.child_nodes)
-
-        def remove_child(self, child):
-            self.removed += 1
-            self.child_nodes.remove(child)
-
-    gizmo_container = _ContainerStub()
-    submode_container = _ContainerStub()
-    pivot_container = _ContainerStub()
-
-    class _DocumentStub:
-        def __init__(self, gizmo, submode, pivot):
-            self._elements = {
-                "gizmo-toolbar": gizmo,
-                "submode-toolbar": submode,
-                "pivot-toolbar": pivot,
-            }
-
-        def get_element_by_id(self, element_id):
-            return self._elements.get(element_id)
-
-    docs = [
-        _DocumentStub(gizmo_container, submode_container, pivot_container),
-        _DocumentStub(gizmo_container, submode_container, pivot_container),
-    ]
-    monkeypatch.setattr(
-        sys.modules["lichtfeld"].ui.rml,
-        "get_document",
-        lambda _name: docs.pop(0),
+    inactive = module._button_record(
+        "util-camera-orbit",
+        "set_camera_navigation_mode",
+        "orbit",
+        "../icon/camera-orbit.png",
+        tooltip_text="Orbit Camera",
+        selected=False,
     )
-    monkeypatch.setattr(
-        sys.modules["lichtfeld"].ui,
-        "get_active_tool",
-        lambda: "",
-        raising=False,
+    active = module._button_record(
+        "util-camera-trackball",
+        "set_camera_navigation_mode",
+        "trackball",
+        "../icon/world.png",
+        tooltip_text="Free Orbit Camera",
+        selected=True,
     )
 
-    tool_stub = SimpleNamespace(
-        id="builtin.select",
-        icon="selection",
-        label="Select",
-        shortcut="1",
-        submodes=(),
-        pivot_modes=(),
-        can_activate=lambda _context: True,
-    )
-    monkeypatch.setattr(
-        sys.modules["lfs_plugins.tools"].ToolRegistry,
-        "get_all",
-        staticmethod(lambda: [tool_stub]),
-    )
-    monkeypatch.setattr(
-        sys.modules["lfs_plugins.tools"].ToolRegistry,
-        "get",
-        staticmethod(lambda _tool_id: tool_stub),
-    )
-    monkeypatch.setattr(
-        sys.modules["lfs_plugins.op_context"],
-        "get_context",
-        lambda: SimpleNamespace(has_scene=True, num_gaussians=1),
-    )
+    group_button = module._UtilityToolbarController._group_button(
+        "camera",
+        [inactive, active],
+        "Camera Mode",
+    )[0]
 
-    rml_widgets_mod = ModuleType("lfs_plugins.rml_widgets")
-    rml_widgets_mod.icon_button = lambda container, button_id, icon_src, **_kwargs: _make_icon_button(
-        container, button_id, icon_src
-    )
-    monkeypatch.setitem(sys.modules, "lfs_plugins.rml_widgets", rml_widgets_mod)
-
-    controller = module._GizmoToolbarController()
-    controller.update(docs[0])
-    controller.update(docs[1])
-
-    assert gizmo_container.num_children() == 1
-    assert gizmo_container.removed == 0
+    assert group_button["button_id"] == "group-camera"
+    assert group_button["action"] == "toggle_flyout"
+    assert group_button["value"] == "camera"
+    assert group_button["icon_src"] == "../icon/world.png"
+    assert group_button["selected"] is True
 
 
-def _make_icon_button(container, button_id, icon_src):
-    button = container.append_child("div")
-    button.set_id(button_id)
-    button.set_attribute("data-icon-src", icon_src)
-    return button
+def test_viewport_overlay_flyout_template_uses_one_expanded_bar():
+    project_root = Path(__file__).parent.parent.parent
+    rml_path = (
+        project_root
+        / "src"
+        / "visualizer"
+        / "gui"
+        / "rmlui"
+        / "resources"
+        / "viewport_overlay.rml"
+    )
+    rcss_path = rml_path.with_suffix(".rcss")
+    rml = rml_path.read_text(encoding="utf-8")
+    rcss = rcss_path.read_text(encoding="utf-8")
+
+    assert "toolbar-flyout-anchor" not in rml
+    assert rml.count('class="toolbar-flyout toolbar-flyout-camera hidden"') == 2
+    assert rml.count('class="toolbar-flyout toolbar-flyout-render hidden"') == 2
+    assert rml.count('<span class="flyout-corner-marker"></span>') == 4
+    assert "dropdown-arrow.png" not in rml
+    assert 'data-class-hidden="camera_flyout_open"' not in rml
+    assert 'data-class-hidden="render_flyout_open"' not in rml
+    assert 'data-for="button : camera_mode_buttons"' in rml
+    assert 'data-for="button : render_mode_buttons"' in rml
+    assert 'data-class-selected="button.selected"' in rml
+    assert rml.count('data-class-hidden="!camera_flyout_open"') == 2
+    assert rml.count('data-class-hidden="!render_flyout_open"') == 2
+    assert "toolbar-flyout-camera" in rcss
+    assert "width: 96dp;" in rcss
+    assert "toolbar-flyout-render" in rcss
+    assert "width: 128dp;" in rcss
+    assert "left: 100%;" in rcss
+    assert ".toolbar-flyout-trigger.hidden" not in rcss
+    assert "right: 0;" in rcss
+    assert "bottom: 0;" in rcss
+    assert "width: 0;" in rcss
+    assert "height: 0;" in rcss
+    assert "border-left-color: rgba(0, 0, 0, 0);" in rcss
+    assert "border-bottom-width: 9dp;" in rcss
+
+
+def test_viewport_toolbar_update_syncs_flyout_state(toolbar_module, monkeypatch):
+    module, _hook_calls, _remove_calls = toolbar_module
+    model = _DataModelStub()
+    lf_stub = sys.modules["lichtfeld"]
+
+    lf_stub.RenderMode = SimpleNamespace(
+        SPLATS="splats",
+        POINTS="points",
+        RINGS="rings",
+        CENTERS="centers",
+    )
+    lf_stub.get_camera_navigation_mode = lambda: "orbit"
+    lf_stub.get_camera_view_snap_enabled = lambda: False
+    lf_stub.get_render_mode = lambda: lf_stub.RenderMode.SPLATS
+    lf_stub.is_fullscreen = lambda: False
+    lf_stub.is_orthographic = lambda: False
+    lf_stub.get_depth_view = lambda: False
+    monkeypatch.setattr(lf_stub.ui, "context", lambda: SimpleNamespace(), raising=False)
+    monkeypatch.setattr(lf_stub.ui, "get_active_tool", lambda: "", raising=False)
+    monkeypatch.setattr(lf_stub.ui, "get_split_view_mode", lambda: "single", raising=False)
+    monkeypatch.setattr(lf_stub.ui, "is_sequencer_visible", lambda: False, raising=False)
+    monkeypatch.setattr(lf_stub.ui, "is_panel_enabled", lambda _panel_id: False, raising=False)
+    monkeypatch.setattr(module, "histogram_mode_available", lambda _context: False)
+
+    module.reset_overlay_state()
+    module.bind_overlay_model(model)
+    module.attach_overlay_model_handle(model.handle)
+    model.handle.record_updates.clear()
+
+    module.update_overlay(SimpleNamespace())
+
+    camera_buttons = model.handle.record_updates["camera_mode_buttons"]
+    camera_group = model.handle.record_updates["camera_group_buttons"][0]
+    assert len(camera_buttons) == 3
+    assert camera_group["icon_src"] == "../icon/camera-orbit.png"
+    assert camera_group["selected"] is True
+    assert model.bound_funcs["camera_flyout_open"]() is False
+
+    model.bound_events["toolbar_action"](None, None, ["toggle_flyout", "camera"])
+    module.update_overlay(SimpleNamespace())
+
+    assert model.bound_funcs["camera_flyout_open"]() is True
+    assert "camera_flyout_open" in model.handle.dirty_calls

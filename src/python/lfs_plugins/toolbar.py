@@ -274,8 +274,48 @@ class _UtilityToolbarController:
         ("circle-dot", "centers", "toolbar.center_markers"),
     )
 
+    def __init__(self):
+        self._camera_flyout_open = False
+        self._render_flyout_open = False
+
     def reset(self):
-        pass
+        self._camera_flyout_open = False
+        self._render_flyout_open = False
+
+    def toggle_flyout(self, group_id):
+        if group_id == "camera":
+            self._camera_flyout_open = not self._camera_flyout_open
+            self._render_flyout_open = False
+        elif group_id == "render":
+            self._render_flyout_open = not self._render_flyout_open
+            self._camera_flyout_open = False
+
+    def close_flyouts(self):
+        self._camera_flyout_open = False
+        self._render_flyout_open = False
+
+    @property
+    def camera_flyout_open(self):
+        return self._camera_flyout_open
+
+    @property
+    def render_flyout_open(self):
+        return self._render_flyout_open
+
+    @staticmethod
+    def _group_button(group_id, sub_buttons, fallback_label):
+        if not sub_buttons:
+            return []
+        active = next((b for b in sub_buttons if b["selected"]), sub_buttons[0])
+        return [_button_record(
+            f"group-{group_id}",
+            "toggle_flyout",
+            group_id,
+            active["icon_src"],
+            tooltip_key=active["tooltip_key"],
+            tooltip_text=active["tooltip_text"] or fallback_label,
+            selected=active["selected"],
+        )]
 
     def snapshot(self):
         import lichtfeld as lf
@@ -420,6 +460,12 @@ class _UtilityToolbarController:
                 )
             )
 
+        camera_group_buttons = self._group_button("camera", camera_mode_buttons, "Camera Mode")
+        render_group_buttons = (
+            self._group_button("render", render_mode_buttons, "Render Mode")
+            if has_render_manager else []
+        )
+
         return {
             "camera_mode_buttons": camera_mode_buttons,
             "show_render_controls": has_render_manager,
@@ -428,6 +474,10 @@ class _UtilityToolbarController:
             "projection_buttons": projection_buttons,
             "utility_extra_buttons": utility_extra_buttons,
             "utility_bottom_buttons": utility_bottom_buttons,
+            "camera_group_buttons": camera_group_buttons,
+            "render_group_buttons": render_group_buttons,
+            "camera_flyout_open": self._camera_flyout_open,
+            "render_flyout_open": self._render_flyout_open,
         }
 
     def dispatch(self, action, value):
@@ -487,11 +537,15 @@ class _ViewportToolbarController:
         "show_gizmo_toolbar",
         "show_submode_toolbar",
         "show_pivot_toolbar",
+        "camera_flyout_open",
+        "render_flyout_open",
     )
     _RECORD_FIELDS = (
         "camera_mode_buttons",
+        "camera_group_buttons",
         "utility_primary_buttons",
         "render_mode_buttons",
+        "render_group_buttons",
         "projection_buttons",
         "utility_extra_buttons",
         "utility_bottom_buttons",
@@ -512,6 +566,8 @@ class _ViewportToolbarController:
         self._show_gizmo_toolbar = False
         self._show_submode_toolbar = False
         self._show_pivot_toolbar = False
+        self._camera_flyout_open = False
+        self._render_flyout_open = False
         self._gizmo.reset()
         self._utility.reset()
 
@@ -541,10 +597,14 @@ class _ViewportToolbarController:
         self._sync_flag("show_gizmo_toolbar", gizmo_state["show_gizmo_toolbar"])
         self._sync_flag("show_submode_toolbar", gizmo_state["show_submode_toolbar"])
         self._sync_flag("show_pivot_toolbar", gizmo_state["show_pivot_toolbar"])
+        self._sync_flag("camera_flyout_open", utility_state["camera_flyout_open"])
+        self._sync_flag("render_flyout_open", utility_state["render_flyout_open"])
 
         self._sync_records("camera_mode_buttons", utility_state["camera_mode_buttons"])
+        self._sync_records("camera_group_buttons", utility_state["camera_group_buttons"])
         self._sync_records("utility_primary_buttons", utility_state["primary_buttons"])
         self._sync_records("render_mode_buttons", utility_state["render_mode_buttons"])
+        self._sync_records("render_group_buttons", utility_state["render_group_buttons"])
         self._sync_records("projection_buttons", utility_state["projection_buttons"])
         self._sync_records("utility_extra_buttons", utility_state["utility_extra_buttons"])
         self._sync_records("utility_bottom_buttons", utility_state["utility_bottom_buttons"])
@@ -572,10 +632,14 @@ class _ViewportToolbarController:
             return
         action = str(args[0])
         value = str(args[1]) if len(args) > 1 else ""
+        if action == "toggle_flyout":
+            self._utility.toggle_flyout(value)
+            return
         if action in {"tool", "submode", "pivot"}:
             self._gizmo.dispatch(action, value)
         else:
             self._utility.dispatch(action, value)
+            self._utility.close_flyouts()
 
 
 def _ensure_controller():

@@ -6,15 +6,29 @@
     <div id="primary-toolbar-root" class="panel-toolbar-root">
         <div class="shelf-background"></div>
         <div id="primary-utility-toolbar" class="toolbar-container toolbar-vertical">
-            <div class="icon-btn"
-                 data-for="button : camera_mode_buttons"
-                 data-attr-id="button.button_id"
-                 data-class-selected="button.selected"
-                 data-attr-data-tooltip="button.tooltip_key"
-                 data-attr-title="button.tooltip_text"
-                 data-attrif-disabled="!button.enabled"
-                 data-event-click="toolbar_action(button.action, button.value)">
-                <img data-attr-src="button.icon_src" />
+            <div class="toolbar-group-container">
+                <div class="icon-btn toolbar-flyout-trigger"
+                     data-for="button : camera_group_buttons"
+                     data-class-selected="button.selected"
+                     data-attr-id="button.button_id"
+                     data-attr-data-tooltip="button.tooltip_key"
+                     data-attr-title="button.tooltip_text"
+                     data-event-click="toolbar_action(button.action, button.value)">
+                    <img data-attr-src="button.icon_src" />
+                    <span class="flyout-corner-marker"></span>
+                </div>
+                <div class="toolbar-flyout toolbar-flyout-camera hidden" data-class-hidden="!camera_flyout_open">
+                    <div class="icon-btn"
+                         data-for="button : camera_mode_buttons"
+                         data-attr-id="button.button_id"
+                         data-class-selected="button.selected"
+                         data-attr-data-tooltip="button.tooltip_key"
+                         data-attr-title="button.tooltip_text"
+                         data-attrif-disabled="!button.enabled"
+                         data-event-click="toolbar_action(button.action, button.value)">
+                        <img data-attr-src="button.icon_src" />
+                    </div>
+                </div>
             </div>
             <div class="toolbar-separator"></div>
             <div class="icon-btn"
@@ -28,15 +42,29 @@
                 <img data-attr-src="button.icon_src" />
             </div>
             <div class="toolbar-separator" data-if="show_render_controls"></div>
-            <div class="icon-btn"
-                 data-for="button : render_mode_buttons"
-                 data-attr-id="button.button_id"
-                 data-class-selected="button.selected"
-                 data-attr-data-tooltip="button.tooltip_key"
-                 data-attr-title="button.tooltip_text"
-                 data-attrif-disabled="!button.enabled"
-                 data-event-click="toolbar_action(button.action, button.value)">
-                <img data-attr-src="button.icon_src" />
+            <div class="toolbar-group-container" data-if="show_render_controls">
+                <div class="icon-btn toolbar-flyout-trigger"
+                     data-for="button : render_group_buttons"
+                     data-class-selected="button.selected"
+                     data-attr-id="button.button_id"
+                     data-attr-data-tooltip="button.tooltip_key"
+                     data-attr-title="button.tooltip_text"
+                     data-event-click="toolbar_action(button.action, button.value)">
+                    <img data-attr-src="button.icon_src" />
+                    <span class="flyout-corner-marker"></span>
+                </div>
+                <div class="toolbar-flyout toolbar-flyout-render hidden" data-class-hidden="!render_flyout_open">
+                    <div class="icon-btn"
+                         data-for="button : render_mode_buttons"
+                         data-attr-id="button.button_id"
+                         data-class-selected="button.selected"
+                         data-attr-data-tooltip="button.tooltip_key"
+                         data-attr-title="button.tooltip_text"
+                         data-attrif-disabled="!button.enabled"
+                         data-event-click="toolbar_action(button.action, button.value)">
+                        <img data-attr-src="button.icon_src" />
+                    </div>
+                </div>
             </div>
             <div class="toolbar-separator" data-if="show_render_controls"></div>
             <div class="icon-btn"
@@ -124,14 +152,29 @@
     <div id="secondary-toolbar-root" class="panel-toolbar-root hidden">
         <div class="shelf-background"></div>
         <div id="secondary-utility-toolbar" class="toolbar-container toolbar-vertical">
-            <div class="icon-btn"
-                 data-for="button : camera_mode_buttons"
-                 data-class-selected="button.selected"
-                 data-attr-data-tooltip="button.tooltip_key"
-                 data-attr-title="button.tooltip_text"
-                 data-attrif-disabled="!button.enabled"
-                 data-event-click="toolbar_action(button.action, button.value)">
-                <img data-attr-src="button.icon_src" />
+            <div class="toolbar-group-container">
+                <div class="icon-btn toolbar-flyout-trigger"
+                     data-for="button : camera_group_buttons"
+                     data-attr-id="button.button_id"
+                     data-class-selected="button.selected"
+                     data-attr-data-tooltip="button.tooltip_key"
+                     data-attr-title="button.tooltip_text"
+                     data-event-click="toolbar_action(button.action, button.value)">
+                    <img data-attr-src="button.icon_src" />
+                    <span class="flyout-corner-marker"></span>
+                </div>
+                <div class="toolbar-flyout toolbar-flyout-camera hidden" data-class-hidden="!camera_flyout_open">
+                    <div class="icon-btn"
+                         data-for="button : camera_mode_buttons"
+                         data-attr-id="button.button_id"
+                         data-class-selected="button.selected"
+                         data-attr-data-tooltip="button.tooltip_key"
+                         data-attr-title="button.tooltip_text"
+                         data-attrif-disabled="!button.enabled"
+                         data-event-click="toolbar_action(button.action, button.value)">
+                        <img data-attr-src="button.icon_src" />
+                    </div>
+                </div>
             </div>
             <div class="toolbar-separator"></div>
             <div class="icon-btn"
@@ -144,14 +187,29 @@
                 <img data-attr-src="button.icon_src" />
             </div>
             <div class="toolbar-separator" data-if="show_render_controls"></div>
-            <div class="icon-btn"
-                 data-for="button : render_mode_buttons"
-                 data-class-selected="button.selected"
-                 data-attr-data-tooltip="button.tooltip_key"
-                 data-attr-title="button.tooltip_text"
-                 data-attrif-disabled="!button.enabled"
-                 data-event-click="toolbar_action(button.action, button.value)">
-                <img data-attr-src="button.icon_src" />
+            <div class="toolbar-group-container" data-if="show_render_controls">
+                <div class="icon-btn toolbar-flyout-trigger"
+                     data-for="button : render_group_buttons"
+                     data-attr-id="button.button_id"
+                     data-class-selected="button.selected"
+                     data-attr-data-tooltip="button.tooltip_key"
+                     data-attr-title="button.tooltip_text"
+                     data-event-click="toolbar_action(button.action, button.value)">
+                    <img data-attr-src="button.icon_src" />
+                    <span class="flyout-corner-marker"></span>
+                </div>
+                <div class="toolbar-flyout toolbar-flyout-render hidden" data-class-hidden="!render_flyout_open">
+                    <div class="icon-btn"
+                         data-for="button : render_mode_buttons"
+                         data-attr-id="button.button_id"
+                         data-class-selected="button.selected"
+                         data-attr-data-tooltip="button.tooltip_key"
+                         data-attr-title="button.tooltip_text"
+                         data-attrif-disabled="!button.enabled"
+                         data-event-click="toolbar_action(button.action, button.value)">
+                        <img data-attr-src="button.icon_src" />
+                    </div>
+                </div>
             </div>
             <div class="toolbar-separator" data-if="show_render_controls"></div>
             <div class="icon-btn"

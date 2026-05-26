@@ -26,8 +26,8 @@ body {
 
 #brand-logo {
     flex: none;
-    margin-left: 12dp;
-    margin-right: 16dp;
+    margin-left: 16dp;
+    margin-right: 12dp;
     height: 18dp;
     decorator: none;
 }

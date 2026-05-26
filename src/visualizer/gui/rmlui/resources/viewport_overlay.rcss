@@ -54,6 +54,7 @@ body {
 }
 
 .toolbar-vertical .icon-btn {
+    position: relative;
     padding: 6dp;
     border-radius: 6dp;
 }
@@ -61,6 +62,72 @@ body {
 .toolbar-vertical .icon-btn.selected {
     padding: 5dp;
     border-width: 1dp;
+}
+
+.toolbar-group-container {
+    position: relative;
+    width: 100%;
+    height: 32dp;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.toolbar-flyout {
+    position: absolute;
+    left: 100%;
+    top: 0;
+    display: flex;
+    flex-direction: row;
+    padding: 0;
+    min-width: 40dp;
+    min-height: 32dp;
+    border-radius: 6dp;
+    border-width: 1dp;
+    pointer-events: auto;
+    z-index: 10;
+}
+
+.toolbar-flyout-camera {
+    width: 96dp;
+}
+
+.toolbar-flyout-render {
+    width: 128dp;
+}
+
+.toolbar-flyout.hidden {
+    display: none;
+}
+
+.toolbar-flyout .icon-btn {
+    flex: 0 0 auto;
+    padding: 6dp;
+    border-width: 0;
+}
+
+.toolbar-flyout .icon-btn.selected {
+    padding: 6dp;
+    border-width: 0;
+}
+
+.toolbar-flyout .icon-btn img {
+    width: 20dp;
+    height: 20dp;
+}
+
+.flyout-corner-marker {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 0;
+    height: 0;
+    padding: 0;
+    border-left-width: 9dp;
+    border-left-color: rgba(0, 0, 0, 0);
+    border-bottom-width: 9dp;
+    pointer-events: none;
 }
 
 .toolbar-hcenter {

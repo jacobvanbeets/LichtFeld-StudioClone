@@ -13,15 +13,24 @@ import pytest
 class _DataModelHandleStub:
     def __init__(self):
         self.dirty_all_calls = 0
+        self.dirty_calls = []
+        self.record_updates = {}
 
     def dirty_all(self):
         self.dirty_all_calls += 1
+
+    def dirty(self, name):
+        self.dirty_calls.append(name)
+
+    def update_record_list(self, name, records):
+        self.record_updates[name] = records
 
 
 class _DataModelStub:
     def __init__(self):
         self.bound_funcs = {}
         self.bound_events = {}
+        self.bound_record_lists = []
         self.handle = _DataModelHandleStub()
 
     def bind_func(self, name, getter):
@@ -29,6 +38,9 @@ class _DataModelStub:
 
     def bind_event(self, name, callback):
         self.bound_events[name] = callback
+
+    def bind_record_list(self, name):
+        self.bound_record_lists.append(name)
 
     def get_handle(self):
         return self.handle
@@ -86,6 +98,8 @@ def _install_stub_modules(monkeypatch):
             (panel, section, callback)
         ),
         rml=SimpleNamespace(get_document=lambda _name: document),
+        context=lambda: SimpleNamespace(),
+        get_active_tool=lambda: "",
         UILayout=SimpleNamespace(WindowFlags=SimpleNamespace(
             NoTitleBar=1,
             NoResize=2,
@@ -185,7 +199,7 @@ def test_document_sync_binds_model_and_updates_actions(overlays_module):
     module._sync_viewport_overlay_document(document)
 
     assert document.created_models == ["viewport_overlay_status"]
-    assert document.model.handle.dirty_all_calls == 2
+    assert document.model.handle.dirty_all_calls == 3
     assert document.body.get_attribute("data-viewport-overlay-status-bound", "") == "1"
     assert document.model.bound_funcs["show_import_overlay"]() is True
     assert document.model.bound_funcs["show_import_backdrop"]() is True

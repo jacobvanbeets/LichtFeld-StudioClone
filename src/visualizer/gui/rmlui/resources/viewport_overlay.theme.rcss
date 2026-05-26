@@ -19,6 +19,19 @@
     border-radius: @{num(size.window_rounding)}dp;
 }
 
+.toolbar-flyout {
+    background-color: @{toolbar.background};
+    border-color: @{overlay.border};
+}
+
+.flyout-corner-marker {
+    border-bottom-color: @{viewport.icon_dim};
+}
+
+.icon-btn.selected .flyout-corner-marker {
+    border-bottom-color: @{background};
+}
+
 .toolbar-separator {
     background-color: @{alpha(border,0.39)};
 }
