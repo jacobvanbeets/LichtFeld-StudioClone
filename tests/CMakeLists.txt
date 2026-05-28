@@ -119,6 +119,7 @@ set(TEST_FILES
     test_tensor_basic.cpp
     test_tensor_ops.cpp
     test_tensor_memory.cpp
+    test_allocator_policy.cpp
     test_tensor_reduction.cpp
     test_tensor_reduction_alignment.cpp
     test_isolation.cpp

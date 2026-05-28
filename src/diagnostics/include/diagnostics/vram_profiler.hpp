@@ -108,6 +108,10 @@ namespace lfs::diagnostics {
         // still counted in cuda_pool_used but not in the allocator's live map. Lets
         // the HUD split cuda.pool.untracked_used into reclaimable cache vs the rest.
         std::size_t cuda_pool_bucket_cache_bytes = 0;
+        // Device memory committed by the small-allocation slab allocator. Live
+        // blocks are tracked individually; the reserve gap is free space inside
+        // committed slabs that still belongs to this process.
+        std::size_t cuda_slab_reserved_bytes = 0;
         std::size_t cuda_context_baseline = 0;
         std::size_t cuda_warmup_bytes = 0;
         std::size_t cuda_phase_primary_context = 0;
@@ -152,6 +156,13 @@ namespace lfs::diagnostics {
         double iter_ms_last = 0.0;
         std::size_t accounted_live_bytes = 0;
         std::size_t accounted_cuda_pool_live_bytes = 0;
+        std::size_t accounted_slab_live_bytes = 0;
+        std::size_t accounted_bucketed_live_bytes = 0;
+        std::size_t accounted_async_live_bytes = 0;
+        std::size_t accounted_direct_live_bytes = 0;
+        std::size_t accounted_arena_live_bytes = 0;
+        std::size_t accounted_external_live_bytes = 0;
+        std::size_t accounted_unknown_live_bytes = 0;
         std::size_t accounted_peak_bytes = 0;
         std::size_t sampled_live_bytes = 0;
         std::vector<std::size_t> accounted_live_history;
@@ -283,6 +294,7 @@ namespace lfs::diagnostics {
         void setVulkanVmaUsed(std::size_t bytes);
         void setVulkanVmaBlockBytes(std::size_t bytes);
         void setCudaPoolBucketCacheBytes(std::size_t bytes);
+        void setCudaSlabReservedBytes(std::size_t bytes);
         void setExportableSplatBytes(std::size_t bytes);
         void captureCudaContextBaseline();
         void captureCudaDeviceBaseline();

@@ -21,7 +21,10 @@
 #include <format>
 #include <limits>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace lfs::vis::gui {
 
@@ -48,9 +51,9 @@ namespace lfs::vis::gui {
             {"pinned_host", "Pinned host"},
             {"vulkan_budget", "Vulkan budget (raw)"},
             {"vulkan_blocks", "Vulkan VMA blocks"},
-            {"sampled", "Sampled subtotal"},
+            {"sampled", "Sampled subtotal (raw)"},
             {"allocator_live", "Allocator live"},
-            {"process_gap", "Unsampled gap"},
+            {"process_gap", "Raw sampled gap"},
             {"allocator_peak", "Allocator peak"},
             {"events", "Events"},
             {"iter_events", "Events (iter)"},
@@ -207,6 +210,299 @@ namespace lfs::vis::gui {
                 ++segments;
             }
             return std::string(scope);
+        }
+
+        [[nodiscard]] std::string topSegment(std::string_view scope) {
+            const auto end = scope.find_first_of("/.");
+            return std::string(end == std::string_view::npos ? scope : scope.substr(0, end));
+        }
+
+        [[nodiscard]] std::string firstDotSegments(std::string_view scope, const std::size_t count) {
+            std::size_t pos = 0;
+            for (std::size_t i = 0; i < count; ++i) {
+                pos = scope.find('.', pos);
+                if (pos == std::string_view::npos)
+                    return std::string(scope);
+                ++pos;
+            }
+            return std::string(scope.substr(0, pos - 1));
+        }
+
+        [[nodiscard]] bool isFastGsLogicalRow(const lfs::diagnostics::VramMetricSnapshot& row) {
+            return row.scope.rfind("rasterizer.fastgs", 0) == 0;
+        }
+
+        [[nodiscard]] std::string breakdownLabel(const lfs::diagnostics::VramMetricSnapshot& row) {
+            const std::string_view scope = row.scope;
+            const std::string_view label = row.label;
+            if (label.rfind("rasterizer.arena.", 0) == 0) {
+                return "rasterizer.arena";
+            }
+            if (scope.rfind("io.", 0) == 0) {
+                const auto io_group = firstDotSegments(scope, 2);
+                if (io_group == "io.pipeline" && !row.label.empty()) {
+                    return io_group + "." + row.label;
+                }
+                return io_group;
+            }
+            if (scope.rfind("vulkan.", 0) == 0) {
+                return firstDotSegments(scope, 3);
+            }
+            if (scope.rfind("train.", 0) == 0 || scope.find("/train.") != std::string_view::npos) {
+                return firstScopeSegments(lastTrainScopeComponent(scope), 2);
+            }
+            return topSegment(scope);
+        }
+
+        struct VramBreakdownEntry {
+            std::string label;
+            std::size_t bytes = 0;
+            bool unaccounted = false;
+            bool total = false;
+        };
+
+        struct VramBreakdownAudit {
+            std::size_t process_used = 0;
+            std::size_t raw_sampled_subtotal = 0;
+            std::size_t overview_named_rows = 0;
+            std::size_t fastgs_logical_not_totaled = 0;
+            std::size_t named_slab_rows = 0;
+            std::size_t named_bucketed_rows = 0;
+            std::size_t named_async_rows = 0;
+            std::size_t named_direct_rows = 0;
+            std::size_t named_arena_rows = 0;
+            std::size_t named_external_rows = 0;
+            std::size_t named_unknown_rows = 0;
+            std::size_t cuda_pool_used = 0;
+            std::size_t cuda_pool_reserved = 0;
+            std::size_t cuda_pool_accounted_live = 0;
+            std::size_t cuda_slab_reserved = 0;
+            std::size_t cuda_slab_reserve_gap = 0;
+            std::size_t accounted_slab_live = 0;
+            std::size_t accounted_bucketed_live = 0;
+            std::size_t accounted_async_live = 0;
+            std::size_t accounted_direct_live = 0;
+            std::size_t accounted_arena_live = 0;
+            std::size_t accounted_external_live = 0;
+            std::size_t accounted_unknown_live = 0;
+            std::size_t cuda_pool_bucket_cache = 0;
+            std::size_t cuda_pool_untracked_used = 0;
+            std::size_t cuda_pool_overhead = 0;
+            std::size_t cuda_context_baseline = 0;
+            std::size_t cuda_context_phases = 0;
+            std::size_t cuda_context_residual = 0;
+            std::size_t vulkan_vma_blocks = 0;
+            std::size_t vulkan_named_rows = 0;
+            std::size_t vulkan_residual = 0;
+            std::size_t breakdown_totaled = 0;
+            std::size_t process_unresolved = 0;
+        };
+
+        struct VramBreakdownModel {
+            std::vector<VramBreakdownEntry> entries;
+            std::size_t denom = 0;
+            VramBreakdownAudit audit;
+        };
+
+        [[nodiscard]] VramBreakdownModel buildBreakdownModel(
+            const lfs::diagnostics::VramProfilerSnapshot& snapshot,
+            std::size_t process_used) {
+            VramBreakdownModel model;
+            model.audit.process_used = process_used;
+            model.audit.raw_sampled_subtotal = snapshot.sampled_live_bytes;
+            model.audit.cuda_pool_used =
+                snapshot.process.cuda_pool_valid ? snapshot.process.cuda_pool_used : 0;
+            model.audit.cuda_pool_reserved =
+                snapshot.process.cuda_pool_valid ? snapshot.process.cuda_pool_reserved : 0;
+            model.audit.cuda_pool_accounted_live = snapshot.accounted_cuda_pool_live_bytes;
+            model.audit.cuda_slab_reserved = snapshot.process.cuda_slab_reserved_bytes;
+            model.audit.accounted_slab_live = snapshot.accounted_slab_live_bytes;
+            model.audit.accounted_bucketed_live = snapshot.accounted_bucketed_live_bytes;
+            model.audit.accounted_async_live = snapshot.accounted_async_live_bytes;
+            model.audit.accounted_direct_live = snapshot.accounted_direct_live_bytes;
+            model.audit.accounted_arena_live = snapshot.accounted_arena_live_bytes;
+            model.audit.accounted_external_live = snapshot.accounted_external_live_bytes;
+            model.audit.accounted_unknown_live = snapshot.accounted_unknown_live_bytes;
+            model.audit.cuda_context_baseline = snapshot.process.cuda_context_baseline;
+            model.audit.vulkan_vma_blocks = snapshot.process.vulkan_vma_block_bytes;
+
+            const auto add_named_method = [&](const lfs::diagnostics::VramAllocationMethod method,
+                                              const std::size_t bytes) {
+                switch (method) {
+                case lfs::diagnostics::VramAllocationMethod::Slab:
+                    model.audit.named_slab_rows += bytes;
+                    break;
+                case lfs::diagnostics::VramAllocationMethod::Bucketed:
+                    model.audit.named_bucketed_rows += bytes;
+                    break;
+                case lfs::diagnostics::VramAllocationMethod::Async:
+                    model.audit.named_async_rows += bytes;
+                    break;
+                case lfs::diagnostics::VramAllocationMethod::Direct:
+                    model.audit.named_direct_rows += bytes;
+                    break;
+                case lfs::diagnostics::VramAllocationMethod::Arena:
+                    model.audit.named_arena_rows += bytes;
+                    break;
+                case lfs::diagnostics::VramAllocationMethod::External:
+                    model.audit.named_external_rows += bytes;
+                    break;
+                case lfs::diagnostics::VramAllocationMethod::Unknown:
+                default:
+                    model.audit.named_unknown_rows += bytes;
+                    break;
+                }
+            };
+
+            std::unordered_map<std::string, std::size_t> groups;
+            for (const auto& row : snapshot.rows) {
+                if (row.live_bytes == 0)
+                    continue;
+                if (isFastGsLogicalRow(row)) {
+                    model.audit.fastgs_logical_not_totaled += row.live_bytes;
+                    continue;
+                }
+                const std::string label = breakdownLabel(row);
+                groups[label] += row.live_bytes;
+                model.audit.overview_named_rows += row.live_bytes;
+                add_named_method(row.method, row.live_bytes);
+            }
+
+            model.entries.reserve(groups.size() + 16);
+            std::size_t tracked_total = 0;
+            for (auto& [label, bytes] : groups) {
+                tracked_total += bytes;
+                model.entries.push_back({label, bytes, false});
+            }
+
+            const auto synthetic_budget = [&]() -> std::size_t {
+                if (process_used == 0) {
+                    return std::numeric_limits<std::size_t>::max();
+                }
+                return process_used > tracked_total ? process_used - tracked_total : 0;
+            };
+            const auto add_synthetic_row =
+                [&](std::string label, const std::size_t bytes, const bool unaccounted = false) -> std::size_t {
+                const std::size_t capped = std::min(bytes, synthetic_budget());
+                if (capped == 0) {
+                    return 0;
+                }
+                tracked_total += capped;
+                model.entries.push_back({std::move(label), capped, unaccounted});
+                return capped;
+            };
+
+            const auto& proc = snapshot.process;
+            if (proc.cuda_slab_reserved_bytes > snapshot.accounted_slab_live_bytes) {
+                const std::size_t slab_gap =
+                    proc.cuda_slab_reserved_bytes - snapshot.accounted_slab_live_bytes;
+                model.audit.cuda_slab_reserve_gap = slab_gap;
+                add_synthetic_row("cuda.slab.reserve_gap", slab_gap);
+            }
+
+            if (proc.cuda_pool_valid && proc.cuda_pool_reserved > proc.cuda_pool_used) {
+                const std::size_t pool_overhead = proc.cuda_pool_reserved - proc.cuda_pool_used;
+                model.audit.cuda_pool_overhead = pool_overhead;
+                add_synthetic_row("cuda.pool.overhead", pool_overhead);
+            }
+
+            std::size_t pool_untracked = 0;
+            if (proc.cuda_pool_valid &&
+                proc.cuda_pool_used > snapshot.accounted_cuda_pool_live_bytes) {
+                pool_untracked = proc.cuda_pool_used - snapshot.accounted_cuda_pool_live_bytes;
+            }
+
+            const auto add_phase = [&](const char* label, std::size_t bytes) {
+                if (bytes == 0)
+                    return;
+                model.audit.cuda_context_phases += bytes;
+                const std::size_t capped = std::min(bytes, synthetic_budget());
+                if (capped == 0) {
+                    return;
+                }
+                tracked_total += capped;
+                model.entries.push_back({label, capped, false});
+            };
+            add_phase("cuda.primary_context", proc.cuda_phase_primary_context);
+            add_phase("cuda.default_pool", proc.cuda_phase_default_pool);
+            add_phase("cuda.curand_load", proc.cuda_phase_curand_load);
+
+            if (proc.cuda_context_baseline > model.audit.cuda_context_phases) {
+                const std::size_t residual =
+                    proc.cuda_context_baseline - model.audit.cuda_context_phases;
+                model.audit.cuda_context_residual = residual;
+                add_synthetic_row("cuda.context.residual", residual);
+            }
+            if (proc.cuda_warmup_bytes > 0) {
+                add_synthetic_row("cuda.modules", proc.cuda_warmup_bytes);
+            }
+            if (proc.vulkan_vma_block_bytes > 0) {
+                const auto vksplat_it = groups.find("vksplat");
+                const std::size_t vksplat_labeled =
+                    vksplat_it != groups.end() ? vksplat_it->second : 0;
+                std::size_t vulkan_labeled = 0;
+                for (const auto& [label, bytes] : groups) {
+                    if (label.rfind("vulkan.", 0) == 0) {
+                        vulkan_labeled += bytes;
+                    }
+                }
+                model.audit.vulkan_named_rows = vksplat_labeled + vulkan_labeled;
+                const std::size_t vulkan_residual =
+                    proc.vulkan_vma_block_bytes > model.audit.vulkan_named_rows
+                        ? proc.vulkan_vma_block_bytes - model.audit.vulkan_named_rows
+                        : 0;
+                if (vulkan_residual > 0) {
+                    model.audit.vulkan_residual = vulkan_residual;
+                    add_synthetic_row("vulkan.residual", vulkan_residual, true);
+                }
+            }
+
+            if (pool_untracked > 0) {
+                const std::size_t bucket_cache =
+                    std::min(proc.cuda_pool_bucket_cache_bytes, pool_untracked);
+                if (bucket_cache > 0) {
+                    model.audit.cuda_pool_bucket_cache = bucket_cache;
+                    add_synthetic_row("cuda.pool.bucket_cache", bucket_cache);
+                }
+                const std::size_t pool_remainder = pool_untracked - bucket_cache;
+                if (pool_remainder > 0) {
+                    model.audit.cuda_pool_untracked_used = pool_remainder;
+                    add_synthetic_row("cuda.pool.untracked_used", pool_remainder);
+                }
+            }
+
+            std::size_t unattributed_balance = 0;
+            if (process_used > tracked_total) {
+                unattributed_balance = process_used - tracked_total;
+                model.audit.process_unresolved = unattributed_balance;
+                tracked_total += unattributed_balance;
+            }
+
+            std::sort(model.entries.begin(), model.entries.end(),
+                      [](const VramBreakdownEntry& a, const VramBreakdownEntry& b) {
+                          return a.bytes > b.bytes;
+                      });
+
+            if (unattributed_balance > 0) {
+                model.entries.push_back({"not attributed by profiler", unattributed_balance, true, false});
+            }
+
+            std::size_t row_sum = tracked_total;
+            if (process_used > 0) {
+                const std::size_t unaccounted =
+                    process_used > tracked_total ? process_used - tracked_total : 0;
+                if (unaccounted > 0) {
+                    model.entries.push_back({"(unaccounted)", unaccounted, true, false});
+                    row_sum += unaccounted;
+                }
+            }
+
+            model.audit.breakdown_totaled = row_sum;
+            model.entries.push_back({"\xE2\x80\x94 Sum", row_sum, false, true});
+            if (process_used > 0)
+                model.entries.push_back({"\xE2\x80\x94 Process VRAM", process_used, false, true});
+            model.denom = process_used > 0 ? process_used : tracked_total;
+            return model;
         }
 
         [[nodiscard]] Rml::Vector2f contextSize(Rml::ElementDocument* document) {
@@ -764,202 +1060,9 @@ namespace lfs::vis::gui {
         if (!breakdown_root_)
             return;
 
-        const auto top_segment = [](std::string_view scope) -> std::string {
-            const auto end = scope.find_first_of("/.");
-            return std::string(end == std::string_view::npos ? scope : scope.substr(0, end));
-        };
-        const auto first_dot_segments = [](std::string_view scope, const std::size_t count) -> std::string {
-            std::size_t pos = 0;
-            for (std::size_t i = 0; i < count; ++i) {
-                pos = scope.find('.', pos);
-                if (pos == std::string_view::npos)
-                    return std::string(scope);
-                ++pos;
-            }
-            return std::string(scope.substr(0, pos - 1));
-        };
-        const auto breakdown_label = [&](const auto& row) -> std::string {
-            const std::string_view scope = row.scope;
-            if (scope.rfind("io.", 0) == 0) {
-                const auto io_group = first_dot_segments(scope, 2);
-                if (io_group == "io.pipeline" && !row.label.empty()) {
-                    return io_group + "." + row.label;
-                }
-                return io_group;
-            }
-            if (scope.rfind("vulkan.", 0) == 0) {
-                return first_dot_segments(scope, 3);
-            }
-            if (scope.rfind("train.", 0) == 0 || scope.find("/train.") != std::string_view::npos) {
-                return firstScopeSegments(lastTrainScopeComponent(scope), 2);
-            }
-            return top_segment(scope);
-        };
-
-        std::unordered_map<std::string, std::size_t> groups;
-        for (const auto& r : state_.snapshot.rows) {
-            if (r.live_bytes == 0)
-                continue;
-            groups[breakdown_label(r)] += r.live_bytes;
-        }
-
-        struct Entry {
-            std::string label;
-            std::size_t bytes;
-            bool unaccounted;
-            bool total = false;
-        };
-        std::vector<Entry> entries;
-        entries.reserve(groups.size() + 12);
-        std::size_t tracked_total = 0;
-        for (auto& [k, v] : groups) {
-            tracked_total += v;
-            entries.push_back({k, v, false});
-        }
-
-        // Synthetic entries come from process-wide APIs. They are useful for
-        // explaining the remaining gap, but can overlap with current-sample rows
-        // above, so never let them push the breakdown beyond the measured process
-        // total.
-        const auto synthetic_budget = [&]() -> std::size_t {
-            if (process_used == 0) {
-                return std::numeric_limits<std::size_t>::max();
-            }
-            return process_used > tracked_total ? process_used - tracked_total : 0;
-        };
-        const auto add_synthetic_row =
-            [&](std::string label, const std::size_t bytes, const bool unaccounted = false) {
-                const std::size_t capped = std::min(bytes, synthetic_budget());
-                if (capped == 0) {
-                    return;
-                }
-                tracked_total += capped;
-                entries.push_back({std::move(label), capped, unaccounted});
-            };
-        // Synthetic entries: bytes we know about from system queries but that are
-        // not already covered by allocator scope rows.
-        const auto& proc = state_.snapshot.process;
-        if (proc.cuda_pool_valid && proc.cuda_pool_reserved > proc.cuda_pool_used) {
-            const std::size_t pool_overhead = proc.cuda_pool_reserved - proc.cuda_pool_used;
-            add_synthetic_row("cuda.pool.overhead", pool_overhead);
-        }
-        std::size_t pool_untracked = 0;
-        if (proc.cuda_pool_valid &&
-            proc.cuda_pool_used > state_.snapshot.accounted_cuda_pool_live_bytes) {
-            // CUDA's default pool has bytes actively checked out that our tensor
-            // allocation map does not own. This can come from CUDA/nvImageCodec/CUB
-            // internals using cudaMallocAsync, so keep it separate from opaque
-            // process.residual. It may overlap with current-sample rows, so add it
-            // only after the more specific synthetic rows have consumed their budget.
-            pool_untracked =
-                proc.cuda_pool_used - state_.snapshot.accounted_cuda_pool_live_bytes;
-        }
-        // Per-phase CUDA decomposition. ONLY actually-measured allocation deltas go in
-        // the running sum. The cudaDeviceGetLimit values (stack/printf/malloc_heap) are
-        // driver *limits* — bytes the driver may use up to, already included inside
-        // primary_context — so summing them would double-count.
-        std::size_t phase_total = 0;
-        const auto add_phase = [&](const char* label, std::size_t bytes) {
-            if (bytes == 0)
-                return;
-            const std::size_t capped = std::min(bytes, synthetic_budget());
-            if (capped == 0) {
-                return;
-            }
-            phase_total += capped;
-            tracked_total += capped;
-            entries.push_back({label, capped, false});
-        };
-        add_phase("cuda.primary_context", proc.cuda_phase_primary_context);
-        add_phase("cuda.default_pool", proc.cuda_phase_default_pool);
-        add_phase("cuda.curand_load", proc.cuda_phase_curand_load);
-
-        // Residual = (total context_baseline) − (sum of measured phases). Anything the
-        // driver allocates that no probe surfaces lands here, so the picture closes.
-        if (proc.cuda_context_baseline > phase_total) {
-            const std::size_t residual = proc.cuda_context_baseline - phase_total;
-            add_synthetic_row("cuda.context.residual", residual);
-        }
-        if (proc.cuda_warmup_bytes > 0) {
-            // Device-memory delta the kernel warmup committed (cubin upload). Named
-            // cuda.modules so it sits next to cuda.runtime — if this stays small,
-            // module code is not what fills the runtime residual.
-            add_synthetic_row("cuda.modules", proc.cuda_warmup_bytes);
-        }
-        if (proc.vulkan_vma_block_bytes > 0) {
-            // Residual against the memory VMA actually owns (blockBytes), NOT the
-            // VK_EXT_memory_budget figure: that one reports the whole process heap
-            // (CUDA, imported blocks, driver) and would attribute ~1 GiB of non-Vulkan
-            // memory here. Subtract the Vulkan rows we have named; what is left is
-            // genuinely unnamed Vulkan (VMA block reserve, swap-chain, etc.). The
-            // larger process gap belongs to process.residual below, not Vulkan.
-            const auto vksplat_it = groups.find("vksplat");
-            const std::size_t vksplat_labeled =
-                vksplat_it != groups.end() ? vksplat_it->second : 0;
-            std::size_t vulkan_labeled = 0;
-            for (const auto& [label, bytes] : groups) {
-                if (label.rfind("vulkan.", 0) == 0) {
-                    vulkan_labeled += bytes;
-                }
-            }
-            const std::size_t deductions = vksplat_labeled + vulkan_labeled;
-            const std::size_t vulkan_residual =
-                proc.vulkan_vma_block_bytes > deductions ? proc.vulkan_vma_block_bytes - deductions : 0;
-            if (vulkan_residual > 0) {
-                add_synthetic_row("vulkan.residual", vulkan_residual, true);
-            }
-        }
-
-        if (pool_untracked > 0) {
-            // Split the pool memory the allocator's live map doesn't cover. The
-            // size-bucketed reuse cache (freed-but-retained buffers) is the large
-            // reclaimable part and is measured directly; whatever remains is bucket
-            // rounding plus genuine third-party (thrust/CUB) pool use.
-            const std::size_t bucket_cache =
-                std::min(proc.cuda_pool_bucket_cache_bytes, pool_untracked);
-            if (bucket_cache > 0) {
-                add_synthetic_row("cuda.pool.bucket_cache", bucket_cache);
-            }
-            const std::size_t pool_remainder = pool_untracked - bucket_cache;
-            if (pool_remainder > 0) {
-                add_synthetic_row("cuda.pool.untracked_used", pool_remainder);
-            }
-        }
-
-        const bool cuda_runtime_active =
-            proc.cuda_context_baseline > 0 || proc.cuda_pool_valid || proc.cuda_warmup_bytes > 0;
-        if (cuda_runtime_active && process_used > tracked_total) {
-            // Per-PID memory left after positively tracking every other source:
-            // tensors, the whole CUDA pool (live + cache + overhead + waste), and
-            // Vulkan (VMA + external buffers + swap-chain). What remains is the CUDA
-            // driver's own runtime: per-stream/launch scratch, async-pool metadata,
-            // graph buffers, plus lazily-loaded module cubins. No API attributes it
-            // further, but it is now a named floor rather than an opaque residual.
-            const std::size_t residual = process_used - tracked_total;
-            add_synthetic_row("cuda.runtime", residual, true);
-        }
-
-        std::sort(entries.begin(), entries.end(),
-                  [](const Entry& a, const Entry& b) { return a.bytes > b.bytes; });
-
-        std::size_t row_sum = tracked_total;
-        if (process_used > 0) {
-            const std::size_t unacc =
-                process_used > tracked_total ? process_used - tracked_total : 0;
-            if (unacc > 0) {
-                entries.push_back({"(unaccounted)", unacc, true, false});
-                row_sum += unacc;
-            }
-        }
-
-        // Bottom-of-list totals so the user can eyeball that the breakdown closes.
-        // Sum is everything above (tracked groups + synthetic + any unaccounted fallback).
-        // Process is what NVML / DXGI reports for this PID. They should match.
-        entries.push_back({"\xE2\x80\x94 Sum", row_sum, false, true});
-        if (process_used > 0)
-            entries.push_back({"\xE2\x80\x94 Process VRAM", process_used, false, true});
-
-        const std::size_t denom = process_used > 0 ? process_used : tracked_total;
+        const VramBreakdownModel model = buildBreakdownModel(state_.snapshot, process_used);
+        const auto& entries = model.entries;
+        const std::size_t denom = model.denom;
 
         while (breakdown_rows_.size() > entries.size()) {
             breakdown_root_->RemoveChild(breakdown_rows_.back().row);
@@ -1006,7 +1109,7 @@ namespace lfs::vis::gui {
             std::string value;
         };
         std::vector<Entry> entries;
-        entries.reserve(state_.snapshot.iter_counters.size() + state_.snapshot.gauges.size());
+        entries.reserve(state_.snapshot.iter_counters.size() + state_.snapshot.gauges.size() + 20);
 
         for (const auto& c : state_.snapshot.iter_counters) {
             if (c.value == 0)
@@ -1022,6 +1125,58 @@ namespace lfs::vis::gui {
                 vs = std::format("{:.3f}", v);
             }
             entries.push_back({g.key, std::move(vs)});
+        }
+
+        const std::size_t process_used = bestProcessUsed(state_.snapshot);
+        if (process_used > 0 || state_.snapshot.sampled_live_bytes > 0 || !state_.snapshot.rows.empty()) {
+            const VramBreakdownModel model = buildBreakdownModel(state_.snapshot, process_used);
+            const auto& audit = model.audit;
+            const auto add_audit = [&](std::string label, const std::size_t bytes, const bool always = false) {
+                if (!always && bytes == 0) {
+                    return;
+                }
+                entries.push_back({std::move(label), formatBytes(bytes)});
+            };
+
+            add_audit("vram.audit.process_used", audit.process_used, true);
+            add_audit("vram.audit.sampled_subtotal_raw", audit.raw_sampled_subtotal, true);
+            add_audit("vram.audit.sampled_gap_raw",
+                      audit.process_used > audit.raw_sampled_subtotal
+                          ? audit.process_used - audit.raw_sampled_subtotal
+                          : 0,
+                      true);
+            add_audit("vram.audit.overview_named_rows", audit.overview_named_rows, true);
+            add_audit("vram.audit.named.direct_rows", audit.named_direct_rows);
+            add_audit("vram.audit.named.async_rows", audit.named_async_rows);
+            add_audit("vram.audit.named.slab_rows", audit.named_slab_rows);
+            add_audit("vram.audit.named.bucketed_rows", audit.named_bucketed_rows);
+            add_audit("vram.audit.named.arena_rows", audit.named_arena_rows);
+            add_audit("vram.audit.named.external_rows", audit.named_external_rows);
+            add_audit("vram.audit.named.unknown_rows", audit.named_unknown_rows);
+            add_audit("vram.audit.fastgs_logical_not_totaled", audit.fastgs_logical_not_totaled);
+            add_audit("vram.audit.cuda_pool_used", audit.cuda_pool_used);
+            add_audit("vram.audit.cuda_pool_reserved", audit.cuda_pool_reserved);
+            add_audit("vram.audit.cuda_pool_accounted_live", audit.cuda_pool_accounted_live);
+            add_audit("vram.audit.cuda_slab_reserved", audit.cuda_slab_reserved);
+            add_audit("vram.audit.cuda_slab_reserve_gap", audit.cuda_slab_reserve_gap);
+            add_audit("vram.audit.accounted.slab_live", audit.accounted_slab_live);
+            add_audit("vram.audit.accounted.bucketed_live", audit.accounted_bucketed_live);
+            add_audit("vram.audit.accounted.async_live", audit.accounted_async_live);
+            add_audit("vram.audit.accounted.direct_live", audit.accounted_direct_live);
+            add_audit("vram.audit.accounted.arena_live", audit.accounted_arena_live);
+            add_audit("vram.audit.accounted.external_live", audit.accounted_external_live);
+            add_audit("vram.audit.accounted.unknown_live", audit.accounted_unknown_live);
+            add_audit("vram.audit.cuda_pool_bucket_cache", audit.cuda_pool_bucket_cache);
+            add_audit("vram.audit.cuda_pool_untracked_used", audit.cuda_pool_untracked_used);
+            add_audit("vram.audit.cuda_pool_overhead", audit.cuda_pool_overhead);
+            add_audit("vram.audit.cuda_context_baseline", audit.cuda_context_baseline);
+            add_audit("vram.audit.cuda_context_phases", audit.cuda_context_phases);
+            add_audit("vram.audit.cuda_context_residual", audit.cuda_context_residual);
+            add_audit("vram.audit.vulkan_vma_blocks", audit.vulkan_vma_blocks);
+            add_audit("vram.audit.vulkan_named_rows", audit.vulkan_named_rows);
+            add_audit("vram.audit.vulkan_residual", audit.vulkan_residual);
+            add_audit("vram.audit.breakdown_totaled", audit.breakdown_totaled, true);
+            add_audit("vram.audit.process_unresolved", audit.process_unresolved, true);
         }
 
         if (counters_empty_)

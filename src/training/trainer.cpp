@@ -521,17 +521,23 @@ namespace lfs::training {
         void record_vram_current(std::string_view scope,
                                  std::string_view label,
                                  const size_t bytes,
-                                 const bool publish_zero = false) {
+                                 const bool publish_zero = false,
+                                 const lfs::diagnostics::VramAllocationMethod method =
+                                     lfs::diagnostics::VramAllocationMethod::External) {
             if (bytes == 0 && !publish_zero) {
                 return;
             }
-            lfs::diagnostics::VramProfiler::instance().recordCurrentBytes(scope, label, bytes);
+            lfs::diagnostics::VramProfiler::instance().recordCurrentBytes(scope, label, bytes, method);
         }
 
         void record_vram_tensor(std::string_view scope,
                                 std::string_view label,
                                 const lfs::core::Tensor& tensor) {
-            record_vram_current(scope, label, tensor_reserved_bytes(tensor));
+            const auto method =
+                tensor.device() == lfs::core::Device::CUDA && !tensor.is_external_storage()
+                    ? lfs::diagnostics::VramAllocationMethod::Direct
+                    : lfs::diagnostics::VramAllocationMethod::External;
+            record_vram_current(scope, label, tensor_reserved_bytes(tensor), false, method);
         }
 
         void record_vram_entries(std::string_view scope,
@@ -600,14 +606,25 @@ namespace lfs::training {
             record_vram_current(scope, "forward.per_primitive_buffers", ctx.forward_ctx.per_primitive_buffers_size);
             record_vram_current(scope, "forward.per_tile_buffers", ctx.forward_ctx.per_tile_buffers_size);
             record_vram_current(scope, "forward.sorted_indices_live", ctx.forward_ctx.sorted_primitive_indices_size);
-            record_vram_current(scope, "forward.sort_scratch_transient", ctx.forward_ctx.per_instance_sort_scratch_size);
-            record_vram_current(scope, "forward.sort_total_transient", ctx.forward_ctx.per_instance_sort_total_size);
+            // Sort scratch is released after forward, and sort_total includes sorted_indices_live.
+            // Clear these legacy live rows so the HUD does not count transient/duplicate bytes
+            // as retained process VRAM.
+            record_vram_current(scope, "forward.sort_scratch_transient", 0, true);
+            record_vram_current(scope, "forward.sort_total_transient", 0, true);
             record_vram_current(scope, "backward.grad_mean2d_helper", num_primitives * 2 * sizeof(float));
             record_vram_current(scope, "backward.grad_conic_helper", num_primitives * 3 * sizeof(float));
-            if (run_gaussian_backward) {
-                record_vram_current(scope, "backward.fused_grad_opacity_helper", num_primitives * sizeof(float));
-                record_vram_current(scope, "backward.fused_grad_color_helper", num_primitives * 3 * sizeof(float));
-            }
+            record_vram_current(scope,
+                                "backward.fused_grad_opacity_helper",
+                                run_gaussian_backward && ctx.forward_ctx.grad_opacity_helper
+                                    ? num_primitives * sizeof(float)
+                                    : 0,
+                                true);
+            record_vram_current(scope,
+                                "backward.fused_grad_color_helper",
+                                run_gaussian_backward && ctx.forward_ctx.grad_color_helper
+                                    ? num_primitives * 3 * sizeof(float)
+                                    : 0,
+                                true);
             record_vram_tensor(scope, "output.image", output.image);
             record_vram_tensor(scope, "output.alpha", output.alpha);
             record_vram_tensor(scope, "saved.bg_color", ctx.bg_color);

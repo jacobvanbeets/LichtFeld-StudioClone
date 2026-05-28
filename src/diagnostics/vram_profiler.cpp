@@ -311,6 +311,7 @@ namespace lfs::diagnostics {
         std::size_t vulkan_vma_used = 0;
         std::size_t vulkan_vma_block_bytes = 0;
         std::size_t exportable_splat_bytes = 0;
+        std::size_t cuda_slab_reserved_bytes = 0;
         // Pushed lock-free from the tensor pool's hot path; read into the snapshot
         // under the mutex. A lossy gauge, so no sequence bump on update.
         std::atomic<std::size_t> cuda_pool_bucket_cache_bytes{0};
@@ -384,6 +385,7 @@ namespace lfs::diagnostics {
             impl_->vulkan_vma_used = 0;
             impl_->vulkan_vma_block_bytes = 0;
             impl_->exportable_splat_bytes = 0;
+            impl_->cuda_slab_reserved_bytes = 0;
             // cuda_context_baseline intentionally preserved: it captures the irreducible
             // runtime overhead once at process startup and is valid for the session.
             impl_->sequence.fetch_add(1, std::memory_order_relaxed);
@@ -981,6 +983,13 @@ namespace lfs::diagnostics {
         impl_->cuda_pool_bucket_cache_bytes.store(bytes, std::memory_order_relaxed);
     }
 
+    void VramProfiler::setCudaSlabReservedBytes(const std::size_t bytes) {
+        std::lock_guard lock(impl_->mutex);
+        impl_->cuda_slab_reserved_bytes = bytes;
+        impl_->process.cuda_slab_reserved_bytes = bytes;
+        impl_->sequence.fetch_add(1, std::memory_order_relaxed);
+    }
+
     void VramProfiler::setExportableSplatBytes(const std::size_t bytes) {
         std::lock_guard lock(impl_->mutex);
         impl_->exportable_splat_bytes = bytes;
@@ -1128,6 +1137,7 @@ namespace lfs::diagnostics {
             process.vulkan_vma_block_bytes = impl_->vulkan_vma_block_bytes;
             process.cuda_pool_bucket_cache_bytes =
                 impl_->cuda_pool_bucket_cache_bytes.load(std::memory_order_relaxed);
+            process.cuda_slab_reserved_bytes = impl_->cuda_slab_reserved_bytes;
             process.exportable_splat_bytes = impl_->exportable_splat_bytes;
             process.cuda_context_baseline = impl_->cuda_context_baseline;
             process.cuda_warmup_bytes = impl_->cuda_warmup_bytes;
@@ -1178,24 +1188,41 @@ namespace lfs::diagnostics {
         out.iter_ms_p95 = ring_percentile(impl_->iter_ms_ring, 0.95);
         out.iter_ms_last = impl_->iter_ms_last;
         out.accounted_live_bytes = impl_->accounted_live_bytes;
-        for (const auto& [_, allocation] : impl_->allocations) {
-            switch (allocation.method) {
+        const auto add_accounted_method = [&](const VramAllocationMethod method,
+                                              const std::size_t bytes) {
+            switch (method) {
             case VramAllocationMethod::Slab:
+                out.accounted_slab_live_bytes += bytes;
+                out.accounted_cuda_pool_live_bytes += bytes;
+                break;
             case VramAllocationMethod::Bucketed:
+                out.accounted_bucketed_live_bytes += bytes;
+                out.accounted_cuda_pool_live_bytes += bytes;
+                break;
             case VramAllocationMethod::Async:
-                out.accounted_cuda_pool_live_bytes += allocation.bytes;
+                out.accounted_async_live_bytes += bytes;
+                out.accounted_cuda_pool_live_bytes += bytes;
                 break;
             case VramAllocationMethod::Direct:
+                out.accounted_direct_live_bytes += bytes;
+                break;
             case VramAllocationMethod::Arena:
+                out.accounted_arena_live_bytes += bytes;
+                break;
             case VramAllocationMethod::External:
+                out.accounted_external_live_bytes += bytes;
+                break;
             case VramAllocationMethod::Unknown:
+            default:
+                out.accounted_unknown_live_bytes += bytes;
                 break;
             }
+        };
+        for (const auto& [_, allocation] : impl_->allocations) {
+            add_accounted_method(allocation.method, allocation.bytes);
         }
         for (const auto& [_, metric] : impl_->static_metrics) {
-            if (metric.method == VramAllocationMethod::Async) {
-                out.accounted_cuda_pool_live_bytes += metric.live_bytes;
-            }
+            add_accounted_method(metric.method, metric.live_bytes);
         }
         out.accounted_peak_bytes = impl_->accounted_peak_bytes;
         out.accounted_live_history.assign(impl_->accounted_history.begin(),

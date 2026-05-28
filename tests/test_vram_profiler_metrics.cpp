@@ -192,6 +192,15 @@ namespace {
         }
     }
 
+    TEST_F(VramProfilerMetricsTest, SlabReserveBytesRoundTripThroughProcessSnapshot) {
+        auto& p = VramProfiler::instance();
+        constexpr std::size_t kReservedBytes = 32ull << 20;
+        p.setCudaSlabReservedBytes(kReservedBytes);
+
+        const auto snap = p.snapshot();
+        EXPECT_EQ(snap.process.cuda_slab_reserved_bytes, kReservedBytes);
+    }
+
     TEST_F(VramProfilerMetricsTest, LiveBytesDoesNotAccumulateAcrossIterations) {
         // Regression: when allocations live under a deeply-nested scope path
         // ("Training execution/train.step/..."), beginIteration() previously

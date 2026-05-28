@@ -23,8 +23,8 @@ namespace lfs::core {
         static constexpr size_t MIN_BUCKET_SIZE = 256 * 1024;
         static constexpr size_t MAX_TRACKED_SIZE = 16ULL * 1024 * 1024 * 1024;
         static constexpr size_t CACHE_SIZE_PER_BUCKET = 4;
-        static constexpr size_t MIN_CACHE_BUDGET = 128ULL * 1024 * 1024;
-        static constexpr size_t MAX_CACHE_BUDGET = 512ULL * 1024 * 1024;
+        static constexpr size_t MIN_CACHE_BUDGET = 64ULL * 1024 * 1024;
+        static constexpr size_t MAX_CACHE_BUDGET = 256ULL * 1024 * 1024;
         static constexpr size_t NUM_BUCKETS = 128;
 
         struct Stats {
@@ -92,7 +92,7 @@ namespace lfs::core {
         static size_t cache_budget_for_total_memory(size_t total_bytes) {
             if (total_bytes == 0)
                 return MAX_CACHE_BUDGET;
-            return std::clamp(total_bytes / 48, MIN_CACHE_BUDGET, MAX_CACHE_BUDGET);
+            return std::clamp(total_bytes / 96, MIN_CACHE_BUDGET, MAX_CACHE_BUDGET);
         }
 
         void* try_allocate_cached(size_t bytes) {
