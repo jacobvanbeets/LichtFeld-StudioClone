@@ -9,6 +9,7 @@
 #include "core/tensor.hpp"
 
 #include <atomic>
+#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <functional>
@@ -49,6 +50,11 @@ namespace lfs::core {
         enum class ShNLayout {
             Canonical,
             Swizzled
+        };
+
+        struct FrozenRange {
+            std::size_t start = 0;
+            std::size_t count = 0;
         };
 
         SplatData() = default;
@@ -152,6 +158,13 @@ namespace lfs::core {
         }
         void refresh_deleted_count();
 
+        [[nodiscard]] const std::vector<FrozenRange>& frozen_ranges() const { return _frozen_ranges; }
+        [[nodiscard]] bool has_frozen_ranges() const { return !_frozen_ranges.empty(); }
+        void set_frozen_ranges(std::vector<FrozenRange> ranges) { _frozen_ranges = std::move(ranges); }
+        void clear_frozen_ranges() { _frozen_ranges.clear(); }
+        void remap_frozen_ranges_after_keep(size_t old_size, const std::vector<int>& kept_old_indices);
+        void remap_frozen_ranges_after_keep(size_t old_size, const std::vector<int64_t>& kept_old_indices);
+
         // Mark gaussians as deleted, returns previous state for undo
         Tensor soft_delete(const Tensor& mask);
         void undelete(const Tensor& mask);
@@ -208,6 +221,7 @@ namespace lfs::core {
 
         // Backing allocator for parameter tensors (see set_tensor_allocator).
         SplatTensorAllocator _tensor_allocator;
+        std::vector<FrozenRange> _frozen_ranges;
 
         // Allow free functions in splat_data_transform.cpp to access private members
         friend LFS_CORE_API SplatData& transform(SplatData&, const glm::mat4&);

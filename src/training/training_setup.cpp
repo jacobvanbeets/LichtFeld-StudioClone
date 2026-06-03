@@ -128,6 +128,8 @@ namespace lfs::training {
 
             const size_t base_count = static_cast<size_t>(model.size());
             size_t added_count = 0;
+            size_t frozen_count = 0;
+            std::vector<lfs::core::SplatData::FrozenRange> frozen_ranges = model.frozen_ranges();
             std::vector<std::unique_ptr<lfs::core::SplatData>> owned_added_splats;
             owned_added_splats.reserve(params.add_splat_paths.size());
 
@@ -135,13 +137,19 @@ namespace lfs::training {
             splats.reserve(params.add_splat_paths.size() + 1);
             splats.emplace_back(&model, glm::mat4{1.0f});
 
-            for (const auto& path : params.add_splat_paths) {
+            for (size_t i = 0; i < params.add_splat_paths.size(); ++i) {
+                const auto& path = params.add_splat_paths[i];
                 auto added = loadAddedSplat(path, params.optimization.sh_degree);
                 if (!added) {
                     return std::unexpected(added.error());
                 }
 
-                added_count += static_cast<size_t>((*added)->size());
+                const size_t count = static_cast<size_t>((*added)->size());
+                if (i < params.add_splat_freeze.size() && params.add_splat_freeze[i] && count > 0) {
+                    frozen_ranges.push_back({base_count + added_count, count});
+                    frozen_count += count;
+                }
+                added_count += count;
                 splats.emplace_back(added->get(), glm::mat4{1.0f});
                 owned_added_splats.push_back(std::move(*added));
             }
@@ -174,6 +182,7 @@ namespace lfs::training {
                 lfs::core::SplatData::ShNLayout::Swizzled);
             merged_with_base_scale.set_active_sh_degree(merged->get_active_sh_degree());
             applyTrainingSHDegree(merged_with_base_scale, params.optimization.sh_degree);
+            merged_with_base_scale.set_frozen_ranges(std::move(frozen_ranges));
             model = std::move(merged_with_base_scale);
 
             LOG_INFO("Added {} splat file{} to training model: {} + {} -> {} Gaussians",
@@ -181,7 +190,12 @@ namespace lfs::training {
                      params.add_splat_paths.size() == 1 ? "" : "s",
                      base_count,
                      added_count,
-                     model.size());
+            model.size());
+            if (frozen_count > 0) {
+                LOG_INFO("Marked {} added Gaussian{} as frozen",
+                         frozen_count,
+                         frozen_count == 1 ? "" : "s");
+            }
             return {};
         }
 
@@ -512,6 +526,7 @@ namespace lfs::training {
             if (auto result = migrateTrainingModelToAllocator(params, *model, tensor_allocator); !result) {
                 return result;
             }
+            scene.syncTrainingModelTopology(static_cast<size_t>(model->size()));
             scene.notifyMutation(lfs::core::Scene::MutationType::MODEL_CHANGED);
             return {};
         }
