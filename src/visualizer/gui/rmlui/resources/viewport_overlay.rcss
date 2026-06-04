@@ -42,7 +42,8 @@ body {
     top: 0;
     bottom: 0;
     width: 40dp;
-    padding-top: 8dp;
+    padding-top: 6dp;
+    padding-bottom: 8dp;
     flex-direction: column;
     align-items: center;
     pointer-events: auto;
@@ -51,6 +52,7 @@ body {
 
 .toolbar-vertical .icon-btn {
     position: relative;
+    margin: 1dp 0;
     padding: 4dp;
     border-radius: 6dp;
 }
@@ -450,9 +452,9 @@ body {
 }
 
 .toolbar-vertical .toolbar-separator {
-    width: auto;
+    width: 24dp;
     height: 1dp;
-    margin: 0 2dp;
+    margin: 8dp 0 7dp;
 }
 
 .viewport-status-overlay {

@@ -61,7 +61,6 @@
                  data-event-click="toolbar_action(button.action, button.value)">
                 <img data-attr-src="button.icon_src" />
             </div>
-            <div class="toolbar-separator"></div>
             <div class="icon-btn"
                  data-for="button : utility_primary_buttons"
                  data-attr-id="button.button_id"
@@ -72,7 +71,7 @@
                  data-event-click="toolbar_action(button.action, button.value)">
                 <img data-attr-src="button.icon_src" />
             </div>
-            <div class="toolbar-separator" data-if="show_render_controls"></div>
+            <div class="toolbar-separator"></div>
             <div class="icon-btn"
                  data-for="button : render_group_buttons"
                  data-attr-id="button.button_id"
@@ -83,7 +82,6 @@
                  data-event-click="toolbar_action(button.action, button.value)">
                 <img data-attr-src="button.icon_src" />
             </div>
-            <div class="toolbar-separator" data-if="show_render_controls"></div>
             <div class="icon-btn"
                  data-for="button : projection_buttons"
                  data-attr-id="button.button_id"
@@ -236,7 +234,6 @@
                  data-event-click="toolbar_action(button.action, button.value)">
                 <img data-attr-src="button.icon_src" />
             </div>
-            <div class="toolbar-separator"></div>
             <div class="icon-btn"
                  data-for="button : utility_primary_buttons"
                  data-attr-id="button.button_id"
@@ -247,7 +244,7 @@
                  data-event-click="toolbar_action(button.action, button.value)">
                 <img data-attr-src="button.icon_src" />
             </div>
-            <div class="toolbar-separator" data-if="show_render_controls"></div>
+            <div class="toolbar-separator"></div>
             <div class="icon-btn"
                  data-for="button : render_group_buttons"
                  data-attr-id="button.button_id"
@@ -258,7 +255,6 @@
                  data-event-click="toolbar_action(button.action, button.value)">
                 <img data-attr-src="button.icon_src" />
             </div>
-            <div class="toolbar-separator" data-if="show_render_controls"></div>
             <div class="icon-btn"
                  data-for="button : projection_buttons"
                  data-attr-id="button.button_id"

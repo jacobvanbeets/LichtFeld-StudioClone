@@ -522,6 +522,8 @@ def test_viewport_overlay_template_moves_tools_left_and_transform_numbers_center
     assert 'class="toolbar-flyout-divider hidden"' not in rml
     assert "toolbar-flyout" not in rml
     assert rml.count('data-for="button : selection_group_buttons"') == 2
+    assert rml.count('class="toolbar-separator"') == 6
+    assert rml.count('class="toolbar-separator" data-if="show_render_controls"') == 2
     assert rml.count('data-attr-data-shortcut="button.shortcut_text"') == 18
     assert "data-attr-data-tooltip" not in rml
     assert 'data-attr-title="button.tooltip_text"' in rml
@@ -653,6 +655,8 @@ def test_viewport_overlay_template_moves_tools_left_and_transform_numbers_center
     assert "line-height: 16dp;" in rcss
     assert "line-height: 20dp;" in rcss
     assert "width: 64dp;" in rcss
+    assert "width: 24dp;" in rcss
+    assert "margin: 8dp 0 7dp;" in rcss
     assert ".toolbar-flyout-trigger.hidden" not in rcss
     assert ".viewport-transform-overlay" in rcss
     assert ".viewport-selection-overlay" in rcss
