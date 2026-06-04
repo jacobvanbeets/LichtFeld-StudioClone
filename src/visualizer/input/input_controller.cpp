@@ -643,7 +643,6 @@ namespace lfs::vis {
                 last_click_pos_ = {-1000, -1000};
                 last_clicked_camera_id_ = -1;
             }
-
         }
 
         if (action == input::ACTION_RELEASE && drag_mode_ == DragMode::Splitter) {
