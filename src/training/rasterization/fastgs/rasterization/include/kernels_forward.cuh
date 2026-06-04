@@ -380,57 +380,7 @@ namespace fast_lfs::rasterization::kernels::forward {
             tile_instance_ranges[instance_tile_idx].y = n_instances;
     }
 
-    __device__ __forceinline__ uint blend_work_slice_count(const int n_points_total) {
-        if (n_points_total <= config::blend_balance_target_primitives_per_slice)
-            return 1;
-
-        const uint requested = div_round_up(static_cast<uint>(n_points_total),
-                                            static_cast<uint>(config::blend_balance_target_primitives_per_slice));
-        const uint bounded = requested < 2u ? 2u : requested;
-        return bounded > static_cast<uint>(config::tile_height) ? static_cast<uint>(config::tile_height) : bounded;
-    }
-
-    __global__ void build_blend_work_counts_cu(
-        const uint2* __restrict__ tile_instance_ranges,
-        std::uint64_t* __restrict__ blend_work_counts,
-        uint* __restrict__ has_split_work,
-        const uint n_tiles) {
-        const uint tile_idx = cg::this_grid().thread_rank();
-        if (tile_idx >= n_tiles)
-            return;
-
-        const uint2 tile_range = tile_instance_ranges[tile_idx];
-        const int n_points_total = static_cast<int>(tile_range.y) - static_cast<int>(tile_range.x);
-        const uint slice_count = blend_work_slice_count(n_points_total > 0 ? n_points_total : 0);
-        blend_work_counts[tile_idx] = static_cast<std::uint64_t>(slice_count);
-        if (slice_count > 1)
-            atomicExch(has_split_work, 1u);
-    }
-
-    __global__ void build_blend_work_items_cu(
-        const std::uint64_t* __restrict__ blend_work_counts,
-        const std::uint64_t* __restrict__ blend_work_offsets,
-        uint2* __restrict__ blend_work_items,
-        const uint n_tiles) {
-        const uint tile_idx = cg::this_grid().thread_rank();
-        if (tile_idx >= n_tiles)
-            return;
-
-        const std::uint64_t slice_count_u64 = blend_work_counts[tile_idx];
-        if (slice_count_u64 == 0)
-            return;
-
-        const uint slice_count = static_cast<uint>(slice_count_u64);
-        const std::uint64_t write_begin = blend_work_offsets[tile_idx] - slice_count_u64;
-        for (uint slice_idx = 0; slice_idx < slice_count; ++slice_idx) {
-            const uint row_begin = slice_idx * static_cast<uint>(config::tile_height) / slice_count;
-            const uint row_end = (slice_idx + 1u) * static_cast<uint>(config::tile_height) / slice_count;
-            const uint packed_rows = row_begin | (row_end << 16u);
-            blend_work_items[write_begin + slice_idx] = make_uint2(tile_idx, packed_rows);
-        }
-    }
-
-    __device__ __forceinline__ void blend_tile_rows(
+    __global__ void __launch_bounds__(config::block_size_blend) blend_cu(
         const uint2* __restrict__ tile_instance_ranges,
         const uint* __restrict__ instance_primitive_indices,
         const float2* __restrict__ primitive_mean2d,
@@ -440,28 +390,20 @@ namespace fast_lfs::rasterization::kernels::forward {
         float* __restrict__ alpha_map,
         uint* __restrict__ tile_n_contributions,
         float* __restrict__ tile_final_transmittance,
-        const uint tile_idx,
-        const uint tile_x,
-        const uint tile_y,
-        const uint row_begin,
-        const uint row_end,
         const uint width,
-        const uint height) {
+        const uint height,
+        const uint grid_width) {
         auto block = cg::this_thread_block();
+        const dim3 group_index = block.group_index();
+        const dim3 thread_index = block.thread_index();
         const uint thread_rank = block.thread_rank();
-        const uint clamped_row_begin = min(row_begin, static_cast<uint>(config::tile_height));
-        const uint clamped_row_end = min(max(row_end, clamped_row_begin), static_cast<uint>(config::tile_height));
-        const uint slice_pixel_count = (clamped_row_end - clamped_row_begin) * static_cast<uint>(config::tile_width);
-        const bool owns_pixel = thread_rank < slice_pixel_count;
-        const uint local_pixel_rank = clamped_row_begin * static_cast<uint>(config::tile_width) + thread_rank;
-        const uint local_x = thread_rank % static_cast<uint>(config::tile_width);
-        const uint local_y = clamped_row_begin + thread_rank / static_cast<uint>(config::tile_width);
-        const uint2 pixel_coords = make_uint2(tile_x * config::tile_width + local_x, tile_y * config::tile_height + local_y);
+        const uint2 pixel_coords = make_uint2(group_index.x * config::tile_width + thread_index.x, group_index.y * config::tile_height + thread_index.y);
         const bool inside = pixel_coords.x < width && pixel_coords.y < height;
         const float2 pixel = make_float2(__uint2float_rn(pixel_coords.x), __uint2float_rn(pixel_coords.y)) + 0.5f;
 
+        const uint tile_idx = group_index.y * grid_width + group_index.x;
         const uint2 tile_range = tile_instance_ranges[tile_idx];
-        const int n_points_total = static_cast<int>(tile_range.y) - static_cast<int>(tile_range.x);
+        const int n_points_total = tile_range.y - tile_range.x;
 
         // setup shared memory
         __shared__ float2 collected_mean2d[config::block_size_blend];
@@ -472,7 +414,7 @@ namespace fast_lfs::rasterization::kernels::forward {
         float transmittance = 1.0f;
         uint n_possible_contributions = 0;
         uint n_contributions = 0;
-        bool done = !owns_pixel || !inside;
+        bool done = !inside;
         // collaborative loading and processing
         for (int n_points_remaining = n_points_total, current_fetch_idx = tile_range.x + thread_rank; n_points_remaining > 0; n_points_remaining -= config::block_size_blend, current_fetch_idx += config::block_size_blend) {
             if (__syncthreads_count(done) == config::block_size_blend)
@@ -508,7 +450,7 @@ namespace fast_lfs::rasterization::kernels::forward {
                 }
             }
         }
-        if (owns_pixel && inside) {
+        if (inside) {
             const int pixel_idx = width * pixel_coords.y + pixel_coords.x;
             const int n_pixels = width * height;
             // store results
@@ -518,80 +460,7 @@ namespace fast_lfs::rasterization::kernels::forward {
             alpha_map[pixel_idx] = 1.0f - transmittance;
             tile_n_contributions[pixel_idx] = n_contributions;
         }
-        if (owns_pixel)
-            tile_final_transmittance[tile_idx * config::block_size_blend + local_pixel_rank] = inside ? transmittance : 1.0f;
-    }
-
-    __global__ void __launch_bounds__(config::block_size_blend) blend_cu(
-        const uint2* __restrict__ tile_instance_ranges,
-        const uint* __restrict__ instance_primitive_indices,
-        const float2* __restrict__ primitive_mean2d,
-        const float4* __restrict__ primitive_conic_opacity,
-        const float3* __restrict__ primitive_color,
-        float* __restrict__ image,
-        float* __restrict__ alpha_map,
-        uint* __restrict__ tile_n_contributions,
-        float* __restrict__ tile_final_transmittance,
-        const uint width,
-        const uint height,
-        const uint grid_width) {
-        auto block = cg::this_thread_block();
-        const dim3 group_index = block.group_index();
-        const uint tile_idx = group_index.y * grid_width + group_index.x;
-        blend_tile_rows(
-            tile_instance_ranges,
-            instance_primitive_indices,
-            primitive_mean2d,
-            primitive_conic_opacity,
-            primitive_color,
-            image,
-            alpha_map,
-            tile_n_contributions,
-            tile_final_transmittance,
-            tile_idx,
-            group_index.x,
-            group_index.y,
-            0,
-            config::tile_height,
-            width,
-            height);
-    }
-
-    __global__ void __launch_bounds__(config::block_size_blend) blend_load_balanced_cu(
-        const uint2* __restrict__ blend_work_items,
-        const uint2* __restrict__ tile_instance_ranges,
-        const uint* __restrict__ instance_primitive_indices,
-        const float2* __restrict__ primitive_mean2d,
-        const float4* __restrict__ primitive_conic_opacity,
-        const float3* __restrict__ primitive_color,
-        float* __restrict__ image,
-        float* __restrict__ alpha_map,
-        uint* __restrict__ tile_n_contributions,
-        float* __restrict__ tile_final_transmittance,
-        const uint width,
-        const uint height,
-        const uint grid_width) {
-        const uint2 item = blend_work_items[blockIdx.x];
-        const uint tile_idx = item.x;
-        const uint row_begin = item.y & 0xffffu;
-        const uint row_end = item.y >> 16u;
-        blend_tile_rows(
-            tile_instance_ranges,
-            instance_primitive_indices,
-            primitive_mean2d,
-            primitive_conic_opacity,
-            primitive_color,
-            image,
-            alpha_map,
-            tile_n_contributions,
-            tile_final_transmittance,
-            tile_idx,
-            tile_idx % grid_width,
-            tile_idx / grid_width,
-            row_begin,
-            row_end,
-            width,
-            height);
+        tile_final_transmittance[tile_idx * config::block_size_blend + thread_rank] = inside ? transmittance : 1.0f;
     }
 
 } // namespace fast_lfs::rasterization::kernels::forward

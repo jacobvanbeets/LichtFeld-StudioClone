@@ -357,148 +357,20 @@ fast_lfs::rasterization::ForwardResult fast_lfs::rasterization::forward(
         }
     }
 
-    auto launch_tile_blend = [&] {
-        kernels::forward::blend_cu<<<grid, block>>>(
-            per_tile_buffers.instance_ranges,
-            sorted_primitive_indices,
-            per_primitive_buffers.mean2d,
-            per_primitive_buffers.conic_opacity,
-            per_primitive_buffers.color,
-            image,
-            alpha,
-            per_tile_buffers.n_contributions,
-            per_tile_buffers.final_transmittance,
-            width,
-            height,
-            grid.x);
-    };
-
-    auto launch_load_balanced_blend = [&] {
-        if (n_instances <= config::blend_balance_target_primitives_per_slice) {
-            launch_tile_blend();
-            return;
-        }
-
-        StreamOrderedDeviceBuffer blend_work_counts("rasterizer.fastgs.blend_work_counts");
-        StreamOrderedDeviceBuffer blend_split_flag("rasterizer.fastgs.blend_split_flag");
-        blend_work_counts.allocate(static_cast<size_t>(n_tiles) * sizeof(std::uint64_t));
-        blend_split_flag.allocate(sizeof(uint));
-        CUDA_CHECK(cudaMemsetAsync(blend_split_flag.as<uint>(), 0, sizeof(uint)),
-                   "cudaMemsetAsync(blend split flag)");
-
-        kernels::forward::build_blend_work_counts_cu<<<div_round_up(n_tiles, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges>>>(
-            per_tile_buffers.instance_ranges,
-            blend_work_counts.as<std::uint64_t>(),
-            blend_split_flag.as<uint>(),
-            n_tiles_u32);
-        check_cuda_with_fastgs_status(cudaGetLastError(), "build_blend_work_counts", forward_status, "blend work counts", static_cast<uint64_t>(n_primitives), n_tiles_u64);
-        if constexpr (config::debug) {
-            check_cuda_with_fastgs_status(cudaDeviceSynchronize(), "build_blend_work_counts", forward_status, "blend work counts", static_cast<uint64_t>(n_primitives), n_tiles_u64);
-            throw_if_fastgs_forward_status(forward_status, "blend work counts", static_cast<uint64_t>(n_primitives), n_tiles_u64);
-        } else {
-            sync_fastgs_phase_if_requested("build_blend_work_counts", forward_status, "blend work counts", static_cast<uint64_t>(n_primitives), n_tiles_u64);
-        }
-
-        uint has_split_work = 0;
-        check_cuda_with_fastgs_status(
-            cudaMemcpy(&has_split_work, blend_split_flag.as<uint>(), sizeof(uint), cudaMemcpyDeviceToHost),
-            "cudaMemcpy(blend split flag)",
-            forward_status,
-            "blend work counts",
-            static_cast<uint64_t>(n_primitives),
-            n_tiles_u64);
-        if (has_split_work == 0) {
-            launch_tile_blend();
-            return;
-        }
-
-        StreamOrderedDeviceBuffer blend_work_offsets("rasterizer.fastgs.blend_work_offsets");
-        StreamOrderedDeviceBuffer blend_scan_workspace("rasterizer.fastgs.blend_scan_workspace");
-        blend_work_offsets.allocate(static_cast<size_t>(n_tiles) * sizeof(std::uint64_t));
-
-        size_t blend_scan_workspace_size = 0;
-        check_cuda_with_fastgs_status(
-            cub::DeviceScan::InclusiveSum(
-                nullptr,
-                blend_scan_workspace_size,
-                blend_work_counts.as<std::uint64_t>(),
-                blend_work_offsets.as<std::uint64_t>(),
-                n_tiles),
-            "cub::DeviceScan::InclusiveSum (Blend Work Offsets) workspace query",
-            forward_status,
-            "blend work scan",
-            static_cast<uint64_t>(n_primitives),
-            n_tiles_u64);
-        blend_scan_workspace.allocate(blend_scan_workspace_size);
-        check_cuda_with_fastgs_status(
-            cub::DeviceScan::InclusiveSum(
-                blend_scan_workspace.as<char>(),
-                blend_scan_workspace_size,
-                blend_work_counts.as<std::uint64_t>(),
-                blend_work_offsets.as<std::uint64_t>(),
-                n_tiles),
-            "cub::DeviceScan::InclusiveSum (Blend Work Offsets)",
-            forward_status,
-            "blend work scan",
-            static_cast<uint64_t>(n_primitives),
-            n_tiles_u64);
-        CHECK_CUDA(config::debug, "cub::DeviceScan::InclusiveSum (Blend Work Offsets)");
-        if constexpr (!config::debug) {
-            sync_fastgs_phase_if_requested(
-                "cub::DeviceScan::InclusiveSum (Blend Work Offsets)",
-                forward_status,
-                "blend work scan",
-                static_cast<uint64_t>(n_primitives),
-                n_tiles_u64);
-        }
-
-        std::uint64_t total_blend_work_u64 = 0;
-        check_cuda_with_fastgs_status(
-            cudaMemcpy(&total_blend_work_u64, blend_work_offsets.as<std::uint64_t>() + n_tiles - 1, sizeof(total_blend_work_u64), cudaMemcpyDeviceToHost),
-            "cudaMemcpy(total blend work)",
-            forward_status,
-            "blend work scan",
-            static_cast<uint64_t>(n_primitives),
-            n_tiles_u64);
-        const int total_blend_work = checked_to_int(total_blend_work_u64, "FastGS blend work item count exceeds int range");
-        if (total_blend_work <= 0 || total_blend_work == n_tiles) {
-            launch_tile_blend();
-            return;
-        }
-
-        StreamOrderedDeviceBuffer blend_work_items("rasterizer.fastgs.blend_work_items");
-        blend_work_items.allocate(static_cast<size_t>(total_blend_work) * sizeof(uint2));
-        kernels::forward::build_blend_work_items_cu<<<div_round_up(n_tiles, config::block_size_extract_instance_ranges), config::block_size_extract_instance_ranges>>>(
-            blend_work_counts.as<std::uint64_t>(),
-            blend_work_offsets.as<std::uint64_t>(),
-            blend_work_items.as<uint2>(),
-            n_tiles_u32);
-        check_cuda_with_fastgs_status(cudaGetLastError(), "build_blend_work_items", forward_status, "blend work items", static_cast<uint64_t>(n_primitives), n_tiles_u64);
-        if constexpr (config::debug) {
-            check_cuda_with_fastgs_status(cudaDeviceSynchronize(), "build_blend_work_items", forward_status, "blend work items", static_cast<uint64_t>(n_primitives), n_tiles_u64);
-            throw_if_fastgs_forward_status(forward_status, "blend work items", static_cast<uint64_t>(n_primitives), n_tiles_u64);
-        } else {
-            sync_fastgs_phase_if_requested("build_blend_work_items", forward_status, "blend work items", static_cast<uint64_t>(n_primitives), n_tiles_u64);
-        }
-
-        kernels::forward::blend_load_balanced_cu<<<total_blend_work, config::block_size_blend>>>(
-            blend_work_items.as<uint2>(),
-            per_tile_buffers.instance_ranges,
-            sorted_primitive_indices,
-            per_primitive_buffers.mean2d,
-            per_primitive_buffers.conic_opacity,
-            per_primitive_buffers.color,
-            image,
-            alpha,
-            per_tile_buffers.n_contributions,
-            per_tile_buffers.final_transmittance,
-            width,
-            height,
-            grid.x);
-    };
-
     // Perform blending
-    launch_load_balanced_blend();
+    kernels::forward::blend_cu<<<grid, block>>>(
+        per_tile_buffers.instance_ranges,
+        sorted_primitive_indices,
+        per_primitive_buffers.mean2d,
+        per_primitive_buffers.conic_opacity,
+        per_primitive_buffers.color,
+        image,
+        alpha,
+        per_tile_buffers.n_contributions,
+        per_tile_buffers.final_transmittance,
+        width,
+        height,
+        grid.x);
     check_cuda_with_fastgs_status(cudaGetLastError(), "blend", forward_status, "blend", static_cast<uint64_t>(n_primitives), n_tiles_u64);
     if constexpr (config::debug) {
         check_cuda_with_fastgs_status(cudaDeviceSynchronize(), "blend", forward_status, "blend", static_cast<uint64_t>(n_primitives), n_tiles_u64);
