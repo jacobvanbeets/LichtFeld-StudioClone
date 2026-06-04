@@ -1009,7 +1009,7 @@ class TrainingPanel(Panel):
                 "stopped": tr("status.stopped"),
                 "error": tr("status.error"),
             }
-            return f"{tr('status.mode')}: {labels.get(state, tr('status.unknown'))}"
+            return f"{tr('status.mode')} {labels.get(state, tr('status.unknown'))}"
 
         def _status_iteration():
             it = RuntimeState.iteration.value
@@ -3396,7 +3396,7 @@ class TrainingPanel(Panel):
             "error": tr("status.error"),
         }
         unknown_state = tr("status.unknown")
-        layout.label(f"{tr('status.mode')}: {state_labels.get(state, unknown_state)}")
+        layout.label(f"{tr('status.mode')} {state_labels.get(state, unknown_state)}")
 
         _rate_tracker.add_sample(iteration)
         rate = _rate_tracker.get_rate()
