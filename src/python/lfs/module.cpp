@@ -1323,6 +1323,25 @@ NB_MODULE(lichtfeld, m) {
         nb::arg("name"), nb::arg("matrix"), "Set node visualizer-world transform matrix (16 floats, column-major)");
 
     m.def(
+        "bake_selected_node_transforms", []() -> size_t {
+            auto* sm = lfs::python::get_scene_manager();
+            if (!sm)
+                return 0;
+
+            const auto names = sm->getSelectedNodeNames();
+            if (names.empty())
+                return 0;
+
+            auto result = lfs::vis::cap::bakeNodeTransforms(*sm, names, "transform.bake");
+            if (!result) {
+                LOG_WARN("bake_selected_node_transforms failed: {}", result.error());
+                return 0;
+            }
+            return *result;
+        },
+        "Bake selected SPLAT, POINTCLOUD, and MESH node transforms into their payloads");
+
+    m.def(
         "capture_selection_transforms", []() -> nb::dict {
             const auto* sm = lfs::python::get_scene_manager();
             nb::dict result;
