@@ -3319,6 +3319,39 @@ namespace lfs::vis {
         const std::string new_name = scene_.duplicateNode(name);
         if (new_name.empty())
             return {};
+
+        if (auto allocator = makeExternalSplatAllocator()) {
+            bool migrated_any = false;
+            bool migration_failed = false;
+            std::function<void(core::NodeId)> migrate_tree = [&](const core::NodeId id) {
+                if (migration_failed)
+                    return;
+                auto* node = scene_.getNodeById(id);
+                if (!node)
+                    return;
+                if (node->model) {
+                    if (auto migrated = lfs::io::migrateSplatTensorsToAllocator(*node->model, allocator); !migrated) {
+                        LOG_ERROR("Failed to prepare duplicated splat node '{}' for rendering: {}",
+                                  node->name,
+                                  migrated.error().format());
+                        migration_failed = true;
+                        return;
+                    }
+                    migrated_any = true;
+                }
+                const auto children = node->children;
+                for (const core::NodeId child_id : children)
+                    migrate_tree(child_id);
+            };
+
+            const core::NodeId new_id = scene_.getNodeIdByName(new_name);
+            if (new_id != core::NULL_NODE)
+                migrate_tree(new_id);
+            if (migrated_any) {
+                scene_.setCombinedModelAllocator(std::move(allocator));
+                scene_.notifyMutation(core::Scene::MutationType::MODEL_CHANGED);
+            }
+        }
         selection_.invalidateNodeMask();
 
         // Emit PLYAdded for duplicated node tree
@@ -3358,10 +3391,12 @@ namespace lfs::vis {
 
         const auto history_options = sceneGraphCaptureOptions(true, false);
         auto history_before = op::SceneGraphPatchEntry::captureState(*this, {name}, history_options);
+        const core::NodeId group_id = group->id;
+        const core::NodeId parent_id = group->parent_id;
 
         std::string parent_name;
-        if (group->parent_id != core::NULL_NODE) {
-            if (const auto* p = scene_.getNodeById(group->parent_id)) {
+        if (parent_id != core::NULL_NODE) {
+            if (const auto* p = scene_.getNodeById(parent_id)) {
                 parent_name = p->name;
             }
         }
@@ -3388,11 +3423,41 @@ namespace lfs::vis {
         };
         collect_children(group);
 
-        const std::string merged_name = scene_.mergeGroup(name);
-        if (merged_name.empty()) {
+        std::vector<std::pair<const core::SplatData*, glm::mat4>> splats;
+        const std::function<void(core::NodeId)> collect_splats = [&](const core::NodeId id) {
+            const auto* const node = scene_.getNodeById(id);
+            if (!node)
+                return;
+            if (node->type == core::NodeType::SPLAT && node->model && node->visible) {
+                splats.emplace_back(node->model.get(), scene_.getWorldTransform(id));
+            }
+            for (const core::NodeId child_id : node->children)
+                collect_splats(child_id);
+        };
+        collect_splats(group_id);
+
+        auto merged_model = core::Scene::mergeSplatsWithTransforms(splats);
+        if (!merged_model) {
             LOG_WARN("Failed to merge group '{}'", name);
             return {};
         }
+
+        if (auto allocator = makeExternalSplatAllocator()) {
+            if (auto migrated = lfs::io::migrateSplatTensorsToAllocator(*merged_model, allocator); !migrated) {
+                LOG_ERROR("Failed to prepare merged group '{}' for rendering: {}",
+                          name,
+                          migrated.error().format());
+                return {};
+            }
+            scene_.setCombinedModelAllocator(std::move(allocator));
+        }
+
+        {
+            core::Scene::Transaction txn(scene_);
+            scene_.removeNode(name, false);
+            scene_.addSplat(name, std::move(merged_model), parent_id);
+        }
+        const std::string merged_name = name;
         selection_.invalidateNodeMask();
 
         // Emit PLYRemoved for all original children and the group
