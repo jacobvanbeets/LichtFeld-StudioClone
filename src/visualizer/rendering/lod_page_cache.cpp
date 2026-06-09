@@ -12,27 +12,27 @@
 #include <utility>
 
 namespace lfs::vis {
-namespace {
+    namespace {
 
-    std::size_t pageRequestBudgetFor(const std::size_t physical_pages) {
-        if (physical_pages == 0) {
-            return 0;
-        }
-
-        if (const char* const env = std::getenv("LFS_LOD_PREFETCH_MAX_REQUESTS")) {
-            char* end = nullptr;
-            const auto parsed = std::strtoull(env, &end, 10);
-            if (end != env && parsed > 0) {
-                return std::min<std::size_t>(static_cast<std::size_t>(parsed), physical_pages);
+        std::size_t pageRequestBudgetFor(const std::size_t physical_pages) {
+            if (physical_pages == 0) {
+                return 0;
             }
+
+            if (const char* const env = std::getenv("LFS_LOD_PREFETCH_MAX_REQUESTS")) {
+                char* end = nullptr;
+                const auto parsed = std::strtoull(env, &end, 10);
+                if (end != env && parsed > 0) {
+                    return std::min<std::size_t>(static_cast<std::size_t>(parsed), physical_pages);
+                }
+            }
+
+            const std::size_t lower = std::min<std::size_t>(8, physical_pages);
+            const std::size_t upper = std::min<std::size_t>(64, physical_pages);
+            return std::clamp<std::size_t>(physical_pages / 4, lower, upper);
         }
 
-        const std::size_t lower = std::min<std::size_t>(8, physical_pages);
-        const std::size_t upper = std::min<std::size_t>(64, physical_pages);
-        return std::clamp<std::size_t>(physical_pages / 4, lower, upper);
-    }
-
-} // namespace
+    } // namespace
 
     void LodPageCache::reset() {
         pages_.clear();
