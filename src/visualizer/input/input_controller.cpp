@@ -426,12 +426,9 @@ namespace lfs::vis {
 
         clearViewportDragState();
         camera_navigation_mode_ = mode;
-
-        auto& target_viewport = activeKeyboardViewport();
-        float pivot_distance = glm::length(target_viewport.camera.getPivot() - target_viewport.camera.t);
-        if (!std::isfinite(pivot_distance) || pivot_distance < 0.1f)
-            pivot_distance = 5.0f;
-        target_viewport.camera.updatePivotFromCamera(pivot_distance);
+        // The pivot is left untouched: orbit modes work with any pivot and FPV
+        // re-seeds it on every look drag, so switching modes must not discard a
+        // user-set pivot.
     }
 
     void InputController::onWindowFocusLost() {
@@ -609,11 +606,8 @@ namespace lfs::vis {
             auto time_since_last = std::chrono::duration<double>(now - last_click_time_).count();
             double dist = glm::length(glm::dvec2(x, y) - last_click_pos_);
 
-            constexpr double MOUSE_DOUBLE_CLICK_TIME = 0.5;
-            constexpr double MOUSE_DOUBLE_CLICK_DISTANCE = 10.0;
-
-            bool is_double_click = (time_since_last < MOUSE_DOUBLE_CLICK_TIME &&
-                                    dist < MOUSE_DOUBLE_CLICK_DISTANCE);
+            bool is_double_click = (time_since_last < DOUBLE_CLICK_TIME &&
+                                    dist < DOUBLE_CLICK_DISTANCE);
 
             // If we have a hovered camera, check for double-click. Defer
             // single-click selection until release so orbit drags that start
@@ -769,6 +763,7 @@ namespace lfs::vis {
 
             case input::Action::CAMERA_ORBIT:
                 if (const auto interaction = resolvePanelInteraction(x, y); interaction && interaction->valid()) {
+                    interaction->viewport->camera.finishGlide();
                     interaction->viewport->camera.initScreenPos(glm::vec2(x, y));
                     drag_viewport_ = interaction->viewport;
                     drag_split_panel_ = interaction->panel;
@@ -799,8 +794,13 @@ namespace lfs::vis {
                 }
                 auto& target_viewport = *interaction->viewport;
                 focusSplitPanel(interaction->panel);
-                const glm::vec3 new_pivot = unprojectScreenPoint(x, y);
-                const float current_distance = glm::length(target_viewport.camera.getPivot() - target_viewport.camera.t);
+                target_viewport.camera.finishGlide();
+                float current_distance = glm::length(target_viewport.camera.getPivot() - target_viewport.camera.t);
+                if (!std::isfinite(current_distance) || current_distance < 0.1f)
+                    current_distance = 5.0f;
+                // Background clicks keep the current orbit radius instead of an
+                // arbitrary fixed depth.
+                const glm::vec3 new_pivot = unprojectScreenPoint(x, y, current_distance);
                 const glm::vec3 forward = lfs::rendering::cameraForward(target_viewport.camera.R);
 
                 glm::vec3 camera_offset(0.0f);
@@ -844,8 +844,9 @@ namespace lfs::vis {
                     }
                 }
 
-                target_viewport.camera.t = new_pivot - forward * current_distance + camera_offset;
                 target_viewport.camera.setPivot(new_pivot);
+                target_viewport.camera.startGlide(new_pivot - forward * current_distance + camera_offset);
+                onCameraMovementStart();
                 publishCameraMove(&target_viewport);
                 break;
             }
@@ -1363,10 +1364,13 @@ namespace lfs::vis {
         }
         auto& target_viewport = *interaction->viewport;
         focusSplitPanel(interaction->panel);
+        target_viewport.camera.finishGlide();
 
         const float delta = static_cast<float>(yoff);
         if (std::abs(delta) < 0.01f)
             return;
+
+        const bool carry_pivot = camera_navigation_mode_ == CameraNavigationMode::FPV;
 
         if (scroll_action == input::Action::CAMERA_ROLL) {
             target_viewport.camera.rotate_roll(delta);
@@ -1389,10 +1393,10 @@ namespace lfs::vis {
                     }
                     services().renderingOrNull()->markDirty(DirtyFlag::CAMERA);
                 } else {
-                    target_viewport.camera.zoom(delta);
+                    target_viewport.camera.zoom(delta, carry_pivot);
                 }
             } else {
-                target_viewport.camera.zoom(delta);
+                target_viewport.camera.zoom(delta, carry_pivot);
             }
         } else {
             return;
@@ -1889,6 +1893,25 @@ namespace lfs::vis {
             keys_movement_[5] = false;
         }
 
+        // Drive the set-pivot recenter glide
+        if (auto& glide_viewport = activeKeyboardViewport(); glide_viewport.camera.isGliding()) {
+            const bool movement_keys_active = keys_movement_[0] || keys_movement_[1] || keys_movement_[2] ||
+                                              keys_movement_[3] || keys_movement_[4] || keys_movement_[5];
+            if (movement_keys_active) {
+                glide_viewport.camera.finishGlide();
+            } else {
+                glide_viewport.camera.updateGlide(delta_time);
+            }
+            onCameraMovementStart();
+            publishCameraMove(&glide_viewport);
+            if (!glide_viewport.camera.isGliding()) {
+                ui::CameraMove{
+                    .rotation = glide_viewport.getRotationMatrix(),
+                    .translation = glide_viewport.getTranslation()}
+                    .emit();
+            }
+        }
+
         // Handle continuous movement
         if (shouldCameraHandleInput() && drag_mode_ != DragMode::Gizmo && drag_mode_ != DragMode::Splitter) {
             auto& movement_viewport = activeKeyboardViewport();
@@ -2087,6 +2110,7 @@ namespace lfs::vis {
 
         target_viewport.camera.R = pose.rotation;
         target_viewport.camera.t = pose.translation;
+        target_viewport.camera.resetRollTarget();
 
         target_viewport.camera.updatePivotFromCamera(pivot_distance);
 
@@ -2388,6 +2412,7 @@ namespace lfs::vis {
     void InputController::beginPanDrag(const PanelInteractionState& interaction, const int button,
                                        const double x, const double y) {
         LOG_PERF("InputController::beginPanDrag button={} pos=({},{})", button, x, y);
+        interaction.viewport->camera.finishGlide();
         interaction.viewport->camera.initScreenPos(glm::vec2(x, y));
         drag_viewport_ = interaction.viewport;
         drag_split_panel_ = interaction.panel;

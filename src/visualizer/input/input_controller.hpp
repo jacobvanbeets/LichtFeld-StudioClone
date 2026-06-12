@@ -104,7 +104,7 @@ namespace lfs::vis {
             const bool camera_drag = drag_mode_ == DragMode::Orbit ||
                                      drag_mode_ == DragMode::Pan ||
                                      drag_mode_ == DragMode::Rotate;
-            return movement_active || camera_drag;
+            return movement_active || camera_drag || activeKeyboardViewport().camera.isGliding();
         }
         [[nodiscard]] bool hasViewportKeyboardFocus() const;
         [[nodiscard]] bool isViewportPoint(double x, double y) const { return isInViewport(x, y); }

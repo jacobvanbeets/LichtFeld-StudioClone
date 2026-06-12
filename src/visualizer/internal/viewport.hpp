@@ -11,6 +11,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <cmath>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtx/norm.hpp>
 #include <iostream>
 #include <optional>
@@ -29,13 +30,17 @@ class Viewport {
         float maxWasdSpeed = 100.0f;
         bool isOrbiting = false;
 
-        void increaseWasdSpeed() { wasdSpeed = std::min(wasdSpeed + 1.0f, maxWasdSpeed); }
-        void decreaseWasdSpeed() { wasdSpeed = std::max(wasdSpeed - 1.0f, 1.0f); }
+        // Multiplicative steps: the ranges span three orders of magnitude, so
+        // linear increments would need hundreds of keypresses to traverse them.
+        static constexpr float kSpeedStepFactor = 1.2f;
+
+        void increaseWasdSpeed() { wasdSpeed = std::min(wasdSpeed * kSpeedStepFactor, maxWasdSpeed); }
+        void decreaseWasdSpeed() { wasdSpeed = std::max(wasdSpeed / kSpeedStepFactor, 0.25f); }
         float getWasdSpeed() const { return wasdSpeed; }
         float getMaxWasdSpeed() const { return maxWasdSpeed; }
 
-        void increaseZoomSpeed() { zoomSpeed = std::min(zoomSpeed + 0.1f, maxZoomSpeed); }
-        void decreaseZoomSpeed() { zoomSpeed = std::max(zoomSpeed - 0.1f, 0.1f); }
+        void increaseZoomSpeed() { zoomSpeed = std::min(zoomSpeed * kSpeedStepFactor, maxZoomSpeed); }
+        void decreaseZoomSpeed() { zoomSpeed = std::max(zoomSpeed / kSpeedStepFactor, 0.1f); }
         float getZoomSpeed() const { return zoomSpeed; }
         float getMaxZoomSpeed() const { return maxZoomSpeed; }
 
@@ -69,7 +74,10 @@ class Viewport {
             R = home_R;
             t = home_t;
             pivot = home_pivot;
+            resetRollTarget();
         }
+
+        void resetRollTarget() { roll_target = 0.0f; }
 
         // Focus camera on bounding box (accepts focal length in mm)
         void focusOnBounds(const glm::vec3& bounds_min, const glm::vec3& bounds_max,
@@ -90,6 +98,7 @@ class Viewport {
             t = center + backward * distance;
             pivot = center;
             R = computeLookAtRotation(t, pivot);
+            resetRollTarget();
         }
 
         void rotate(const glm::vec2& pos, bool enforceUpright = false) {
@@ -99,17 +108,27 @@ class Viewport {
             float p = -delta.y * rotateSpeed;
             glm::vec3 upVec = enforceUpright ? glm::vec3(0.0f, 1.0f, 0.0f) : R[1];
 
+            if (enforceUpright) {
+                // Clamp pitch short of vertical: at the poles the upright basis
+                // (right = forward x world-up) degenerates and the view flips.
+                constexpr float MAX_PITCH = glm::radians(89.0f);
+                const glm::vec3 fwd = lfs::rendering::cameraForward(R);
+                const float current_pitch = std::asin(glm::clamp(fwd.y, -1.0f, 1.0f));
+                p = glm::clamp(p, -MAX_PITCH - current_pitch, MAX_PITCH - current_pitch);
+            }
+
             glm::mat3 Ry = glm::mat3(glm::rotate(glm::mat4(1.0f), y, upVec));
             glm::mat3 Rp = glm::mat3(glm::rotate(glm::mat4(1.0f), p, R[0]));
             R = Rp * Ry * R;
 
             if (enforceUpright) {
                 const glm::vec3 forward = lfs::rendering::cameraForward(R);
-                glm::vec3 right = glm::normalize(glm::cross(forward, upVec));
-                glm::vec3 up = glm::normalize(glm::cross(-forward, right));
+                const glm::vec3 right = normalizedOr(glm::cross(forward, upVec), R[0]);
+                const glm::vec3 up = normalizedOr(glm::cross(-forward, right), R[1]);
                 R[0] = right;
                 R[1] = up;
                 R[2] = -forward;
+                roll_target = 0.0f;
             }
 
             prePos = pos;
@@ -125,12 +144,11 @@ class Viewport {
         }
 
         void rotate_roll(float diff) {
-            float ang_rad = diff * rotateRollSpeed;
-            glm::mat3 rot_z = glm::mat3(
-                glm::cos(ang_rad), -glm::sin(ang_rad), 0.0f,
-                glm::sin(ang_rad), glm::cos(ang_rad), 0.0f,
-                0.0f, 0.0f, 1.0f);
-            R = R * rot_z;
+            const float ang_rad = diff * rotateRollSpeed;
+            R = R * glm::mat3(glm::rotate(glm::mat4(1.0f), ang_rad, glm::vec3(0.0f, 0.0f, 1.0f)));
+            // Free-orbit leveling targets this angle instead of zero so a
+            // deliberate roll survives subsequent orbiting.
+            roll_target = wrapAngle(roll_target + ang_rad);
         }
 
         void translate(const glm::vec2& pos) {
@@ -143,23 +161,26 @@ class Viewport {
             prePos = pos;
         }
 
-        void zoom(float delta) {
+        void zoom(float delta, bool carry_pivot = false) {
             const glm::vec3 forward = lfs::rendering::cameraForward(R);
             const float distToPivot = glm::length(pivot - t);
             const float adaptiveSpeed = zoomSpeed * 0.01f * distToPivot;
-            glm::vec3 movement = delta * adaptiveSpeed * forward;
+            const glm::vec3 movement = delta * adaptiveSpeed * forward;
 
-            // Prevent zooming past pivot
-            if (delta > 0.0f) {
-                const float current_dist = glm::length(pivot - t);
-                const float move_dist = glm::length(movement);
-                constexpr float kMinDistance = 0.1f;
-                if (current_dist - move_dist < kMinDistance) {
-                    const float allowed = std::max(0.0f, current_dist - kMinDistance);
-                    movement = glm::normalize(forward) * allowed;
-                }
-            }
             t += movement;
+            if (carry_pivot) {
+                pivot += movement;
+                return;
+            }
+
+            // Zooming in must never deadlock at the pivot: once the camera
+            // reaches the minimum distance, push the pivot ahead instead of
+            // stopping. This also recovers a pivot that ended up behind the
+            // camera.
+            constexpr float kMinDistance = 0.1f;
+            if (delta > 0.0f && glm::dot(pivot - t, forward) < kMinDistance) {
+                pivot = t + forward * kMinDistance;
+            }
         }
 
         void advance_forward(float deltaTime, float additional_speed = 0.0f) {
@@ -264,6 +285,34 @@ class Viewport {
             // Inertia disabled - do nothing
         }
 
+        // Short eased translation toward a target position; orientation and
+        // pivot are not touched, so orbiting mid-glide stays consistent.
+        void startGlide(const glm::vec3& target) {
+            glide_target_t = target;
+            glide_time_left = kGlideDuration;
+        }
+
+        [[nodiscard]] bool isGliding() const { return glide_time_left > 0.0f; }
+
+        void finishGlide() {
+            if (isGliding()) {
+                t = glide_target_t;
+                glide_time_left = 0.0f;
+            }
+        }
+
+        void updateGlide(float delta_time) {
+            if (!isGliding())
+                return;
+            glide_time_left = std::max(glide_time_left - delta_time, 0.0f);
+            const float blend = 1.0f - std::exp(-delta_time * kGlideRate);
+            t = glm::mix(t, glide_target_t, blend);
+            if (glide_time_left == 0.0f || glm::length2(glide_target_t - t) < 1e-8f) {
+                t = glide_target_t;
+                glide_time_left = 0.0f;
+            }
+        }
+
         void setAxisAlignedView(int axis, bool negative) {
             float dist_to_pivot = glm::length(pivot - t);
             if (!std::isfinite(dist_to_pivot) || dist_to_pivot < 0.1f)
@@ -272,6 +321,7 @@ class Viewport {
             R = axisViewRotation(axis, negative);
             const glm::vec3 forward = lfs::rendering::cameraForward(R);
             t = pivot - forward * dist_to_pivot;
+            resetRollTarget();
         }
 
         [[nodiscard]] bool snapToNearestAxisView(const float max_angle_degrees,
@@ -313,6 +363,20 @@ class Viewport {
         }
 
     private:
+        float roll_target = 0.0f;
+        glm::vec3 glide_target_t{0.0f};
+        float glide_time_left = 0.0f;
+        static constexpr float kGlideDuration = 0.35f;
+        static constexpr float kGlideRate = 15.0f;
+
+        [[nodiscard]] static float wrapAngle(float angle) {
+            while (angle > glm::pi<float>())
+                angle -= glm::two_pi<float>();
+            while (angle < -glm::pi<float>())
+                angle += glm::two_pi<float>();
+            return angle;
+        }
+
         [[nodiscard]] static glm::vec3 axisViewForward(const int axis, const bool negative) {
             const float sign = negative ? -1.0f : 1.0f;
             switch (axis) {
@@ -382,7 +446,9 @@ class Viewport {
         [[nodiscard]] static glm::mat3 makeRollStableOrbitRotation(const glm::vec3& eye,
                                                                    const glm::vec3& target,
                                                                    const glm::vec3& transported_right,
-                                                                   const glm::mat3& fallback_rotation) {
+                                                                   const glm::mat3& fallback_rotation,
+                                                                   const float step_angle,
+                                                                   const float roll_target_angle) {
             constexpr glm::vec3 WORLD_UP(0.0f, 1.0f, 0.0f);
 
             const glm::vec3 view = target - eye;
@@ -392,22 +458,47 @@ class Viewport {
             }
 
             const glm::vec3 forward = view / view_length;
-            glm::vec3 right = glm::cross(forward, WORLD_UP);
 
-            if (glm::length2(right) <= 1e-8f) {
-                right = transported_right - forward * glm::dot(transported_right, forward);
-            }
-            if (glm::length2(right) <= 1e-8f) {
+            glm::vec3 right = transported_right - forward * glm::dot(transported_right, forward);
+            const float transported_length = glm::length(right);
+            if (std::isfinite(transported_length) && transported_length > 1e-4f) {
+                right /= transported_length;
+            } else {
                 const glm::vec3 fallback_up = lfs::rendering::chooseFallbackUp(forward);
-                right = glm::cross(forward, fallback_up);
+                right = normalizedOr(glm::cross(forward, fallback_up), glm::vec3(1.0f, 0.0f, 0.0f));
             }
-            right = normalizedOr(right, glm::vec3(1.0f, 0.0f, 0.0f));
 
-            const glm::vec3 continuity_right =
-                transported_right - forward * glm::dot(transported_right, forward);
-            if (glm::length2(continuity_right) > 1e-8f &&
-                glm::dot(right, continuity_right) < 0.0f) {
-                right = -right;
+            // Level out roll gradually, at most as fast as the orbit step itself,
+            // so leveling is independent of mouse-event granularity and never
+            // snaps. cross(forward, WORLD_UP) is ill-conditioned near the poles
+            // (its direction swings arbitrarily fast as forward approaches
+            // vertical), so the correction fades to pure parallel transport
+            // there.
+            glm::vec3 level_right = glm::cross(forward, WORLD_UP);
+            const float level_length = glm::length(level_right);
+            if (level_length > 1e-4f && std::isfinite(step_angle) && step_angle > 0.0f) {
+                level_right /= level_length;
+                if (glm::dot(level_right, right) < 0.0f) {
+                    level_right = -level_right;
+                }
+                if (roll_target_angle != 0.0f) {
+                    // Rolling the camera by +a rotates its right vector by -a
+                    // about forward; aim the leveler at the rolled frame.
+                    level_right = level_right * std::cos(roll_target_angle) -
+                                  glm::cross(forward, level_right) * std::sin(roll_target_angle);
+                }
+
+                const float pole_blend = glm::smoothstep(
+                    0.95f, 0.999f, std::abs(glm::dot(forward, WORLD_UP)));
+                const float max_correction = step_angle * (1.0f - pole_blend);
+
+                const float cos_err = glm::clamp(glm::dot(right, level_right), -1.0f, 1.0f);
+                const float sin_err = glm::clamp(glm::dot(forward, glm::cross(right, level_right)), -1.0f, 1.0f);
+                const float roll_error = std::atan2(sin_err, cos_err);
+                const float correction = glm::clamp(roll_error, -max_correction, max_correction);
+
+                right = right * std::cos(correction) + glm::cross(forward, right) * std::sin(correction);
+                right = normalizedOr(right, level_right);
             }
 
             const glm::vec3 backward = -forward;
@@ -417,12 +508,27 @@ class Viewport {
 
         void applyRotationAroundCenter(const float yaw, const float pitch) {
             constexpr glm::vec3 WORLD_UP(0.0f, 1.0f, 0.0f);
-            constexpr float MAX_VERTICAL_DOT = 0.98f;
-            constexpr float HORIZONTAL_COMPONENT = 0.19899749f; // sqrt(1 - 0.98^2)
+            // Just short of vertical: keeps the upright re-orthogonalization
+            // below well-conditioned (right length >= 0.014) while allowing a
+            // near-top-down view.
+            constexpr float MAX_VERTICAL_DOT = 0.9999f;
+            constexpr float HORIZONTAL_COMPONENT = 0.01414178f; // sqrt(1 - 0.9999^2)
+
+            // Saturate the pitch input at the elevation limit. A fast drag
+            // event could otherwise step across the pole in one event and the
+            // upright rebuild below would flip the view 180 degrees. From an
+            // exact axis pole view (|elevation| > limit) the allowed range
+            // keeps only the exit direction whose rebuilt right stays aligned
+            // with the current frame, so leaving the pole never flips either.
+            const float max_elevation = std::asin(MAX_VERTICAL_DOT);
+            const glm::vec3 fwd = lfs::rendering::cameraForward(R);
+            const float elevation = std::asin(glm::clamp(fwd.y, -1.0f, 1.0f));
+            const float limit = std::max(max_elevation, std::abs(elevation));
+            const float clamped_pitch = glm::clamp(pitch, -limit - elevation, limit - elevation);
 
             // Apply yaw (world Y) and pitch (local right)
             const glm::mat3 Ry = glm::mat3(glm::rotate(glm::mat4(1.0f), yaw, WORLD_UP));
-            const glm::mat3 Rp = glm::mat3(glm::rotate(glm::mat4(1.0f), pitch, R[0]));
+            const glm::mat3 Rp = glm::mat3(glm::rotate(glm::mat4(1.0f), clamped_pitch, R[0]));
             const glm::mat3 U = Rp * Ry;
 
             // Transform position and orientation
@@ -454,6 +560,7 @@ class Viewport {
             R[0] = right;
             R[1] = glm::normalize(glm::cross(-forward, right));
             R[2] = -forward;
+            resetRollTarget();
         }
 
         void applyTrackballRotationAroundCenter(const float yaw, const float pitch) {
@@ -483,7 +590,9 @@ class Viewport {
                 t,
                 pivot,
                 U * local_right,
-                U * R);
+                U * R,
+                std::abs(yaw) + std::abs(pitch),
+                roll_target);
         }
     };
 
@@ -503,6 +612,7 @@ public:
     void setViewMatrix(const glm::mat3& R, const glm::vec3& t) {
         camera.R = R;
         camera.t = t;
+        camera.resetRollTarget();
     }
 
     glm::mat3 getRotationMatrix() const {
