@@ -135,6 +135,7 @@ namespace lfs::vis {
         [[nodiscard]] std::expected<std::shared_ptr<lfs::core::Tensor>, std::string> readOutputImageRgba8(
             VulkanContext& context,
             OutputSlot output_slot = OutputSlot::Main) const;
+        [[nodiscard]] std::expected<glm::ivec2, std::string> latestOutputImageSize(OutputSlot output_slot) const;
         // Reads the most recent render's raw per-pixel linear depth (the
         // final_pixel_depth buffer every chain writes) into an [H,W] CPU float32
         // tensor. Valid only directly after a render into this slot, before the
@@ -396,7 +397,6 @@ namespace lfs::vis {
         // readOutputImage / sampleDepthAtPixel instead of allocating a fresh pool/fence
         // per call. Torn down in reset() while the device is still valid.
         [[nodiscard]] std::expected<void, std::string> ensureReadbackContext() const;
-        [[nodiscard]] std::expected<glm::ivec2, std::string> latestOutputImageSize(OutputSlot output_slot) const;
 
         VulkanContext* context_ = nullptr;
         bool initialized_ = false;

@@ -2742,7 +2742,7 @@ namespace lfs::vis {
     }
 
     glm::vec3 InputController::unprojectScreenPoint(double x, double y, float fallback_distance) const {
-        const auto* const rendering = services().renderingOrNull();
+        auto* const rendering = services().renderingOrNull();
         const auto interaction = rendering
                                      ? rendering->resolveViewerPanel(
                                            viewport_,
@@ -2758,24 +2758,42 @@ namespace lfs::vis {
 
         const float local_x = static_cast<float>(x) - interaction->x;
         const float local_y = static_cast<float>(y) - interaction->y;
-        const float focal_length_mm = rendering->getFocalLengthMm();
+        const auto render_settings = rendering->getSettings();
+        const float focal_length_mm = render_settings.focal_length_mm;
+        const float ortho_scale = target_viewport->ortho_scale_override.value_or(render_settings.ortho_scale);
         Viewport projection_viewport = *target_viewport;
         projection_viewport.windowSize = glm::ivec2(
             std::max(static_cast<int>(interaction->width), 1),
             std::max(static_cast<int>(interaction->height), 1));
 
-        const float depth = rendering->getDepthAtPixel(
-            static_cast<int>(local_x), static_cast<int>(local_y), interaction->panel);
+        const int sample_x = static_cast<int>(local_x);
+        const int sample_y = static_cast<int>(local_y);
+        float depth = -1.0f;
+        if (auto* const scene_manager = services().sceneOrNull()) {
+            depth = rendering->renderExpectedDepthAtPixel(
+                scene_manager,
+                projection_viewport,
+                projection_viewport.windowSize,
+                {sample_x, sample_y},
+                focal_length_mm,
+                render_settings.orthographic,
+                ortho_scale);
+        }
+        if (depth <= 0.0f) {
+            depth = rendering->getDepthAtPixel(sample_x, sample_y, interaction->panel);
+        }
 
         if (depth > 0.0f) {
-            const glm::vec3 world = projection_viewport.unprojectPixel(local_x, local_y, depth, focal_length_mm);
+            const glm::vec3 world = projection_viewport.unprojectPixel(
+                local_x, local_y, depth, focal_length_mm, render_settings.orthographic, ortho_scale);
             if (Viewport::isValidWorldPosition(world)) {
                 return world;
             }
         }
 
         const glm::vec3 fallback_world =
-            projection_viewport.unprojectPixel(local_x, local_y, fallback_distance, focal_length_mm);
+            projection_viewport.unprojectPixel(
+                local_x, local_y, fallback_distance, focal_length_mm, render_settings.orthographic, ortho_scale);
         if (Viewport::isValidWorldPosition(fallback_world)) {
             return fallback_world;
         }
