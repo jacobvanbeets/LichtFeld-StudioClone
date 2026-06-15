@@ -14,6 +14,8 @@
 #include "window/vulkan_barrier2.hpp"
 #include "window/vulkan_context.hpp"
 
+#include "viewport/frustum.frag.spv.h"
+#include "viewport/frustum.vert.spv.h"
 #include "viewport/grid.frag.spv.h"
 #include "viewport/grid.vert.spv.h"
 #include "viewport/overlay.frag.spv.h"
@@ -101,6 +103,23 @@ namespace lfs::vis {
             glm::vec4 params{0.0f, 0.0f, 0.0f, 0.0f};
         };
 
+        struct FrustumPush {
+            glm::mat4 view{1.0f};
+            // x,y: panel origin (logical px). z,w: panel size (logical px).
+            glm::vec4 viewport_panel{0.0f, 0.0f, 0.0f, 0.0f};
+            // x,y: viewport origin (framebuffer px). z,w: viewport size (framebuffer px).
+            glm::vec4 viewport_fb{0.0f, 0.0f, 0.0f, 0.0f};
+            // x,y: render size (px). z: perspective fx or ortho scale. w: perspective fy.
+            glm::vec4 projection{0.0f, 0.0f, 0.0f, 0.0f};
+            // x: depth_available, y: flip-y depth UV, z: line thickness, w: orthographic.
+            glm::vec4 params{0.0f, 0.0f, 0.0f, 0.0f};
+        };
+
+        // 8 frustum edges expanded to 2 triangles (6 verts) each.
+        constexpr std::uint32_t kFrustumVertexCount = 48;
+        // Matches the former CPU frustum line width passed to addProjectedOverlayLine.
+        constexpr float kFrustumLineThickness = 1.5f;
+
         [[nodiscard]] VkDescriptorSet descriptorSetFromId(const std::uintptr_t texture_id) {
             return reinterpret_cast<VkDescriptorSet>(texture_id);
         }
@@ -147,6 +166,29 @@ namespace lfs::vis {
                 .height = static_cast<std::uint32_t>(std::max(y1 - y0, 0)),
             };
         }
+
+        [[nodiscard]] FramebufferRect toFramebufferRect(
+            const VulkanViewportPassParams& params,
+            const glm::vec2& viewport_pos,
+            const glm::vec2& viewport_size,
+            const VkExtent2D extent) {
+            const float sx = params.framebuffer_scale.x > 0.0f ? params.framebuffer_scale.x : 1.0f;
+            const float sy = params.framebuffer_scale.y > 0.0f ? params.framebuffer_scale.y : 1.0f;
+            const int x0 = std::clamp(static_cast<int>(std::lround(viewport_pos.x * sx)),
+                                      0, static_cast<int>(extent.width));
+            const int y0 = std::clamp(static_cast<int>(std::lround(viewport_pos.y * sy)),
+                                      0, static_cast<int>(extent.height));
+            const int x1 = std::clamp(static_cast<int>(std::lround((viewport_pos.x + viewport_size.x) * sx)),
+                                      0, static_cast<int>(extent.width));
+            const int y1 = std::clamp(static_cast<int>(std::lround((viewport_pos.y + viewport_size.y) * sy)),
+                                      0, static_cast<int>(extent.height));
+            return {
+                .x = x0,
+                .y = y0,
+                .width = static_cast<std::uint32_t>(std::max(x1 - x0, 0)),
+                .height = static_cast<std::uint32_t>(std::max(y1 - y0, 0)),
+            };
+        }
     } // namespace
 
     struct VulkanViewportPass::Impl {
@@ -178,8 +220,10 @@ namespace lfs::vis {
             DynamicBuffer ui_shape_overlay;
             DynamicBuffer textured_overlay;
             DynamicBuffer grid_uniform;
+            DynamicBuffer frustum_instances;
             VkDescriptorSet scene_descriptor_set = VK_NULL_HANDLE;
             VkDescriptorSet grid_descriptor_set = VK_NULL_HANDLE;
+            VkDescriptorSet frustum_descriptor_set = VK_NULL_HANDLE;
             VkDescriptorSet shape_overlay_descriptor_set = VK_NULL_HANDLE;
             VkImageView bound_shape_overlay_depth_view = VK_NULL_HANDLE;
         };
@@ -196,6 +240,9 @@ namespace lfs::vis {
 
         VkDescriptorSetLayout grid_descriptor_layout = VK_NULL_HANDLE;
         VkDescriptorPool grid_descriptor_pool = VK_NULL_HANDLE;
+
+        VkDescriptorSetLayout frustum_descriptor_layout = VK_NULL_HANDLE;
+        VkDescriptorPool frustum_descriptor_pool = VK_NULL_HANDLE;
 
         VkSampler shape_overlay_depth_sampler = VK_NULL_HANDLE;
         VkImage shape_overlay_dummy_depth_image = VK_NULL_HANDLE;
@@ -219,6 +266,8 @@ namespace lfs::vis {
         VkPipeline textured_overlay_pipeline = VK_NULL_HANDLE;
         VkPipelineLayout pivot_pipeline_layout = VK_NULL_HANDLE;
         VkPipeline pivot_pipeline = VK_NULL_HANDLE;
+        VkPipelineLayout frustum_pipeline_layout = VK_NULL_HANDLE;
+        VkPipeline frustum_pipeline = VK_NULL_HANDLE;
 
         // Declarative pass-graph: record() runs this ordered set of sub-passes, each gated by its
         // own active() condition, rebinding shared viewport/quad state between them.
@@ -249,6 +298,7 @@ namespace lfs::vis {
 
             if (!createSampler() || !scene_image_uploader.init(ctx, scene_sampler) ||
                 !createSceneDescriptors() || !createGridResources() ||
+                !createFrustumResources() ||
                 !createShapeOverlayDescriptors() ||
                 !createQuadBuffer() || !createPipelines()) {
                 reset();
@@ -358,6 +408,17 @@ namespace lfs::vis {
                 },
                 [this](const ViewportRecordContext& c, const VulkanViewportPassParams& p) {
                     recordWorldShapePass(c, p);
+                });
+            addGraphPass(
+                "frustum", P::WorldOverlay,
+                [this](const VulkanViewportPassParams& p) {
+                    const auto& frame = resourcesForFrame(p.frame_slot);
+                    return frame.frustum_instances.count > 0 && frustum_pipeline != VK_NULL_HANDLE &&
+                           frame.frustum_descriptor_set != VK_NULL_HANDLE &&
+                           frame.frustum_instances.buffer != VK_NULL_HANDLE && !p.frustum_batches.empty();
+                },
+                [this](const ViewportRecordContext& c, const VulkanViewportPassParams& p) {
+                    recordFrustumPass(c, p);
                 });
             addGraphPass(
                 "pivot", P::WorldOverlay,
@@ -583,6 +644,49 @@ namespace lfs::vis {
                 frame_resources[i].grid_descriptor_set = sets[i];
             }
 
+            return true;
+        }
+
+        // Per-frame storage buffer of frustum instances, read by frustum.vert
+        // indexed by gl_InstanceIndex. Mirrors createGridResources().
+        [[nodiscard]] bool createFrustumResources() {
+            VkDescriptorSetLayoutBinding binding{};
+            binding.binding = 0;
+            binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            binding.descriptorCount = 1;
+            binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+            VkDescriptorSetLayoutCreateInfo layout_info{};
+            layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layout_info.bindingCount = 1;
+            layout_info.pBindings = &binding;
+            if (vkCreateDescriptorSetLayout(device, &layout_info, nullptr, &frustum_descriptor_layout) != VK_SUCCESS) {
+                return false;
+            }
+
+            const auto descriptor_count = static_cast<std::uint32_t>(frame_resources.size());
+            VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, descriptor_count};
+            VkDescriptorPoolCreateInfo pool_info{};
+            pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            pool_info.maxSets = descriptor_count;
+            pool_info.poolSizeCount = 1;
+            pool_info.pPoolSizes = &pool_size;
+            if (vkCreateDescriptorPool(device, &pool_info, nullptr, &frustum_descriptor_pool) != VK_SUCCESS) {
+                return false;
+            }
+
+            std::vector<VkDescriptorSetLayout> layouts(frame_resources.size(), frustum_descriptor_layout);
+            std::vector<VkDescriptorSet> sets(frame_resources.size(), VK_NULL_HANDLE);
+            VkDescriptorSetAllocateInfo alloc_info{};
+            alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            alloc_info.descriptorPool = frustum_descriptor_pool;
+            alloc_info.descriptorSetCount = descriptor_count;
+            alloc_info.pSetLayouts = layouts.data();
+            if (vkAllocateDescriptorSets(device, &alloc_info, sets.data()) != VK_SUCCESS) {
+                return false;
+            }
+            for (std::size_t i = 0; i < frame_resources.size(); ++i) {
+                frame_resources[i].frustum_descriptor_set = sets[i];
+            }
             return true;
         }
 
@@ -1038,7 +1142,138 @@ namespace lfs::vis {
                                   shape_overlay_descriptor_layout) &&
                    createPipeline(kPivotVertSpv, kPivotFragSpv, "pivot",
                                   VK_NULL_HANDLE, &pivot_push, true, PipelineVertexLayout::ScreenQuad,
-                                  pivot_pipeline_layout, pivot_pipeline);
+                                  pivot_pipeline_layout, pivot_pipeline) &&
+                   createFrustumPipeline();
+        }
+
+        // Dedicated instanced frustum pipeline. Unlike createPipeline() it binds
+        // no vertex buffers (geometry comes from gl_VertexIndex/gl_InstanceIndex),
+        // reads instances from a storage buffer (set 0) and the splat depth
+        // sampler (set 1, shared with the shape overlay), and carries the
+        // view-projection in a 112-byte push constant.
+        [[nodiscard]] bool createFrustumPipeline() {
+            using namespace viewport_shaders;
+            VkShaderModule vertex_module = createShaderModule(kFrustumVertSpv);
+            VkShaderModule fragment_module = createShaderModule(kFrustumFragSpv);
+            if (vertex_module == VK_NULL_HANDLE || fragment_module == VK_NULL_HANDLE) {
+                if (vertex_module != VK_NULL_HANDLE)
+                    vkDestroyShaderModule(device, vertex_module, nullptr);
+                if (fragment_module != VK_NULL_HANDLE)
+                    vkDestroyShaderModule(device, fragment_module, nullptr);
+                LOG_ERROR("Failed to create Vulkan frustum shader modules");
+                return false;
+            }
+
+            VkPipelineShaderStageCreateInfo stages[2]{};
+            stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+            stages[0].module = vertex_module;
+            stages[0].pName = "main";
+            stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            stages[1].module = fragment_module;
+            stages[1].pName = "main";
+
+            VkPipelineVertexInputStateCreateInfo vertex_input{};
+            vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+            VkPipelineInputAssemblyStateCreateInfo input_assembly{};
+            input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+            input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+            VkPipelineViewportStateCreateInfo viewport_state{};
+            viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+            viewport_state.viewportCount = 1;
+            viewport_state.scissorCount = 1;
+
+            VkPipelineRasterizationStateCreateInfo raster{};
+            raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+            raster.polygonMode = VK_POLYGON_MODE_FILL;
+            raster.cullMode = VK_CULL_MODE_NONE;
+            raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+            raster.lineWidth = 1.0f;
+
+            VkPipelineMultisampleStateCreateInfo multisample{};
+            multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+            multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+            VkPipelineDepthStencilStateCreateInfo depth{};
+            depth.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+            depth.depthTestEnable = VK_FALSE;
+            depth.depthWriteEnable = VK_FALSE;
+            depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+            VkPipelineColorBlendAttachmentState blend_attachment{};
+            blend_attachment.colorWriteMask =
+                VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            blend_attachment.blendEnable = VK_TRUE;
+            blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+            blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+            blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+            VkPipelineColorBlendStateCreateInfo blend{};
+            blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+            blend.attachmentCount = 1;
+            blend.pAttachments = &blend_attachment;
+
+            std::array<VkDynamicState, 2> dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+            VkPipelineDynamicStateCreateInfo dynamic{};
+            dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+            dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
+            dynamic.pDynamicStates = dynamic_states.data();
+
+            VkPushConstantRange push{};
+            push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            push.offset = 0;
+            push.size = sizeof(FrustumPush);
+
+            std::array<VkDescriptorSetLayout, 2> set_layouts{
+                frustum_descriptor_layout, shape_overlay_descriptor_layout};
+            VkPipelineLayoutCreateInfo layout_info{};
+            layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            layout_info.setLayoutCount = static_cast<std::uint32_t>(set_layouts.size());
+            layout_info.pSetLayouts = set_layouts.data();
+            layout_info.pushConstantRangeCount = 1;
+            layout_info.pPushConstantRanges = &push;
+            if (vkCreatePipelineLayout(device, &layout_info, nullptr, &frustum_pipeline_layout) != VK_SUCCESS) {
+                vkDestroyShaderModule(device, vertex_module, nullptr);
+                vkDestroyShaderModule(device, fragment_module, nullptr);
+                return false;
+            }
+
+            VkPipelineRenderingCreateInfo rendering_info{};
+            rendering_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+            rendering_info.colorAttachmentCount = 1;
+            rendering_info.pColorAttachmentFormats = &color_format;
+            rendering_info.depthAttachmentFormat = depth_stencil_format;
+            rendering_info.stencilAttachmentFormat = depth_stencil_format;
+
+            VkGraphicsPipelineCreateInfo pipeline_info{};
+            pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+            pipeline_info.pNext = &rendering_info;
+            pipeline_info.stageCount = 2;
+            pipeline_info.pStages = stages;
+            pipeline_info.pVertexInputState = &vertex_input;
+            pipeline_info.pInputAssemblyState = &input_assembly;
+            pipeline_info.pViewportState = &viewport_state;
+            pipeline_info.pRasterizationState = &raster;
+            pipeline_info.pMultisampleState = &multisample;
+            pipeline_info.pDepthStencilState = &depth;
+            pipeline_info.pColorBlendState = &blend;
+            pipeline_info.pDynamicState = &dynamic;
+            pipeline_info.layout = frustum_pipeline_layout;
+            pipeline_info.renderPass = VK_NULL_HANDLE;
+            pipeline_info.subpass = 0;
+
+            const bool ok =
+                vkCreateGraphicsPipelines(device, pipeline_cache, 1, &pipeline_info, nullptr, &frustum_pipeline) == VK_SUCCESS;
+            vkDestroyShaderModule(device, vertex_module, nullptr);
+            vkDestroyShaderModule(device, fragment_module, nullptr);
+            return ok;
         }
 
         void updateQuadBuffer(const bool flip_y) {
@@ -1293,6 +1528,71 @@ namespace lfs::vis {
             }
         }
 
+        void updateFrustumDescriptor(FrameResources& frame, const VkDeviceSize range) const {
+            if (frame.frustum_descriptor_set == VK_NULL_HANDLE ||
+                frame.frustum_instances.buffer == VK_NULL_HANDLE) {
+                return;
+            }
+            VkDescriptorBufferInfo buffer_info{};
+            buffer_info.buffer = frame.frustum_instances.buffer;
+            buffer_info.offset = 0;
+            buffer_info.range = range;
+            VkWriteDescriptorSet write{};
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet = frame.frustum_descriptor_set;
+            write.dstBinding = 0;
+            write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            write.pBufferInfo = &buffer_info;
+            vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+        }
+
+        [[nodiscard]] bool ensureFrustumInstanceBuffer(FrameResources& frame, const std::size_t instance_count) {
+            if (instance_count == 0) {
+                frame.frustum_instances.count = 0;
+                return true;
+            }
+            if (frame.frustum_instances.buffer != VK_NULL_HANDLE &&
+                frame.frustum_instances.capacity >= instance_count) {
+                return true;
+            }
+
+            std::size_t capacity = 1;
+            while (capacity < instance_count) {
+                capacity *= 2;
+            }
+            const VkDeviceSize bytes =
+                static_cast<VkDeviceSize>(sizeof(VulkanViewportFrustumInstance) * capacity);
+            destroyDynamicBuffer(frame.frustum_instances);
+            if (!createBuffer(bytes,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              frame.frustum_instances.buffer,
+                              frame.frustum_instances.allocation)) {
+                frame.frustum_instances = {};
+                return false;
+            }
+            frame.frustum_instances.capacity = capacity;
+            updateFrustumDescriptor(frame, bytes);
+            return true;
+        }
+
+        void updateFrustumInstances(const VulkanViewportPassParams& params) {
+            auto& frame = resourcesForFrame(params.frame_slot);
+            if (params.frustum_instances.empty()) {
+                frame.frustum_instances.count = 0;
+                return;
+            }
+            if (!ensureFrustumInstanceBuffer(frame, params.frustum_instances.size())) {
+                return;
+            }
+            const VkDeviceSize bytes = static_cast<VkDeviceSize>(
+                sizeof(VulkanViewportFrustumInstance) * params.frustum_instances.size());
+            if (writeAllocation(frame.frustum_instances.allocation, params.frustum_instances.data(), bytes)) {
+                frame.frustum_instances.count = static_cast<std::uint32_t>(
+                    std::min<std::size_t>(params.frustum_instances.size(), std::numeric_limits<std::uint32_t>::max()));
+            }
+        }
+
         void uploadSceneImage(const VulkanViewportPassParams& params) {
             auto& frame = resourcesForFrame(params.frame_slot);
             scene_image_uploader.upload(params, frame.scene_descriptor_set);
@@ -1302,6 +1602,7 @@ namespace lfs::vis {
             auto& frame = resourcesForFrame(params.frame_slot);
             updateQuadBuffer(params.scene_image_flip_y);
             updateGridUniforms(params);
+            updateFrustumInstances(params);
             updateTexturedOverlayBuffer(frame, params);
             updateOverlayBuffer(frame, params);
             updateShapeOverlayBuffer(params.shape_overlay_triangles, frame.shape_overlay);
@@ -1614,6 +1915,60 @@ namespace lfs::vis {
             recordShapeOverlays(ctx.cmd, frame.shape_overlay, frame, world_shape_overlay_push);
         }
 
+        // Instanced camera frustums. Binds the instance storage buffer (set 0)
+        // and the shared splat-depth sampler (set 1), then issues one instanced
+        // draw per viewport panel with that panel's view-projection and rect.
+        void recordFrustumPass(const ViewportRecordContext& ctx,
+                               const VulkanViewportPassParams& params) {
+            const VkCommandBuffer command_buffer = ctx.cmd;
+            auto& frame = resourcesForFrame(params.frame_slot);
+            assert(frame.frustum_instances.count > 0 && frustum_pipeline != VK_NULL_HANDLE &&
+                   frame.frustum_descriptor_set != VK_NULL_HANDLE &&
+                   frame.frustum_instances.buffer != VK_NULL_HANDLE);
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, frustum_pipeline);
+            const std::array<VkDescriptorSet, 2> sets{
+                frame.frustum_descriptor_set, frame.shape_overlay_descriptor_set};
+            vkCmdBindDescriptorSets(command_buffer,
+                                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    frustum_pipeline_layout,
+                                    0,
+                                    static_cast<std::uint32_t>(sets.size()),
+                                    sets.data(),
+                                    0,
+                                    nullptr);
+            for (const auto& batch : params.frustum_batches) {
+                if (batch.instance_count == 0 ||
+                    batch.first_instance + batch.instance_count > frame.frustum_instances.count) {
+                    continue;
+                }
+                const FramebufferRect rect =
+                    toFramebufferRect(params, batch.viewport_pos, batch.viewport_size, ctx.extent);
+                if (rect.width == 0 || rect.height == 0) {
+                    continue;
+                }
+                bindViewport(command_buffer, rect);
+                FrustumPush push{};
+                push.view = batch.view;
+                push.viewport_panel = glm::vec4(batch.viewport_pos, batch.viewport_size);
+                push.viewport_fb = glm::vec4(static_cast<float>(rect.x),
+                                             static_cast<float>(rect.y),
+                                             static_cast<float>(rect.width),
+                                             static_cast<float>(rect.height));
+                push.projection = glm::vec4(batch.render_size, batch.focal_x, batch.focal_y);
+                push.params = glm::vec4(ctx.world_depth_params_push.x,
+                                        ctx.world_depth_params_push.y,
+                                        kFrustumLineThickness,
+                                        batch.orthographic ? 1.0f : 0.0f);
+                vkCmdPushConstants(command_buffer,
+                                   frustum_pipeline_layout,
+                                   VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   0,
+                                   sizeof(push),
+                                   &push);
+                vkCmdDraw(command_buffer, kFrustumVertexCount, batch.instance_count, 0, batch.first_instance);
+            }
+        }
+
         void recordPivotPass(VkCommandBuffer command_buffer, const VulkanViewportPassParams& params) {
             assert(!params.pivot_overlays.empty() && pivot_pipeline != VK_NULL_HANDLE);
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pivot_pipeline);
@@ -1748,6 +2103,8 @@ namespace lfs::vis {
                     vkDestroyPipeline(device, textured_overlay_pipeline, nullptr);
                 if (pivot_pipeline != VK_NULL_HANDLE)
                     vkDestroyPipeline(device, pivot_pipeline, nullptr);
+                if (frustum_pipeline != VK_NULL_HANDLE)
+                    vkDestroyPipeline(device, frustum_pipeline, nullptr);
                 if (scene_pipeline_layout != VK_NULL_HANDLE)
                     vkDestroyPipelineLayout(device, scene_pipeline_layout, nullptr);
                 if (vignette_pipeline_layout != VK_NULL_HANDLE)
@@ -1762,6 +2119,8 @@ namespace lfs::vis {
                     vkDestroyPipelineLayout(device, textured_overlay_pipeline_layout, nullptr);
                 if (pivot_pipeline_layout != VK_NULL_HANDLE)
                     vkDestroyPipelineLayout(device, pivot_pipeline_layout, nullptr);
+                if (frustum_pipeline_layout != VK_NULL_HANDLE)
+                    vkDestroyPipelineLayout(device, frustum_pipeline_layout, nullptr);
                 if (quad_buffer != VK_NULL_HANDLE)
                     vmaDestroyBuffer(allocator, quad_buffer, quad_allocation);
                 for (auto& frame : frame_resources) {
@@ -1770,6 +2129,7 @@ namespace lfs::vis {
                     destroyDynamicBuffer(frame.ui_shape_overlay);
                     destroyDynamicBuffer(frame.textured_overlay);
                     destroyDynamicBuffer(frame.grid_uniform);
+                    destroyDynamicBuffer(frame.frustum_instances);
                 }
                 if (scene_sampler != VK_NULL_HANDLE)
                     vkDestroySampler(device, scene_sampler, nullptr);
@@ -1781,6 +2141,10 @@ namespace lfs::vis {
                     vkDestroyDescriptorPool(device, grid_descriptor_pool, nullptr);
                 if (grid_descriptor_layout != VK_NULL_HANDLE)
                     vkDestroyDescriptorSetLayout(device, grid_descriptor_layout, nullptr);
+                if (frustum_descriptor_pool != VK_NULL_HANDLE)
+                    vkDestroyDescriptorPool(device, frustum_descriptor_pool, nullptr);
+                if (frustum_descriptor_layout != VK_NULL_HANDLE)
+                    vkDestroyDescriptorSetLayout(device, frustum_descriptor_layout, nullptr);
                 if (shape_overlay_descriptor_pool != VK_NULL_HANDLE)
                     vkDestroyDescriptorPool(device, shape_overlay_descriptor_pool, nullptr);
                 if (shape_overlay_descriptor_layout != VK_NULL_HANDLE)

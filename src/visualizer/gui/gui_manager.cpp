@@ -2067,46 +2067,6 @@ namespace lfs::vis::gui {
             return visualizer_camera_to_world * fov_scale;
         }
 
-        void appendPerspectiveCameraFrustum(VulkanViewportPassParams& params,
-                                            const VulkanGuidePanelTarget& panel,
-                                            const RenderSettings& settings,
-                                            const glm::mat4& model,
-                                            const glm::vec4& color) {
-            constexpr std::array local_points{
-                glm::vec3(-0.5f, -0.5f, -1.0f),
-                glm::vec3(0.5f, -0.5f, -1.0f),
-                glm::vec3(0.5f, 0.5f, -1.0f),
-                glm::vec3(-0.5f, 0.5f, -1.0f),
-                glm::vec3(0.0f, 0.0f, 0.0f),
-            };
-            constexpr std::array<std::pair<int, int>, 8> edges{{
-                {0, 1},
-                {1, 2},
-                {2, 3},
-                {3, 0},
-                {0, 4},
-                {1, 4},
-                {2, 4},
-                {3, 4},
-            }};
-
-            std::array<glm::vec3, local_points.size()> world_points{};
-            for (size_t i = 0; i < local_points.size(); ++i) {
-                world_points[i] = glm::vec3(model * glm::vec4(local_points[i], 1.0f));
-            }
-            for (const auto& [a, b] : edges) {
-                addProjectedOverlayLine(params.overlay_triangles,
-                                        params,
-                                        panel,
-                                        settings,
-                                        world_points[static_cast<size_t>(a)],
-                                        world_points[static_cast<size_t>(b)],
-                                        color,
-                                        1.5f,
-                                        true);
-            }
-        }
-
         void appendEquirectangularCameraFrustum(VulkanViewportPassParams& params,
                                                 const VulkanGuidePanelTarget& panel,
                                                 const RenderSettings& settings,
@@ -2220,6 +2180,10 @@ namespace lfs::vis::gui {
             const glm::vec3 view_position = panel.viewport->getTranslation();
             size_t background_thumbnail_requests = 0;
             constexpr size_t kBackgroundThumbnailRequestsPerFrame = 16;
+            // Perspective frustums are drawn GPU-instanced: this run of instances
+            // (one per visible perspective camera) becomes a single panel batch.
+            const std::uint32_t frustum_first_instance =
+                static_cast<std::uint32_t>(params.frustum_instances.size());
             for (size_t i = 0; i < cameras.size(); ++i) {
                 const auto& camera = cameras[i];
                 if (!camera) {
@@ -2309,8 +2273,36 @@ namespace lfs::vis::gui {
                                                   {emphasis_mix, disabled_mix, 0.0f, 0.0f},
                                                   corner_depths);
                     }
-                    appendPerspectiveCameraFrustum(params, panel, settings, *model, color);
+                    params.frustum_instances.push_back(VulkanViewportFrustumInstance{
+                        .model = *model,
+                        .color = color,
+                    });
                 }
+            }
+
+            const std::uint32_t frustum_instance_count =
+                static_cast<std::uint32_t>(params.frustum_instances.size()) - frustum_first_instance;
+            if (frustum_instance_count > 0) {
+                // Reproduce the former CPU pinhole exactly: view matrix +
+                // computePixelFocalLengths in render-pixel space. The frustum
+                // shader applies cx + x*fx/depth, cy - y*fy/depth, then scales
+                // render px -> panel px, matching the splat/scene projection so
+                // frustums track the point cloud under rotation.
+                const glm::mat4 frustum_view = lfs::rendering::makeViewMatrix(
+                    panel.viewport->getRotationMatrix(), panel.viewport->getTranslation());
+                const auto [frustum_fx, frustum_fy] =
+                    lfs::rendering::computePixelFocalLengths(panel.render_size, settings.focal_length_mm);
+                params.frustum_batches.push_back(VulkanViewportFrustumBatch{
+                    .view = frustum_view,
+                    .viewport_pos = panel.pos,
+                    .viewport_size = panel.size,
+                    .render_size = glm::vec2(panel.render_size),
+                    .focal_x = settings.orthographic ? settings.ortho_scale : frustum_fx,
+                    .focal_y = settings.orthographic ? settings.ortho_scale : frustum_fy,
+                    .orthographic = settings.orthographic,
+                    .first_instance = frustum_first_instance,
+                    .instance_count = frustum_instance_count,
+                });
             }
 
             if (thumbnail_cache.hasPendingWork()) {

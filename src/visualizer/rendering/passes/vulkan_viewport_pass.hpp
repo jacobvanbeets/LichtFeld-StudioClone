@@ -77,6 +77,33 @@ namespace lfs::vis {
         bool orthographic = false;
     };
 
+    // One GPU-instanced camera frustum. `model` maps the canonical local frustum
+    // (apex at origin, image plane at z = -1, corners at +/-0.5) to visualizer
+    // world space; `color` is the final RGBA (alpha already includes the
+    // distance/disabled/hover fade). Layout matches the std430 shader struct.
+    struct VulkanViewportFrustumInstance {
+        glm::mat4 model{1.0f};
+        glm::vec4 color{1.0f};
+    };
+
+    // A contiguous run of frustum instances drawn for one viewport panel. Split
+    // view produces one batch per panel because each panel has its own camera-space
+    // pinhole (view matrix + focal lengths) and viewport rect. The frustum shader
+    // reproduces the former CPU projection (cx + x*fx/depth, cy - y*fy/depth), so
+    // `focal_x`/`focal_y` are pixel focal lengths in `render_size` space (or the
+    // ortho pixel scale in `focal_x` when `orthographic`).
+    struct VulkanViewportFrustumBatch {
+        glm::mat4 view{1.0f};
+        glm::vec2 viewport_pos{0.0f, 0.0f};
+        glm::vec2 viewport_size{0.0f, 0.0f};
+        glm::vec2 render_size{0.0f, 0.0f};
+        float focal_x = 0.0f;
+        float focal_y = 0.0f;
+        bool orthographic = false;
+        std::uint32_t first_instance = 0;
+        std::uint32_t instance_count = 0;
+    };
+
     struct VulkanViewportPassParams {
         std::size_t frame_slot = 0;
         glm::vec2 viewport_pos{0.0f, 0.0f};
@@ -114,6 +141,10 @@ namespace lfs::vis {
         std::uint32_t post_ui_overlay_vertex_count = 0;
         std::vector<VulkanViewportPivotOverlay> pivot_overlays;
         std::vector<VulkanViewportTexturedOverlay> textured_overlays;
+        // GPU-instanced camera frustums: one instance per visible perspective
+        // camera, one batch per viewport panel.
+        std::vector<VulkanViewportFrustumInstance> frustum_instances;
+        std::vector<VulkanViewportFrustumBatch> frustum_batches;
 
         // GPU-rendered meshes drawn into the same color/depth attachments as the
         // viewport pass. Replaces the old CPU `rasterizeMeshTriangle` fallback path.
