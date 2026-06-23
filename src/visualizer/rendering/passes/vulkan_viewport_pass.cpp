@@ -111,7 +111,8 @@ namespace lfs::vis {
             glm::vec4 viewport_fb{0.0f, 0.0f, 0.0f, 0.0f};
             // x,y: render size (px). z: perspective fx or ortho scale. w: perspective fy.
             glm::vec4 projection{0.0f, 0.0f, 0.0f, 0.0f};
-            // x: depth_available, y: flip-y depth UV, z: line thickness, w: orthographic.
+            // x: depth_available, y: flip-y depth UV, z: line thickness,
+            // w: projection mode (0 perspective, 1 orthographic, 2 equirectangular).
             glm::vec4 params{0.0f, 0.0f, 0.0f, 0.0f};
         };
 
@@ -1955,10 +1956,11 @@ namespace lfs::vis {
                                              static_cast<float>(rect.width),
                                              static_cast<float>(rect.height));
                 push.projection = glm::vec4(batch.render_size, batch.focal_x, batch.focal_y);
+                const float projection_mode = batch.equirectangular ? 2.0f : (batch.orthographic ? 1.0f : 0.0f);
                 push.params = glm::vec4(ctx.world_depth_params_push.x,
                                         ctx.world_depth_params_push.y,
                                         kFrustumLineThickness,
-                                        batch.orthographic ? 1.0f : 0.0f);
+                                        projection_mode);
                 vkCmdPushConstants(command_buffer,
                                    frustum_pipeline_layout,
                                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,

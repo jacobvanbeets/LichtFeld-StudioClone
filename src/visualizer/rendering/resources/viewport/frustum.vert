@@ -3,8 +3,8 @@
 // GPU-instanced camera frustum wireframes. Each instance is one camera; this
 // shader generates the 8 frustum edges (48 vertices = 8 edges * 2 triangles)
 // from gl_VertexIndex, projects the edge endpoints with the same camera-space
-// pinhole math as the former CPU overlay path, clips them to the near plane,
-// expands each edge into a thick
+// projection math as the former CPU overlay path, clips perspective segments to
+// the near plane, expands each edge into a thick
 // screen-space quad, and emits the same varyings the SDF line fragment shader
 // consumes. This replaces the former per-frame CPU projection + tessellation of
 // every camera frustum (~160k vertices/frame for large datasets).
@@ -33,7 +33,8 @@ layout(push_constant) uniform FrustumPush {
     vec4 viewport_fb;
     // x,y: render size (px). z,w: perspective fx/fy, or z = ortho scale when orthographic.
     vec4 projection;
-    // x: depth available, y: flip-y depth UV, z: line thickness (px), w: orthographic.
+    // x: depth available, y: flip-y depth UV, z: line thickness (px),
+    // w: projection mode (0 perspective, 1 orthographic, 2 equirectangular).
     vec4 params;
 } pc;
 
@@ -66,6 +67,28 @@ void emitDegenerate() {
     gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
 }
 
+bool segmentOutsidePanel(vec2 a, vec2 b, vec2 panel_pos, vec2 panel_size, float extent) {
+    vec2 panel_min = panel_pos - vec2(extent);
+    vec2 panel_max = panel_pos + panel_size + vec2(extent);
+    vec2 seg_min = min(a, b);
+    vec2 seg_max = max(a, b);
+    return seg_max.x < panel_min.x || seg_max.y < panel_min.y ||
+           seg_min.x > panel_max.x || seg_min.y > panel_max.y;
+}
+
+bool projectEquirect(vec3 view, vec2 panel_pos, vec2 panel_size, out vec2 screen, out float depth) {
+    depth = length(view);
+    if (depth <= 1e-6) {
+        return false;
+    }
+    vec3 dir = view / depth;
+    float ndc_x = atan(dir.x, -dir.z) / 3.14159265358979323846;
+    float ndc_y = -asin(clamp(dir.y, -1.0, 1.0)) / (3.14159265358979323846 * 0.5);
+    screen = panel_pos + vec2((ndc_x * 0.5 + 0.5) * panel_size.x,
+                              (ndc_y * 0.5 + 0.5) * panel_size.y);
+    return true;
+}
+
 void main() {
     uint edge = uint(gl_VertexIndex) / 6u;
     uint corner = uint(gl_VertexIndex) % 6u;
@@ -77,51 +100,81 @@ void main() {
     vec3 view_a = (pc.view * world_a).xyz;
     vec3 view_b = (pc.view * world_b).xyz;
 
-    const float kMinViewZ = -1e-4;
-    bool a_behind = view_a.z >= kMinViewZ;
-    bool b_behind = view_b.z >= kMinViewZ;
-    if (a_behind && b_behind) {
-        emitDegenerate();
-        return;
-    }
-    // Near-clip the segment in view space to mirror projectSegmentToScreenClipped().
-    if (a_behind) {
-        float t = (kMinViewZ - view_a.z) / (view_b.z - view_a.z);
-        view_a = mix(view_a, view_b, clamp(t, 0.0, 1.0));
-        view_a.z = kMinViewZ;
-    } else if (b_behind) {
-        float t = (kMinViewZ - view_b.z) / (view_a.z - view_b.z);
-        view_b = mix(view_b, view_a, clamp(t, 0.0, 1.0));
-        view_b.z = kMinViewZ;
-    }
-
     vec2 panel_pos = pc.viewport_panel.xy;
     vec2 panel_size = max(pc.viewport_panel.zw, vec2(1.0));
     vec2 render_size = max(pc.projection.xy, vec2(1.0));
     float cx = render_size.x * 0.5;
     float cy = render_size.y * 0.5;
-    bool ortho = pc.params.w > 0.5;
+    bool equirectangular = pc.params.w > 1.5;
+    bool ortho = pc.params.w > 0.5 && pc.params.w < 1.5;
+
+    if (!equirectangular) {
+        const float kMinViewZ = -1e-4;
+        bool a_behind = view_a.z >= kMinViewZ;
+        bool b_behind = view_b.z >= kMinViewZ;
+        if (a_behind && b_behind) {
+            emitDegenerate();
+            return;
+        }
+        // Near-clip the segment in view space to mirror projectSegmentToScreenClipped().
+        if (a_behind) {
+            float t = (kMinViewZ - view_a.z) / (view_b.z - view_a.z);
+            view_a = mix(view_a, view_b, clamp(t, 0.0, 1.0));
+            view_a.z = kMinViewZ;
+        } else if (b_behind) {
+            float t = (kMinViewZ - view_b.z) / (view_a.z - view_b.z);
+            view_b = mix(view_b, view_a, clamp(t, 0.0, 1.0));
+            view_b.z = kMinViewZ;
+        }
+    }
 
     vec2 projected_a;
     vec2 projected_b;
-    if (ortho) {
+    vec2 screen_a;
+    vec2 screen_b;
+    float depth_a = 0.0;
+    float depth_b = 0.0;
+    if (equirectangular) {
+        if (!projectEquirect(view_a, panel_pos, panel_size, screen_a, depth_a) ||
+            !projectEquirect(view_b, panel_pos, panel_size, screen_b, depth_b)) {
+            emitDegenerate();
+            return;
+        }
+        float normalized_ax = (screen_a.x - panel_pos.x) / panel_size.x;
+        float normalized_bx = (screen_b.x - panel_pos.x) / panel_size.x;
+        if (abs(normalized_ax - normalized_bx) > 0.5) {
+            emitDegenerate();
+            return;
+        }
+    } else if (ortho) {
         float ortho_scale = max(pc.projection.z, 1.0e-6);
         projected_a = vec2(cx + view_a.x * ortho_scale, cy - view_a.y * ortho_scale);
         projected_b = vec2(cx + view_b.x * ortho_scale, cy - view_b.y * ortho_scale);
+        vec2 scale = panel_size / render_size;
+        screen_a = panel_pos + projected_a * scale;
+        screen_b = panel_pos + projected_b * scale;
+        depth_a = max(-view_a.z, 0.0);
+        depth_b = max(-view_b.z, 0.0);
     } else {
-        float depth_a = max(-view_a.z, 1.0e-6);
-        float depth_b = max(-view_b.z, 1.0e-6);
-        projected_a = vec2(cx + view_a.x * pc.projection.z / depth_a,
-                           cy - view_a.y * pc.projection.w / depth_a);
-        projected_b = vec2(cx + view_b.x * pc.projection.z / depth_b,
-                           cy - view_b.y * pc.projection.w / depth_b);
+        float perspective_depth_a = max(-view_a.z, 1.0e-6);
+        float perspective_depth_b = max(-view_b.z, 1.0e-6);
+        projected_a = vec2(cx + view_a.x * pc.projection.z / perspective_depth_a,
+                           cy - view_a.y * pc.projection.w / perspective_depth_a);
+        projected_b = vec2(cx + view_b.x * pc.projection.z / perspective_depth_b,
+                           cy - view_b.y * pc.projection.w / perspective_depth_b);
+        vec2 scale = panel_size / render_size;
+        screen_a = panel_pos + projected_a * scale;
+        screen_b = panel_pos + projected_b * scale;
+        depth_a = max(-view_a.z, 0.0);
+        depth_b = max(-view_b.z, 0.0);
     }
-    vec2 scale = panel_size / render_size;
-    vec2 screen_a = panel_pos + projected_a * scale;
-    vec2 screen_b = panel_pos + projected_b * scale;
 
     float thickness = max(pc.params.z, 1.0);
     float extent = thickness * 0.5 + 2.0;
+    if (segmentOutsidePanel(screen_a, screen_b, panel_pos, panel_size, extent)) {
+        emitDegenerate();
+        return;
+    }
     vec2 delta = screen_b - screen_a;
     float len = length(delta);
     vec2 dir = (len > 1e-4) ? (delta / len) : vec2(1.0, 0.0);
@@ -132,9 +185,6 @@ void main() {
     vec2 base = (end_sel < 0.5) ? (screen_a - dir * extent)
                                 : (screen_b + dir * extent);
     vec2 screen = base + nrm * (side * extent);
-
-    float depth_a = max(-view_a.z, 0.0);
-    float depth_b = max(-view_b.z, 0.0);
 
     ScreenPos = screen;
     P0 = screen_a;

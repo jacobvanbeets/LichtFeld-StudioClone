@@ -973,57 +973,6 @@ namespace lfs::vis::gui {
             };
         }
 
-        [[nodiscard]] std::optional<glm::vec2> projectPointToPanelScreen(
-            const VulkanGuidePanelTarget& panel,
-            const RenderSettings& settings,
-            const glm::vec3& world) {
-            const glm::mat3 rotation = panel.viewport->getRotationMatrix();
-            const glm::vec3 translation = panel.viewport->getTranslation();
-            const glm::vec3 view = glm::transpose(rotation) * (world - translation);
-
-            if (settings.equirectangular) {
-                const float len = glm::length(view);
-                if (!std::isfinite(len) || len <= 1e-6f) {
-                    return std::nullopt;
-                }
-                const glm::vec3 dir = view / len;
-                const float ndc_x = std::atan2(dir.x, -dir.z) / glm::pi<float>();
-                const float ndc_y = -std::asin(std::clamp(dir.y, -1.0f, 1.0f)) /
-                                    (glm::pi<float>() * 0.5f);
-                if (!std::isfinite(ndc_x) || !std::isfinite(ndc_y)) {
-                    return std::nullopt;
-                }
-                return panel.pos + glm::vec2((ndc_x * 0.5f + 0.5f) * panel.size.x,
-                                             (ndc_y * 0.5f + 0.5f) * panel.size.y);
-            }
-
-            constexpr float kMinViewZ = -1e-4f;
-            if (view.z >= kMinViewZ) {
-                return std::nullopt;
-            }
-
-            const float width = static_cast<float>(std::max(panel.render_size.x, 1));
-            const float height = static_cast<float>(std::max(panel.render_size.y, 1));
-            const float cx = width * 0.5f;
-            const float cy = height * 0.5f;
-            if (settings.orthographic) {
-                if (!std::isfinite(settings.ortho_scale) || settings.ortho_scale <= 0.0f) {
-                    return std::nullopt;
-                }
-                return renderToPanelScreen(panel, glm::vec2(cx + view.x * settings.ortho_scale,
-                                                            cy - view.y * settings.ortho_scale));
-            }
-
-            const auto [fx, fy] = lfs::rendering::computePixelFocalLengths(
-                panel.render_size, settings.focal_length_mm);
-            const float depth = -view.z;
-            if (depth <= 0.0f) {
-                return std::nullopt;
-            }
-            return renderToPanelScreen(panel, glm::vec2(cx + view.x * fx / depth,
-                                                        cy - view.y * fy / depth));
-        }
-
         [[nodiscard]] bool projectedQuadVisible(const std::array<glm::vec2, 4>& points,
                                                 const VulkanGuidePanelTarget& panel) {
             glm::vec2 min_point(std::numeric_limits<float>::max());
@@ -2178,13 +2127,60 @@ namespace lfs::vis::gui {
             }
 
             constexpr float kMinRenderAlpha = 0.01f;
-            const glm::vec3 view_position = panel.viewport->getTranslation();
+            const glm::mat3 panel_rotation = panel.viewport->getRotationMatrix();
+            const glm::vec3 panel_translation = panel.viewport->getTranslation();
+            const glm::mat3 world_to_panel_rotation = glm::transpose(panel_rotation);
+            const glm::vec3 view_position = panel_translation;
+            const float panel_render_width = static_cast<float>(std::max(panel.render_size.x, 1));
+            const float panel_render_height = static_cast<float>(std::max(panel.render_size.y, 1));
+            const float panel_cx = panel_render_width * 0.5f;
+            const float panel_cy = panel_render_height * 0.5f;
+            const auto [panel_fx, panel_fy] =
+                lfs::rendering::computePixelFocalLengths(panel.render_size, settings.focal_length_mm);
+            const auto project_panel_point = [&](const glm::vec3& world) -> std::optional<glm::vec2> {
+                const glm::vec3 view = world_to_panel_rotation * (world - panel_translation);
+                if (settings.equirectangular) {
+                    const float len = glm::length(view);
+                    if (!std::isfinite(len) || len <= 1e-6f) {
+                        return std::nullopt;
+                    }
+                    const glm::vec3 dir = view / len;
+                    const float ndc_x = std::atan2(dir.x, -dir.z) / glm::pi<float>();
+                    const float ndc_y = -std::asin(std::clamp(dir.y, -1.0f, 1.0f)) /
+                                        (glm::pi<float>() * 0.5f);
+                    if (!std::isfinite(ndc_x) || !std::isfinite(ndc_y)) {
+                        return std::nullopt;
+                    }
+                    return panel.pos + glm::vec2((ndc_x * 0.5f + 0.5f) * panel.size.x,
+                                                 (ndc_y * 0.5f + 0.5f) * panel.size.y);
+                }
+
+                constexpr float kMinViewZ = -1e-4f;
+                if (view.z >= kMinViewZ) {
+                    return std::nullopt;
+                }
+                if (settings.orthographic) {
+                    if (!std::isfinite(settings.ortho_scale) || settings.ortho_scale <= 0.0f) {
+                        return std::nullopt;
+                    }
+                    return renderToPanelScreen(panel, glm::vec2(panel_cx + view.x * settings.ortho_scale,
+                                                                panel_cy - view.y * settings.ortho_scale));
+                }
+
+                const float depth = -view.z;
+                if (depth <= 0.0f) {
+                    return std::nullopt;
+                }
+                return renderToPanelScreen(panel, glm::vec2(panel_cx + view.x * panel_fx / depth,
+                                                            panel_cy - view.y * panel_fy / depth));
+            };
             size_t background_thumbnail_requests = 0;
             constexpr size_t kBackgroundThumbnailRequestsPerFrame = 16;
             // Perspective frustums are drawn GPU-instanced: this run of instances
             // (one per visible perspective camera) becomes a single panel batch.
             const std::uint32_t frustum_first_instance =
                 static_cast<std::uint32_t>(params.frustum_instances.size());
+            params.frustum_instances.reserve(params.frustum_instances.size() + cameras.size());
             for (size_t i = 0; i < cameras.size(); ++i) {
                 const auto& camera = cameras[i];
                 if (!camera) {
@@ -2238,18 +2234,16 @@ namespace lfs::vis::gui {
                     std::array<glm::vec2, image_corners.size()> screen_points{};
                     std::array<float, image_corners.size()> corner_depths{};
                     bool quad_visible = true;
-                    const glm::mat3 panel_rotation = panel.viewport->getRotationMatrix();
-                    const glm::vec3 panel_translation = panel.viewport->getTranslation();
                     for (size_t corner = 0; corner < image_corners.size(); ++corner) {
                         const glm::vec3 world_point =
                             glm::vec3((*model) * glm::vec4(image_corners[corner], 1.0f));
-                        const auto projected = projectPointToPanelScreen(panel, settings, world_point);
+                        const auto projected = project_panel_point(world_point);
                         if (!projected) {
                             quad_visible = false;
                             break;
                         }
                         screen_points[corner] = *projected;
-                        const glm::vec3 view = glm::transpose(panel_rotation) * (world_point - panel_translation);
+                        const glm::vec3 view = world_to_panel_rotation * (world_point - panel_translation);
                         corner_depths[corner] = settings.equirectangular ? glm::length(view) : -view.z;
                     }
                     quad_visible = quad_visible && projectedQuadVisible(screen_points, panel);
@@ -2284,23 +2278,20 @@ namespace lfs::vis::gui {
             const std::uint32_t frustum_instance_count =
                 static_cast<std::uint32_t>(params.frustum_instances.size()) - frustum_first_instance;
             if (frustum_instance_count > 0) {
-                // Reproduce the former CPU pinhole exactly: view matrix +
-                // computePixelFocalLengths in render-pixel space. The frustum
-                // shader applies cx + x*fx/depth, cy - y*fy/depth, then scales
-                // render px -> panel px, matching the splat/scene projection so
-                // frustums track the point cloud under rotation.
-                const glm::mat4 frustum_view = lfs::rendering::makeViewMatrix(
-                    panel.viewport->getRotationMatrix(), panel.viewport->getTranslation());
-                const auto [frustum_fx, frustum_fy] =
-                    lfs::rendering::computePixelFocalLengths(panel.render_size, settings.focal_length_mm);
+                // The shader reproduces the former CPU projection for the active
+                // viewport mode, including the equirectangular branch used by pano
+                // views. Perspective focal lengths are in render-pixel space.
+                const glm::mat4 frustum_view =
+                    lfs::rendering::makeViewMatrix(panel_rotation, panel_translation);
                 params.frustum_batches.push_back(VulkanViewportFrustumBatch{
                     .view = frustum_view,
                     .viewport_pos = panel.pos,
                     .viewport_size = panel.size,
                     .render_size = glm::vec2(panel.render_size),
-                    .focal_x = settings.orthographic ? settings.ortho_scale : frustum_fx,
-                    .focal_y = settings.orthographic ? settings.ortho_scale : frustum_fy,
+                    .focal_x = settings.orthographic ? settings.ortho_scale : panel_fx,
+                    .focal_y = settings.orthographic ? settings.ortho_scale : panel_fy,
                     .orthographic = settings.orthographic,
+                    .equirectangular = settings.equirectangular,
                     .first_instance = frustum_first_instance,
                     .instance_count = frustum_instance_count,
                 });

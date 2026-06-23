@@ -87,11 +87,11 @@ namespace lfs::vis {
     };
 
     // A contiguous run of frustum instances drawn for one viewport panel. Split
-    // view produces one batch per panel because each panel has its own camera-space
-    // pinhole (view matrix + focal lengths) and viewport rect. The frustum shader
-    // reproduces the former CPU projection (cx + x*fx/depth, cy - y*fy/depth), so
-    // `focal_x`/`focal_y` are pixel focal lengths in `render_size` space (or the
-    // ortho pixel scale in `focal_x` when `orthographic`).
+    // view produces one batch per panel because each panel has its own projection
+    // mode, view matrix, and viewport rect. Perspective batches use `focal_x` /
+    // `focal_y` as pixel focal lengths in `render_size` space; orthographic
+    // batches use `focal_x` as the pixel scale; equirectangular batches ignore
+    // both focal fields and project directions onto the pano.
     struct VulkanViewportFrustumBatch {
         glm::mat4 view{1.0f};
         glm::vec2 viewport_pos{0.0f, 0.0f};
@@ -100,6 +100,7 @@ namespace lfs::vis {
         float focal_x = 0.0f;
         float focal_y = 0.0f;
         bool orthographic = false;
+        bool equirectangular = false;
         std::uint32_t first_instance = 0;
         std::uint32_t instance_count = 0;
     };
