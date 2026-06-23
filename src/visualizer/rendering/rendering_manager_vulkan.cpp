@@ -543,7 +543,8 @@ namespace lfs::vis {
         const bool equirectangular,
         const VksplatSelectionMaskShape shape,
         const std::vector<glm::vec4>& primitives,
-        const std::vector<glm::vec2>& polygon_vertices) {
+        const std::vector<glm::vec2>& polygon_vertices,
+        std::uint32_t* const picked_ring_id_out) {
         LOG_TIMER("RenderingManager::buildVksplatSelectionMask");
         const auto settings = getSettings();
         if (!lfs::rendering::isVkSplatBackend(settings.raster_backend)) {
@@ -586,6 +587,8 @@ namespace lfs::vis {
                 return VksplatViewportRenderer::SelectionMaskShape::Rectangle;
             case VksplatSelectionMaskShape::Polygon:
                 return VksplatViewportRenderer::SelectionMaskShape::Polygon;
+            case VksplatSelectionMaskShape::Ring:
+                return VksplatViewportRenderer::SelectionMaskShape::Ring;
             }
             return VksplatViewportRenderer::SelectionMaskShape::Brush;
         };
@@ -605,7 +608,10 @@ namespace lfs::vis {
             .polygon_vertices = polygon_vertices,
             .gut = lfs::rendering::isGutBackend(settings.raster_backend),
             .equirectangular = equirectangular,
+            .mip_filter = settings.mip_filter,
+            .ring_width = settings.ring_width,
             .synchronize_input_upload = is_training,
+            .picked_ring_id_out = picked_ring_id_out,
         };
 
         const bool force_input_upload =

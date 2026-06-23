@@ -84,6 +84,7 @@ namespace lfs::vis {
             Brush = 0,
             Rectangle = 1,
             Polygon = 2,
+            Ring = 3,
         };
 
         enum class OutputSlot : std::size_t {
@@ -101,7 +102,10 @@ namespace lfs::vis {
             std::vector<glm::vec2> polygon_vertices;
             bool gut = false;
             bool equirectangular = false;
+            bool mip_filter = false;
+            float ring_width = 0.01f;
             bool synchronize_input_upload = false;
+            std::uint32_t* picked_ring_id_out = nullptr;
         };
 
         struct DepthSampleRequest {
@@ -296,7 +300,7 @@ namespace lfs::vis {
         // Vulkan-external buffers bypass this allocation and are bound directly.
         static constexpr std::size_t kInputRegionCount = 7;
         static constexpr std::size_t kOverlayRegionCount = 7;
-        static constexpr std::size_t kSelectionQueryRegionCount = 7;
+        static constexpr std::size_t kSelectionQueryRegionCount = 8;
         static constexpr std::size_t kRegionAlignment = 256; // VK minStorageBufferOffsetAlignment upper bound on common HW
         struct CudaInputSlot {
             VulkanContext::ExternalBuffer buffer{};

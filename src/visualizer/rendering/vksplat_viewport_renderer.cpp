@@ -51,6 +51,10 @@ namespace lfs::vis {
         constexpr std::uint32_t kVkSplatCameraModelEquirectangular = 3u;
         constexpr std::uint32_t kVkSplatProjectionModeShift = 8u;
         constexpr std::uint32_t kVkSplatProjectionModeGut = 1u;
+        constexpr std::uint32_t kRingPickNoHit = std::numeric_limits<std::uint32_t>::max();
+        constexpr std::uint32_t kRingPickPhaseNone = 0u;
+        constexpr std::uint32_t kRingPickPhaseFindMin = 1u;
+        constexpr std::uint32_t kRingPickPhaseWritePick = 2u;
 
         // Readback frames of deferred-wants-with-zero-admissions before the
         // pool counts as frozen: long enough to outlast the publish
@@ -756,6 +760,7 @@ namespace lfs::vis {
             SelectionQueryModelTransforms = 4,
             SelectionQueryPolygonVertices = 5,
             SelectionQueryPolygonMask = 6,
+            SelectionQueryRingPick = 7,
         };
 
         [[nodiscard]] bool hasOverlayTensor(const Tensor* const tensor, const std::size_t num_splats) {
@@ -5401,6 +5406,10 @@ namespace lfs::vis {
             return std::unexpected("VkSplat equirectangular selection requires the 3DGUT backend");
         }
         const bool polygon_mode = (request.shape == SelectionMaskShape::Polygon);
+        const bool ring_mode = (request.shape == SelectionMaskShape::Ring);
+        if (request.picked_ring_id_out) {
+            *request.picked_ring_id_out = kRingPickNoHit;
+        }
         if (polygon_mode) {
             if (request.polygon_vertices.size() < 3) {
                 return std::unexpected("VkSplat polygon selection requires at least 3 vertices");
@@ -5502,6 +5511,7 @@ namespace lfs::vis {
                          : std::size_t{0};
         const std::size_t polygon_mask_region_bytes =
             alignUp(std::max<std::size_t>(polygon_mask_pixels, 1u), 4u);
+        const std::size_t ring_pick_region_bytes = 2u * sizeof(std::uint32_t);
         std::array<std::size_t, kSelectionQueryRegionCount> region_bytes{};
         region_bytes[SelectionQueryOutput] = unused_query_output_region_bytes;
         region_bytes[SelectionQueryTransformIndices] = transform_region_bytes;
@@ -5510,6 +5520,7 @@ namespace lfs::vis {
         region_bytes[SelectionQueryModelTransforms] = model_transforms_region_bytes;
         region_bytes[SelectionQueryPolygonVertices] = polygon_vertices_region_bytes;
         region_bytes[SelectionQueryPolygonMask] = polygon_mask_region_bytes;
+        region_bytes[SelectionQueryRingPick] = ring_pick_region_bytes;
         auto region_capacity_bytes = slot.region_capacity_bytes;
         const auto grow_fixed = [&](const std::size_t region) {
             region_capacity_bytes[region] =
@@ -5528,6 +5539,7 @@ namespace lfs::vis {
         const std::size_t viewport_polygon_mask_bytes =
             alignUp(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y), 4u);
         grow_dynamic(SelectionQueryPolygonMask, viewport_polygon_mask_bytes);
+        grow_fixed(SelectionQueryRingPick);
         std::array<std::size_t, kSelectionQueryRegionCount> region_offset{};
         const std::size_t total_bytes = layoutRegions(region_capacity_bytes, region_offset, kRegionAlignment);
         const bool query_buffer_reallocated =
@@ -5748,6 +5760,21 @@ namespace lfs::vis {
                                                        cudaGetErrorString(status)));
                 }
             }
+            if (ring_mode) {
+                auto* const ring_pick_ptr =
+                    static_cast<std::uint8_t*>(slot.interop.devicePointer()) +
+                    slot.region_offset[SelectionQueryRingPick];
+                if (const cudaError_t status =
+                        cudaMemsetAsync(ring_pick_ptr,
+                                        0xFF,
+                                        slot.region_bytes[SelectionQueryRingPick],
+                                        selection_query_stream);
+                    status != cudaSuccess) {
+                    return std::unexpected(std::format("VkSplat ring-pick clear failed: {} ({})",
+                                                       cudaGetErrorName(status),
+                                                       cudaGetErrorString(status)));
+                }
+            }
         }
 
         const auto view = [&](const std::size_t region) {
@@ -5764,7 +5791,7 @@ namespace lfs::vis {
                                       num_splats,
                                       request.equirectangular,
                                       request.gut,
-                                      false);
+                                      request.mip_filter);
         VulkanGSSelectionMaskUniforms selection_uniforms{};
         selection_uniforms.num_splats = static_cast<std::uint32_t>(num_splats);
         selection_uniforms.primitive_count = static_cast<std::uint32_t>(request.primitives.size());
@@ -5778,6 +5805,9 @@ namespace lfs::vis {
         selection_uniforms.image_height = camera_uniforms.image_height;
         selection_uniforms.image_width = camera_uniforms.image_width;
         selection_uniforms.camera_model = camera_uniforms.camera_model;
+        selection_uniforms.ring_width = request.ring_width;
+        selection_uniforms.mip_filter = request.mip_filter ? 1u : 0u;
+        selection_uniforms.ring_pick_phase = kRingPickPhaseNone;
         selection_uniforms.fx = camera_uniforms.fx;
         selection_uniforms.fy = camera_uniforms.fy;
         selection_uniforms.cx = camera_uniforms.cx;
@@ -5834,14 +5864,25 @@ namespace lfs::vis {
                 }
                 {
                     LOG_TIMER("VksplatViewportRenderer::buildSelectionMask.dispatch.selection_mask");
-                    renderer_.executeSelectionMask(selection_uniforms,
-                                                   buffers_,
-                                                   view(SelectionQueryTransformIndices),
-                                                   view(SelectionQueryNodeMask),
-                                                   view(SelectionQueryPrimitives),
-                                                   view(SelectionQueryModelTransforms),
-                                                   output_view,
-                                                   view(SelectionQueryPolygonMask));
+                    auto dispatch_selection_mask = [&](const std::uint32_t ring_pick_phase) {
+                        auto uniforms = selection_uniforms;
+                        uniforms.ring_pick_phase = ring_pick_phase;
+                        renderer_.executeSelectionMask(uniforms,
+                                                       buffers_,
+                                                       view(SelectionQueryTransformIndices),
+                                                       view(SelectionQueryNodeMask),
+                                                       view(SelectionQueryPrimitives),
+                                                       view(SelectionQueryModelTransforms),
+                                                       output_view,
+                                                       view(SelectionQueryPolygonMask),
+                                                       view(SelectionQueryRingPick));
+                    };
+                    if (ring_mode) {
+                        dispatch_selection_mask(kRingPickPhaseFindMin);
+                        dispatch_selection_mask(kRingPickPhaseWritePick);
+                    } else {
+                        dispatch_selection_mask(kRingPickPhaseNone);
+                    }
                 }
             } catch (const std::exception& e) {
                 return std::unexpected(std::format("VkSplat selection query failed: {}", e.what()));
@@ -5854,6 +5895,64 @@ namespace lfs::vis {
                                                                    selection_query_stream)) {
                 return std::unexpected(std::format("VkSplat selection query completion wait failed: {}",
                                                    selection_query_timeline_.cuda_semaphore.lastError()));
+            }
+        }
+
+        if (ring_mode) {
+            LOG_TIMER("VksplatViewportRenderer::buildSelectionMask.ring_pick");
+            std::array<std::uint32_t, 2> ring_pick{kRingPickNoHit, kRingPickNoHit};
+            const auto* const ring_pick_src =
+                static_cast<const std::uint8_t*>(slot.interop.devicePointer()) +
+                slot.region_offset[SelectionQueryRingPick];
+            if (const cudaError_t status = cudaMemcpyAsync(&ring_pick,
+                                                           ring_pick_src,
+                                                           sizeof(ring_pick),
+                                                           cudaMemcpyDeviceToHost,
+                                                           selection_query_stream);
+                status != cudaSuccess) {
+                return std::unexpected(std::format("VkSplat ring-pick readback failed: {} ({})",
+                                                   cudaGetErrorName(status),
+                                                   cudaGetErrorString(status)));
+            }
+            if (const cudaError_t status = cudaStreamSynchronize(selection_query_stream);
+                status != cudaSuccess) {
+                return std::unexpected(std::format("VkSplat ring-pick readback sync failed: {} ({})",
+                                                   cudaGetErrorName(status),
+                                                   cudaGetErrorString(status)));
+            }
+
+            auto* const output_bytes = static_cast<std::uint8_t*>(slot.output_tensor.data_ptr());
+            if (const cudaError_t status =
+                    cudaMemsetAsync(output_bytes, 0, output_tensor_region_bytes, selection_query_stream);
+                status != cudaSuccess) {
+                return std::unexpected(std::format("VkSplat ring-pick output clear failed: {} ({})",
+                                                   cudaGetErrorName(status),
+                                                   cudaGetErrorString(status)));
+            }
+            if (ring_pick[0] != kRingPickNoHit && ring_pick[1] != kRingPickNoHit) {
+                const std::uint32_t picked_id = ring_pick[1];
+                if (picked_id < num_splats) {
+                    if (request.picked_ring_id_out) {
+                        *request.picked_ring_id_out = picked_id;
+                    }
+                    const std::uint8_t selected = 1;
+                    if (const cudaError_t status = cudaMemcpyAsync(output_bytes + picked_id,
+                                                                   &selected,
+                                                                   sizeof(selected),
+                                                                   cudaMemcpyHostToDevice,
+                                                                   selection_query_stream);
+                        status != cudaSuccess) {
+                        return std::unexpected(std::format("VkSplat ring-pick output write failed: {} ({})",
+                                                           cudaGetErrorName(status),
+                                                           cudaGetErrorString(status)));
+                    }
+                }
+            }
+            if (const cudaError_t status = cudaStreamSynchronize(selection_query_stream);
+                status != cudaSuccess) {
+                return std::unexpected(std::format("VkSplat ring-pick output sync failed: {} ({})",
+                                                   cudaGetErrorName(status),
+                                                   cudaGetErrorString(status)));
             }
         }
 
