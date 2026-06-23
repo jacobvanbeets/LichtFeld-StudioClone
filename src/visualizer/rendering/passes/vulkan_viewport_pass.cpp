@@ -14,7 +14,6 @@
 #include "window/vulkan_barrier2.hpp"
 #include "window/vulkan_context.hpp"
 
-#include "viewport/frustum.frag.spv.h"
 #include "viewport/frustum.vert.spv.h"
 #include "viewport/grid.frag.spv.h"
 #include "viewport/grid.vert.spv.h"
@@ -104,68 +103,18 @@ namespace lfs::vis {
         };
 
         struct FrustumPush {
-            glm::mat4 view{1.0f};
-            // x,y: panel origin (logical px). z,w: panel size (logical px).
-            glm::vec4 viewport_panel{0.0f, 0.0f, 0.0f, 0.0f};
-            // x,y: viewport origin (framebuffer px). z,w: viewport size (framebuffer px).
-            glm::vec4 viewport_fb{0.0f, 0.0f, 0.0f, 0.0f};
-            // x,y: render size (px). z: perspective fx or ortho scale. w: perspective fy.
-            glm::vec4 projection{0.0f, 0.0f, 0.0f, 0.0f};
-            // x: depth_available, y: flip-y depth UV, z: line thickness,
-            // w: projection mode (0 perspective, 1 orthographic, 2 equirectangular).
+            glm::vec4 viewport_rect{0.0f, 0.0f, 0.0f, 0.0f};
             glm::vec4 params{0.0f, 0.0f, 0.0f, 0.0f};
+            glm::mat4 view{1.0f};
+            glm::vec4 viewport_panel{0.0f, 0.0f, 0.0f, 0.0f};
+            glm::vec4 projection{0.0f, 0.0f, 0.0f, 0.0f};
         };
 
-        // 8 frustum edges expanded to 2 triangles (6 verts) each.
         constexpr std::uint32_t kFrustumVertexCount = 48;
-        // Matches the former CPU frustum line width passed to addProjectedOverlayLine.
         constexpr float kFrustumLineThickness = 1.5f;
 
         [[nodiscard]] VkDescriptorSet descriptorSetFromId(const std::uintptr_t texture_id) {
             return reinterpret_cast<VkDescriptorSet>(texture_id);
-        }
-
-        [[nodiscard]] FramebufferRect toFramebufferRect(
-            const VulkanViewportPassParams& params,
-            const VkExtent2D extent) {
-            const float sx = params.framebuffer_scale.x > 0.0f ? params.framebuffer_scale.x : 1.0f;
-            const float sy = params.framebuffer_scale.y > 0.0f ? params.framebuffer_scale.y : 1.0f;
-            const int x0 = std::clamp(static_cast<int>(std::lround(params.viewport_pos.x * sx)),
-                                      0, static_cast<int>(extent.width));
-            const int y0 = std::clamp(static_cast<int>(std::lround(params.viewport_pos.y * sy)),
-                                      0, static_cast<int>(extent.height));
-            const int x1 = std::clamp(static_cast<int>(std::lround((params.viewport_pos.x + params.viewport_size.x) * sx)),
-                                      0, static_cast<int>(extent.width));
-            const int y1 = std::clamp(static_cast<int>(std::lround((params.viewport_pos.y + params.viewport_size.y) * sy)),
-                                      0, static_cast<int>(extent.height));
-            return {
-                .x = x0,
-                .y = y0,
-                .width = static_cast<std::uint32_t>(std::max(x1 - x0, 0)),
-                .height = static_cast<std::uint32_t>(std::max(y1 - y0, 0)),
-            };
-        }
-
-        [[nodiscard]] FramebufferRect toFramebufferRect(
-            const VulkanViewportPassParams& params,
-            const VulkanViewportGridOverlay& grid,
-            const VkExtent2D extent) {
-            const float sx = params.framebuffer_scale.x > 0.0f ? params.framebuffer_scale.x : 1.0f;
-            const float sy = params.framebuffer_scale.y > 0.0f ? params.framebuffer_scale.y : 1.0f;
-            const int x0 = std::clamp(static_cast<int>(std::lround(grid.viewport_pos.x * sx)),
-                                      0, static_cast<int>(extent.width));
-            const int y0 = std::clamp(static_cast<int>(std::lround(grid.viewport_pos.y * sy)),
-                                      0, static_cast<int>(extent.height));
-            const int x1 = std::clamp(static_cast<int>(std::lround((grid.viewport_pos.x + grid.viewport_size.x) * sx)),
-                                      0, static_cast<int>(extent.width));
-            const int y1 = std::clamp(static_cast<int>(std::lround((grid.viewport_pos.y + grid.viewport_size.y) * sy)),
-                                      0, static_cast<int>(extent.height));
-            return {
-                .x = x0,
-                .y = y0,
-                .width = static_cast<std::uint32_t>(std::max(x1 - x0, 0)),
-                .height = static_cast<std::uint32_t>(std::max(y1 - y0, 0)),
-            };
         }
 
         [[nodiscard]] FramebufferRect toFramebufferRect(
@@ -189,6 +138,19 @@ namespace lfs::vis {
                 .width = static_cast<std::uint32_t>(std::max(x1 - x0, 0)),
                 .height = static_cast<std::uint32_t>(std::max(y1 - y0, 0)),
             };
+        }
+
+        [[nodiscard]] FramebufferRect toFramebufferRect(
+            const VulkanViewportPassParams& params,
+            const VkExtent2D extent) {
+            return toFramebufferRect(params, params.viewport_pos, params.viewport_size, extent);
+        }
+
+        [[nodiscard]] FramebufferRect toFramebufferRect(
+            const VulkanViewportPassParams& params,
+            const VulkanViewportGridOverlay& grid,
+            const VkExtent2D extent) {
+            return toFramebufferRect(params, grid.viewport_pos, grid.viewport_size, extent);
         }
     } // namespace
 
@@ -416,6 +378,7 @@ namespace lfs::vis {
                     const auto& frame = resourcesForFrame(p.frame_slot);
                     return frame.frustum_instances.count > 0 && frustum_pipeline != VK_NULL_HANDLE &&
                            frame.frustum_descriptor_set != VK_NULL_HANDLE &&
+                           frame.shape_overlay_descriptor_set != VK_NULL_HANDLE &&
                            frame.frustum_instances.buffer != VK_NULL_HANDLE && !p.frustum_batches.empty();
                 },
                 [this](const ViewportRecordContext& c, const VulkanViewportPassParams& p) {
@@ -648,8 +611,6 @@ namespace lfs::vis {
             return true;
         }
 
-        // Per-frame storage buffer of frustum instances, read by frustum.vert
-        // indexed by gl_InstanceIndex. Mirrors createGridResources().
         [[nodiscard]] bool createFrustumResources() {
             VkDescriptorSetLayoutBinding binding{};
             binding.binding = 0;
@@ -887,7 +848,8 @@ namespace lfs::vis {
             ScreenQuad,
             ColorOverlay,
             TexturedOverlay,
-            ShapeOverlay
+            ShapeOverlay,
+            Procedural
         };
 
         [[nodiscard]] bool createPipeline(const std::span<const std::uint32_t> vertex_spv,
@@ -921,81 +883,83 @@ namespace lfs::vis {
             stages[1].module = fragment_module;
             stages[1].pName = "main";
 
-            VkVertexInputBindingDescription binding{};
-            binding.binding = 0;
-            binding.stride = sizeof(Vertex);
-            if (vertex_layout == PipelineVertexLayout::ColorOverlay) {
-                binding.stride = sizeof(VulkanViewportOverlayVertex);
-            } else if (vertex_layout == PipelineVertexLayout::TexturedOverlay) {
-                binding.stride = sizeof(VulkanViewportTexturedOverlayVertex);
-            } else if (vertex_layout == PipelineVertexLayout::ShapeOverlay) {
-                binding.stride = sizeof(VulkanViewportShapeOverlayVertex);
-            }
-            binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
             std::array<VkVertexInputAttributeDescription, 7> attributes{};
-            attributes[0].location = 0;
-            attributes[0].binding = 0;
-            attributes[0].format = VK_FORMAT_R32G32_SFLOAT;
-            if (vertex_layout == PipelineVertexLayout::ColorOverlay) {
-                attributes[0].offset = offsetof(VulkanViewportOverlayVertex, position);
-            } else if (vertex_layout == PipelineVertexLayout::TexturedOverlay) {
-                attributes[0].offset = offsetof(VulkanViewportTexturedOverlayVertex, position);
-            } else if (vertex_layout == PipelineVertexLayout::ShapeOverlay) {
-                attributes[0].offset = offsetof(VulkanViewportShapeOverlayVertex, position);
-            } else {
-                attributes[0].offset = offsetof(Vertex, position);
-            }
-            attributes[1].location = 1;
-            attributes[1].binding = 0;
-            attributes[1].format = vertex_layout == PipelineVertexLayout::ColorOverlay
-                                       ? VK_FORMAT_R32G32B32A32_SFLOAT
-                                       : VK_FORMAT_R32G32_SFLOAT;
-            if (vertex_layout == PipelineVertexLayout::ColorOverlay) {
-                attributes[1].offset = offsetof(VulkanViewportOverlayVertex, color);
-            } else if (vertex_layout == PipelineVertexLayout::TexturedOverlay) {
-                attributes[1].offset = offsetof(VulkanViewportTexturedOverlayVertex, uv);
-            } else if (vertex_layout == PipelineVertexLayout::ShapeOverlay) {
-                attributes[1].offset = offsetof(VulkanViewportShapeOverlayVertex, screen_position);
-            } else {
-                attributes[1].offset = offsetof(Vertex, uv);
-            }
-            if (vertex_layout == PipelineVertexLayout::ShapeOverlay) {
-                attributes[2].location = 2;
-                attributes[2].binding = 0;
-                attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
-                attributes[2].offset = offsetof(VulkanViewportShapeOverlayVertex, p0);
-                attributes[3].location = 3;
-                attributes[3].binding = 0;
-                attributes[3].format = VK_FORMAT_R32G32_SFLOAT;
-                attributes[3].offset = offsetof(VulkanViewportShapeOverlayVertex, p1);
-                attributes[4].location = 4;
-                attributes[4].binding = 0;
-                attributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-                attributes[4].offset = offsetof(VulkanViewportShapeOverlayVertex, color);
-                attributes[5].location = 5;
-                attributes[5].binding = 0;
-                attributes[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-                attributes[5].offset = offsetof(VulkanViewportShapeOverlayVertex, params);
-                attributes[6].location = 6;
-                attributes[6].binding = 0;
-                attributes[6].format = VK_FORMAT_R32_SFLOAT;
-                attributes[6].offset = offsetof(VulkanViewportShapeOverlayVertex, view_depth);
-            } else if (vertex_layout == PipelineVertexLayout::TexturedOverlay) {
-                attributes[2].location = 2;
-                attributes[2].binding = 0;
-                attributes[2].format = VK_FORMAT_R32_SFLOAT;
-                attributes[2].offset = offsetof(VulkanViewportTexturedOverlayVertex, view_depth);
-            }
-
+            VkVertexInputBindingDescription binding{};
             VkPipelineVertexInputStateCreateInfo vertex_input{};
             vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-            vertex_input.vertexBindingDescriptionCount = 1;
-            vertex_input.pVertexBindingDescriptions = &binding;
-            vertex_input.vertexAttributeDescriptionCount =
-                vertex_layout == PipelineVertexLayout::ShapeOverlay      ? 7u
-                : vertex_layout == PipelineVertexLayout::TexturedOverlay ? 3u
-                                                                         : 2u;
-            vertex_input.pVertexAttributeDescriptions = attributes.data();
+            if (vertex_layout != PipelineVertexLayout::Procedural) {
+                binding.binding = 0;
+                binding.stride = sizeof(Vertex);
+                if (vertex_layout == PipelineVertexLayout::ColorOverlay) {
+                    binding.stride = sizeof(VulkanViewportOverlayVertex);
+                } else if (vertex_layout == PipelineVertexLayout::TexturedOverlay) {
+                    binding.stride = sizeof(VulkanViewportTexturedOverlayVertex);
+                } else if (vertex_layout == PipelineVertexLayout::ShapeOverlay) {
+                    binding.stride = sizeof(VulkanViewportShapeOverlayVertex);
+                }
+                binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                attributes[0].location = 0;
+                attributes[0].binding = 0;
+                attributes[0].format = VK_FORMAT_R32G32_SFLOAT;
+                if (vertex_layout == PipelineVertexLayout::ColorOverlay) {
+                    attributes[0].offset = offsetof(VulkanViewportOverlayVertex, position);
+                } else if (vertex_layout == PipelineVertexLayout::TexturedOverlay) {
+                    attributes[0].offset = offsetof(VulkanViewportTexturedOverlayVertex, position);
+                } else if (vertex_layout == PipelineVertexLayout::ShapeOverlay) {
+                    attributes[0].offset = offsetof(VulkanViewportShapeOverlayVertex, position);
+                } else {
+                    attributes[0].offset = offsetof(Vertex, position);
+                }
+                attributes[1].location = 1;
+                attributes[1].binding = 0;
+                attributes[1].format = vertex_layout == PipelineVertexLayout::ColorOverlay
+                                           ? VK_FORMAT_R32G32B32A32_SFLOAT
+                                           : VK_FORMAT_R32G32_SFLOAT;
+                if (vertex_layout == PipelineVertexLayout::ColorOverlay) {
+                    attributes[1].offset = offsetof(VulkanViewportOverlayVertex, color);
+                } else if (vertex_layout == PipelineVertexLayout::TexturedOverlay) {
+                    attributes[1].offset = offsetof(VulkanViewportTexturedOverlayVertex, uv);
+                } else if (vertex_layout == PipelineVertexLayout::ShapeOverlay) {
+                    attributes[1].offset = offsetof(VulkanViewportShapeOverlayVertex, screen_position);
+                } else {
+                    attributes[1].offset = offsetof(Vertex, uv);
+                }
+                if (vertex_layout == PipelineVertexLayout::ShapeOverlay) {
+                    attributes[2].location = 2;
+                    attributes[2].binding = 0;
+                    attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
+                    attributes[2].offset = offsetof(VulkanViewportShapeOverlayVertex, p0);
+                    attributes[3].location = 3;
+                    attributes[3].binding = 0;
+                    attributes[3].format = VK_FORMAT_R32G32_SFLOAT;
+                    attributes[3].offset = offsetof(VulkanViewportShapeOverlayVertex, p1);
+                    attributes[4].location = 4;
+                    attributes[4].binding = 0;
+                    attributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    attributes[4].offset = offsetof(VulkanViewportShapeOverlayVertex, color);
+                    attributes[5].location = 5;
+                    attributes[5].binding = 0;
+                    attributes[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+                    attributes[5].offset = offsetof(VulkanViewportShapeOverlayVertex, params);
+                    attributes[6].location = 6;
+                    attributes[6].binding = 0;
+                    attributes[6].format = VK_FORMAT_R32_SFLOAT;
+                    attributes[6].offset = offsetof(VulkanViewportShapeOverlayVertex, view_depth);
+                } else if (vertex_layout == PipelineVertexLayout::TexturedOverlay) {
+                    attributes[2].location = 2;
+                    attributes[2].binding = 0;
+                    attributes[2].format = VK_FORMAT_R32_SFLOAT;
+                    attributes[2].offset = offsetof(VulkanViewportTexturedOverlayVertex, view_depth);
+                }
+
+                vertex_input.vertexBindingDescriptionCount = 1;
+                vertex_input.pVertexBindingDescriptions = &binding;
+                vertex_input.vertexAttributeDescriptionCount =
+                    vertex_layout == PipelineVertexLayout::ShapeOverlay      ? 7u
+                    : vertex_layout == PipelineVertexLayout::TexturedOverlay ? 3u
+                                                                             : 2u;
+                vertex_input.pVertexAttributeDescriptions = attributes.data();
+            }
 
             VkPipelineInputAssemblyStateCreateInfo input_assembly{};
             input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -1118,6 +1082,10 @@ namespace lfs::vis {
             shape_overlay_push.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             shape_overlay_push.offset = 0;
             shape_overlay_push.size = sizeof(ShapeOverlayPush);
+            VkPushConstantRange frustum_push{};
+            frustum_push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            frustum_push.offset = 0;
+            frustum_push.size = sizeof(FrustumPush);
             using namespace viewport_shaders;
 
             return createPipeline(kScreenQuadVertSpv, kSceneFragSpv, "scene",
@@ -1144,137 +1112,11 @@ namespace lfs::vis {
                    createPipeline(kPivotVertSpv, kPivotFragSpv, "pivot",
                                   VK_NULL_HANDLE, &pivot_push, true, PipelineVertexLayout::ScreenQuad,
                                   pivot_pipeline_layout, pivot_pipeline) &&
-                   createFrustumPipeline();
-        }
-
-        // Dedicated instanced frustum pipeline. Unlike createPipeline() it binds
-        // no vertex buffers (geometry comes from gl_VertexIndex/gl_InstanceIndex),
-        // reads instances from a storage buffer (set 0) and the splat depth
-        // sampler (set 1, shared with the shape overlay), and carries the
-        // view-projection in a 112-byte push constant.
-        [[nodiscard]] bool createFrustumPipeline() {
-            using namespace viewport_shaders;
-            VkShaderModule vertex_module = createShaderModule(kFrustumVertSpv);
-            VkShaderModule fragment_module = createShaderModule(kFrustumFragSpv);
-            if (vertex_module == VK_NULL_HANDLE || fragment_module == VK_NULL_HANDLE) {
-                if (vertex_module != VK_NULL_HANDLE)
-                    vkDestroyShaderModule(device, vertex_module, nullptr);
-                if (fragment_module != VK_NULL_HANDLE)
-                    vkDestroyShaderModule(device, fragment_module, nullptr);
-                LOG_ERROR("Failed to create Vulkan frustum shader modules");
-                return false;
-            }
-
-            VkPipelineShaderStageCreateInfo stages[2]{};
-            stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-            stages[0].module = vertex_module;
-            stages[0].pName = "main";
-            stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-            stages[1].module = fragment_module;
-            stages[1].pName = "main";
-
-            VkPipelineVertexInputStateCreateInfo vertex_input{};
-            vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-
-            VkPipelineInputAssemblyStateCreateInfo input_assembly{};
-            input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-            input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-            VkPipelineViewportStateCreateInfo viewport_state{};
-            viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-            viewport_state.viewportCount = 1;
-            viewport_state.scissorCount = 1;
-
-            VkPipelineRasterizationStateCreateInfo raster{};
-            raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-            raster.polygonMode = VK_POLYGON_MODE_FILL;
-            raster.cullMode = VK_CULL_MODE_NONE;
-            raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-            raster.lineWidth = 1.0f;
-
-            VkPipelineMultisampleStateCreateInfo multisample{};
-            multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-            multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-            VkPipelineDepthStencilStateCreateInfo depth{};
-            depth.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            depth.depthTestEnable = VK_FALSE;
-            depth.depthWriteEnable = VK_FALSE;
-            depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
-
-            VkPipelineColorBlendAttachmentState blend_attachment{};
-            blend_attachment.colorWriteMask =
-                VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            blend_attachment.blendEnable = VK_TRUE;
-            blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
-            blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-            blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
-
-            VkPipelineColorBlendStateCreateInfo blend{};
-            blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-            blend.attachmentCount = 1;
-            blend.pAttachments = &blend_attachment;
-
-            std::array<VkDynamicState, 2> dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-            VkPipelineDynamicStateCreateInfo dynamic{};
-            dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-            dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
-            dynamic.pDynamicStates = dynamic_states.data();
-
-            VkPushConstantRange push{};
-            push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-            push.offset = 0;
-            push.size = sizeof(FrustumPush);
-
-            std::array<VkDescriptorSetLayout, 2> set_layouts{
-                frustum_descriptor_layout, shape_overlay_descriptor_layout};
-            VkPipelineLayoutCreateInfo layout_info{};
-            layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-            layout_info.setLayoutCount = static_cast<std::uint32_t>(set_layouts.size());
-            layout_info.pSetLayouts = set_layouts.data();
-            layout_info.pushConstantRangeCount = 1;
-            layout_info.pPushConstantRanges = &push;
-            if (vkCreatePipelineLayout(device, &layout_info, nullptr, &frustum_pipeline_layout) != VK_SUCCESS) {
-                vkDestroyShaderModule(device, vertex_module, nullptr);
-                vkDestroyShaderModule(device, fragment_module, nullptr);
-                return false;
-            }
-
-            VkPipelineRenderingCreateInfo rendering_info{};
-            rendering_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-            rendering_info.colorAttachmentCount = 1;
-            rendering_info.pColorAttachmentFormats = &color_format;
-            rendering_info.depthAttachmentFormat = depth_stencil_format;
-            rendering_info.stencilAttachmentFormat = depth_stencil_format;
-
-            VkGraphicsPipelineCreateInfo pipeline_info{};
-            pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-            pipeline_info.pNext = &rendering_info;
-            pipeline_info.stageCount = 2;
-            pipeline_info.pStages = stages;
-            pipeline_info.pVertexInputState = &vertex_input;
-            pipeline_info.pInputAssemblyState = &input_assembly;
-            pipeline_info.pViewportState = &viewport_state;
-            pipeline_info.pRasterizationState = &raster;
-            pipeline_info.pMultisampleState = &multisample;
-            pipeline_info.pDepthStencilState = &depth;
-            pipeline_info.pColorBlendState = &blend;
-            pipeline_info.pDynamicState = &dynamic;
-            pipeline_info.layout = frustum_pipeline_layout;
-            pipeline_info.renderPass = VK_NULL_HANDLE;
-            pipeline_info.subpass = 0;
-
-            const bool ok =
-                vkCreateGraphicsPipelines(device, pipeline_cache, 1, &pipeline_info, nullptr, &frustum_pipeline) == VK_SUCCESS;
-            vkDestroyShaderModule(device, vertex_module, nullptr);
-            vkDestroyShaderModule(device, fragment_module, nullptr);
-            return ok;
+                   createPipeline(kFrustumVertSpv, kShapeOverlayFragSpv, "frustum",
+                                  shape_overlay_descriptor_layout, &frustum_push, true,
+                                  PipelineVertexLayout::Procedural,
+                                  frustum_pipeline_layout, frustum_pipeline,
+                                  frustum_descriptor_layout);
         }
 
         void updateQuadBuffer(const bool flip_y) {
@@ -1916,19 +1758,17 @@ namespace lfs::vis {
             recordShapeOverlays(ctx.cmd, frame.shape_overlay, frame, world_shape_overlay_push);
         }
 
-        // Instanced camera frustums. Binds the instance storage buffer (set 0)
-        // and the shared splat-depth sampler (set 1), then issues one instanced
-        // draw per viewport panel with that panel's view-projection and rect.
         void recordFrustumPass(const ViewportRecordContext& ctx,
                                const VulkanViewportPassParams& params) {
             const VkCommandBuffer command_buffer = ctx.cmd;
             auto& frame = resourcesForFrame(params.frame_slot);
             assert(frame.frustum_instances.count > 0 && frustum_pipeline != VK_NULL_HANDLE &&
                    frame.frustum_descriptor_set != VK_NULL_HANDLE &&
+                   frame.shape_overlay_descriptor_set != VK_NULL_HANDLE &&
                    frame.frustum_instances.buffer != VK_NULL_HANDLE);
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, frustum_pipeline);
             const std::array<VkDescriptorSet, 2> sets{
-                frame.frustum_descriptor_set, frame.shape_overlay_descriptor_set};
+                frame.shape_overlay_descriptor_set, frame.frustum_descriptor_set};
             vkCmdBindDescriptorSets(command_buffer,
                                     VK_PIPELINE_BIND_POINT_GRAPHICS,
                                     frustum_pipeline_layout,
@@ -1949,18 +1789,18 @@ namespace lfs::vis {
                 }
                 bindViewport(command_buffer, rect);
                 FrustumPush push{};
-                push.view = batch.view;
-                push.viewport_panel = glm::vec4(batch.viewport_pos, batch.viewport_size);
-                push.viewport_fb = glm::vec4(static_cast<float>(rect.x),
-                                             static_cast<float>(rect.y),
-                                             static_cast<float>(rect.width),
-                                             static_cast<float>(rect.height));
-                push.projection = glm::vec4(batch.render_size, batch.focal_x, batch.focal_y);
                 const float projection_mode = batch.equirectangular ? 2.0f : (batch.orthographic ? 1.0f : 0.0f);
+                push.viewport_rect = glm::vec4(static_cast<float>(rect.x),
+                                               static_cast<float>(rect.y),
+                                               static_cast<float>(rect.width),
+                                               static_cast<float>(rect.height));
                 push.params = glm::vec4(ctx.world_depth_params_push.x,
                                         ctx.world_depth_params_push.y,
                                         kFrustumLineThickness,
                                         projection_mode);
+                push.view = batch.view;
+                push.viewport_panel = glm::vec4(batch.viewport_pos, batch.viewport_size);
+                push.projection = glm::vec4(batch.render_size, batch.focal_x, batch.focal_y);
                 vkCmdPushConstants(command_buffer,
                                    frustum_pipeline_layout,
                                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,

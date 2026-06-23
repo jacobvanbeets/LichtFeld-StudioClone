@@ -77,21 +77,13 @@ namespace lfs::vis {
         bool orthographic = false;
     };
 
-    // One GPU-instanced camera frustum. `model` maps the canonical local frustum
-    // (apex at origin, image plane at z = -1, corners at +/-0.5) to visualizer
-    // world space; `color` is the final RGBA (alpha already includes the
-    // distance/disabled/hover fade). Layout matches the std430 shader struct.
+    // Layout must match frustum.vert's std430 FrustumInstance.
     struct VulkanViewportFrustumInstance {
         glm::mat4 model{1.0f};
         glm::vec4 color{1.0f};
     };
 
-    // A contiguous run of frustum instances drawn for one viewport panel. Split
-    // view produces one batch per panel because each panel has its own projection
-    // mode, view matrix, and viewport rect. Perspective batches use `focal_x` /
-    // `focal_y` as pixel focal lengths in `render_size` space; orthographic
-    // batches use `focal_x` as the pixel scale; equirectangular batches ignore
-    // both focal fields and project directions onto the pano.
+    // One instanced draw range for a viewport panel.
     struct VulkanViewportFrustumBatch {
         glm::mat4 view{1.0f};
         glm::vec2 viewport_pos{0.0f, 0.0f};
@@ -142,8 +134,6 @@ namespace lfs::vis {
         std::uint32_t post_ui_overlay_vertex_count = 0;
         std::vector<VulkanViewportPivotOverlay> pivot_overlays;
         std::vector<VulkanViewportTexturedOverlay> textured_overlays;
-        // GPU-instanced camera frustums: one instance per visible perspective
-        // camera, one batch per viewport panel.
         std::vector<VulkanViewportFrustumInstance> frustum_instances;
         std::vector<VulkanViewportFrustumBatch> frustum_batches;
 

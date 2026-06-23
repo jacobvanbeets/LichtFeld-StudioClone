@@ -1,13 +1,6 @@
 #version 450
 
-// GPU-instanced camera frustum wireframes. Each instance is one camera; this
-// shader generates the 8 frustum edges (48 vertices = 8 edges * 2 triangles)
-// from gl_VertexIndex, projects the edge endpoints with the same camera-space
-// projection math as the former CPU overlay path, clips perspective segments to
-// the near plane, expands each edge into a thick
-// screen-space quad, and emits the same varyings the SDF line fragment shader
-// consumes. This replaces the former per-frame CPU projection + tessellation of
-// every camera frustum (~160k vertices/frame for large datasets).
+// Generates thick frustum-edge quads for each camera instance.
 
 layout(location = 0) out vec2 ScreenPos;
 layout(location = 1) out vec2 P0;
@@ -21,24 +14,21 @@ struct FrustumInstance {
     vec4 color;
 };
 
-layout(std430, set = 0, binding = 0) readonly buffer FrustumInstances {
+layout(std430, set = 1, binding = 0) readonly buffer FrustumInstances {
     FrustumInstance items[];
 } frustums;
 
 layout(push_constant) uniform FrustumPush {
-    mat4 view;
-    // x,y: panel origin (logical px). z,w: panel size (logical px).
-    vec4 viewport_panel;
-    // x,y: viewport origin (framebuffer px). z,w: viewport size (framebuffer px).
-    vec4 viewport_fb;
-    // x,y: render size (px). z,w: perspective fx/fy, or z = ortho scale when orthographic.
-    vec4 projection;
-    // x: depth available, y: flip-y depth UV, z: line thickness (px),
-    // w: projection mode (0 perspective, 1 orthographic, 2 equirectangular).
+    vec4 viewport_rect;
+    // x: depth available, y: flip-y depth UV, z: line thickness, w: projection mode.
     vec4 params;
+    mat4 view;
+    vec4 viewport_panel;
+    vec4 projection;
 } pc;
 
-// 5 local frustum points: 4 image-plane corners (z = -1) + apex at the origin.
+const float PI = 3.14159265358979323846;
+
 const vec3 PTS[5] = vec3[5](
     vec3(-0.5, -0.5, -1.0),
     vec3( 0.5, -0.5, -1.0),
@@ -46,12 +36,10 @@ const vec3 PTS[5] = vec3[5](
     vec3(-0.5,  0.5, -1.0),
     vec3( 0.0,  0.0,  0.0));
 
-// 8 edges: image-plane rectangle (4) + apex-to-corner (4).
 const ivec2 EDGES[8] = ivec2[8](
     ivec2(0, 1), ivec2(1, 2), ivec2(2, 3), ivec2(3, 0),
     ivec2(0, 4), ivec2(1, 4), ivec2(2, 4), ivec2(3, 4));
 
-// 6 quad corners per edge as (end, side): end 0 = P0, end 1 = P1; side +/-1.
 const vec2 QUAD[6] = vec2[6](
     vec2(0.0,  1.0), vec2(1.0,  1.0), vec2(1.0, -1.0),
     vec2(0.0,  1.0), vec2(1.0, -1.0), vec2(0.0, -1.0));
@@ -63,7 +51,6 @@ void emitDegenerate() {
     Color = vec4(0.0);
     Params = vec4(0.0, 1.0, 0.0, 1.0);
     ViewDepth = 0.0;
-    // z outside [0,1] -> the whole primitive is clipped away.
     gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
 }
 
@@ -82,8 +69,8 @@ bool projectEquirect(vec3 view, vec2 panel_pos, vec2 panel_size, out vec2 screen
         return false;
     }
     vec3 dir = view / depth;
-    float ndc_x = atan(dir.x, -dir.z) / 3.14159265358979323846;
-    float ndc_y = -asin(clamp(dir.y, -1.0, 1.0)) / (3.14159265358979323846 * 0.5);
+    float ndc_x = atan(dir.x, -dir.z) / PI;
+    float ndc_y = -asin(clamp(dir.y, -1.0, 1.0)) / (PI * 0.5);
     screen = panel_pos + vec2((ndc_x * 0.5 + 0.5) * panel_size.x,
                               (ndc_y * 0.5 + 0.5) * panel_size.y);
     return true;
@@ -105,6 +92,7 @@ void main() {
     vec2 render_size = max(pc.projection.xy, vec2(1.0));
     float cx = render_size.x * 0.5;
     float cy = render_size.y * 0.5;
+    vec2 scale = panel_size / render_size;
     bool equirectangular = pc.params.w > 1.5;
     bool ortho = pc.params.w > 0.5 && pc.params.w < 1.5;
 
@@ -116,7 +104,6 @@ void main() {
             emitDegenerate();
             return;
         }
-        // Near-clip the segment in view space to mirror projectSegmentToScreenClipped().
         if (a_behind) {
             float t = (kMinViewZ - view_a.z) / (view_b.z - view_a.z);
             view_a = mix(view_a, view_b, clamp(t, 0.0, 1.0));
@@ -128,8 +115,6 @@ void main() {
         }
     }
 
-    vec2 projected_a;
-    vec2 projected_b;
     vec2 screen_a;
     vec2 screen_b;
     float depth_a = 0.0;
@@ -148,23 +133,17 @@ void main() {
         }
     } else if (ortho) {
         float ortho_scale = max(pc.projection.z, 1.0e-6);
-        projected_a = vec2(cx + view_a.x * ortho_scale, cy - view_a.y * ortho_scale);
-        projected_b = vec2(cx + view_b.x * ortho_scale, cy - view_b.y * ortho_scale);
-        vec2 scale = panel_size / render_size;
-        screen_a = panel_pos + projected_a * scale;
-        screen_b = panel_pos + projected_b * scale;
+        screen_a = panel_pos + vec2(cx + view_a.x * ortho_scale, cy - view_a.y * ortho_scale) * scale;
+        screen_b = panel_pos + vec2(cx + view_b.x * ortho_scale, cy - view_b.y * ortho_scale) * scale;
         depth_a = max(-view_a.z, 0.0);
         depth_b = max(-view_b.z, 0.0);
     } else {
         float perspective_depth_a = max(-view_a.z, 1.0e-6);
         float perspective_depth_b = max(-view_b.z, 1.0e-6);
-        projected_a = vec2(cx + view_a.x * pc.projection.z / perspective_depth_a,
-                           cy - view_a.y * pc.projection.w / perspective_depth_a);
-        projected_b = vec2(cx + view_b.x * pc.projection.z / perspective_depth_b,
-                           cy - view_b.y * pc.projection.w / perspective_depth_b);
-        vec2 scale = panel_size / render_size;
-        screen_a = panel_pos + projected_a * scale;
-        screen_b = panel_pos + projected_b * scale;
+        screen_a = panel_pos + vec2(cx + view_a.x * pc.projection.z / perspective_depth_a,
+                                    cy - view_a.y * pc.projection.w / perspective_depth_a) * scale;
+        screen_b = panel_pos + vec2(cx + view_b.x * pc.projection.z / perspective_depth_b,
+                                    cy - view_b.y * pc.projection.w / perspective_depth_b) * scale;
         depth_a = max(-view_a.z, 0.0);
         depth_b = max(-view_b.z, 0.0);
     }

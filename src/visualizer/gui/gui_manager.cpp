@@ -2176,8 +2176,6 @@ namespace lfs::vis::gui {
             };
             size_t background_thumbnail_requests = 0;
             constexpr size_t kBackgroundThumbnailRequestsPerFrame = 16;
-            // Perspective frustums are drawn GPU-instanced: this run of instances
-            // (one per visible perspective camera) becomes a single panel batch.
             const std::uint32_t frustum_first_instance =
                 static_cast<std::uint32_t>(params.frustum_instances.size());
             params.frustum_instances.reserve(params.frustum_instances.size() + cameras.size());
@@ -2278,9 +2276,6 @@ namespace lfs::vis::gui {
             const std::uint32_t frustum_instance_count =
                 static_cast<std::uint32_t>(params.frustum_instances.size()) - frustum_first_instance;
             if (frustum_instance_count > 0) {
-                // The shader reproduces the former CPU projection for the active
-                // viewport mode, including the equirectangular branch used by pano
-                // views. Perspective focal lengths are in render-pixel space.
                 const glm::mat4 frustum_view =
                     lfs::rendering::makeViewMatrix(panel_rotation, panel_translation);
                 params.frustum_batches.push_back(VulkanViewportFrustumBatch{
