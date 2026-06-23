@@ -16,6 +16,12 @@
     "edit": "편집",
     "edit.input_settings": "입력 설정...",
     "edit.preferences": "환경설정...",
+    "select": "\uc120\ud0dd",
+    "select.copy_selection": "\uc120\ud0dd \ubcf5\uc0ac",
+    "select.paste_selection": "\uc120\ud0dd \ubd99\uc5ec\ub123\uae30",
+    "select.invert_selection": "\uc120\ud0dd \ubc18\uc804",
+    "select.select_all": "\ubaa8\ub450 \uc120\ud0dd",
+    "select.deselect_all": "\uc120\ud0dd \ud574\uc81c",
     "tools": "도구",
     "tools.asset_manager": "에셋 매니저",
     "tools.python_console": "Python 콘솔",
@@ -436,6 +442,7 @@
     "options.mask.none": "없음",
     "options.mask.segment": "세그먼트",
     "options.mask.ignore": "무시",
+    "options.mask.segment_and_ignore": "세그먼트 + 무시",
     "options.mask.alpha_consistent": "알파 일관",
     "options.bg.color": "색상",
     "options.bg.modulation": "변조",
@@ -486,6 +493,7 @@
           "none": "전체 이미지로 훈련, 마스크 없음",
           "segment": "전경에 세그먼테이션 마스크 사용",
           "ignore": "손실에서 마스크된 픽셀 무시",
+          "segment_and_ignore": "세그먼트와 무시의 조합",
           "alpha_consistent": "마스크와의 알파 일관성 적용"
         },
         "bg_mode": {

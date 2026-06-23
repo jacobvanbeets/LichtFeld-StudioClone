@@ -133,6 +133,7 @@ namespace lfs::vis::gui {
         constexpr auto kInteractiveTransitionGuardDuration = std::chrono::milliseconds(1200);
         constexpr auto kInteractiveIdleToggleMinInterval = std::chrono::milliseconds(750);
         constexpr auto kInteractiveTrainingToggleMinInterval = std::chrono::milliseconds(3000);
+        constexpr auto kCachedImGuiResizeFrameWindow = std::chrono::milliseconds(160);
 
         [[nodiscard]] std::string formatLodCount(const std::size_t value) {
             constexpr double kThousand = 1'000.0;
@@ -3710,7 +3711,7 @@ namespace lfs::vis::gui {
         if (rmlui_manager_.wantsTextInput() || rmlui_manager_.anyItemActive())
             return true;
 
-        if (!ui_hidden_ && rml_menu_bar_.isOpen())
+        if (rml_menu_bar_.isOpen())
             return true;
         if (global_context_menu_ && global_context_menu_->isOpen())
             return true;
@@ -5235,6 +5236,64 @@ namespace lfs::vis::gui {
         return std::chrono::steady_clock::now() < interactive_transition_guard_until_;
     }
 
+    bool GuiManager::shouldUseCachedImGuiResizeFrame(
+        const WindowManager* const window_manager,
+        const VulkanContext* const vulkan_context) const {
+        if (!window_manager || !vulkan_context) {
+            return false;
+        }
+
+        const glm::ivec2 window_size = window_manager->getWindowSize();
+        const glm::ivec2 framebuffer_size = window_manager->getFramebufferSize();
+        const bool active_window_resize =
+            vulkan_context->hasPendingSwapchainResize() ||
+            window_manager->hasRecentWindowSizeChange(kCachedImGuiResizeFrameWindow);
+        return active_window_resize &&
+               window_size.x > 0 && window_size.y > 0 &&
+               framebuffer_size.x > 0 && framebuffer_size.y > 0;
+    }
+
+    void GuiManager::beginImGuiPlatformFrame(WindowManager* const window_manager,
+                                             VulkanContext* const vulkan_context) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto update_delta_time = [&]() -> float {
+            if (last_imgui_platform_frame_time_ == std::chrono::steady_clock::time_point{}) {
+                last_imgui_platform_frame_time_ = now;
+                return 1.0f / 60.0f;
+            }
+
+            const auto elapsed = std::chrono::duration<float>(now - last_imgui_platform_frame_time_).count();
+            last_imgui_platform_frame_time_ = now;
+            return std::clamp(elapsed, 1.0f / 240.0f, 1.0f / 15.0f);
+        };
+
+        if (shouldUseCachedImGuiResizeFrame(window_manager, vulkan_context)) {
+            ImGuiIO& io = ImGui::GetIO();
+            const glm::ivec2 window_size = window_manager->getWindowSize();
+            const glm::ivec2 framebuffer_size = window_manager->getFramebufferSize();
+            io.DisplaySize = ImVec2(static_cast<float>(window_size.x),
+                                    static_cast<float>(window_size.y));
+            io.DisplayFramebufferScale = ImVec2(
+                static_cast<float>(framebuffer_size.x) / static_cast<float>(window_size.x),
+                static_cast<float>(framebuffer_size.y) / static_cast<float>(window_size.y));
+            io.DeltaTime = update_delta_time();
+            ++cached_imgui_resize_frame_count_;
+            used_cached_imgui_resize_frame_ = true;
+            return;
+        }
+
+        ImGui_ImplSDL3_NewFrame();
+        if (used_cached_imgui_resize_frame_) {
+            ImGui::GetIO().DeltaTime = update_delta_time();
+            used_cached_imgui_resize_frame_ = false;
+            LOG_PERF("gui_render.imgui_newFrame_cached_resize frames={}",
+                     cached_imgui_resize_frame_count_);
+            cached_imgui_resize_frame_count_ = 0;
+        } else {
+            last_imgui_platform_frame_time_ = now;
+        }
+    }
+
     void GuiManager::render() {
         auto* window_manager = viewer_ ? viewer_->getWindowManager() : nullptr;
         auto* vulkan_context = (vulkan_gui_ && window_manager) ? window_manager->getVulkanContext() : nullptr;
@@ -5279,7 +5338,7 @@ namespace lfs::vis::gui {
         // Start frame
         {
             LOG_TIMER_THRESHOLD("gui_render.imgui_newFrame", 0.25);
-            ImGui_ImplSDL3_NewFrame();
+            beginImGuiPlatformFrame(window_manager, vulkan_context);
             if (auto* input_controller = viewer_->getInputController())
                 input_controller->applySplitterCursorOverride();
             rmlui_manager_.clearVulkanQueue();
@@ -5390,7 +5449,7 @@ namespace lfs::vis::gui {
             next_theme_check = now + std::chrono::seconds(1);
         }
 
-        if (menu_bar_ && !ui_hidden_) {
+        if (menu_bar_) {
             LOG_TIMER_THRESHOLD("gui_render.panel_setup.menu_bar", 0.25);
             menu_bar_->render();
 
@@ -5437,6 +5496,7 @@ namespace lfs::vis::gui {
             if (block_underlay_input)
                 menu_input = maskInputForBlockedUi(std::move(menu_input));
 
+            rml_menu_bar_.setUiHidden(ui_hidden_);
             rml_menu_bar_.processInput(menu_input);
 
             if (rml_menu_bar_.wantsInput())
@@ -5984,7 +6044,8 @@ namespace lfs::vis::gui {
             gizmo_manager_.updateCropFlash();
         }
 
-        float primary_toolbar_x = 0.0f;
+        const float viewport_content_offset = viewport_layout_.pos.x - screen.work_pos.x;
+        float primary_toolbar_x = viewport_content_offset;
         float primary_toolbar_width = viewport_layout_.size.x;
         bool show_secondary_toolbar = false;
         float secondary_toolbar_x = 0.0f;
@@ -6018,10 +6079,10 @@ namespace lfs::vis::gui {
         rml_viewport_overlay_.setViewportBounds(
             overlay_pos, overlay_size,
             {panel_input.screen_x, panel_input.screen_y});
-        rml_viewport_overlay_.setViewportContentOffset(viewport_layout_.pos.x - screen.work_pos.x);
+        rml_viewport_overlay_.setViewportContentOffset(viewport_content_offset);
         RmlViewportOverlay::SplitDividerOverlayState split_divider_state;
         if (auto* const rendering = viewer_ ? viewer_->getRenderingManager() : nullptr;
-            rendering && rendering->isSplitViewActive()) {
+            rendering && rendering->isSplitViewActive() && !rendering->isIndependentSplitViewActive()) {
             const auto divider_x = rendering->getSplitDividerScreenX(viewport_layout_.pos, viewport_layout_.size);
             const auto content_bounds = rendering->getContentBounds(glm::ivec2(
                 std::max(static_cast<int>(viewport_layout_.size.x), 0),
@@ -6233,8 +6294,9 @@ namespace lfs::vis::gui {
 
         if (vulkan_gui_) {
             LOG_TIMER_THRESHOLD("gui_render.menu_context_modal_render", 0.25);
-            if (menu_bar_ && !ui_hidden_) {
+            if (menu_bar_) {
                 LOG_TIMER_THRESHOLD("gui_render.menu_context_modal_render.menu_bar", 0.25);
+                rml_menu_bar_.setUiHidden(ui_hidden_);
                 rml_menu_bar_.setViewportRightEdge(
                     viewport_layout_.pos.x + viewport_layout_.size.x - panel_input.screen_x);
                 rml_menu_bar_.draw(panel_input.screen_w, panel_input.screen_h);
@@ -6845,7 +6907,7 @@ namespace lfs::vis::gui {
             return {.blocks_pointer = true, .takes_keyboard_focus = true};
         }
 
-        if (!ui_hidden_ && rml_menu_bar_.isOpen()) {
+        if (rml_menu_bar_.isOpen()) {
             return {.blocks_pointer = true, .takes_keyboard_focus = true};
         }
 
@@ -7077,10 +7139,10 @@ namespace lfs::vis::gui {
     }
 
     bool GuiManager::passiveMouseMoveNeedsRender(const float mouse_x, const float mouse_y) const {
-        if (ui_hidden_)
-            return false;
         if (rml_menu_bar_.isOpen())
             return true;
+        if (ui_hidden_)
+            return false;
 
         const bool imgui_popup_open =
             ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);

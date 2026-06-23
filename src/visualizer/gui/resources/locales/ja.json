@@ -16,6 +16,12 @@
     "edit": "編集",
     "edit.input_settings": "入力設定...",
     "edit.preferences": "環境設定...",
+    "select": "\u9078\u629e",
+    "select.copy_selection": "\u9078\u629e\u3092\u30b3\u30d4\u30fc",
+    "select.paste_selection": "\u9078\u629e\u3092\u8cbc\u308a\u4ed8\u3051",
+    "select.invert_selection": "\u9078\u629e\u3092\u53cd\u8ee2",
+    "select.select_all": "\u3059\u3079\u3066\u9078\u629e",
+    "select.deselect_all": "\u9078\u629e\u3092\u89e3\u9664",
     "tools": "ツール",
     "tools.asset_manager": "アセットマネージャー",
     "tools.python_console": "Python コンソール",
@@ -436,6 +442,7 @@
     "options.mask.none": "なし",
     "options.mask.segment": "セグメント",
     "options.mask.ignore": "無視",
+    "options.mask.segment_and_ignore": "セグメント + 無視",
     "options.mask.alpha_consistent": "アルファ整合",
     "options.bg.color": "色",
     "options.bg.modulation": "変調",
@@ -486,6 +493,7 @@
           "none": "画像全体で学習、マスクなし",
           "segment": "前景にセグメンテーションマスクを使用",
           "ignore": "損失でマスクされたピクセルを無視",
+          "segment_and_ignore": "セグメントと無視の組み合わせ",
           "alpha_consistent": "マスクとのアルファ一貫性を強制"
         },
         "bg_mode": {

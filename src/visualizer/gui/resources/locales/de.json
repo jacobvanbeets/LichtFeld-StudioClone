@@ -16,6 +16,12 @@
     "edit": "Bearbeiten",
     "edit.input_settings": "Eingabeeinstellungen...",
     "edit.preferences": "Einstellungen...",
+    "select": "Auswahl",
+    "select.copy_selection": "Auswahl kopieren",
+    "select.paste_selection": "Auswahl einf\u00fcgen",
+    "select.invert_selection": "Auswahl umkehren",
+    "select.select_all": "Alles ausw\u00e4hlen",
+    "select.deselect_all": "Auswahl aufheben",
     "tools": "Werkzeuge",
     "tools.asset_manager": "Asset Manager",
     "tools.python_console": "Python-Konsole",
@@ -436,6 +442,7 @@
     "options.mask.none": "Keine",
     "options.mask.segment": "Segment",
     "options.mask.ignore": "Ignorieren",
+    "options.mask.segment_and_ignore": "Segment + Ignorieren",
     "options.mask.alpha_consistent": "Alpha-konsistent",
     "options.bg.color": "Farbe",
     "options.bg.modulation": "Modulation",
@@ -486,6 +493,7 @@
           "none": "Auf dem gesamten Bild trainieren, keine Maskierung",
           "segment": "Segmentierungsmaske für den Vordergrund verwenden",
           "ignore": "Maskierte Pixel im Verlust ignorieren",
+          "segment_and_ignore": "Kombination aus Segmentierung und Ignorieren",
           "alpha_consistent": "Alpha-Konsistenz mit der Maske erzwingen"
         },
         "bg_mode": {

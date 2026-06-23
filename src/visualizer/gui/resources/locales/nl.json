@@ -16,6 +16,12 @@
     "edit": "Bewerken",
     "edit.input_settings": "Invoerinstellingen...",
     "edit.preferences": "Voorkeuren...",
+    "select": "Selectie",
+    "select.copy_selection": "Selectie kopi\u00ebren",
+    "select.paste_selection": "Selectie plakken",
+    "select.invert_selection": "Selectie omkeren",
+    "select.select_all": "Alles selecteren",
+    "select.deselect_all": "Selectie opheffen",
     "tools": "Hulpmiddelen",
     "tools.asset_manager": "Asset Manager",
     "tools.python_console": "Python-console",
@@ -436,6 +442,7 @@
     "options.mask.none": "Geen",
     "options.mask.segment": "Segment",
     "options.mask.ignore": "Negeren",
+    "options.mask.segment_and_ignore": "Segmenteren + Negeren",
     "options.mask.alpha_consistent": "Alpha-consistent",
     "options.bg.color": "Kleur",
     "options.bg.modulation": "Modulatie",
@@ -486,6 +493,7 @@
           "none": "Train op de hele afbeelding, geen masker",
           "segment": "Gebruik segmentatiemasker voor voorgrond",
           "ignore": "Negeer gemaskeerde pixels in de loss",
+          "segment_and_ignore": "Combinatie van Segmenteren en Negeren",
           "alpha_consistent": "Alpha-consistentie met masker afdwingen"
         },
         "bg_mode": {

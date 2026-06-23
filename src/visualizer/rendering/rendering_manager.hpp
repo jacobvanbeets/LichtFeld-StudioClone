@@ -511,6 +511,15 @@ namespace lfs::vis {
         [[nodiscard]] bool isViewportResizeDeferring() const {
             return frame_lifecycle_service_.isResizeDeferring();
         }
+        [[nodiscard]] bool hasPendingViewportResizeSettle() const {
+            return frame_lifecycle_service_.hasPendingResizeSettle();
+        }
+        [[nodiscard]] bool viewportResizeSettleReady() const {
+            return frame_lifecycle_service_.resizeSettleReady();
+        }
+        [[nodiscard]] double secondsUntilViewportResizeSettleReady() const {
+            return frame_lifecycle_service_.secondsUntilResizeSettleReady();
+        }
         bool consumeResizeCompleted() { return frame_lifecycle_service_.consumeResizeCompleted(); }
 
         // LOD management
@@ -550,7 +559,8 @@ namespace lfs::vis {
             std::optional<bool> orthographic_override,
             std::optional<float> ortho_scale_override,
             std::optional<glm::vec3> background_color_override,
-            PreviewImageReadback readback);
+            PreviewImageReadback readback,
+            bool settle_capacity = false);
         [[nodiscard]] std::expected<void, std::string> renderPreviewImageToPreviewSlotWithState(
             SceneManager* scene_manager,
             const lfs::core::SplatData& model,
@@ -567,7 +577,8 @@ namespace lfs::vis {
             std::optional<bool> orthographic_override,
             std::optional<float> ortho_scale_override,
             std::optional<glm::vec3> background_color_override,
-            std::optional<bool> transparent_background_override);
+            std::optional<bool> transparent_background_override,
+            bool settle_capacity = false);
         [[nodiscard]] std::expected<void, std::string> renderDepthCaptureToPreviewSlotWithState(
             SceneManager* scene_manager,
             const lfs::core::SplatData& model,

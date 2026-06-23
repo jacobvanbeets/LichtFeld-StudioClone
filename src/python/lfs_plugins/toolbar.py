@@ -690,7 +690,6 @@ class _GizmoToolbarController:
 
 
 class _UtilityToolbarController:
-    _ASSET_MANAGER_PANEL_ID = "lfs.asset_manager"
     _INPUT_SETTINGS_PANEL_ID = "lfs.input_settings"
     _PLUGIN_MARKETPLACE_PANEL_ID = "lfs.plugin_marketplace"
     _CAMERA_MODE_SPECS = (
@@ -701,8 +700,6 @@ class _UtilityToolbarController:
     _PRIMARY_ACTIONS = {
         "home": "CAMERA_RESET_HOME",
         "focus_selection": "CAMERA_FOCUS_SELECTION",
-        "fullscreen": "TOGGLE_FULLSCREEN",
-        "toggle_ui": "TOGGLE_UI",
     }
 
     def __init__(self, viewport_export_visible=None):
@@ -735,7 +732,6 @@ class _UtilityToolbarController:
         except Exception:
             has_render_manager = False
 
-        is_fullscreen = lf.is_fullscreen() if hasattr(lf, "is_fullscreen") else False
         camera_mode_buttons = [
             _button_record(
                 f"util-camera-{mode_id}",
@@ -761,20 +757,6 @@ class _UtilityToolbarController:
                 tooltip_text="Focus Selection",
                 action_id=self._PRIMARY_ACTIONS["focus_selection"],
             ),
-            _button_record(
-                "util-fullscreen",
-                "fullscreen",
-                "",
-                _icon_src("arrows-minimize" if is_fullscreen else "arrows-maximize"),
-                tooltip_key="toolbar.fullscreen",
-                tooltip_text="Fullscreen",
-                action_id=self._PRIMARY_ACTIONS["fullscreen"],
-                selected=is_fullscreen,
-            ),
-            _button_record("util-toggle-ui", "toggle_ui", "", _icon_src("layout-off"),
-                           tooltip_key="toolbar.toggle_ui",
-                           tooltip_text="Toggle UI",
-                           action_id=self._PRIMARY_ACTIONS["toggle_ui"]),
         ]
 
         utility_extra_buttons = [
@@ -795,15 +777,6 @@ class _UtilityToolbarController:
                 tooltip_key="toolbar.viewport_export",
                 tooltip_text="Viewport Export",
                 selected=self._is_viewport_export_visible(),
-            ),
-            _button_record(
-                "util-asset-manager",
-                "toggle_panel",
-                self._ASSET_MANAGER_PANEL_ID,
-                _icon_src("archive"),
-                tooltip_key="toolbar.asset_manager",
-                tooltip_text="Asset Manager",
-                selected=_panel_enabled(self._ASSET_MANAGER_PANEL_ID),
             ),
             _button_record(
                 "util-plugin-marketplace",
@@ -861,12 +834,6 @@ class _UtilityToolbarController:
             return
         if action == "focus_selection":
             lf.focus_selection()
-            return
-        if action == "fullscreen":
-            lf.toggle_fullscreen()
-            return
-        if action == "toggle_ui":
-            lf.toggle_ui()
             return
         if action == "toggle_sequencer":
             lf.ui.set_sequencer_visible(not lf.ui.is_sequencer_visible())
@@ -1196,13 +1163,6 @@ class _ViewportToolbarController:
         selected_getter = getattr(lf, "get_selected_node_names", None)
         selected_nodes = tuple(call([], selected_getter) or []) if callable(selected_getter) else ()
 
-        asset_manager_enabled = bool(
-            call(
-                False,
-                getattr(lf.ui, "is_panel_enabled", None),
-                _UtilityToolbarController._ASSET_MANAGER_PANEL_ID,
-            )
-        )
         input_settings_enabled = bool(
             call(
                 False,
@@ -1230,11 +1190,9 @@ class _ViewportToolbarController:
             selected_nodes,
             tool_ids,
             str(call("orbit", lf.get_camera_navigation_mode)).lower() if hasattr(lf, "get_camera_navigation_mode") else "orbit",
-            bool(call(False, lf.is_fullscreen)) if hasattr(lf, "is_fullscreen") else False,
             self._viewport_export_controls.visible,
             bool(call(False, getattr(lf.ui, "is_sequencer_visible", None))),
             bool(histogram_mode_available(ui_context)) if ui_context is not None else False,
-            asset_manager_enabled,
             input_settings_enabled,
             plugin_marketplace_enabled,
             bool(call(False, getattr(lf.ui, "is_panel_enabled", None), "lfs.histogram")),

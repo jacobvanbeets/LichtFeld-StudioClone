@@ -16,6 +16,12 @@
     "edit": "编辑",
     "edit.input_settings": "输入设置...",
     "edit.preferences": "偏好设置...",
+    "select": "\u9009\u62e9",
+    "select.copy_selection": "\u590d\u5236\u9009\u62e9",
+    "select.paste_selection": "\u7c98\u8d34\u9009\u62e9",
+    "select.invert_selection": "\u53cd\u9009",
+    "select.select_all": "\u5168\u9009",
+    "select.deselect_all": "\u53d6\u6d88\u5168\u9009",
     "tools": "工具",
     "tools.asset_manager": "资源管理器",
     "tools.python_console": "Python 控制台",
@@ -266,6 +272,7 @@
     "options.mask.none": "无",
     "options.mask.segment": "分割",
     "options.mask.ignore": "忽略",
+    "options.mask.segment_and_ignore": "分割 + 忽略",
     "options.mask.alpha_consistent": "与 Alpha 一致",
     "options.bg.color": "颜色",
     "options.bg.modulation": "调制",
@@ -316,6 +323,7 @@
           "none": "在整张图像上训练，无掩码",
           "segment": "使用分割掩码作为前景",
           "ignore": "在损失中忽略被掩码的像素",
+          "segment_and_ignore": "分割与忽略的组合",
           "alpha_consistent": "强制 alpha 与掩码一致"
         },
         "bg_mode": {

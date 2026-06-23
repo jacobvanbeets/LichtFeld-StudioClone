@@ -38,6 +38,7 @@ namespace lfs::vis {
         constexpr auto kVulkanViewportResizeTrainingPauseWait = std::chrono::milliseconds(300);
         constexpr bool kEnableLodTransitionWeights = true;
         constexpr double kGpuLodRenderCapacityOverhead = 1.20;
+        constexpr float kInteractiveResizeRenderScale = 0.33f;
 
         struct LodObjectFrame {
             glm::mat4 object_to_view{1.0f};
@@ -666,6 +667,7 @@ namespace lfs::vis {
         if (resize_result.dirty) {
             markDirty(resize_result.dirty);
         }
+        const bool resize_deferring = frame_lifecycle_service_.isResizeDeferring();
 
         auto* const trainer_manager = scene_manager ? scene_manager->getTrainerManager() : nullptr;
         const bool is_training = scene_manager && scene_manager->hasDataset() &&
@@ -728,10 +730,22 @@ namespace lfs::vis {
             vulkan_viewport_image_ != nullptr ||
             vulkan_external_viewport_image_ != VK_NULL_HANDLE ||
             has_cached_gpu_only_frame;
-        const float scale = std::clamp(settings_.render_scale, 0.25f, 1.0f);
+        float scale = std::clamp(settings_.render_scale, 0.25f, 1.0f);
+        if (resize_result.render_interactive_frame) {
+            scale = std::min(scale, kInteractiveResizeRenderScale);
+        }
         glm::ivec2 render_size(
             std::max(static_cast<int>(std::lround(static_cast<float>(current_size.x) * scale)), 1),
             std::max(static_cast<int>(std::lround(static_cast<float>(current_size.y) * scale)), 1));
+        LOG_PERF("renderVulkanFrame.resize deferring={} render={} completed={} render_scale={:.2f} render_size={}x{} current_size={}x{}",
+                 resize_deferring,
+                 resize_result.render_interactive_frame,
+                 resize_result.completed,
+                 scale,
+                 render_size.x,
+                 render_size.y,
+                 current_size.x,
+                 current_size.y);
 
         if (const DirtyMask required_dirty = frame_lifecycle_service_.requiredDirtyMask(
                 has_cached_viewport_output,
@@ -842,9 +856,16 @@ namespace lfs::vis {
             return cached_frame_result();
         }
 
-        if (frame_lifecycle_service_.isResizeDeferring() && has_cached_viewport_output) {
+        if (resize_deferring &&
+            has_cached_viewport_output &&
+            !resize_result.render_interactive_frame) {
             update_cached_split_position();
-            dirty_mask_.fetch_or(frame_dirty, std::memory_order_relaxed);
+            constexpr DirtyMask resize_defer_consumed_dirty =
+                DirtyFlag::CAMERA | DirtyFlag::VIEWPORT | DirtyFlag::OVERLAY;
+            const DirtyMask deferred_dirty = frame_dirty & ~resize_defer_consumed_dirty;
+            if (deferred_dirty != 0) {
+                dirty_mask_.fetch_or(deferred_dirty, std::memory_order_relaxed);
+            }
             LOG_PERF("renderVulkanFrame: resize defer (returning cached image)");
             render_lock.reset();
             return cached_frame_result();
