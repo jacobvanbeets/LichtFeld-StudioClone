@@ -258,6 +258,7 @@ namespace lfs::vis {
         bool executeMirror(lfs::core::MirrorAxis axis);
 
         [[nodiscard]] std::expected<void, std::string> softDeleteSelectedGaussians();
+        [[nodiscard]] std::expected<void, std::string> deleteSelectedGaussiansWithHistory();
         void deleteSelectedGaussians();
         void invertSelection();
         void deselectAllGaussians();
@@ -293,7 +294,31 @@ namespace lfs::vis {
         [[nodiscard]] bool hasAppearanceModel() const { return appearance_ppisp_ != nullptr; }
 
     private:
+        enum class HistoryMode : uint8_t {
+            Record,
+            Skip,
+        };
+
+        struct GaussianDeletionSlice {
+            std::string node_name;
+            size_t begin = 0;
+            size_t end = 0;
+        };
+
+        struct GaussianDeletionPlan {
+            lfs::core::Tensor selection_mask;
+            bool consolidated = false;
+            bool any_visible_node = false;
+            std::vector<GaussianDeletionSlice> partial_slices;
+            std::vector<std::string> removed_node_names;
+        };
+
         void resetToEmptyState(bool trainer_already_cleared = false);
+        [[nodiscard]] bool nodeRemovalAffectsTraining(const std::string& name) const;
+        [[nodiscard]] std::expected<void, std::string> validateNodeRemoval(const std::string& name) const;
+        [[nodiscard]] std::expected<void, std::string> removeNodeImpl(const std::string& name,
+                                                                      bool keep_children,
+                                                                      HistoryMode history_mode);
         // Drop the GUI's borrowed scene-image tensor and drain the GPU so no in-flight
         // Vulkan work references model tensors that are about to be freed. Must run
         // before releasing splat models, especially when their tensors are backed by
@@ -321,6 +346,8 @@ namespace lfs::vis {
         void updateCropBoxToFitScene(bool use_percentile);
         void updateEllipsoidToFitScene(bool use_percentile);
         void scheduleConsolidatedCompaction();
+        [[nodiscard]] std::expected<GaussianDeletionPlan, std::string> buildSelectedGaussianDeletionPlan();
+        [[nodiscard]] std::expected<void, std::string> applySelectedGaussianDeletionPlan(const GaussianDeletionPlan& plan);
 
         core::Scene scene_;
         // Lock ordering: state_mutex_ before selection_.mutex() when both needed
