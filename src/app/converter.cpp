@@ -240,10 +240,10 @@ namespace lfs::app {
                 return lfs::io::save_usd(splat, {.output_path = output, .progress_callback = progress});
             case param::OutputFormat::RAD:
                 return lfs::io::save_rad(splat, {
-                                                     .output_path = output,
-                                                     .chunk_size = radChunkSizeForMode(rad_export_mode),
-                                                     .progress_callback = progress,
-                                                 });
+                                                    .output_path = output,
+                                                    .chunk_size = radChunkSizeForMode(rad_export_mode),
+                                                    .progress_callback = progress,
+                                                });
             }
             return lfs::io::save_ply(splat, {.output_path = output, .binary = true, .progress_callback = progress});
         }

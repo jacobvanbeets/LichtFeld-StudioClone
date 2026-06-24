@@ -147,10 +147,10 @@ namespace lfs::io {
 
     struct RadSaveOptions {
         std::filesystem::path output_path;
-        int compression_level = 6;                          // gzip compression level (0-9, default 6)
-        bool flip_y = false;                                // Flip Y axis on export
+        int compression_level = 6;                            // gzip compression level (0-9, default 6)
+        bool flip_y = false;                                  // Flip Y axis on export
         std::uint32_t chunk_size = kRadStreamableChunkSplats; // RAD splats per file chunk
-        ExportProgressCallback progress_callback = nullptr; // Progress callback
+        ExportProgressCallback progress_callback = nullptr;   // Progress callback
     };
 
     /**
