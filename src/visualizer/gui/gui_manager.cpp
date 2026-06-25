@@ -63,6 +63,7 @@
 #include "tools/selection_tool.hpp"
 #include "training/trainer.hpp"
 #include "training/training_manager.hpp"
+#include "window/window_manager.hpp"
 #include "visualizer/app_store.hpp"
 #include "visualizer/scene_coordinate_utils.hpp"
 #include "visualizer_impl.hpp"
@@ -5240,6 +5241,13 @@ namespace lfs::vis::gui {
     bool GuiManager::shouldUseCachedImGuiResizeFrame(
         const WindowManager* const window_manager,
         const VulkanContext* const vulkan_context) const {
+#if defined(__linux__)
+        // The cached platform frame is a Windows manual-resize optimization. On
+        // X11, SDL's live platform frame keeps ImGui in sync with exposed pixels.
+        (void)window_manager;
+        (void)vulkan_context;
+        return false;
+#else
         if (!window_manager || !vulkan_context) {
             return false;
         }
@@ -5252,6 +5260,7 @@ namespace lfs::vis::gui {
         return active_window_resize &&
                window_size.x > 0 && window_size.y > 0 &&
                framebuffer_size.x > 0 && framebuffer_size.y > 0;
+#endif
     }
 
     void GuiManager::beginImGuiPlatformFrame(WindowManager* const window_manager,
@@ -5552,6 +5561,13 @@ namespace lfs::vis::gui {
             const auto* mvp = ImGui::GetMainViewport();
             const float status_bar_h = PanelLayoutManager::STATUS_BAR_HEIGHT * current_ui_scale_;
             const float panel_h = mvp->WorkSize.y - status_bar_h;
+            panel_layout_.enforceWidthConstraints(show_main_panel_, ui_hidden_,
+                                                  {
+                                                      .work_pos = {mvp->WorkPos.x, mvp->WorkPos.y},
+                                                      .work_size = {mvp->WorkSize.x, mvp->WorkSize.y},
+                                                      .any_item_active = ImGui::IsAnyItemActive() ||
+                                                                         rmlui_manager_.anyItemActive(),
+                                                  });
 
             ShellRegions shell_regions;
             shell_regions.screen = {mvp->Pos.x, mvp->Pos.y, mvp->Size.x, mvp->Size.y};
@@ -5665,6 +5681,7 @@ namespace lfs::vis::gui {
             screen.work_size = {mvp_input->WorkSize.x, mvp_input->WorkSize.y};
             screen.any_item_active = ImGui::IsAnyItemActive() || rmlui_manager_.anyItemActive();
         }
+        panel_layout_.enforceWidthConstraints(show_main_panel_, ui_hidden_, screen);
 
         constexpr uint8_t kUiLayoutSettleFrames = 3;
         const bool python_console_visible = window_states_["python_console"];
@@ -6283,14 +6300,22 @@ namespace lfs::vis::gui {
             LOG_TIMER_THRESHOLD("gui_render.rml_modal_processInput", 0.25);
             rml_modal_overlay_->processInput(raw_panel_input);
         }
-        if (ImGui::GetMouseCursor() == ImGuiMouseCursor_Arrow)
-            applyRmlCursorRequest(rmlui_manager_.consumeCursorRequest());
-        apply_cursor(rml_right_panel_.getCursorRequest());
-        apply_cursor(panel_layout_.getCursorRequest());
-        if (SDL_Cursor* const cursor = systemCursorForImGuiCursor(ImGui::GetMouseCursor()))
-            SDL_SetCursor(cursor);
-        if (auto* input_controller = viewer_->getInputController())
-            input_controller->applySplitterCursorOverride();
+        const bool window_resize_active =
+            viewer_ &&
+            viewer_->getWindowManager() &&
+            viewer_->getWindowManager()->manualResizeEdgeMask() != 0;
+        if (!window_resize_active) {
+            if (ImGui::GetMouseCursor() == ImGuiMouseCursor_Arrow)
+                applyRmlCursorRequest(rmlui_manager_.consumeCursorRequest());
+            apply_cursor(rml_right_panel_.getCursorRequest());
+            apply_cursor(panel_layout_.getCursorRequest());
+            if (SDL_Cursor* const cursor = systemCursorForImGuiCursor(ImGui::GetMouseCursor()))
+                SDL_SetCursor(cursor);
+            if (auto* input_controller = viewer_->getInputController())
+                input_controller->applySplitterCursorOverride();
+        } else if (auto* const wm = viewer_->getWindowManager()) {
+            wm->refreshResizeCursor();
+        }
         syncWindowTextInput(viewer_->getWindow());
 
         if (vulkan_gui_) {
