@@ -26,7 +26,7 @@ namespace lfs::vis::input {
 
     namespace {
 
-        constexpr int PROFILE_VERSION = 16; // Version 16 adds the camera frustum visibility shortcut.
+        constexpr int PROFILE_VERSION = 17; // Version 17 adds the selection intersection drag.
         constexpr int REMOVED_TOOL_MODE_2 = 2;
         constexpr int REMOVED_ACTION_39 = 39;
         constexpr int REMOVED_ACTION_66 = 66;
@@ -62,7 +62,7 @@ namespace lfs::vis::input {
         [[nodiscard]] std::optional<Action> findActionByDescription(std::string_view description) {
             static const auto* const table = [] {
                 auto* const m = new std::unordered_map<std::string, Action>();
-                constexpr int kActionCount = static_cast<int>(Action::TOGGLE_CAMERA_FRUSTUMS) + 1;
+                constexpr int kActionCount = static_cast<int>(Action::SELECTION_INTERSECT) + 1;
                 for (int i = 0; i < kActionCount; ++i) {
                     const auto a = static_cast<Action>(i);
                     m->emplace(toLowerCopy(getActionName(a)), a);
@@ -495,7 +495,8 @@ namespace lfs::vis::input {
                 (version < 13 && def.action == Action::CAMERA_SET_HOME) ||
                 (version < 14 && def.action == Action::HISTOGRAM_ZOOM_MARKED) ||
                 (version < 15 && def.action == Action::APPLY_CROP_BOX) ||
-                (version < 16 && def.action == Action::TOGGLE_CAMERA_FRUSTUMS);
+                (version < 16 && def.action == Action::TOGGLE_CAMERA_FRUSTUMS) ||
+                (version < 17 && def.action == Action::SELECTION_INTERSECT);
             if (!should_add) {
                 continue;
             }
@@ -1018,6 +1019,7 @@ namespace lfs::vis::input {
             {MouseDragTrigger{MouseButton::LEFT, MODIFIER_NONE}, Action::SELECTION_REPLACE, "Select"},
             {MouseDragTrigger{MouseButton::LEFT, MODIFIER_SHIFT}, Action::SELECTION_ADD, "Add sel"},
             {MouseDragTrigger{MouseButton::LEFT, MODIFIER_CTRL}, Action::SELECTION_REMOVE, "Remove sel"},
+            {MouseDragTrigger{MouseButton::LEFT, MODIFIER_ALT}, Action::SELECTION_INTERSECT, "Intersect sel"},
         };
         for (const auto& b : selection_drags) {
             profile.bindings.push_back({ToolMode::SELECTION, b.trigger, b.action, b.desc});
@@ -1127,6 +1129,7 @@ namespace lfs::vis::input {
         case Action::SELECTION_REPLACE: return "Selection: Replace";
         case Action::SELECTION_ADD: return "Selection: Add";
         case Action::SELECTION_REMOVE: return "Selection: Remove";
+        case Action::SELECTION_INTERSECT: return "Selection: Intersect";
         case Action::SELECT_MODE_CENTERS: return "Selection: Centers";
         case Action::SELECT_MODE_RECTANGLE: return "Selection: Rectangle";
         case Action::SELECT_MODE_POLYGON: return "Selection: Polygon";
@@ -1204,6 +1207,7 @@ namespace lfs::vis::input {
         case Action::SELECTION_REPLACE: return "selection_replace";
         case Action::SELECTION_ADD: return "selection_add";
         case Action::SELECTION_REMOVE: return "selection_remove";
+        case Action::SELECTION_INTERSECT: return "selection_intersect";
         case Action::SELECT_MODE_CENTERS: return "select_mode_centers";
         case Action::SELECT_MODE_RECTANGLE: return "select_mode_rectangle";
         case Action::SELECT_MODE_POLYGON: return "select_mode_polygon";
@@ -1234,7 +1238,7 @@ namespace lfs::vis::input {
     std::optional<Action> actionFromName(std::string_view name) {
         static const auto table = [] {
             std::unordered_map<std::string, Action> m;
-            for (int i = 0; i <= static_cast<int>(Action::TOGGLE_CAMERA_FRUSTUMS); ++i) {
+            for (int i = 0; i <= static_cast<int>(Action::SELECTION_INTERSECT); ++i) {
                 const auto action = static_cast<Action>(i);
                 const auto key = actionNameKey(action);
                 if (!key.empty())
@@ -1883,6 +1887,7 @@ namespace lfs::vis::input {
         case Action::SELECTION_REPLACE:
         case Action::SELECTION_ADD:
         case Action::SELECTION_REMOVE:
+        case Action::SELECTION_INTERSECT:
             return d_selection_drag;
         case Action::SELECT_MODE_CENTERS:
         case Action::SELECT_MODE_RECTANGLE:

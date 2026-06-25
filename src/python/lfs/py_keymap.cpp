@@ -150,6 +150,7 @@ namespace lfs::python {
             .value("SELECTION_REPLACE", Action::SELECTION_REPLACE)
             .value("SELECTION_ADD", Action::SELECTION_ADD)
             .value("SELECTION_REMOVE", Action::SELECTION_REMOVE)
+            .value("SELECTION_INTERSECT", Action::SELECTION_INTERSECT)
             .value("SELECT_MODE_CENTERS", Action::SELECT_MODE_CENTERS)
             .value("SELECT_MODE_RECTANGLE", Action::SELECT_MODE_RECTANGLE)
             .value("SELECT_MODE_POLYGON", Action::SELECT_MODE_POLYGON)

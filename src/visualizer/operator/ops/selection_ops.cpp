@@ -25,6 +25,7 @@ namespace lfs::vis::op {
             switch (mode) {
             case 1: return lfs::vis::SelectionMode::Add;
             case 2: return lfs::vis::SelectionMode::Remove;
+            case 3: return lfs::vis::SelectionMode::Intersect;
             default: return lfs::vis::SelectionMode::Replace;
             }
         }
@@ -35,6 +36,9 @@ namespace lfs::vis::op {
             }
             if (mods & input::KEYMOD_CTRL) {
                 return lfs::vis::SelectionMode::Remove;
+            }
+            if (mods & input::KEYMOD_ALT) {
+                return lfs::vis::SelectionMode::Intersect;
             }
             return lfs::vis::SelectionMode::Replace;
         }

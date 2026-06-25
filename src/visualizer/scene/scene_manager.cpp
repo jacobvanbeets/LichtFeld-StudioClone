@@ -165,6 +165,19 @@ namespace lfs::vis {
             return settings.depth_filter_enabled || settings.crop_filter_for_selection;
         }
 
+        [[nodiscard]] SelectionMode selectionModeFromString(const std::string& mode) {
+            if (mode == "add") {
+                return SelectionMode::Add;
+            }
+            if (mode == "remove") {
+                return SelectionMode::Remove;
+            }
+            if (mode == "intersect") {
+                return SelectionMode::Intersect;
+            }
+            return SelectionMode::Replace;
+        }
+
         void pushSceneGraphMetadataHistoryEntry(
             SceneManager& scene_manager,
             std::string label,
@@ -4747,11 +4760,7 @@ namespace lfs::vis {
         if (!selection_service_)
             return {false, 0, "Selection service not initialized"};
 
-        SelectionMode sel_mode = SelectionMode::Replace;
-        if (mode == "add")
-            sel_mode = SelectionMode::Add;
-        else if (mode == "remove")
-            sel_mode = SelectionMode::Remove;
+        const SelectionMode sel_mode = selectionModeFromString(mode);
 
         return selection_service_->selectBrush(x, y, radius, sel_mode, camera_index);
     }
@@ -4761,11 +4770,7 @@ namespace lfs::vis {
         if (!selection_service_)
             return {false, 0, "Selection service not initialized"};
 
-        SelectionMode sel_mode = SelectionMode::Replace;
-        if (mode == "add")
-            sel_mode = SelectionMode::Add;
-        else if (mode == "remove")
-            sel_mode = SelectionMode::Remove;
+        const SelectionMode sel_mode = selectionModeFromString(mode);
 
         return selection_service_->selectRect(x0, y0, x1, y1, sel_mode, camera_index);
     }
@@ -4775,11 +4780,7 @@ namespace lfs::vis {
         if (!selection_service_ || points.size() < 3)
             return {false, 0, "Polygon requires at least 3 vertices"};
 
-        SelectionMode sel_mode = SelectionMode::Replace;
-        if (mode == "add")
-            sel_mode = SelectionMode::Add;
-        else if (mode == "remove")
-            sel_mode = SelectionMode::Remove;
+        const SelectionMode sel_mode = selectionModeFromString(mode);
 
         std::vector<glm::vec2> closed = points;
         if (closed.size() >= 3 && closed.front() != closed.back()) {
@@ -4793,11 +4794,7 @@ namespace lfs::vis {
         if (!selection_service_ || points.size() < 3)
             return {false, 0, "Lasso requires at least 3 vertices"};
 
-        SelectionMode sel_mode = SelectionMode::Replace;
-        if (mode == "add")
-            sel_mode = SelectionMode::Add;
-        else if (mode == "remove")
-            sel_mode = SelectionMode::Remove;
+        const SelectionMode sel_mode = selectionModeFromString(mode);
 
         return selection_service_->selectLasso(points, sel_mode, camera_index);
     }
@@ -4806,11 +4803,7 @@ namespace lfs::vis {
         if (!selection_service_)
             return {false, 0, "Selection service not initialized"};
 
-        SelectionMode sel_mode = SelectionMode::Replace;
-        if (mode == "add")
-            sel_mode = SelectionMode::Add;
-        else if (mode == "remove")
-            sel_mode = SelectionMode::Remove;
+        const SelectionMode sel_mode = selectionModeFromString(mode);
 
         return selection_service_->selectRing(x, y, sel_mode, camera_index);
     }

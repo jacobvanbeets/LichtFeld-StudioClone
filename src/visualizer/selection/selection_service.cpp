@@ -418,6 +418,44 @@ namespace lfs::vis {
             return expanded;
         }
 
+        [[nodiscard]] core::Tensor intersectWithActiveSelection(
+            SceneManager* const scene_manager,
+            const core::Tensor& selection,
+            const core::Tensor* const existing_mask,
+            const uint8_t group_id) {
+            if (!scene_manager || !selection.is_valid()) {
+                return {};
+            }
+
+            const size_t selection_count = selection.numel();
+            if (!existing_mask || !existing_mask->is_valid()) {
+                return core::Tensor::zeros({selection_count}, core::Device::CUDA, core::DataType::Bool);
+            }
+
+            auto& scene = scene_manager->getScene();
+            const size_t full_count = scene.getSelectionGaussianCount();
+            auto active_group = existing_mask->eq(group_id);
+            if (active_group.device() != core::Device::CUDA) {
+                active_group = active_group.cuda();
+            }
+
+            if (selection_count == full_count) {
+                return selection.logical_and(active_group);
+            }
+
+            const size_t visible_count = activeSelectionGaussianCount(scene_manager);
+            const auto visible_indices = scene.getVisibleSelectionIndices();
+            if (selection_count != visible_count ||
+                !visible_indices ||
+                !visible_indices->is_valid() ||
+                visible_indices->numel() != visible_count) {
+                return {};
+            }
+
+            const auto active_visible = active_group.index_select(0, *visible_indices).contiguous();
+            return selection.logical_and(active_visible);
+        }
+
         [[nodiscard]] rendering::ViewportData viewportDataFromCamera(const core::Camera& camera) {
             const auto rotation_cpu = camera.R().cpu().to(core::DataType::Float32);
             const auto position_cpu = camera.cam_position().cpu().to(core::DataType::Float32);
@@ -1813,11 +1851,22 @@ namespace lfs::vis {
         const auto existing_mask = scene.getSelectionMask();
         const uint8_t group_id = scene.getActiveSelectionGroup();
         const size_t full_count = scene.getSelectionGaussianCount();
-        const size_t selection_count = selection_mask.numel();
         const core::Tensor* const existing_full_mask =
             selectionMaskForSize(existing_mask, full_count);
-        const bool add_mode = (mode != SelectionMode::Remove);
-        const bool replace_mode = (mode == SelectionMode::Replace);
+
+        const bool intersect_mode = (mode == SelectionMode::Intersect);
+        if (intersect_mode) {
+            LOG_TIMER("commitSelection.intersect_active_selection");
+            selection_mask = intersectWithActiveSelection(scene_manager_, selection_mask, existing_full_mask, group_id);
+            if (!selection_mask.is_valid()) {
+                return {false, 0, "Selection size mismatch"};
+            }
+        }
+
+        const SelectionMode apply_mode = intersect_mode ? SelectionMode::Replace : mode;
+        const size_t selection_count = selection_mask.numel();
+        const bool add_mode = (apply_mode != SelectionMode::Remove);
+        const bool replace_mode = (apply_mode == SelectionMode::Replace);
         const bool node_scope_restricts = nodeMaskRestrictsSelection(node_mask);
         const bool scoped_replace = replace_mode && existing_full_mask && node_scope_restricts;
 
@@ -1858,7 +1907,7 @@ namespace lfs::vis {
             scene_selection_mask = [&] {
                 LOG_TIMER("commitSelection.expandSelectionToSceneMask");
                 return expandSelectionToSceneMask(
-                    scene_manager_, selection_mask, mode, group_id,
+                    scene_manager_, selection_mask, apply_mode, group_id,
                     existing_full_mask,
                     node_mask);
             }();

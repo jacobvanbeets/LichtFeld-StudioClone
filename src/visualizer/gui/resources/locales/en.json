@@ -1231,6 +1231,7 @@
     "action.selection_replace": "Selection: Replace",
     "action.selection_add": "Selection: Add",
     "action.selection_remove": "Selection: Remove",
+    "action.selection_intersect": "Selection: Intersect",
     "action.select_mode_centers": "Selection: Centers",
     "action.select_mode_rectangle": "Selection: Rectangle",
     "action.select_mode_polygon": "Selection: Polygon",

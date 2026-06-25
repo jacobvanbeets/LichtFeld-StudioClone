@@ -30,7 +30,8 @@ namespace lfs::vis {
     enum class SelectionMode {
         Replace,
         Add,
-        Remove
+        Remove,
+        Intersect
     };
 
     enum class SelectionShape : uint8_t {

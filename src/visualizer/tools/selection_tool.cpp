@@ -57,6 +57,29 @@ namespace lfs::vis::tools {
                    point.y < bounds.y + bounds.height;
         }
 
+        [[nodiscard]] lfs::vis::SelectionMode selectionModeFromModifiers(const SDL_Keymod kmods) {
+            if (kmods & SDL_KMOD_SHIFT) {
+                return lfs::vis::SelectionMode::Add;
+            }
+            if (kmods & SDL_KMOD_CTRL) {
+                return lfs::vis::SelectionMode::Remove;
+            }
+            if (kmods & SDL_KMOD_ALT) {
+                return lfs::vis::SelectionMode::Intersect;
+            }
+            return lfs::vis::SelectionMode::Replace;
+        }
+
+        [[nodiscard]] const char* selectionModeSuffixFromModifiers(const SDL_Keymod kmods) {
+            switch (selectionModeFromModifiers(kmods)) {
+            case lfs::vis::SelectionMode::Add: return " +";
+            case lfs::vis::SelectionMode::Remove: return " -";
+            case lfs::vis::SelectionMode::Intersect: return " &";
+            case lfs::vis::SelectionMode::Replace: return "";
+            }
+            return "";
+        }
+
     } // namespace
 
     SelectionTool::SelectionTool() = default;
@@ -97,12 +120,7 @@ namespace lfs::vis::tools {
                         pointInViewportBounds(ctx.getViewportBounds(), last_mouse_pos_);
                     if (update_hover) {
                         const SDL_Keymod kmods = SDL_GetModState();
-                        lfs::vis::SelectionMode mode = lfs::vis::SelectionMode::Replace;
-                        if (kmods & SDL_KMOD_SHIFT) {
-                            mode = lfs::vis::SelectionMode::Add;
-                        } else if (kmods & SDL_KMOD_CTRL) {
-                            mode = lfs::vis::SelectionMode::Remove;
-                        }
+                        const auto mode = selectionModeFromModifiers(kmods);
                         SelectionFilterState filters{};
                         filters.crop_filter = crop_filter_enabled_;
                         filters.depth_filter = depth_filter_enabled_;
@@ -291,12 +309,7 @@ namespace lfs::vis::tools {
         // their sample-to-present path stays as short as possible.
 
         const SDL_Keymod kmods = SDL_GetModState();
-        const char* op_suffix = "";
-        if (kmods & SDL_KMOD_CTRL) {
-            op_suffix = " -";
-        } else if (kmods & SDL_KMOD_SHIFT) {
-            op_suffix = " +";
-        }
+        const char* op_suffix = selectionModeSuffixFromModifiers(kmods);
 
         const char* mode_name = nullptr;
         float text_offset = 15.0f;

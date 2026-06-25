@@ -921,15 +921,20 @@ namespace lfs::vis {
             case input::Action::SELECTION_REPLACE:
             case input::Action::SELECTION_ADD:
             case input::Action::SELECTION_REMOVE:
+            case input::Action::SELECTION_INTERSECT:
                 if (!over_gui && !over_gizmo && tool_context_ &&
                     !over_transform_gizmo) {
                     if (selection_tool_ && selection_tool_->isEnabled()) {
                         // Invoke selection stroke operator
                         auto* gm = services().guiOrNull();
                         const auto sub_mode = gm ? static_cast<int>(gm->gizmo().getSelectionSubMode()) : 0;
-                        const int selection_op = (bound_action == input::Action::SELECTION_ADD)      ? 1
-                                                 : (bound_action == input::Action::SELECTION_REMOVE) ? 2
-                                                                                                     : 0;
+                        int selection_op = 0;
+                        switch (bound_action) {
+                        case input::Action::SELECTION_ADD: selection_op = 1; break;
+                        case input::Action::SELECTION_REMOVE: selection_op = 2; break;
+                        case input::Action::SELECTION_INTERSECT: selection_op = 3; break;
+                        default: break;
+                        }
 
                         op::OperatorProperties props;
                         props.set("x", x);
@@ -1701,6 +1706,8 @@ namespace lfs::vis {
                                 selection_service->setInteractiveSelectionMode(SelectionMode::Add);
                             } else if (mods & input::KEYMOD_CTRL) {
                                 selection_service->setInteractiveSelectionMode(SelectionMode::Remove);
+                            } else if (mods & input::KEYMOD_ALT) {
+                                selection_service->setInteractiveSelectionMode(SelectionMode::Intersect);
                             } else {
                                 selection_service->setInteractiveSelectionMode(SelectionMode::Replace);
                             }

@@ -1036,6 +1036,7 @@
     "action.selection_replace": "选择：替换",
     "action.selection_add": "选择：添加",
     "action.selection_remove": "选择：移除",
+    "action.selection_intersect": "Selection: Intersect",
     "action.select_mode_centers": "选择：中心",
     "action.select_mode_rectangle": "选择：矩形",
     "action.select_mode_polygon": "选择：多边形",

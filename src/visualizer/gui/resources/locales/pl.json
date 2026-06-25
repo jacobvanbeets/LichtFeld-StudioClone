@@ -1206,6 +1206,7 @@
     "action.selection_replace": "Zaznaczenie: Zastąp",
     "action.selection_add": "Zaznaczenie: Dodaj",
     "action.selection_remove": "Zaznaczenie: Usuń",
+    "action.selection_intersect": "Selection: Intersect",
     "action.select_mode_centers": "Zaznaczenie: Środki",
     "action.select_mode_rectangle": "Zaznaczenie: Prostokąt",
     "action.select_mode_polygon": "Zaznaczenie: Wielokąt",

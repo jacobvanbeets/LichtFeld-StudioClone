@@ -126,6 +126,7 @@ namespace lfs::vis::input {
         CAMERA_RESET_HOME,
         HISTOGRAM_ZOOM_MARKED,
         TOGGLE_CAMERA_FRUSTUMS,
+        SELECTION_INTERSECT,
 
     };
 

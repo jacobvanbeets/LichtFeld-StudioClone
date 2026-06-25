@@ -1206,6 +1206,7 @@
     "action.selection_replace": "선택: 대체",
     "action.selection_add": "선택: 추가",
     "action.selection_remove": "선택: 제거",
+    "action.selection_intersect": "Selection: Intersect",
     "action.select_mode_centers": "선택: 중심점",
     "action.select_mode_rectangle": "선택: 사각형",
     "action.select_mode_polygon": "선택: 다각형",
