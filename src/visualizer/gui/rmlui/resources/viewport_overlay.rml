@@ -561,6 +561,12 @@
                                step="0.05"
                                data-value="depth_view_near_value"
                                data-attrif-disabled="!depth_view_has_scene" />
+                        <button class="num-step-btn viewport-depth-step-btn"
+                                data-event-click="depth_view_num_step('near', -1)"
+                                data-attrif-disabled="!depth_view_has_scene">-</button>
+                        <button class="num-step-btn viewport-depth-step-btn"
+                                data-event-click="depth_view_num_step('near', 1)"
+                                data-attrif-disabled="!depth_view_has_scene">+</button>
                     </div>
                     <div class="viewport-transform-axis viewport-selection-depth-axis viewport-depth-axis" data-tooltip="tooltip.depth_view_far">
                         <span class="viewport-transform-axis-label">Far</span>
@@ -573,6 +579,12 @@
                                step="0.05"
                                data-value="depth_view_far_value"
                                data-attrif-disabled="!depth_view_has_scene" />
+                        <button class="num-step-btn viewport-depth-step-btn"
+                                data-event-click="depth_view_num_step('far', -1)"
+                                data-attrif-disabled="!depth_view_has_scene">-</button>
+                        <button class="num-step-btn viewport-depth-step-btn"
+                                data-event-click="depth_view_num_step('far', 1)"
+                                data-attrif-disabled="!depth_view_has_scene">+</button>
                     </div>
                 </div>
 

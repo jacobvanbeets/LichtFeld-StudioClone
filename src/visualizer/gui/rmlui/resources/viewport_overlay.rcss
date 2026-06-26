@@ -397,28 +397,30 @@ body {
     top: 0;
 }
 
-.viewport-selection-depth-axis > .number-input.viewport-depth-input {
-    width: 74dp;
-    min-width: 74dp;
-    height: 24dp;
-    min-height: 24dp;
-    font-size: 12dp;
-    line-height: 22dp;
-    padding: 0 5dp;
-}
-
-#depth-view-block .viewport-selection-depth-axis > .number-input.viewport-depth-input {
-    height: 22dp;
-    min-height: 22dp;
-    line-height: 16dp;
-    padding: 2dp 5dp;
-}
-
 #depth-view-block .viewport-depth-axis > .scrub-field {
-    width: 150dp;
-    min-width: 150dp;
+    width: 112dp;
+    min-width: 112dp;
     height: 22dp;
     min-height: 22dp;
+}
+
+#depth-view-block .viewport-depth-axis > .viewport-depth-step-btn {
+    width: 18dp;
+    min-width: 18dp;
+    height: 22dp;
+    min-height: 22dp;
+    line-height: 20dp;
+    padding: 0 0 1dp 0;
+    margin-left: 0;
+    font-size: 12dp;
+    border-radius: 4dp;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+#depth-view-block .viewport-depth-axis > .viewport-depth-step-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
 .viewport-selection-actions {
