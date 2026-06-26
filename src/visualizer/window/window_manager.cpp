@@ -1056,6 +1056,7 @@ namespace lfs::vis {
         SDL_GetWindowSize(window_, &manual_resize_start_size_.x, &manual_resize_start_size_.y);
         saveBorderlessRestoreGeometry();
         SDL_CaptureMouse(true);
+        lfs::core::events::ui::WindowResizeInteraction{.active = true}.emit();
     }
 
     void WindowManager::updateManualResize() {
@@ -1129,6 +1130,7 @@ namespace lfs::vis {
         SDL_CaptureMouse(false);
         SDL_SetCursor(SDL_GetDefaultCursor());
         updateWindowSize("manual-resize-end", ResizeIntent::Exact);
+        lfs::core::events::ui::WindowResizeInteraction{.active = false}.emit();
         wakeEventLoop();
     }
 
